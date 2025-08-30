@@ -41,6 +41,34 @@ export function useWalletData() {
     loadDataWithIntegrityCheck()
   }, [isLoaded])
 
+  // Hoisted function so it can be used during initial load before
+  // other const declarations are evaluated.
+  async function saveDataWithIntegrity(key: string, data: any) {
+    try {
+      await saveToLocalStorage(key, data)
+
+      const allData = {
+        userProfile,
+        transactions,
+        budgets,
+        goals,
+        debtAccounts,
+        creditAccounts,
+        debtCreditTransactions,
+        categories,
+        emergencyFund,
+        [key]: data,
+      }
+
+      await DataIntegrityManager.updateIntegrityRecord(allData)
+    } catch (error) {
+      try {
+        await saveToLocalStorage(key, data)
+      } catch (e) {
+      }
+    }
+  }
+
   const loadDataWithIntegrityCheck = async () => {
     try {
       const savedProfile = localStorage.getItem("userProfile")
@@ -66,14 +94,10 @@ export function useWalletData() {
       }
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
-        console.log("[v0] Verifying data integrity...")
         const validation = await DataIntegrityManager.validateAllData(parsedData)
 
         if (!validation.isValid) {
-          console.warn("[v0] Data integrity issues found:", validation.issues)
-          console.warn("[v0] Integrity check:", validation.integrityCheck)
         } else {
-          console.log("[v0] Data integrity verification passed")
         }
       }
 
@@ -113,42 +137,13 @@ export function useWalletData() {
 
       setIsLoaded(true)
     } catch (error) {
-      console.error("[v0] Error loading wallet data:", error)
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
     }
   }
 
-  const saveDataWithIntegrity = async (key: string, data: any) => {
-    try {
-      await saveToLocalStorage(key, data)
-
-      const allData = {
-        userProfile,
-        transactions,
-        budgets,
-        goals,
-        debtAccounts,
-        creditAccounts,
-        debtCreditTransactions,
-        categories,
-        emergencyFund,
-        [key]: data,
-      }
-
-      await DataIntegrityManager.updateIntegrityRecord(allData)
-      console.log("[v0] Data saved with integrity verification")
-    } catch (error) {
-      console.error("[v0] Failed to save data with integrity:", error)
-      try {
-        await saveToLocalStorage(key, data)
-      } catch (e) {
-        console.error("[v0] Fallback localStorage write failed:", e)
-      }
-    }
-  }
-
+  // saveDataWithIntegrity is declared above as a hoisted function
   const handleOnboardingComplete = async (profileData: UserProfile) => {
     const completeProfile = {
       ...profileData,
@@ -164,8 +159,6 @@ export function useWalletData() {
   }
 
   const addTransaction = async (transaction: Omit<Transaction, "id" | "timeEquivalent">) => {
-    console.log("[v0] Calling addTransaction with:", transaction)
-
     const newTransactionAmount = transaction.type === "income" ? transaction.amount : -transaction.amount
     const newBalance = balance + newTransactionAmount
 
@@ -197,7 +190,6 @@ export function useWalletData() {
 
         if (!hasDebtAllowedBudget && totalAvailable < deficit) {
     const errorMessage = `Insufficient funds. Need ${userProfile?.currency || "$"}${deficit.toFixed(2)} but only have ${userProfile?.currency || "$"}${totalAvailable.toFixed(2)} available (Emergency: ${userProfile?.currency || "$"}${emergencyFund.toFixed(2)}, Credit: ${userProfile?.currency || "$"}${availableCredit.toFixed(2)})`
-          console.log("[v0] Transaction failed:", errorMessage)
           throw new Error(errorMessage)
         }
 
@@ -245,7 +237,6 @@ export function useWalletData() {
             })
           } else {
             const errorMessage = `Transaction exceeds budget limit for ${budget.category} and no emergency uses or debt allowance available.`
-            console.log("[v0] Transaction failed:", errorMessage)
             throw new Error(errorMessage)
           }
         }

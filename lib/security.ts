@@ -20,7 +20,9 @@ export class SecureWallet {
     return await crypto.subtle.deriveKey(
       {
         name: "PBKDF2",
-        salt: salt,
+        // Web Crypto expects a BufferSource (ArrayBuffer or ArrayBufferView).
+        // Coerce the Uint8Array to ArrayBuffer to satisfy TypeScript's lib.dom typing.
+        salt: (salt as unknown) as ArrayBuffer,
         iterations: this.PBKDF2_ITERATIONS,
         hash: "SHA-256",
       },
@@ -54,7 +56,8 @@ export class SecureWallet {
       const encryptedBuffer = await crypto.subtle.encrypt(
         {
           name: this.ALGORITHM,
-          iv: iv,
+          // Coerce iv to ArrayBuffer for typings
+          iv: (iv as unknown) as ArrayBuffer,
         },
         key,
         dataBuffer,
@@ -114,7 +117,8 @@ export class SecureWallet {
     const hashBuffer = await crypto.subtle.deriveBits(
       {
         name: "PBKDF2",
-        salt: pinSalt,
+        // Coerce salt to ArrayBuffer for typings
+        salt: (pinSalt as unknown) as ArrayBuffer,
         iterations: this.PBKDF2_ITERATIONS,
         hash: "SHA-256",
       },
