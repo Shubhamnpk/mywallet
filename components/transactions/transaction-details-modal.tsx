@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2 } from "lucide-react"
 import type { Transaction, UserProfile } from "@/types/wallet"
+import { formatCurrency } from "@/lib/utils"
 
 interface TransactionDetailsModalProps {
   transaction: Transaction
@@ -59,8 +60,7 @@ export function TransactionDetailsModal({
             <p className="text-sm text-muted-foreground mb-1">Amount</p>
             <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-emerald-600" : "text-red-600"}`}>
               {transaction.type === "income" ? "+" : "-"}
-              {userProfile.currency}
-              {transaction.amount.toFixed(2)}
+              {formatCurrency(transaction.amount, userProfile.currency)}
             </p>
 
             {transaction.timeEquivalent && (

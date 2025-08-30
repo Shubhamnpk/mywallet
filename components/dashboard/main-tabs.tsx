@@ -22,11 +22,9 @@ interface MainTabsProps {
   onExportData: () => void
   calculateTimeEquivalent: (amount: number) => number
   onDeleteTransaction?: (id: string) => void
-  onAddBudget?: (budget: Omit<Budget, "id" | "spent" | "emergencyUsesLeft">) => void
-  onAddGoal?: (goal: Omit<Goal, "id" | "currentAmount">) => void
+  onAddBudget: (budget: Omit<Budget, "id">) => void
+  onDeleteBudget: (id: string) => void
   onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
-  onUpdateGoal?: (id: string, updates: Partial<Goal>) => void
-  onTransferToGoal?: (goalId: string, amount: number) => { success: boolean; error?: string }
   onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => Category
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
@@ -44,10 +42,8 @@ export function MainTabs({
   calculateTimeEquivalent,
   onDeleteTransaction,
   onAddBudget,
-  onAddGoal,
+  onDeleteBudget,
   onUpdateBudget,
-  onUpdateGoal,
-  onTransferToGoal,
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
@@ -55,7 +51,7 @@ export function MainTabs({
 }: MainTabsProps) {
   // Calculate summary stats for badges
   const recentTransactions = transactions.slice(0, 5).length
-  const activeBudgets = budgets.filter((b) => b.spent < b.amount).length
+  const activeBudgets = budgets.filter((b) => b.spent < b.limit).length
   const activeGoals = goals.filter((g) => g.currentAmount < g.targetAmount).length
   const customCategories = categories.filter((c) => !c.isDefault).length
 
@@ -172,7 +168,7 @@ export function MainTabs({
               budgets={budgets}
               userProfile={userProfile}
               onAddBudget={onAddBudget}
-              onUpdateBudget={onUpdateBudget}
+              onDeleteBudget={onDeleteBudget}
             />
           </TabsContent>
 
@@ -180,10 +176,6 @@ export function MainTabs({
             <EnhancedGoalsList
               goals={goals}
               userProfile={userProfile}
-              onAddGoal={onAddGoal}
-              onUpdateGoal={onUpdateGoal}
-              onTransferToGoal={onTransferToGoal}
-              balance={balance}
             />
           </TabsContent>
 

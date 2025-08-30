@@ -7,14 +7,20 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { Shield, Lock, Key } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
-export function SecuritySettings() {
+interface SecuritySettingsProps {
+  onLock?: () => void
+}
+
+export function SecuritySettings({ onLock }: SecuritySettingsProps) {
   const { userProfile, updateUserProfile } = useWalletData()
+  const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
   const [pinEnabled, setPinEnabled] = useState(!!userProfile?.pin)
   const [showPinDialog, setShowPinDialog] = useState(false)
@@ -275,6 +281,34 @@ export function SecuritySettings() {
           </Dialog>
         </CardContent>
       </Card>
+
+      {/* Lock App */}
+      {isAuthenticated && hasPin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5" />
+              App Lock
+            </CardTitle>
+            <CardDescription>
+              Manually lock the app and return to the PIN lock screen
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={() => {
+                lockApp()
+                onLock?.()
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              <Lock className="w-4 h-4 mr-2" />
+              Lock App Now
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Security Tips */}
       <Card>

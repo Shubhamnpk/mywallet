@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target } from "lucide-react"
+import { getCurrencySymbol } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 
@@ -40,7 +41,7 @@ export function CategoriesManagement({
   const [newCategoryType, setNewCategoryType] = useState<"income" | "expense">("expense")
   const [newCategoryColor, setNewCategoryColor] = useState("#3b82f6")
 
-  const currencySymbol = userProfile?.currency || "$"
+  const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
 
   // Calculate enhanced category statistics
   const categoryStats = useMemo(() => {
@@ -280,6 +281,7 @@ export function CategoriesManagement({
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
+                    aria-label="Select category color"
                     value={newCategoryColor}
                     onChange={(e) => setNewCategoryColor(e.target.value)}
                     className="w-12 h-10 rounded border border-input"
@@ -445,6 +447,7 @@ export function CategoriesManagement({
               <div className="flex items-center gap-3">
                 <input
                   type="color"
+                  aria-label="Edit category color"
                   value={newCategoryColor}
                   onChange={(e) => setNewCategoryColor(e.target.value)}
                   className="w-12 h-10 rounded border border-input"

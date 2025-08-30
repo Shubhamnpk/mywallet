@@ -60,7 +60,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             </TabsContent>
 
             <TabsContent value="security" className="space-y-6">
-              <SecuritySettings />
+              <SecuritySettings onLock={() => onOpenChange(false)} />
             </TabsContent>
 
             <TabsContent value="theme" className="space-y-6">

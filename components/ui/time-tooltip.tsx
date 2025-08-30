@@ -4,7 +4,8 @@ import type React from "react"
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Clock, HelpCircle } from "lucide-react"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatCurrency } from "@/lib/utils"
 
 interface TimeTooltipProps {
   amount: number
@@ -29,12 +30,12 @@ export function TimeTooltip({ amount, children }: TimeTooltipProps) {
 
   const calculationDetails = `
     Calculation:
-    • Monthly Earning: ${userProfile.currency} ${userProfile.monthlyEarning.toLocaleString()}
+  • Monthly Earning: ${formatCurrency(userProfile.monthlyEarning, userProfile.currency)}
     • Working Hours/Day: ${userProfile.workingHoursPerDay}
     • Working Days/Month: ${userProfile.workingDaysPerMonth}
-    • Hourly Rate: ${userProfile.currency} ${hourlyRate.toFixed(2)}
-    • Per Minute: ${userProfile.currency} ${minuteRate.toFixed(2)}
-    • Time for ${userProfile.currency} ${Math.abs(amount)}: ${timeText}
+  • Hourly Rate: ${formatCurrency(hourlyRate, userProfile.currency)}
+  • Per Minute: ${formatCurrency(minuteRate, userProfile.currency)}
+  • Time for ${formatCurrency(Math.abs(amount), userProfile.currency)}: ${timeText}
   `
 
   return (

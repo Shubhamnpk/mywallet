@@ -10,6 +10,7 @@ import { Clock, Search, TrendingUp, TrendingDown, Calendar, Filter, ArrowUpDown,
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TransactionDetailsModal } from "./transaction-details-modal"
 import type { Transaction, UserProfile } from "@/types/wallet"
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 
 interface TransactionsListProps {
   transactions: Transaction[]
@@ -46,6 +47,11 @@ export function TransactionsList({
     const interval = setInterval(load, 20000)
     return () => clearInterval(interval)
   }, [fetchTransactions])
+
+  // Keep internal transactions in sync when parent updates props (immediate UI update)
+  useEffect(() => {
+    setTransactions(initialTransactions)
+  }, [initialTransactions])
 
   const refreshManually = async () => {
     if (!fetchTransactions) return
@@ -208,8 +214,7 @@ export function TransactionsList({
                       className={`font-semibold ${transaction.type === "income" ? "text-emerald-600" : "text-red-600"}`}
                     >
                       {transaction.type === "income" ? "+" : "-"}
-                      {userProfile.currency}
-                      {transaction.amount.toFixed(2)}
+                      {formatCurrency(transaction.amount, userProfile.currency)}
                     </p>
 
                     {transaction.type === "expense" && (

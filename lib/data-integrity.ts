@@ -2,6 +2,7 @@
 // Ensures data hasn't been tampered with and maintains consistency
 
 import { SecureWallet } from "./security"
+import { SecureKeyManager } from "./key-manager"
 
 export interface DataIntegrityInfo {
   hash: string
@@ -222,6 +223,156 @@ export class DataIntegrityManager {
       isValid: issues.length === 0 && integrityCheck.isValid,
       issues,
       integrityCheck,
+    }
+  }
+
+  // PIN-protected integrity verification using master key
+  static async createSecureIntegrityRecord(data: any): Promise<void> {
+    try {
+      const masterKey = await SecureKeyManager.getMasterKey("")
+      if (!masterKey) {
+        throw new Error("No master key available for secure integrity")
+      }
+
+      // Create integrity hash
+      const dataHash = await this.generateDataHash(data)
+
+      // Encrypt the hash with master key for additional protection
+      const encryptedHash = await SecureWallet.encryptData(dataHash, masterKey)
+
+      const timestamp = new Date().toISOString()
+      const checksum = await SecureWallet.generateIntegrityHash(`${encryptedHash}${timestamp}${this.VERSION}`)
+
+      const secureIntegrityInfo = {
+        encryptedHash,
+        timestamp,
+        version: this.VERSION,
+        checksum,
+        keyId: SecureKeyManager.getKeyMetadata()?.keyId || "unknown",
+      }
+
+      localStorage.setItem(`${this.INTEGRITY_KEY}_secure`, JSON.stringify(secureIntegrityInfo))
+      console.log("[v0] Secure integrity record created")
+    } catch (error) {
+      console.error("[v0] Failed to create secure integrity record:", error)
+      throw error
+    }
+  }
+
+  // Verify PIN-protected integrity
+  static async verifySecureIntegrity(data: any): Promise<{
+    isValid: boolean
+    issues: string[]
+    lastVerified: string | null
+    keyValid: boolean
+  }> {
+    const issues: string[] = []
+    let isValid = true
+    let keyValid = true
+
+    try {
+      const secureIntegrityJson = localStorage.getItem(`${this.INTEGRITY_KEY}_secure`)
+      if (!secureIntegrityJson) {
+        issues.push("No secure integrity record found")
+        return { isValid: false, issues, lastVerified: null, keyValid: false }
+      }
+
+      const secureIntegrity = JSON.parse(secureIntegrityJson)
+
+      // Verify master key is still valid
+      const masterKey = await SecureKeyManager.getMasterKey("")
+      if (!masterKey) {
+        issues.push("Master key not available for integrity verification")
+        keyValid = false
+        isValid = false
+      } else {
+        // Decrypt and verify the hash
+        try {
+          const decryptedHash = await SecureWallet.decryptData(secureIntegrity.encryptedHash, masterKey)
+          const currentDataHash = await this.generateDataHash(data)
+
+          if (decryptedHash !== currentDataHash) {
+            issues.push("Secure data integrity compromised")
+            isValid = false
+          }
+        } catch (decryptError) {
+          issues.push("Failed to decrypt integrity hash")
+          isValid = false
+        }
+      }
+
+      // Verify checksum
+      const expectedChecksum = await SecureWallet.generateIntegrityHash(
+        `${secureIntegrity.encryptedHash}${secureIntegrity.timestamp}${secureIntegrity.version}`,
+      )
+
+      if (secureIntegrity.checksum !== expectedChecksum) {
+        issues.push("Secure integrity record has been tampered with")
+        isValid = false
+      }
+
+      // Check version compatibility
+      if (secureIntegrity.version !== this.VERSION) {
+        issues.push(`Version mismatch: expected ${this.VERSION}, found ${secureIntegrity.version}`)
+      }
+
+      console.log("[v0] Secure integrity verification completed:", isValid ? "PASSED" : "FAILED")
+      if (issues.length > 0) {
+        console.log("[v0] Secure integrity issues found:", issues)
+      }
+
+      return {
+        isValid,
+        issues,
+        lastVerified: secureIntegrity.timestamp,
+        keyValid,
+      }
+    } catch (error) {
+      console.error("[v0] Secure integrity verification error:", error)
+      issues.push("Failed to verify secure data integrity")
+      return { isValid: false, issues, lastVerified: null, keyValid: false }
+    }
+  }
+
+  // Enhanced integrity check combining both methods
+  static async performComprehensiveIntegrityCheck(data: any): Promise<{
+    basicIntegrity: {
+      isValid: boolean
+      issues: string[]
+      lastVerified: string | null
+    }
+    secureIntegrity: {
+      isValid: boolean
+      issues: string[]
+      lastVerified: string | null
+      keyValid: boolean
+    }
+    overallValid: boolean
+    recommendations: string[]
+  }> {
+    const basicIntegrity = await this.verifyDataIntegrity(data)
+    const secureIntegrity = await this.verifySecureIntegrity(data)
+
+    const overallValid = basicIntegrity.isValid && secureIntegrity.isValid
+    const recommendations: string[] = []
+
+    if (!basicIntegrity.isValid) {
+      recommendations.push("Basic integrity check failed - data may be corrupted")
+    }
+
+    if (!secureIntegrity.isValid) {
+      recommendations.push("Secure integrity check failed - investigate potential security breach")
+    }
+
+    if (!secureIntegrity.keyValid) {
+      recommendations.push("Master key validation failed - re-authenticate to restore security")
+    }
+
+    return {
+      basicIntegrity,
+      secureIntegrity,
+      overallValid,
+      recommendations,
     }
   }
 }

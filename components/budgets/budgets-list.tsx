@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { BudgetDialog } from "./budget-dialog"
 import type { Budget, UserProfile } from "@/types/wallet"
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -219,9 +220,8 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                 {isOverBudget && (
                   <Alert className="m-4 mb-0 border-red-200 bg-red-50">
                     <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <AlertDescription className="text-red-800">
-                      <strong>Budget Exceeded!</strong> You’ve spent {userProfile.currency}
-                      {(budget.spent - budget.limit).toFixed(2)} over your limit.
+                      <AlertDescription className="text-red-800">
+                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(budget.spent - budget.limit, userProfile.currency)} over your limit.
                       {budget.emergencyUses > 0 && (
                         <span className="block mt-1">
                           Emergency uses remaining: <Badge variant="destructive">{budget.emergencyUses}</Badge>
@@ -262,21 +262,19 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
 
                     <div className="space-y-2 mt-3">
                       <div className="flex justify-between text-sm">
-                        <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1">
                           <DollarSign className="w-3 h-3" />
-                          Spent: {userProfile.currency}{budget.spent.toFixed(2)}
+                          Spent: {formatCurrency(budget.spent, userProfile.currency)}
                         </span>
-                        <span>
-                          Budget: {userProfile.currency}{budget.limit.toFixed(2)}
-                        </span>
+                        <span>Budget: {formatCurrency(budget.limit, userProfile.currency)}</span>
                       </div>
                       <Progress value={percentage} className="h-2 rounded-full" />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{percentage.toFixed(1)}% used</span>
                         <span>
                           {remaining > 0
-                            ? `${userProfile.currency}${remaining.toFixed(2)} remaining`
-                            : `${userProfile.currency}${Math.abs(remaining).toFixed(2)} over`}
+                            ? `${formatCurrency(remaining, userProfile.currency)} remaining`
+                            : `${formatCurrency(Math.abs(remaining), userProfile.currency)} over`}
                         </span>
                       </div>
                     </div>

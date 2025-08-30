@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Upload, Trash2, Database, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 

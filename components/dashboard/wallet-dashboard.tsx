@@ -7,6 +7,7 @@ import { FloatingAddButton } from "./floating-add-button"
 import { MainTabs } from "./main-tabs"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
+import { Toaster } from "@/components/ui/sonner"
 
 interface WalletDashboardProps {
   userProfile: UserProfile
@@ -33,7 +34,7 @@ export function WalletDashboard({ userProfile }: WalletDashboardProps) {
       <div className="container mx-auto px-4 py-6 space-y-6">
         <CombinedBalanceCard />
 
-        <FloatingAddButton userProfile={userProfile} onAddTransaction={walletData.addTransaction} />
+        <FloatingAddButton />
 
         <MainTabs
           transactions={walletData.transactions}
@@ -46,16 +47,15 @@ export function WalletDashboard({ userProfile }: WalletDashboardProps) {
           calculateTimeEquivalent={walletData.calculateTimeEquivalent}
           onDeleteTransaction={walletData.deleteTransaction}
           onAddBudget={walletData.addBudget}
-          onAddGoal={walletData.addGoal}
+          onDeleteBudget={walletData.deleteBudget}
           onUpdateBudget={walletData.updateBudget}
-          onUpdateGoal={walletData.updateGoal}
-          onTransferToGoal={walletData.transferToGoal}
           onAddCategory={walletData.addCategory}
           onUpdateCategory={walletData.updateCategory}
           onDeleteCategory={walletData.deleteCategory}
           onUpdateCategoryStats={walletData.updateCategoryStats}
         />
       </div>
+      <Toaster />
     </div>
   )
 }

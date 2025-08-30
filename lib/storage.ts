@@ -1,4 +1,6 @@
 import { DataIntegrityManager } from "@/lib/data-integrity"
+import { SecureWallet } from "@/lib/security"
+import { SecureKeyManager } from "@/lib/key-manager"
 
 export async function loadFromLocalStorage(keys: string[]) {
   const result: Record<string, any> = {}
@@ -6,7 +8,13 @@ export async function loadFromLocalStorage(keys: string[]) {
     const value = localStorage.getItem(key)
     if (value !== null) {
       try {
-        result[key] = JSON.parse(value)
+        // Check if data is encrypted (starts with encrypted marker)
+        if (value.startsWith("encrypted:")) {
+          const encryptedData = value.substring(10) // Remove "encrypted:" prefix
+          result[key] = await decryptData(encryptedData)
+        } else {
+          result[key] = JSON.parse(value)
+        }
       } catch (e) {
         // fallback to raw string for numbers like emergencyFund
         result[key] = value
@@ -18,16 +26,82 @@ export async function loadFromLocalStorage(keys: string[]) {
   return result
 }
 
-export async function saveToLocalStorage(key: string, data: any) {
-  localStorage.setItem(key, typeof data === "string" ? data : JSON.stringify(data))
+export async function saveToLocalStorage(key: string, data: any, encrypt: boolean = false) {
+  try {
+    if (encrypt && SecureKeyManager.hasMasterKey()) {
+      // Encrypt sensitive data
+      const masterKey = await SecureKeyManager.getMasterKey("")
+      if (masterKey) {
+        const encryptedData = await SecureWallet.encryptData(JSON.stringify(data), masterKey)
+        localStorage.setItem(key, `encrypted:${encryptedData}`)
+        return
+      }
+    }
+
+    // Save unencrypted if encryption not available or not requested
+    localStorage.setItem(key, typeof data === "string" ? data : JSON.stringify(data))
+  } catch (error) {
+    console.error("[v0] Failed to save to localStorage:", error)
+    throw error
+  }
 }
 
-export async function saveDataWithIntegrity(allData: any) {
+export async function decryptData(encryptedData: string): Promise<any> {
   try {
-    await DataIntegrityManager.updateIntegrityRecord(allData)
+    const masterKey = await SecureKeyManager.getMasterKey("")
+    if (!masterKey) {
+      throw new Error("No master key available for decryption")
+    }
+
+    const decryptedString = await SecureWallet.decryptData(encryptedData, masterKey)
+    return JSON.parse(decryptedString)
+  } catch (error) {
+    console.error("[v0] Failed to decrypt data:", error)
+    throw error
+  }
+}
+
+export function saveDataWithIntegrity(allData: any) {
+  try {
+    DataIntegrityManager.updateIntegrityRecord(allData)
     return true
   } catch (e) {
     console.error("[v0] Failed to save integrity record:", e)
     return false
+  }
+}
+
+// Secure batch operations
+export async function saveSecureBatch(dataMap: Record<string, any>, encryptKeys: string[] = []) {
+  try {
+    for (const [key, data] of Object.entries(dataMap)) {
+      const shouldEncrypt = encryptKeys.includes(key)
+      await saveToLocalStorage(key, data, shouldEncrypt)
+    }
+
+    // Update integrity record
+    const allData = await loadFromLocalStorage(Object.keys(dataMap))
+    return saveDataWithIntegrity(allData)
+  } catch (error) {
+    console.error("[v0] Failed to save secure batch:", error)
+    return false
+  }
+}
+
+export async function loadSecureBatch(keys: string[]): Promise<Record<string, any>> {
+  try {
+    const data = await loadFromLocalStorage(keys)
+
+    // Verify integrity
+    const integrityCheck = await DataIntegrityManager.verifyDataIntegrity(data)
+    if (!integrityCheck.isValid) {
+      console.warn("[v0] Data integrity check failed:", integrityCheck.issues)
+      // Could trigger recovery or alert user
+    }
+
+    return data
+  } catch (error) {
+    console.error("[v0] Failed to load secure batch:", error)
+    throw error
   }
 }

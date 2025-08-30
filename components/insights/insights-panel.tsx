@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { TrendingUp, TrendingDown, Clock, Download, PieChart, BarChart3, Target } from "lucide-react"
 import type { Transaction, UserProfile } from "@/types/wallet"
+import { formatCurrency } from "@/lib/utils"
 
 interface InsightsPanelProps {
   transactions: Transaction[]
@@ -26,10 +27,10 @@ export function InsightsPanel({
 
   const totalWorkTimeEarned = transactions
     .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + t.timeEquivalent, 0)
+    .reduce((sum, t) => sum + (t.timeEquivalent || 0), 0)
   const totalWorkTimeSpent = transactions
     .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + t.timeEquivalent, 0)
+    .reduce((sum, t) => sum + (t.timeEquivalent || 0), 0)
 
   // Category breakdown
   const expensesByCategory = transactions
@@ -69,9 +70,7 @@ export function InsightsPanel({
                 <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                   {formatTime(totalWorkTimeEarned)}
                 </p>
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
-                  {userProfile.currency}{totalIncome.toFixed(2)}
-                </p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(totalIncome, userProfile.currency)}</p>
               </div>
               <div className="h-12 w-12 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg flex items-center justify-center">
                 <Clock className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
@@ -88,9 +87,7 @@ export function InsightsPanel({
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {formatTime(totalWorkTimeSpent)}
                 </p>
-                <p className="text-xs text-red-700 dark:text-red-300 mt-1">
-                  {userProfile.currency}{totalExpenses.toFixed(2)}
-                </p>
+                <p className="text-xs text-red-700 dark:text-red-300 mt-1">{formatCurrency(totalExpenses, userProfile.currency)}</p>
               </div>
               <div className="h-12 w-12 bg-red-100 dark:bg-red-900/50 rounded-lg flex items-center justify-center">
                 <Clock className="w-6 h-6 text-red-600 dark:text-red-400" />
@@ -105,7 +102,7 @@ export function InsightsPanel({
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Net Worth</p>
                 <p className={`text-2xl font-bold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {userProfile.currency}{Math.abs(netWorth).toFixed(2)}
+                  {formatCurrency(Math.abs(netWorth), userProfile.currency)}
                 </p>
                 <p className={`text-xs mt-1 ${netWorth >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
                   {formatTime(Math.abs(totalWorkTimeEarned - totalWorkTimeSpent))} time difference
@@ -170,9 +167,7 @@ export function InsightsPanel({
                     <div className="flex justify-between items-center">
                       <span className="font-medium">{category}</span>
                       <div className="text-right">
-                        <span className="font-semibold">
-                          {userProfile.currency}{amount.toFixed(2)}
-                        </span>
+                        <span className="font-semibold">{formatCurrency(amount, userProfile.currency)}</span>
                         <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {formatTime(timeEquivalent)}
@@ -211,9 +206,8 @@ export function InsightsPanel({
 
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
               <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-2">Hourly Rate Impact</h4>
-              <p className="text-sm text-blue-600 dark:text-blue-400">
-                At {userProfile.currency}{userProfile.hourlyRate}/hour, every {userProfile.currency}1 you spend equals{" "}
-                {Math.round(60 / userProfile.hourlyRate)} minutes of work.
+                <p className="text-sm text-blue-600 dark:text-blue-400">
+                At {formatCurrency(userProfile.hourlyRate, userProfile.currency)}/hour, every {formatCurrency(1, userProfile.currency)} you spend equals {Math.round(60 / userProfile.hourlyRate)} minutes of work.
               </p>
             </div>
           </div>

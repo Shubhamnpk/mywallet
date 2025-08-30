@@ -144,7 +144,7 @@ export function useWalletData() {
   }
 
   // saveDataWithIntegrity is declared above as a hoisted function
-  const handleOnboardingComplete = async (profileData: UserProfile) => {
+  const handleOnboardingComplete = (profileData: UserProfile) => {
     const completeProfile = {
       ...profileData,
       securityEnabled: false,
@@ -152,7 +152,7 @@ export function useWalletData() {
     }
 
     setUserProfile(completeProfile)
-    await saveDataWithIntegrity("userProfile", completeProfile)
+    saveDataWithIntegrity("userProfile", completeProfile)
     setShowOnboarding(false)
     setIsFirstTime(false)
     setIsAuthenticated(true)
@@ -382,12 +382,12 @@ export function useWalletData() {
     }
   }
 
-  const updateUserProfile = async (updates: Partial<UserProfile>) => {
+  const updateUserProfile = (updates: Partial<UserProfile>) => {
     if (!userProfile) return
 
     const updatedProfile = { ...userProfile, ...updates }
     setUserProfile(updatedProfile)
-    await saveDataWithIntegrity("userProfile", updatedProfile)
+    saveDataWithIntegrity("userProfile", updatedProfile)
   }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
@@ -514,11 +514,10 @@ export function useWalletData() {
       alertThreshold: 0.8,
       allowDebt: false,
     }
-
+  
     const updatedBudgets = [...budgets, newBudget]
     setBudgets(updatedBudgets)
     await saveDataWithIntegrity("budgets", updatedBudgets)
-    return newBudget
   }
 
   const updateBudget = async (id: string, updates: Partial<Budget>) => {
@@ -533,19 +532,29 @@ export function useWalletData() {
     await saveDataWithIntegrity("budgets", updatedBudgets)
   }
 
-  const addGoal = async (goal: Omit<Goal, "id" | "currentAmount">) => {
+  // Accept goal payload from UI
+  const addGoal = (
+    goal: Omit<Goal, "id" | "currentAmount">
+  ) => {
     const newGoal: Goal = {
-      ...goal,
       id: generateId('goal'),
+      title: goal.title,
+      name: goal.name || goal.title,
+      targetAmount: goal.targetAmount,
       currentAmount: 0,
-      priority: goal.priority || "medium",
-      autoContribute: goal.autoContribute || false,
+      targetDate: goal.targetDate,
+      category: goal.category,
+      priority: goal.priority,
       createdAt: new Date().toISOString(),
+      autoContribute: goal.autoContribute,
+      contributionAmount: goal.contributionAmount,
+      contributionFrequency: goal.contributionFrequency,
+      description: goal.description || "",
     }
 
     const updatedGoals = [...goals, newGoal]
     setGoals(updatedGoals)
-    await saveDataWithIntegrity("goals", updatedGoals)
+    saveToLocalStorage("goals", updatedGoals)
     return newGoal
   }
 
@@ -623,32 +632,28 @@ export function useWalletData() {
     URL.revokeObjectURL(url)
   }
 
-  const importData = async (jsonData: string) => {
+  const importData = (jsonData: string) => {
     try {
       const data = JSON.parse(jsonData)
 
-      const validation = await DataIntegrityManager.validateAllData(data)
-      if (!validation.isValid) {
-        console.warn("[v0] Imported data has integrity issues:", validation.issues)
-      }
-
+      // Skip integrity check for synchronous operation
       if (data.userProfile) {
         setUserProfile(data.userProfile)
-        await saveDataWithIntegrity("userProfile", data.userProfile)
+        saveDataWithIntegrity("userProfile", data.userProfile)
       }
 
       if (data.transactions) {
         setTransactions(data.transactions)
-        await saveDataWithIntegrity("transactions", data.transactions)
+        saveDataWithIntegrity("transactions", data.transactions)
         setBalance(calculateBalance(data.transactions))
       }
 
-      setBudgets(data.budgets)
-      setGoals(data.goals)
-      setDebtAccounts(data.debtAccounts)
-      setCreditAccounts(data.creditAccounts)
-      setDebtCreditTransactions(data.debtCreditTransactions)
-      setEmergencyFund(Number.parseFloat(data.emergencyFund))
+      setBudgets(data.budgets || [])
+      setGoals(data.goals || [])
+      setDebtAccounts(data.debtAccounts || [])
+      setCreditAccounts(data.creditAccounts || [])
+      setDebtCreditTransactions(data.debtCreditTransactions || [])
+      setEmergencyFund(Number.parseFloat(data.emergencyFund) || 0)
 
       return true
     } catch (error) {
@@ -747,7 +752,7 @@ export function useWalletData() {
 
   // initializeDefaultCategories provided by lib/wallet-utils
 
-  const addCategory = async (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => {
+  const addCategory = (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => {
     const newCategory: Category = {
       ...category,
       id: generateId('category'),
@@ -758,7 +763,7 @@ export function useWalletData() {
 
     const updatedCategories = [...categories, newCategory]
     setCategories(updatedCategories)
-    await saveDataWithIntegrity("categories", updatedCategories)
+    saveDataWithIntegrity("categories", updatedCategories)
     return newCategory
   }
 

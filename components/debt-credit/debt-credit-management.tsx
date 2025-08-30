@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle } from "lucide-react"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 
 interface DebtCreditManagementProps {
   userProfile: UserProfile
@@ -116,10 +117,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Total Debt</p>
-                <p className="text-lg font-semibold text-red-600">
-                  {userProfile.currency}
-                  {totalDebt.toFixed(2)}
-                </p>
+                <p className="text-lg font-semibold text-red-600">{formatCurrency(totalDebt, userProfile.currency)}</p>
               </div>
             </div>
           </CardContent>
@@ -133,10 +131,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Credit Used</p>
-                <p className="text-lg font-semibold text-blue-600">
-                  {userProfile.currency}
-                  {totalCreditUsed.toFixed(2)}
-                </p>
+                <p className="text-lg font-semibold text-blue-600">{formatCurrency(totalCreditUsed, userProfile.currency)}</p>
               </div>
             </div>
           </CardContent>
@@ -216,10 +211,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold">{debt.name}</h4>
-                          <Badge variant="destructive">
-                            {userProfile.currency}
-                            {debt.balance.toFixed(2)}
-                          </Badge>
+                            <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency)}</Badge>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
@@ -229,10 +221,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           </div>
                           <div>
                             <p className="text-muted-foreground">Min Payment</p>
-                            <p className="font-medium">
-                              {userProfile.currency}
-                              {debt.minimumPayment.toFixed(2)}
-                            </p>
+                            <p className="font-medium">{formatCurrency(debt.minimumPayment, userProfile.currency)}</p>
                           </div>
                         </div>
 
@@ -289,9 +278,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                             <div className="flex justify-between text-sm mb-1">
                               <span>Credit Utilization</span>
                               <span>
-                                {userProfile.currency}
-                                {credit.balance.toFixed(2)} / {userProfile.currency}
-                                {credit.creditLimit.toFixed(2)}
+                                {formatCurrency(credit.balance, userProfile.currency)} / {formatCurrency(credit.creditLimit, userProfile.currency)}
                               </span>
                             </div>
                             <Progress value={utilization} className="h-2" />
@@ -300,17 +287,11 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                             <div>
                               <p className="text-muted-foreground">Available Credit</p>
-                              <p className="font-medium text-green-600">
-                                {userProfile.currency}
-                                {available.toFixed(2)}
-                              </p>
+                              <p className="font-medium text-green-600">{formatCurrency(available, userProfile.currency)}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Min Payment</p>
-                              <p className="font-medium">
-                                {userProfile.currency}
-                                {credit.minimumPayment.toFixed(2)}
-                              </p>
+                              <p className="font-medium">{formatCurrency(credit.minimumPayment, userProfile.currency)}</p>
                             </div>
                           </div>
 
@@ -367,7 +348,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
 
               <div>
-                <Label htmlFor="debt-balance">Current Balance ({userProfile.currency})</Label>
+                <Label htmlFor="debt-balance">Current Balance ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</Label>
                 <Input
                   id="debt-balance"
                   type="number"
@@ -391,7 +372,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
 
               <div>
-                <Label htmlFor="debt-payment">Minimum Payment ({userProfile.currency})</Label>
+                <Label htmlFor="debt-payment">Minimum Payment ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</Label>
                 <Input
                   id="debt-payment"
                   type="number"
@@ -424,7 +405,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
 
               <div>
-                <Label htmlFor="credit-balance">Current Balance ({userProfile.currency})</Label>
+                <Label htmlFor="credit-balance">Current Balance ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</Label>
                 <Input
                   id="credit-balance"
                   type="number"
@@ -436,7 +417,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
 
               <div>
-                <Label htmlFor="credit-limit">Credit Limit ({userProfile.currency})</Label>
+                <Label htmlFor="credit-limit">Credit Limit ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</Label>
                 <Input
                   id="credit-limit"
                   type="number"
@@ -489,7 +470,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
             </div>
 
             <div className="space-y-2">
-              <Label>Payment Amount ({userProfile.currency})</Label>
+              <Label>Payment Amount ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -499,10 +480,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 placeholder="0.00"
               />
-              <p className="text-xs text-muted-foreground">
-                Available balance: {userProfile.currency}
-                {balance.toFixed(2)}
-              </p>
+              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency)}</p>
             </div>
 
             <div className="flex gap-2">

@@ -28,8 +28,9 @@ import {
   MoreHorizontal,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, UserProfile } from "@/types/wallet"
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -94,7 +95,9 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         case "amount":
           return b.targetAmount - a.targetAmount
         case "name":
-          return a.name.localeCompare(b.name)
+          const aName = a.title || a.name || ""
+          const bName = b.title || b.name || ""
+          return aName.localeCompare(bName)
         default:
           return 0
       }
@@ -147,7 +150,11 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   }
 
   const formatTimeEquivalent = (amount: number) => {
-    const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
+    const hourlyRate =
+      userProfile.workingDaysPerMonth && userProfile.workingHoursPerDay
+        ? userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
+        : 0
+    if (hourlyRate <= 0) return "0m"
     const minutes = (amount / hourlyRate) * 60
     return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${Math.floor(minutes % 60)}m` : `${Math.floor(minutes)}m`
   }
@@ -308,7 +315,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           />
                           <CardTitle className="text-lg flex items-center gap-2">
                             <StatusIcon className="w-5 h-5" />
-                            {goal.name}
+                            {goal.title || goal.name}
                             <Badge variant="secondary" className={`${goalStatus.color} text-white`}>
                               {progress.toFixed(0)}%
                             </Badge>
@@ -318,8 +325,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           <div className="text-right">
                             <p className="text-sm text-muted-foreground">Target</p>
                             <p className="font-semibold">
-                              {userProfile.currency}
-                              {goal.targetAmount.toFixed(2)}
+                              {formatCurrency(goal.targetAmount, userProfile.currency)}
                             </p>
                           </div>
                           <DropdownMenu>
@@ -359,10 +365,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           <DollarSign className="w-4 h-4 text-muted-foreground" />
                           <div>
                             <p className="text-muted-foreground">Current</p>
-                            <p className="font-medium">
-                              {userProfile.currency}
-                              {goal.currentAmount.toFixed(2)}
-                            </p>
+                            <p className="font-medium">{formatCurrency(goal.currentAmount, userProfile.currency)}</p>
                           </div>
                         </div>
 
@@ -375,10 +378,10 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                         </div>
                       </div>
 
-                      {goal.description && (
+            {goal.description && (
                         <div className="p-3 bg-muted/30 rounded-lg">
                           <p className="text-sm text-muted-foreground mb-1">Description</p>
-                          <p className="text-sm">{goal.description}</p>
+              <p className="text-sm">{goal.description}</p>
                         </div>
                       )}
 
@@ -389,9 +392,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               <Clock className="w-4 h-4 text-muted-foreground" />
                               <p className="text-sm text-muted-foreground">Remaining to Goal</p>
                             </div>
-                            <p className="font-semibold text-amber-600">
-                              {userProfile.currency}
-                              {remaining.toFixed(2)}
+                            <p className="font-semibold text-amber-600">{formatCurrency(remaining, userProfile.currency)}
                               <span className="text-sm font-normal text-muted-foreground ml-2">
                                 ({formatTimeEquivalent(remaining)} of work)
                               </span>
@@ -402,7 +403,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.name })}
+                              onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
                               className="flex items-center gap-2"
                               disabled={balance <= 0}
                             >
@@ -410,9 +411,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               Transfer Money
                             </Button>
                             <div className="text-xs text-muted-foreground flex items-center">
-                              Available: {userProfile.currency}
-                              {balance.toFixed(2)}
-                            </div>
+                                Available: {formatCurrency(balance, userProfile.currency)}
+                              </div>
                           </div>
                         </>
                       )}
@@ -457,7 +457,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Amount ({userProfile.currency})</label>
+              <label className="text-sm font-medium">Amount ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})</label>
               <Input
                 type="number"
                 step="0.01"
@@ -467,10 +467,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                 onChange={(e) => setTransferAmount(e.target.value)}
                 placeholder="0.00"
               />
-              <p className="text-xs text-muted-foreground">
-                Available balance: {userProfile.currency}
-                {balance.toFixed(2)}
-              </p>
+              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency)}</p>
             </div>
 
             <div className="flex gap-2">

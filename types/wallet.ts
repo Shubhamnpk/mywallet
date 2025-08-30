@@ -1,4 +1,5 @@
 export interface UserProfile {
+  hourlyRate: number
   name: string
   monthlyEarning: number
   currency: string
@@ -8,6 +9,12 @@ export interface UserProfile {
   pinSalt?: string // Added for secure PIN hashing
   securityEnabled: boolean
   createdAt: string
+  // Optional custom currency details when user selects CUSTOM
+  customCurrency?: {
+    code: string
+    symbol: string
+    name: string
+  }
 }
 
 export interface Transaction {
@@ -29,6 +36,7 @@ export interface Transaction {
 }
 
 export interface Budget {
+  name: any
   id: string
   category: string
   limit: number
@@ -56,6 +64,8 @@ export interface BudgetSubcategory {
 export interface Goal {
   id: string
   title: string
+  // Backwards-compatible alias: some components use `name` instead of `title`
+  name?: string
   targetAmount: number
   currentAmount: number
   targetDate: string
@@ -65,6 +75,8 @@ export interface Goal {
   autoContribute: boolean
   contributionAmount?: number
   contributionFrequency?: "daily" | "weekly" | "monthly"
+  // Optional human-readable description
+  description?: string
 }
 
 export interface WalletSettings {

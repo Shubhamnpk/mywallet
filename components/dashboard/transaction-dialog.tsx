@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,8 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { TrendingUp, TrendingDown, DollarSign, Clock, CheckCircle, Target, Wallet, Plus } from "lucide-react"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { TrendingUp, TrendingDown, DollarSign, Clock, CheckCircle, Target, Wallet, Plus, Info } from "lucide-react"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatCurrencyLocalized } from "@/lib/utils"
+import { toast } from "sonner"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface FormData {
   amount: string
@@ -50,8 +53,16 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   const [errors, setErrors] = useState<Partial<FormData>>({})
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+  const amountInputRef = useRef<HTMLInputElement>(null)
+  const [debouncedErrors, setDebouncedErrors] = useState<Partial<FormData>>({})
 
-  const currencySymbol = useMemo(() => userProfile?.currency?.symbol || "$", [userProfile?.currency?.symbol])
+  const currencySymbol = useMemo(() => {
+    if (!userProfile) return "$"
+    const custom = (userProfile as any).customCurrency
+    if (custom && custom.symbol) return custom.symbol
+    const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
+    return map[(userProfile.currency as string) || "USD"] || "$"
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
 
   const numAmount = useMemo(() => {
     const parsed = Number.parseFloat(formData.amount)
@@ -82,16 +93,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   }, [categories, type])
 
   const validateForm = useCallback((): boolean => {
-    console.log("[v0] Validating form with data:", formData)
     const newErrors: Partial<FormData> = {}
 
     if (!formData.amount || numAmount <= 0) {
       newErrors.amount = "Please enter a valid amount greater than 0"
-      console.log("[v0] Amount validation failed:", formData.amount, numAmount)
     }
 
     if (!formData.category) {
       newErrors.category = "Please select a category"
+    }
+
+    if (!formData.description.trim()) {
+      newErrors.description = "Please enter a description"
     }
 
     if (!formData.date) {
@@ -122,7 +135,44 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   useEffect(() => {
     if (open) {
       validateForm()
+      // Auto-focus on amount field when dialog opens
+      setTimeout(() => {
+        amountInputRef.current?.focus()
+      }, 100)
+
+      // Load persisted form data
+      const persisted = localStorage.getItem("transaction-dialog-form")
+      if (persisted) {
+        try {
+          const parsed = JSON.parse(persisted)
+          setFormData({ ...initialFormData, ...parsed })
+        } catch (error) {
+          // Ignore invalid data
+        }
+      }
+    } else {
+      // Clear persisted data when dialog closes
+      localStorage.removeItem("transaction-dialog-form")
     }
+  }, [open])
+
+  // Persist form data
+  useEffect(() => {
+    if (open && (formData.amount !== "" || formData.category !== "" || formData.description !== "")) {
+      localStorage.setItem("transaction-dialog-form", JSON.stringify(formData))
+    }
+  }, [formData, open])
+
+  // Debounced real-time validation
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (open) {
+        const validationErrors = validateForm()
+        setDebouncedErrors(validationErrors ? errors : {})
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
   }, [formData, open])
 
   const handleFieldChange = useCallback(
@@ -167,17 +217,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
       setIsSubmitting(true)
 
       try {
-        console.log("[v0] Calling addTransaction with:", {
-          type,
-          amount: numAmount,
-          category: formData.category,
-          subcategory: formData.subcategory || undefined,
-          description: formData.description || `${type === "income" ? "Income" : "Expense"} - ${formData.category}`,
-          date: new Date(formData.date).toISOString(),
-          allocationType: formData.allocationType,
-          allocationTarget: formData.allocationTarget || undefined,
-        })
-
         const result = await addTransaction({
           type,
           amount: numAmount,
@@ -190,13 +229,26 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
         })
 
         if (result.budgetWarnings && result.budgetWarnings.length > 0) {
-          // You could show these warnings to the user here
+          result.budgetWarnings.forEach((warning: any) => {
+            toast.warning(warning.message, {
+              description: warning.details || "Please review your budget allocation."
+            })
+          })
         }
 
-        resetForm()
-        handleOpenChange(false)
+        toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
+          description: `Added ${currencySymbol}${numAmount} to ${formData.category}`
+        })
+
+        // Add a small delay before closing to show success message
+        setTimeout(() => {
+          resetForm()
+          handleOpenChange(false)
+        }, 1500)
       } catch (error) {
-        setErrors({ amount: error instanceof Error ? error.message : "Failed to add transaction" })
+        toast.error("Failed to add transaction", {
+          description: error instanceof Error ? error.message : "Please try again."
+        })
       } finally {
         setIsSubmitting(false)
       }
@@ -204,8 +256,30 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
     [validateForm, addTransaction, type, numAmount, formData, resetForm, handleOpenChange],
   )
 
-  const handleTypeChange = useCallback((newType: "income" | "expense") => {
-    setType(newType)
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!open) return
+
+      if (e.key === "Escape") {
+        if (!isSubmitting) {
+          handleOpenChange(false)
+        }
+      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        // Ctrl+Enter or Cmd+Enter to submit
+        if (!isSubmitting && Object.keys(errors).length === 0) {
+          handleSubmit(e as any)
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [open, isSubmitting, errors, handleOpenChange, handleSubmit])
+
+  const handleTypeChange = useCallback((newType: string) => {
+    const t = newType as "income" | "expense"
+    setType(t)
     setFormData((prev) => ({ ...prev, category: "", subcategory: "" }))
     setErrors((prev) => ({ ...prev, category: undefined, subcategory: undefined }))
     setShowAddCategory(false)
@@ -220,7 +294,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
     )
 
     if (exists) {
-      alert("A category with this name already exists for this type")
+      toast.error("Category already exists", {
+        description: `A ${type} category with this name already exists.`
+      })
       return
     }
 
@@ -238,14 +314,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   }, [newCategoryName, addCategory, categories, type])
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-primary" />
-            Add New Transaction
-          </DialogTitle>
-        </DialogHeader>
+    <TooltipProvider>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-primary" />
+              Add New Transaction
+            </DialogTitle>
+          </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs value={type} onValueChange={handleTypeChange}>
@@ -273,6 +350,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 Amount ({currencySymbol}) <span className="text-red-500">*</span>
               </Label>
               <Input
+                ref={amountInputRef}
                 id="amount"
                 type="number"
                 step="0.01"
@@ -282,8 +360,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 placeholder="0.00"
                 className={errors.amount ? "border-red-300 focus:border-red-500" : ""}
                 disabled={isSubmitting}
+                aria-describedby={errors.amount ? "amount-error" : undefined}
               />
-              {errors.amount && <p className="text-sm text-red-600 mt-1">{errors.amount}</p>}
+              {errors.amount && <p id="amount-error" className="text-sm text-red-600 mt-1" role="alert">{errors.amount}</p>}
               {numAmount > 0 && timeEquivalent > 0 && (
                 <div className="mt-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
                   <p className="text-sm text-primary flex items-center gap-2">
@@ -293,6 +372,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                       ? `${Math.floor(timeEquivalent / 60)}h ${timeEquivalent % 60}m`
                       : `${timeEquivalent}m`}{" "}
                     of work
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3 h-3 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>This shows how much work time this amount represents based on your hourly rate.</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </p>
                   <p className="text-xs text-primary/80 mt-1">
                     {type === "expense"
@@ -304,7 +391,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
             </div>
 
             {type === "expense" && (
-              <div>
+              <div className="transition-all duration-300 ease-in-out">
                 <Label className="text-sm font-medium">How do you want to allocate this expense?</Label>
                 <RadioGroup
                   value={formData.allocationType}
@@ -332,7 +419,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
             )}
 
             {formData.allocationType === "goal" && (
-              <div>
+              <div className="transition-all duration-300 ease-in-out">
                 <Label htmlFor="allocationTarget" className="text-sm font-medium">
                   Select Goal <span className="text-red-500">*</span>
                 </Label>
@@ -341,7 +428,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                   onValueChange={(value) => handleFieldChange("allocationTarget", value)}
                   disabled={isSubmitting}
                 >
-                  <SelectTrigger className={errors.allocationTarget ? "border-red-300 focus:border-red-500" : ""}>
+                  <SelectTrigger className={errors.allocationTarget ? "border-red-300 focus:border-red-500" : ""} aria-describedby={errors.allocationTarget ? "allocationTarget-error" : undefined}>
                     <SelectValue placeholder="Select goal" />
                   </SelectTrigger>
                   <SelectContent>
@@ -363,10 +450,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.allocationTarget && <p className="text-sm text-red-600 mt-1">{errors.allocationTarget}</p>}
+                {errors.allocationTarget && <p id="allocationTarget-error" className="text-sm text-red-600 mt-1" role="alert">{errors.allocationTarget}</p>}
 
                 {formData.allocationTarget && (
-                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg transition-all duration-300 ease-in-out">
                     <p className="text-sm text-blue-700 dark:text-blue-300">
                       <CheckCircle className="w-4 h-4 inline mr-1" />
                       This expense will be added to your goal progress and deducted from your main balance.
@@ -430,7 +517,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 }}
                 disabled={isSubmitting}
               >
-                <SelectTrigger className={errors.category ? "border-red-300 focus:border-red-500" : ""}>
+                <SelectTrigger className={errors.category ? "border-red-300 focus:border-red-500" : ""} aria-describedby={errors.category ? "category-error" : undefined}>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -456,7 +543,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                   )}
                 </SelectContent>
               </Select>
-              {errors.category && <p className="text-sm text-red-600 mt-1">{errors.category}</p>}
+              {errors.category && <p id="category-error" className="text-sm text-red-600 mt-1" role="alert">{errors.category}</p>}
             </div>
 
             {subcategoryOptions.length > 0 && (
@@ -473,11 +560,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                     <SelectValue placeholder="Select subcategory" />
                   </SelectTrigger>
                   <SelectContent>
-                    {subcategoryOptions.map((subcat) => (
-                      <SelectItem key={subcat} value={subcat}>
-                        {subcat}
-                      </SelectItem>
-                    ))}
+                    {subcategoryOptions.map((subcat: string) => (
+                        <SelectItem key={subcat} value={subcat}>
+                          {subcat}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -491,12 +578,20 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 id="description"
                 value={formData.description}
                 onChange={(e) => handleFieldChange("description", e.target.value)}
-                placeholder="e.g., 'Monthly salary', 'Paid school fees', 'Grocery shopping'..."
+                placeholder={
+                  formData.category
+                    ? type === "income"
+                      ? `e.g., 'Monthly salary from ${formData.category}', 'Freelance work', 'Bonus payment'...`
+                      : `e.g., 'Weekly ${formData.category} shopping', 'Monthly ${formData.category} bill', '${formData.category} expenses'...`
+                    : "e.g., 'Monthly salary', 'Paid school fees', 'Grocery shopping'..."
+                }
                 rows={2}
                 className="resize-none"
                 disabled={isSubmitting}
+                aria-describedby={errors.description ? "description-error" : "description-help"}
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              {errors.description && <p id="description-error" className="text-sm text-red-600 mt-1" role="alert">{errors.description}</p>}
+              <p id="description-help" className="text-xs text-muted-foreground mt-1">
                 Add a note to help you remember this transaction later
               </p>
             </div>
@@ -513,27 +608,25 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 max={new Date().toISOString().split("T")[0]}
                 className={errors.date ? "border-red-300 focus:border-red-500" : ""}
                 disabled={isSubmitting}
+                aria-describedby={errors.date ? "date-error" : undefined}
               />
-              {errors.date && <p className="text-sm text-red-600 mt-1">{errors.date}</p>}
+              {errors.date && <p id="date-error" className="text-sm text-red-600 mt-1" role="alert">{errors.date}</p>}
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                console.log("[v0] Cancel button clicked")
-                handleOpenChange(false)
-              }}
-              className="flex-1"
+              onClick={() => handleOpenChange(false)}
+              className="flex-1 min-h-[44px]"
               disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className={`flex-1 transition-colors duration-200 ${
+              className={`flex-1 min-h-[44px] transition-colors duration-200 ${
                 type === "income"
                   ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 focus:ring-green-500"
                   : "bg-destructive hover:bg-destructive/90 focus:ring-destructive"
@@ -554,5 +647,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
         </form>
       </DialogContent>
     </Dialog>
+    </TooltipProvider>
   )
 }

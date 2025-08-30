@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3 } from "lucide-react"
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import type { Category, UserProfile } from "@/types/wallet"
 
 interface CategoryProgressCardProps {
@@ -21,11 +22,14 @@ interface CategoryProgressCardProps {
 }
 
 export function CategoryProgressCard({ category, userProfile, onViewDetails }: CategoryProgressCardProps) {
-  const currencySymbol = userProfile?.currency || "$"
+  const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
 
-  // Calculate time equivalent
-  const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
-  const timeEquivalent = category.totalSpent / hourlyRate
+  // Calculate time equivalent (guard against division by zero)
+  const hourlyRate =
+    userProfile.workingDaysPerMonth && userProfile.workingHoursPerDay
+      ? userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
+      : 0
+  const timeEquivalent = hourlyRate > 0 ? category.totalSpent / hourlyRate : 0
 
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
@@ -79,10 +83,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
           </div>
 
           <div className="text-right flex-shrink-0">
-            <div className="text-lg font-bold">
-              {currencySymbol}
-              {category.totalSpent.toFixed(2)}
-            </div>
+            <div className="text-lg font-bold">{formatCurrency(category.totalSpent, (userProfile as any).currency || "USD")}</div>
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {formatTime(timeEquivalent)}
@@ -122,10 +123,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
               <Calendar className="w-3 h-3" />
               <span>Monthly Avg</span>
             </div>
-            <div className="font-medium">
-              {currencySymbol}
-              {category.monthlyAverage.toFixed(2)}
-            </div>
+            <div className="font-medium">{formatCurrency(category.monthlyAverage, (userProfile as any).currency || "USD")}</div>
           </div>
         </div>
 

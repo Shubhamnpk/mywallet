@@ -55,7 +55,13 @@ export function CombinedBalanceCard() {
   const netWorth = balance + availableCredit - totalDebt
 
   // Memoize currency symbol and balance calculations
-  const currencySymbol = useMemo(() => userProfile?.currency?.symbol || "$", [userProfile?.currency?.symbol])
+  const currencySymbol = useMemo(() => {
+    if (!userProfile) return "$"
+    const custom = (userProfile as any).customCurrency
+    if (custom && custom.symbol) return custom.symbol
+    const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
+    return map[(userProfile.currency as string) || "USD"] || "$"
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
   const isPositive = balance >= 0
   const absoluteBalance = Math.abs(balance)
 
@@ -72,7 +78,7 @@ export function CombinedBalanceCard() {
   }, [balance, userProfile])
 
   // Format currency helper
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return `${currencySymbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
   }
 

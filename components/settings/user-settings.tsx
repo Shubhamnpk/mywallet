@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { LogOut, Trash2, Upload, Save, Plus, PencilLine } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
@@ -36,7 +36,7 @@ const currencies = [
 
 export function UserProfileSettings() {
   const { userProfile, updateUserProfile, clearAllData } = useWalletData()
-  const [formData, setFormData] = useState(
+  const [formData, setFormData] = useState<any>(
     userProfile || {
       name: "",
       currency: "USD",
@@ -54,7 +54,8 @@ export function UserProfileSettings() {
 
   useEffect(() => {
     if (userProfile) {
-      setFormData(userProfile)
+      // merge to ensure customCurrency exists
+      setFormData({ ...userProfile, customCurrency: userProfile.customCurrency || { code: "", symbol: "", name: "" } })
       setShowCustomCurrency(userProfile.currency === "CUSTOM")
     }
   }, [userProfile])
@@ -64,7 +65,7 @@ export function UserProfileSettings() {
   }, [formData, userProfile])
 
   const updateField = (key: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+    setFormData((prev: any) => ({ ...prev, [key]: value }))
   }
 
   const handleCurrencyChange = (value: string) => {
@@ -73,9 +74,9 @@ export function UserProfileSettings() {
   }
 
   const getCurrentCurrencySymbol = useMemo(() => {
-    if (formData.currency === "CUSTOM") return formData.customCurrency?.symbol || ""
-    return currencies.find((c) => c.value === formData.currency)?.symbol || "$"
-  }, [formData.currency, formData.customCurrency])
+    if (formData?.currency === "CUSTOM") return formData?.customCurrency?.symbol || ""
+    return (currencies.find((c) => c.value === formData?.currency)?.symbol as string) || "$"
+  }, [formData?.currency, formData?.customCurrency])
 
   const hourlyRate = useMemo(() => {
     const hours = formData.workingHoursPerDay * formData.workingDaysPerMonth
@@ -141,7 +142,7 @@ export function UserProfileSettings() {
                 {formData.name
                   ? formData.name
                       .split(" ")
-                      .map((n) => n[0])
+                      .map((n: string) => n[0])
                       .join("")
                       .toUpperCase()
                   : "U"}
@@ -149,7 +150,7 @@ export function UserProfileSettings() {
             </Avatar>
             {editMode && (
               <>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" aria-label="Upload avatar image" />
                 <Button variant="outline" size="sm" onClick={handleFileUpload}>
                   <Upload className="w-4 h-4 mr-2" />
                   Upload
@@ -173,11 +174,15 @@ export function UserProfileSettings() {
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    placeholder="Full Name"
-                    value={formData.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                  />
+                  <div>
+                    <Label htmlFor="full-name">Full Name</Label>
+                    <Input
+                      id="full-name"
+                      placeholder="Full Name"
+                      value={formData.name}
+                      onChange={(e) => updateField("name", e.target.value)}
+                    />
+                  </div>
                   <Select value={formData.currency} onValueChange={handleCurrencyChange}>
                     <SelectTrigger>
                       <SelectValue />
@@ -194,36 +199,48 @@ export function UserProfileSettings() {
 
                 {showCustomCurrency && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Input
-                      placeholder="Code (BTC)"
-                      value={formData.customCurrency?.code || ""}
-                      onChange={(e) =>
-                        updateField("customCurrency", {
-                          ...formData.customCurrency,
-                          code: e.target.value.toUpperCase(),
-                        })
-                      }
-                    />
-                    <Input
-                      placeholder="Symbol (₿)"
-                      value={formData.customCurrency?.symbol || ""}
-                      onChange={(e) =>
-                        updateField("customCurrency", {
-                          ...formData.customCurrency,
-                          symbol: e.target.value,
-                        })
-                      }
-                    />
-                    <Input
-                      placeholder="Name (Bitcoin)"
-                      value={formData.customCurrency?.name || ""}
-                      onChange={(e) =>
-                        updateField("customCurrency", {
-                          ...formData.customCurrency,
-                          name: e.target.value,
-                        })
-                      }
-                    />
+                    <div>
+                      <Label htmlFor="custom-code">Code</Label>
+                      <Input
+                        id="custom-code"
+                        placeholder="Code (BTC)"
+                        value={formData.customCurrency?.code || ""}
+                        onChange={(e) =>
+                          updateField("customCurrency", {
+                            ...formData.customCurrency,
+                            code: e.target.value.toUpperCase(),
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="custom-symbol">Symbol</Label>
+                      <Input
+                        id="custom-symbol"
+                        placeholder="Symbol (₿)"
+                        value={formData.customCurrency?.symbol || ""}
+                        onChange={(e) =>
+                          updateField("customCurrency", {
+                            ...formData.customCurrency,
+                            symbol: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="custom-name">Name</Label>
+                      <Input
+                        id="custom-name"
+                        placeholder="Name (Bitcoin)"
+                        value={formData.customCurrency?.name || ""}
+                        onChange={(e) =>
+                          updateField("customCurrency", {
+                            ...formData.customCurrency,
+                            name: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                 )}
               </>
@@ -240,7 +257,7 @@ export function UserProfileSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {!editMode ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <p>Monthly Earning: {getCurrentCurrencySymbol}{formData.monthlyEarning}</p>
               <p>Hours / Day: {formData.workingHoursPerDay}</p>
               <p>Days / Month: {formData.workingDaysPerMonth}</p>

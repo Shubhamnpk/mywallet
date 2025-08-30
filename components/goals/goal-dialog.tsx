@@ -2,14 +2,16 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile, Goal } from "@/types/wallet"
+
+import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 
 interface GoalDialogProps {
   isOpen: boolean
@@ -21,49 +23,58 @@ interface GoalDialogProps {
 export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDialogProps) {
   const { addGoal, updateGoal } = useWalletData()
   const [formData, setFormData] = useState({
-    name: "",
-    targetAmount: "",
-    targetDate: "",
-    description: "",
+  title: "",
+  targetAmount: "",
+  targetDate: "",
+  description: "",
   })
+
+  const currencySymbol = useMemo(
+    () => getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency),
+    [userProfile?.currency, (userProfile as any)?.customCurrency],
+  )
 
   useEffect(() => {
     if (editingGoal) {
       setFormData({
-        name: editingGoal.name,
+        title: editingGoal.title || editingGoal.name || "",
         targetAmount: editingGoal.targetAmount.toString(),
         targetDate: editingGoal.targetDate.split("T")[0], // Format date for input
         description: editingGoal.description || "",
       })
     } else {
-      setFormData({ name: "", targetAmount: "", targetDate: "", description: "" })
+      setFormData({ title: "", targetAmount: "", targetDate: "", description: "" })
     }
   }, [editingGoal, isOpen])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.name || !formData.targetAmount || !formData.targetDate) {
+  if (!formData.title || !formData.targetAmount || !formData.targetDate) {
       return
     }
 
     if (editingGoal) {
       updateGoal(editingGoal.id, {
-        name: formData.name,
+        title: formData.title,
         targetAmount: Number.parseFloat(formData.targetAmount),
         targetDate: formData.targetDate,
         description: formData.description,
       })
     } else {
       addGoal({
-        name: formData.name,
+        title: formData.title,
         targetAmount: Number.parseFloat(formData.targetAmount),
         targetDate: formData.targetDate,
         description: formData.description,
-      })
+        category: "General",
+        priority: "medium",
+        autoContribute: false,
+        createdAt: new Date().toISOString(),
+      } as any)
     }
 
-    setFormData({ name: "", targetAmount: "", targetDate: "", description: "" })
+  setFormData({ title: "", targetAmount: "", targetDate: "", description: "" })
     onClose()
   }
 
@@ -76,18 +87,18 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Goal Name</Label>
+            <Label htmlFor="title">Goal Name</Label>
             <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              id="title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="e.g., Emergency Fund, Vacation, New Car"
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="targetAmount">Target Amount ({userProfile.currency})</Label>
+            <Label htmlFor="targetAmount">Target Amount ({currencySymbol})</Label>
             <Input
               id="targetAmount"
               type="number"

@@ -22,6 +22,23 @@ export function formatCurrency(amount: number, currency: string): string {
   }).format(amount)
 }
 
+export function getCurrencySymbol(
+  currency: string | { code?: string; symbol?: string; name?: string } | undefined | null,
+  custom?: { symbol?: string } | null,
+): string {
+  if (!currency) return "$"
+  // If currency is an object (accidental or custom), prefer its symbol
+  if (typeof currency === "object") {
+    if (currency.symbol) return currency.symbol
+    if (currency.code) return currency.code
+    return "$"
+  }
+
+  if (currency === "CUSTOM" && custom && custom.symbol) return custom.symbol
+  const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
+  return map[currency] || currency
+}
+
 export function generateId(prefix = ""): string {
   return `${prefix}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
@@ -37,4 +54,10 @@ export function debounce<T extends (...args: any[]) => any>(func: T, wait: numbe
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
   }
+}
+export function formatCurrencyLocalized(amount: number, currency: string, locale = "en-US"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: currency,
+  }).format(amount)
 }
