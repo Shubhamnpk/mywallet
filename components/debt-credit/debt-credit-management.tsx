@@ -117,7 +117,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Total Debt</p>
-                <p className="text-lg font-semibold text-red-600">{formatCurrency(totalDebt, userProfile.currency)}</p>
+                <p className="text-lg font-semibold text-red-600">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
             </div>
           </CardContent>
@@ -131,7 +131,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Credit Used</p>
-                <p className="text-lg font-semibold text-blue-600">{formatCurrency(totalCreditUsed, userProfile.currency)}</p>
+                <p className="text-lg font-semibold text-blue-600">{formatCurrency(totalCreditUsed, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
             </div>
           </CardContent>
@@ -211,7 +211,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold">{debt.name}</h4>
-                            <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency)}</Badge>
+                            <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}</Badge>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
@@ -221,7 +221,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           </div>
                           <div>
                             <p className="text-muted-foreground">Min Payment</p>
-                            <p className="font-medium">{formatCurrency(debt.minimumPayment, userProfile.currency)}</p>
+                            <p className="font-medium">{formatCurrency(debt.minimumPayment, userProfile.currency, userProfile.customCurrency)}</p>
                           </div>
                         </div>
 
@@ -278,7 +278,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                             <div className="flex justify-between text-sm mb-1">
                               <span>Credit Utilization</span>
                               <span>
-                                {formatCurrency(credit.balance, userProfile.currency)} / {formatCurrency(credit.creditLimit, userProfile.currency)}
+                                {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)} / {formatCurrency(credit.creditLimit, userProfile.currency, userProfile.customCurrency)}
                               </span>
                             </div>
                             <Progress value={utilization} className="h-2" />
@@ -287,11 +287,11 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                             <div>
                               <p className="text-muted-foreground">Available Credit</p>
-                              <p className="font-medium text-green-600">{formatCurrency(available, userProfile.currency)}</p>
+                              <p className="font-medium text-green-600">{formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Min Payment</p>
-                              <p className="font-medium">{formatCurrency(credit.minimumPayment, userProfile.currency)}</p>
+                              <p className="font-medium">{formatCurrency(credit.minimumPayment, userProfile.currency, userProfile.customCurrency)}</p>
                             </div>
                           </div>
 
@@ -458,7 +458,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Minus className="w-5 h-5 text-emerald-600" />
+              <Minus className="w-5 h-5 text-accent" />
               Make Payment
             </DialogTitle>
           </DialogHeader>
@@ -480,7 +480,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 placeholder="0.00"
               />
-              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency)}</p>
+              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)}</p>
             </div>
 
             <div className="flex gap-2">

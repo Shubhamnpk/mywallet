@@ -49,7 +49,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
     const percentage = (budget.spent / budget.limit) * 100
     if (percentage >= 100) return { status: "exceeded", color: "text-red-600", icon: AlertTriangle }
     if (percentage >= 80) return { status: "warning", color: "text-amber-600", icon: AlertTriangle }
-    return { status: "good", color: "text-emerald-600", icon: CheckCircle }
+    return { status: "good", color: "text-accent", icon: CheckCircle }
   }
 
   const filteredAndSortedBudgets = useMemo(() => {
@@ -221,7 +221,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                   <Alert className="m-4 mb-0 border-red-200 bg-red-50">
                     <AlertTriangle className="h-4 w-4 text-red-600" />
                       <AlertDescription className="text-red-800">
-                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(budget.spent - budget.limit, userProfile.currency)} over your limit.
+                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(budget.spent - budget.limit, userProfile.currency, userProfile.customCurrency)} over your limit.
                       {budget.emergencyUses > 0 && (
                         <span className="block mt-1">
                           Emergency uses remaining: <Badge variant="destructive">{budget.emergencyUses}</Badge>
@@ -236,7 +236,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                     <div className="flex items-center justify-between">
                       <CollapsibleTrigger asChild>
                         <div className="flex items-center gap-2 cursor-pointer flex-1">
-                          <Target className="w-5 h-5 text-emerald-600" />
+                          <Target className="w-5 h-5 text-accent" />
                           <CardTitle className="text-lg">{budget.name}</CardTitle>
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </div>
@@ -264,17 +264,17 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                       <div className="flex justify-between text-sm">
                           <span className="flex items-center gap-1">
                           <DollarSign className="w-3 h-3" />
-                          Spent: {formatCurrency(budget.spent, userProfile.currency)}
+                          Spent: {formatCurrency(budget.spent, userProfile.currency, userProfile.customCurrency)}
                         </span>
-                        <span>Budget: {formatCurrency(budget.limit, userProfile.currency)}</span>
+                        <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>
                       </div>
                       <Progress value={percentage} className="h-2 rounded-full" />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{percentage.toFixed(1)}% used</span>
                         <span>
                           {remaining > 0
-                            ? `${formatCurrency(remaining, userProfile.currency)} remaining`
-                            : `${formatCurrency(Math.abs(remaining), userProfile.currency)} over`}
+                            ? `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`
+                            : `${formatCurrency(Math.abs(remaining), userProfile.currency, userProfile.customCurrency)} over`}
                         </span>
                       </div>
                     </div>

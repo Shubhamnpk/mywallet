@@ -191,7 +191,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     const isCompleted = progress >= 100
     const isOverdue = new Date(goal.targetDate) < new Date() && !isCompleted
 
-    if (isCompleted) return { status: "completed", color: "bg-emerald-600", icon: CheckCircle2 }
+    if (isCompleted) return { status: "completed", color: "bg-accent", icon: CheckCircle2 }
     if (isOverdue) return { status: "overdue", color: "bg-red-600", icon: AlertCircle }
     if (progress > 75) return { status: "near-completion", color: "bg-amber-600", icon: TrendingUp }
     return { status: "active", color: "bg-blue-600", icon: Target }
@@ -301,7 +301,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
             return (
               <Card
                 key={goal.id}
-                className={`${isCompleted ? "border-emerald-200 bg-emerald-50/50" : ""} ${isSelected ? "ring-2 ring-blue-500" : ""}`}
+                className={`${isCompleted ? "border-accent/20 bg-accent/5" : ""} ${isSelected ? "ring-2 ring-blue-500" : ""}`}
               >
                 <Collapsible open={isExpanded} onOpenChange={() => toggleGoalExpansion(goal.id)}>
                   <CollapsibleTrigger asChild>
@@ -325,7 +325,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           <div className="text-right">
                             <p className="text-sm text-muted-foreground">Target</p>
                             <p className="font-semibold">
-                              {formatCurrency(goal.targetAmount, userProfile.currency)}
+                              {formatCurrency(goal.targetAmount, userProfile.currency, userProfile.customCurrency)}
                             </p>
                           </div>
                           <DropdownMenu>
@@ -365,7 +365,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           <DollarSign className="w-4 h-4 text-muted-foreground" />
                           <div>
                             <p className="text-muted-foreground">Current</p>
-                            <p className="font-medium">{formatCurrency(goal.currentAmount, userProfile.currency)}</p>
+                            <p className="font-medium">{formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)}</p>
                           </div>
                         </div>
 
@@ -392,7 +392,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               <Clock className="w-4 h-4 text-muted-foreground" />
                               <p className="text-sm text-muted-foreground">Remaining to Goal</p>
                             </div>
-                            <p className="font-semibold text-amber-600">{formatCurrency(remaining, userProfile.currency)}
+                            <p className="font-semibold text-amber-600">{formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)}
                               <span className="text-sm font-normal text-muted-foreground ml-2">
                                 ({formatTimeEquivalent(remaining)} of work)
                               </span>
@@ -411,7 +411,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               Transfer Money
                             </Button>
                             <div className="text-xs text-muted-foreground flex items-center">
-                                Available: {formatCurrency(balance, userProfile.currency)}
+                                Available: {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)}
                               </div>
                           </div>
                         </>
@@ -445,7 +445,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Send className="w-5 h-5 text-emerald-600" />
+              <Send className="w-5 h-5 text-accent" />
               Transfer to Goal
             </DialogTitle>
           </DialogHeader>
@@ -467,7 +467,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                 onChange={(e) => setTransferAmount(e.target.value)}
                 placeholder="0.00"
               />
-              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency)}</p>
+              <p className="text-xs text-muted-foreground">Available balance: {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)}</p>
             </div>
 
             <div className="flex gap-2">

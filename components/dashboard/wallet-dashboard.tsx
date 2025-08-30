@@ -16,15 +16,7 @@ interface WalletDashboardProps {
 export function WalletDashboard({ userProfile }: WalletDashboardProps) {
   const walletData = useWalletData()
 
-  console.log(
-    "[v0] WalletDashboard render - balance:",
-    walletData.balance,
-    "transactions:",
-    walletData.transactions?.length,
-  )
-
   useEffect(() => {
-    console.log("[v0] WalletDashboard - transactions changed, count:", walletData.transactions?.length)
   }, [walletData.transactions])
 
   return (

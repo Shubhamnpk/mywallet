@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { PieChart, TrendingDown } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { getCurrencySymbol } from "@/lib/utils"
 
 export function CategoryBreakdown() {
   const { transactions, userProfile } = useWalletData()
 
-  console.log("[v0] CategoryBreakdown render - transactions:", transactions?.length)
 
   // Calculate expense breakdown by category
   const expensesByCategory = transactions
@@ -22,7 +22,7 @@ export function CategoryBreakdown() {
     )
 
   const totalExpenses = Object.values(expensesByCategory).reduce((sum, amount) => sum + amount, 0)
-  const currencySymbol = userProfile?.currency?.symbol || "$"
+  const currencySymbol = getCurrencySymbol(userProfile?.currency, userProfile?.customCurrency)
 
   const categoryData = Object.entries(expensesByCategory)
     .map(([category, amount]) => ({

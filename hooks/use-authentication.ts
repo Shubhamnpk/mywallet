@@ -41,9 +41,11 @@ export function useAuthentication(): AuthState & AuthActions {
     const initializeAuth = async () => {
       try {
         const status = SecurePinManager.getAuthStatus()
+        const lastAuth = localStorage.getItem("wallet_last_auth")
+        const now = Date.now()
+        const fiveMinutes = 5 * 60 * 1000
+        const isRecentAuth = lastAuth && (now - Number.parseInt(lastAuth)) <= fiveMinutes
         const hasMasterKey = SecureKeyManager.hasMasterKey()
-
-        console.log("[DEBUG] Auth init - status:", status, "hasMasterKey:", hasMasterKey)
 
         setAuthState({
           isAuthenticated: false, // Always start unauthenticated for security
@@ -53,28 +55,28 @@ export function useAuthentication(): AuthState & AuthActions {
           attemptsRemaining: status.attemptsRemaining,
           lockoutTimeRemaining: status.lockoutTimeRemaining,
         })
+        if (!status.hasPin) {
+          setAuthState(prev => ({ ...prev, isAuthenticated: true }))
+        }
 
         // If we have a cached key and PIN is set up, try to authenticate automatically
-        if (hasMasterKey && status.hasPin && !status.isLocked) {
+        if (hasMasterKey && status.hasPin && !status.isLocked && isRecentAuth) {
           const cachedKey = SecureKeyManager.isKeyCacheValid()
-          console.log("[DEBUG] Auth init - cachedKey valid:", cachedKey)
           if (cachedKey) {
             const masterKey = await SecureKeyManager.getMasterKey("") // Empty PIN for cached retrieval
-            console.log("[DEBUG] Auth init - masterKey retrieved:", !!masterKey)
             if (masterKey) {
               setAuthState(prev => ({
                 ...prev,
                 isAuthenticated: true,
                 masterKey: masterKey || undefined,
               }))
-              console.log("[DEBUG] Auth init - auto-authenticated successfully")
+            } else {
             }
+          } else {
           }
         } else {
-          console.log("[DEBUG] Auth init - auto-auth conditions not met:", { hasMasterKey, hasPin: status.hasPin, isLocked: status.isLocked })
         }
       } catch (error) {
-        console.error("[v0] Failed to initialize authentication:", error)
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     }
@@ -181,7 +183,6 @@ export function useAuthentication(): AuthState & AuthActions {
 
       return result
     } catch (error) {
-      console.error("[v0] PIN validation error:", error)
       setAuthState(prev => ({ ...prev, isLoading: false }))
       toast({
         title: "Authentication Error",
@@ -229,7 +230,6 @@ export function useAuthentication(): AuthState & AuthActions {
         return false
       }
     } catch (error) {
-      console.error("[v0] PIN change error:", error)
       setAuthState(prev => ({ ...prev, isLoading: false }))
       toast({
         title: "Change Error",

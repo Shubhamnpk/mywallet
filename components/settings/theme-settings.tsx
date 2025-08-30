@@ -10,26 +10,64 @@ import { useTheme } from "next-themes"
 import { Palette, Sun, Moon, Monitor, Contrast } from "lucide-react"
 
 const colorThemes = [
-  { id: "emerald", name: "Emerald", primary: "hsl(142, 76%, 36%)", description: "Fresh and natural" },
-  { id: "blue", name: "Ocean Blue", primary: "hsl(221, 83%, 53%)", description: "Professional and trustworthy" },
-  { id: "purple", name: "Royal Purple", primary: "hsl(262, 83%, 58%)", description: "Creative and modern" },
-  { id: "orange", name: "Sunset Orange", primary: "hsl(25, 95%, 53%)", description: "Energetic and warm" },
-  { id: "rose", name: "Rose Pink", primary: "hsl(330, 81%, 60%)", description: "Elegant and sophisticated" },
+  {
+    id: "emerald",
+    name: "Emerald",
+    primary: "hsl(142, 76%, 36%)",
+    description: "Fresh and natural",
+    gradient: "from-emerald-600 via-emerald-500 to-green-400",
+    solid: "bg-emerald-600"
+  },
+  {
+    id: "blue",
+    name: "Ocean Blue",
+    primary: "hsl(221, 83%, 53%)",
+    description: "Professional and trustworthy",
+    gradient: "from-blue-600 via-blue-500 to-indigo-400",
+    solid: "bg-blue-600"
+  },
+  {
+    id: "purple",
+    name: "Royal Purple",
+    primary: "hsl(262, 83%, 58%)",
+    description: "Creative and modern",
+    gradient: "from-purple-600 via-purple-500 to-pink-400",
+    solid: "bg-purple-600"
+  },
+  {
+    id: "orange",
+    name: "Sunset Orange",
+    primary: "hsl(25, 95%, 53%)",
+    description: "Energetic and warm",
+    gradient: "from-orange-600 via-orange-500 to-red-400",
+    solid: "bg-orange-600"
+  },
+  {
+    id: "rose",
+    name: "Rose Pink",
+    primary: "hsl(330, 81%, 60%)",
+    description: "Elegant and sophisticated",
+    gradient: "from-rose-600 via-rose-500 to-pink-400",
+    solid: "bg-rose-600"
+  },
 ]
 
 export function ThemeSettings() {
   const { theme, setTheme } = useTheme()
   const [colorTheme, setColorTheme] = useState("emerald")
+  const [useGradient, setUseGradient] = useState(true)
   const [highContrast, setHighContrast] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
 
   useEffect(() => {
     // Load saved theme preferences
     const savedColorTheme = localStorage.getItem("wallet_color_theme") || "emerald"
+    const savedUseGradient = localStorage.getItem("wallet_use_gradient") !== "false" // Default to true
     const savedHighContrast = localStorage.getItem("wallet_high_contrast") === "true"
     const savedReducedMotion = localStorage.getItem("wallet_reduced_motion") === "true"
 
     setColorTheme(savedColorTheme)
+    setUseGradient(savedUseGradient)
     setHighContrast(savedHighContrast)
     setReducedMotion(savedReducedMotion)
   }, [])
@@ -44,6 +82,11 @@ export function ThemeSettings() {
     if (selectedTheme) {
       root.style.setProperty("--primary", selectedTheme.primary)
     }
+  }
+
+  const handleGradientToggle = (enabled: boolean) => {
+    setUseGradient(enabled)
+    localStorage.setItem("wallet_use_gradient", enabled.toString())
   }
 
   const handleHighContrastChange = (enabled: boolean) => {
@@ -141,6 +184,17 @@ export function ThemeSettings() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Gradient/Solid Toggle */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="use-gradient">Use Gradient Background</Label>
+                <p className="text-sm text-muted-foreground">Enable gradient effects for the main balance card</p>
+              </div>
+              <Switch id="use-gradient" checked={useGradient} onCheckedChange={handleGradientToggle} />
+            </div>
           </div>
         </CardContent>
       </Card>

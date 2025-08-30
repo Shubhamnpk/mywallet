@@ -228,7 +228,7 @@ export function MainTabs({
                   <TrendingUp className="w-3 h-3" />
                   Analytics
                 </Badge>
-                {hasInsights && <Badge className="bg-emerald-600 hover:bg-emerald-700">Data Available</Badge>}
+                {hasInsights && <Badge className="bg-accent hover:bg-accent/90 text-accent-foreground">Data Available</Badge>}
               </div>
             </div>
             <InsightsPanel

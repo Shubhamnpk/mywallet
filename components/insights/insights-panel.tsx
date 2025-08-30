@@ -62,18 +62,18 @@ export function InsightsPanel({
     <div className="space-y-6">
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-emerald-200 dark:border-emerald-800">
+        <Card className="border-accent/20 dark:border-accent/30">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Work Time Earned</p>
-                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p className="text-2xl font-bold text-accent">
                   {formatTime(totalWorkTimeEarned)}
                 </p>
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(totalIncome, userProfile.currency)}</p>
+                <p className="text-xs text-accent/80 mt-1">{formatCurrency(totalIncome, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
-              <div className="h-12 w-12 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              <div className="h-12 w-12 bg-accent/10 dark:bg-accent/20 rounded-lg flex items-center justify-center">
+                <Clock className="w-6 h-6 text-accent" />
               </div>
             </div>
           </CardContent>
@@ -87,7 +87,7 @@ export function InsightsPanel({
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {formatTime(totalWorkTimeSpent)}
                 </p>
-                <p className="text-xs text-red-700 dark:text-red-300 mt-1">{formatCurrency(totalExpenses, userProfile.currency)}</p>
+                <p className="text-xs text-red-700 dark:text-red-300 mt-1">{formatCurrency(totalExpenses, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
               <div className="h-12 w-12 bg-red-100 dark:bg-red-900/50 rounded-lg flex items-center justify-center">
                 <Clock className="w-6 h-6 text-red-600 dark:text-red-400" />
@@ -102,7 +102,7 @@ export function InsightsPanel({
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Net Worth</p>
                 <p className={`text-2xl font-bold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {formatCurrency(Math.abs(netWorth), userProfile.currency)}
+                  {formatCurrency(Math.abs(netWorth), userProfile.currency, userProfile.customCurrency)}
                 </p>
                 <p className={`text-xs mt-1 ${netWorth >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
                   {formatTime(Math.abs(totalWorkTimeEarned - totalWorkTimeSpent))} time difference
@@ -167,7 +167,7 @@ export function InsightsPanel({
                     <div className="flex justify-between items-center">
                       <span className="font-medium">{category}</span>
                       <div className="text-right">
-                        <span className="font-semibold">{formatCurrency(amount, userProfile.currency)}</span>
+                        <span className="font-semibold">{formatCurrency(amount, userProfile.currency, userProfile.customCurrency)}</span>
                         <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {formatTime(timeEquivalent)}
@@ -194,9 +194,9 @@ export function InsightsPanel({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-lg">
-              <h4 className="font-semibold text-emerald-700 dark:text-emerald-300 mb-2">Time Balance</h4>
-              <p className="text-sm text-emerald-600 dark:text-emerald-400">
+            <div className="bg-accent/5 dark:bg-accent/10 border border-accent/20 dark:border-accent/30 p-4 rounded-lg">
+              <h4 className="font-semibold text-accent mb-2">Time Balance</h4>
+              <p className="text-sm text-accent/80">
                 You've earned {formatTime(totalWorkTimeEarned)} and spent {formatTime(totalWorkTimeSpent)} worth of work time.
                 {totalWorkTimeEarned > totalWorkTimeSpent
                   ? ` You're saving ${formatTime(totalWorkTimeEarned - totalWorkTimeSpent)} of work time!`
@@ -207,7 +207,7 @@ export function InsightsPanel({
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
               <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-2">Hourly Rate Impact</h4>
                 <p className="text-sm text-blue-600 dark:text-blue-400">
-                At {formatCurrency(userProfile.hourlyRate, userProfile.currency)}/hour, every {formatCurrency(1, userProfile.currency)} you spend equals {Math.round(60 / userProfile.hourlyRate)} minutes of work.
+                At {formatCurrency(userProfile.hourlyRate, userProfile.currency, userProfile.customCurrency)}/hour, every {formatCurrency(1, userProfile.currency, userProfile.customCurrency)} you spend equals {Math.round(60 / userProfile.hourlyRate)} minutes of work.
               </p>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { SecureKeyManager } from "@/lib/key-manager"
 import { Wallet, Lock, AlertCircle, Shield } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
@@ -90,12 +91,14 @@ export function PinLockScreen({ onUnlock }: PinLockScreenProps) {
         const result = await SecurePinManager.validatePin(pin)
 
         if (result.success) {
-          onUnlock()
-          toast({
-            title: "Welcome Back!",
-            description: "PIN verified successfully.",
-          })
-        } else {
+           // Cache the master key for auto-authentication
+           await SecureKeyManager.getMasterKey(pin)
+           onUnlock()
+           toast({
+             title: "Welcome Back!",
+             description: "PIN verified successfully.",
+           })
+         } else {
           setPin("")
           setAuthStatus(SecurePinManager.getAuthStatus())
 

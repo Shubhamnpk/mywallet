@@ -40,12 +40,12 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
   const getProgressColor = () => {
     if (category.percentage > 30) return "bg-red-500"
     if (category.percentage > 20) return "bg-amber-500"
-    return "bg-emerald-500"
+    return "bg-accent"
   }
 
   const getTrendIcon = () => {
     if (category.weeklyTrend > 0) return <TrendingUp className="w-3 h-3 text-red-500" />
-    if (category.weeklyTrend < 0) return <TrendingDown className="w-3 h-3 text-emerald-500" />
+    if (category.weeklyTrend < 0) return <TrendingDown className="w-3 h-3 text-accent" />
     return <BarChart3 className="w-3 h-3 text-muted-foreground" />
   }
 
@@ -68,7 +68,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
               <CardTitle className="text-base truncate">{category.name}</CardTitle>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {category.type === "income" ? (
-                  <TrendingUp className="w-3 h-3 text-emerald-600" />
+                  <TrendingUp className="w-3 h-3 text-accent" />
                 ) : (
                   <TrendingDown className="w-3 h-3 text-red-600" />
                 )}
@@ -83,7 +83,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
           </div>
 
           <div className="text-right flex-shrink-0">
-            <div className="text-lg font-bold">{formatCurrency(category.totalSpent, (userProfile as any).currency || "USD")}</div>
+            <div className="text-lg font-bold">{formatCurrency(category.totalSpent, userProfile.currency, userProfile.customCurrency)}</div>
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {formatTime(timeEquivalent)}
@@ -123,7 +123,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
               <Calendar className="w-3 h-3" />
               <span>Monthly Avg</span>
             </div>
-            <div className="font-medium">{formatCurrency(category.monthlyAverage, (userProfile as any).currency || "USD")}</div>
+            <div className="font-medium">{formatCurrency(category.monthlyAverage, userProfile.currency, userProfile.customCurrency)}</div>
           </div>
         </div>
 
@@ -138,7 +138,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
               category.weeklyTrend > 0
                 ? "text-red-600"
                 : category.weeklyTrend < 0
-                  ? "text-emerald-600"
+                  ? "text-accent"
                   : "text-muted-foreground"
             }`}
           >

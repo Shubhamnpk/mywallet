@@ -8,6 +8,7 @@ import { TimeTooltip } from "@/components/ui/time-tooltip"
 import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2 } from "lucide-react"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 
 interface TransactionDetailsModalProps {
   transaction: Transaction
@@ -24,13 +25,9 @@ export function TransactionDetailsModal({
   onClose,
   onDelete,
 }: TransactionDetailsModalProps) {
-  const formatTimeEquivalent = (minutes: number) => {
-    if (minutes >= 60) {
-      const hours = Math.floor(minutes / 60)
-      const remainingMinutes = minutes % 60
-      return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-    }
-    return `${minutes}m`
+  const getTimeEquivalentDisplay = (amount: number) => {
+    const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
+    return breakdown ? breakdown.formatted.short : ""
   }
 
   const handleDelete = () => {
@@ -46,7 +43,7 @@ export function TransactionDetailsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {transaction.type === "income" ? (
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
+              <TrendingUp className="w-5 h-5 text-accent" />
             ) : (
               <TrendingDown className="w-5 h-5 text-red-600" />
             )}
@@ -58,16 +55,16 @@ export function TransactionDetailsModal({
           {/* Amount */}
           <div className="text-center p-4 bg-muted/50 rounded-lg">
             <p className="text-sm text-muted-foreground mb-1">Amount</p>
-            <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-emerald-600" : "text-red-600"}`}>
+            <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-accent" : "text-red-600"}`}>
               {transaction.type === "income" ? "+" : "-"}
-              {formatCurrency(transaction.amount, userProfile.currency)}
+              {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
             </p>
 
-            {transaction.timeEquivalent && (
+            {transaction.type === "expense" && (
               <TimeTooltip amount={transaction.amount}>
                 <div className="flex items-center justify-center gap-1 mt-2 text-sm font-medium text-amber-600 dark:text-amber-400">
                   <Clock className="w-4 h-4" />
-                  <span>{formatTimeEquivalent(transaction.timeEquivalent)} of work</span>
+                  <span>{getTimeEquivalentDisplay(transaction.amount)} of work</span>
                 </div>
               </TimeTooltip>
             )}

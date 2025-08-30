@@ -15,7 +15,10 @@ export function formatTime(hours: number): string {
   return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`
 }
 
-export function formatCurrency(amount: number, currency: string): string {
+export function formatCurrency(amount: number, currency: string, customCurrency?: { code: string; symbol: string; name: string; }): string {
+  if (currency === "CUSTOM" && customCurrency) {
+    return `${customCurrency.symbol}${amount.toFixed(2)}`
+  }
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency,
@@ -55,7 +58,10 @@ export function debounce<T extends (...args: any[]) => any>(func: T, wait: numbe
     timeout = setTimeout(() => func(...args), wait)
   }
 }
-export function formatCurrencyLocalized(amount: number, currency: string, locale = "en-US"): string {
+export function formatCurrencyLocalized(amount: number, currency: string, locale = "en-US", customCurrency?: { code: string; symbol: string; name: string; }): string {
+  if (currency === "CUSTOM" && customCurrency) {
+    return `${customCurrency.symbol}${amount.toFixed(2)}`
+  }
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency,

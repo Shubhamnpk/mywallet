@@ -2,16 +2,28 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Wallet, TrendingUp, TrendingDown, Clock, Sparkles, AlertTriangle } from "lucide-react"
+import { 
+  Wallet, 
+  TrendingUp, 
+  TrendingDown, 
+  Clock, 
+  Sparkles, 
+  AlertTriangle, 
+  CreditCard,
+  PiggyBank,
+  Eye,
+  EyeOff 
+} from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
+import { getTimeEquivalentBreakdown, formatTimeEquivalent } from "@/lib/wallet-utils"
 
 export function CombinedBalanceCard() {
   const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange } =
     useWalletData()
-
-  console.log("[v0] BalanceCard render - balance:", balance, "transactions:", transactions?.length)
+  
+  const [showBalance, setShowBalance] = useState(true)
 
   // Optimize calculations with useMemo and better logic
   const { totalIncome, totalExpenses } = useMemo(() => {
@@ -53,28 +65,24 @@ export function CombinedBalanceCard() {
 
   const availableCredit = totalCreditLimit - totalCreditUsed
   const netWorth = balance + availableCredit - totalDebt
+  const creditUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
 
   // Memoize currency symbol and balance calculations
   const currencySymbol = useMemo(() => {
     if (!userProfile) return "$"
     const custom = (userProfile as any).customCurrency
     if (custom && custom.symbol) return custom.symbol
-    const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
+    const map: Record<string, string> = { USD: "$", NPR: "रु", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
     return map[(userProfile.currency as string) || "USD"] || "$"
   }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+  
   const isPositive = balance >= 0
   const absoluteBalance = Math.abs(balance)
 
-  // Memoize work hours calculation
-  const workHoursEquivalent = useMemo(() => {
+  // Memoize comprehensive time equivalent breakdown
+  const timeEquivalentBreakdown = useMemo(() => {
     if (!userProfile || balance <= 0) return null
-
-    const { monthlyEarning, workingDaysPerMonth, workingHoursPerDay } = userProfile
-
-    if (!monthlyEarning || !workingDaysPerMonth || !workingHoursPerDay) return null
-
-    const hourlyRate = monthlyEarning / (workingDaysPerMonth * workingHoursPerDay)
-    return hourlyRate > 0 ? (balance / hourlyRate).toFixed(1) : null
+    return getTimeEquivalentBreakdown(balance, userProfile)
   }, [balance, userProfile])
 
   // Format currency helper
@@ -82,93 +90,166 @@ export function CombinedBalanceCard() {
     return `${currencySymbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
   }
 
+  const getThemeBasedBackground = () => {
+    // Get user's theme preferences
+    const savedColorTheme = localStorage.getItem("wallet_color_theme") || "emerald"
+    const useGradient = localStorage.getItem("wallet_use_gradient") !== "false" // Default to true
+
+    // Theme color mappings
+    const themeColors = {
+      emerald: { gradient: "from-emerald-600 via-emerald-500 to-green-400", solid: "bg-emerald-600" },
+      blue: { gradient: "from-blue-600 via-blue-500 to-indigo-400", solid: "bg-blue-600" },
+      purple: { gradient: "from-purple-600 via-purple-500 to-pink-400", solid: "bg-purple-600" },
+      orange: { gradient: "from-orange-600 via-orange-500 to-red-400", solid: "bg-orange-600" },
+      rose: { gradient: "from-rose-600 via-rose-500 to-pink-400", solid: "bg-rose-600" }
+    }
+
+    const themeColor = themeColors[savedColorTheme as keyof typeof themeColors] || themeColors.emerald
+
+    // For negative balance, always use red regardless of theme
+    if (!isPositive) {
+      return useGradient ? "from-red-600 via-red-500 to-red-400" : "bg-red-600"
+    }
+
+    // Return gradient or solid based on user preference
+    return useGradient ? themeColor.gradient : themeColor.solid
+  }
+
+  const getCreditUtilizationColor = () => {
+    if (creditUtilization >= 90) return "text-red-600 dark:text-red-400"
+    if (creditUtilization >= 70) return "text-amber-600 dark:text-amber-400"
+    if (creditUtilization >= 30) return "text-blue-600 dark:text-blue-400"
+    return "text-emerald-600 dark:text-emerald-400"
+  }
+
   return (
-    <div className="space-y-4">
-      <Card className="relative overflow-hidden bg-primary text-primary-foreground">
-        <CardContent className="p-6">
+    <div className="space-y-6">
+      {/* Main Balance Card */}
+      <Card className="relative overflow-hidden border-0 shadow-lg">
+        <div className={`absolute inset-0 ${getThemeBasedBackground().startsWith('from-') ? `bg-gradient-to-br ${getThemeBasedBackground()}` : getThemeBasedBackground()} opacity-90`} />
+        <div className="absolute inset-0 bg-black/10" />
+        
+        <CardContent className="relative p-6 text-white">
+          {/* Balance Change Animation */}
           {balanceChange && (
-            <div
-              className={`absolute top-2 right-2 animate-bounce ${
-                balanceChange.type === "income" ? "text-green-300" : "text-red-300"
-              }`}
-            >
-              <div className="text-sm font-bold">
+            <div className="absolute top-4 right-4 animate-bounce">
+              <div className={`px-3 py-1 rounded-full text-sm font-bold backdrop-blur-sm ${
+                balanceChange.type === "income" 
+                  ? "bg-green-500/30 text-green-100 border border-green-400/50" 
+                  : "bg-red-500/30 text-red-100 border border-red-400/50"
+              }`}>
                 {balanceChange.type === "income" ? "+" : "-"}
                 {formatCurrency(balanceChange.amount)}
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-5 h-5" />
-              <span className="text-sm font-medium opacity-90">Current Balance</span>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <span className="text-sm font-medium opacity-90">Current Balance</span>
+                {balance < 0 && (
+                  <Badge variant="destructive" className="ml-2 bg-red-500/30 text-red-100 border-red-400/50">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    Negative
+                  </Badge>
+                )}
+              </div>
             </div>
-            {balance < 0 && (
-              <Badge
-                variant="destructive"
-                className="bg-destructive/20 text-destructive-foreground border-destructive/30"
-              >
-                Negative Balance
-              </Badge>
-            )}
+            
+            {/* Privacy Toggle */}
+            <button
+              onClick={() => setShowBalance(!showBalance)}
+              className="p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all duration-200"
+              aria-label={showBalance ? "Hide balance" : "Show balance"}
+            >
+              {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </button>
           </div>
 
+          {/* Balance Display */}
           <TimeTooltip amount={absoluteBalance}>
-            <div
-              className={`text-3xl font-bold mb-1 transition-all duration-300 ${
-                balanceChange ? "animate-pulse scale-105" : ""
-              }`}
-            >
-              {isPositive ? "" : "-"}
-              {formatCurrency(absoluteBalance)}
+            <div className={`transition-all duration-500 ${balanceChange ? "animate-pulse scale-105" : ""}`}>
+              <div className="text-4xl font-bold mb-1 tracking-tight">
+                {showBalance ? (
+                  <>
+                    {isPositive ? "" : "-"}
+                    {formatCurrency(absoluteBalance)}
+                  </>
+                ) : (
+                  "••••••"
+                )}
+              </div>
             </div>
           </TimeTooltip>
 
-          {workHoursEquivalent && (
-            <div className="flex items-center gap-1 text-xs opacity-80">
-              <Clock className="w-3 h-3" />
-              <span>{workHoursEquivalent}h of work</span>
+          {/* Time Equivalent */}
+          {showBalance && timeEquivalentBreakdown && (
+            <div className="flex items-center gap-2 text-sm bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2 mt-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
+                <Clock className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-white">
+                  {timeEquivalentBreakdown.formatted.short} of work
+                </span>
+                <span className="text-xs text-amber-100/80">
+                  {timeEquivalentBreakdown.days >= 1
+                    ? `${timeEquivalentBreakdown.days.toFixed(1)} work days`
+                    : timeEquivalentBreakdown.weeks >= 1
+                    ? `${timeEquivalentBreakdown.weeks.toFixed(1)} weeks`
+                    : `${timeEquivalentBreakdown.months.toFixed(1)} months`
+                  }
+                </span>
+              </div>
             </div>
           )}
 
-          {emergencyFund > 0 && (
-            <div className="flex items-center gap-1 text-xs opacity-80 mt-1">
-              <Sparkles className="w-3 h-3" />
+          {/* Emergency Fund */}
+          {showBalance && emergencyFund > 0 && (
+            <div className="flex items-center gap-2 text-sm text-white/80 mt-2">
+              <Sparkles className="w-4 h-4" />
               <span>Emergency Fund: {formatCurrency(emergencyFund)}</span>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-green-600" />
+      {/* Income & Expenses Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
+                <TrendingUp className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Total Income</p>
+              <div className="flex-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Income</p>
                 <TimeTooltip amount={totalIncome}>
-                  <p className="text-lg font-semibold text-green-600">{formatCurrency(totalIncome)}</p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                    {showBalance ? formatCurrency(totalIncome) : "••••••"}
+                  </p>
                 </TimeTooltip>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-destructive/10 dark:bg-destructive/90 flex items-center justify-center">
-                <TrendingDown className="w-5 h-5 text-destructive dark:text-destructive-foreground" />
+        <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">
+                <TrendingDown className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium">Total Expenses</p>
+              <div className="flex-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Expenses</p>
                 <TimeTooltip amount={totalExpenses}>
-                  <p className="text-lg font-semibold text-destructive dark:text-destructive-foreground">
-                    {formatCurrency(totalExpenses)}
+                  <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                    {showBalance ? formatCurrency(totalExpenses) : "••••••"}
                   </p>
                 </TimeTooltip>
               </div>
@@ -177,19 +258,20 @@ export function CombinedBalanceCard() {
         </Card>
       </div>
 
+      {/* Debt & Credit Grid */}
       {(totalDebt > 0 || totalCreditUsed > 0) && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {totalDebt > 0 && (
-            <Card className="bg-card border-destructive/20">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-destructive/10 dark:bg-destructive/90 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-destructive dark:text-destructive-foreground" />
+            <Card className="group hover:shadow-md transition-all duration-200 border-orange-200/50 dark:border-orange-800/50">
+              <CardContent className="p-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
+                    <AlertTriangle className="w-6 h-6 text-white" />
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">Total Debt</p>
-                    <p className="text-lg font-semibold text-destructive dark:text-destructive-foreground">
-                      {formatCurrency(totalDebt)}
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Debt</p>
+                    <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                      {showBalance ? formatCurrency(totalDebt) : "••••••"}
                     </p>
                   </div>
                 </div>
@@ -198,38 +280,78 @@ export function CombinedBalanceCard() {
           )}
 
           {totalCreditUsed > 0 && (
-            <Card className="bg-card border-blue-200 dark:border-blue-800">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                    <TrendingDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <Card className="group hover:shadow-md transition-all duration-200 border-blue-200/50 dark:border-blue-800/50">
+              <CardContent className="p-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                    <CreditCard className="w-6 h-6 text-white" />
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">Credit Used</p>
-                    <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                      {formatCurrency(totalCreditUsed)}
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Credit Used</p>
+                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      {showBalance ? formatCurrency(totalCreditUsed) : "••••••"}
                     </p>
-                    <p className="text-xs text-muted-foreground">Available: {formatCurrency(availableCredit)}</p>
+                    {showBalance && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-muted-foreground">
+                          Available: {formatCurrency(availableCredit)}
+                        </p>
+                        <span className={`text-xs font-medium ${getCreditUtilizationColor()}`}>
+                          ({creditUtilization.toFixed(0)}% used)
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
+                
+                {/* Credit Utilization Bar */}
+                {showBalance && totalCreditLimit > 0 && (
+                  <div className="mt-3">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          creditUtilization >= 90 
+                            ? "bg-gradient-to-r from-red-500 to-red-600" 
+                            : creditUtilization >= 70
+                            ? "bg-gradient-to-r from-amber-500 to-orange-600"
+                            : creditUtilization >= 30
+                            ? "bg-gradient-to-r from-blue-500 to-blue-600"
+                            : "bg-gradient-to-r from-emerald-500 to-green-600"
+                        }`}
+                        style={{ width: `${Math.min(creditUtilization, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
         </div>
       )}
 
+      {/* Net Worth Summary */}
       {(totalDebt > 0 || totalCreditUsed > 0) && (
-        <Card
-          className={`border-2 ${netWorth >= 0 ? "border-success/20 dark:border-success/80 bg-success/5 dark:bg-success/950/20" : "border-destructive/20 bg-destructive/5"}`}
-        >
-          <CardContent className="p-4 text-center">
-            <p className="text-sm text-muted-foreground mb-1">Net Worth</p>
-            <p
-              className={`text-2xl font-bold ${netWorth >= 0 ? "text-success dark:text-success-foreground" : "text-destructive dark:text-destructive-foreground"}`}
-            >
-              {formatCurrency(Math.abs(netWorth))}
+        <Card className={`border-2 transition-all duration-200 ${
+          netWorth >= 0 
+            ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20" 
+            : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
+        }`}>
+          <CardContent className="p-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
+              <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
+            </div>
+            <p className={`text-3xl font-bold mb-2 ${
+              netWorth >= 0 
+                ? "text-emerald-600 dark:text-emerald-400" 
+                : "text-red-600 dark:text-red-400"
+            }`}>
+              {netWorth < 0 && "-"}
+              {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
             </p>
-            <p className="text-xs text-muted-foreground">Balance + Available Credit - Total Debt</p>
+            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+              Balance + Available Credit - Total Debt
+            </p>
           </CardContent>
         </Card>
       )}

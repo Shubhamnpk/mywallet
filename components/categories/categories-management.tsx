@@ -324,7 +324,7 @@ export function CategoriesManagement({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-emerald-600" />
+              <Target className="w-4 h-4 text-accent" />
               <div>
                 <p className="text-sm text-muted-foreground">Active Categories</p>
                 <p className="text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0).length}</p>

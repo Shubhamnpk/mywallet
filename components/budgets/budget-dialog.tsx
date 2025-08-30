@@ -91,7 +91,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: B
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-emerald-600" />
+            <Target className="w-5 h-5 text-accent" />
             Create Smart Budget
           </DialogTitle>
         </DialogHeader>

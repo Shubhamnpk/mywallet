@@ -58,6 +58,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       workingHoursPerDay: parseFloat(formData.workingHoursPerDay),
       workingDaysPerMonth: parseFloat(formData.workingDaysPerMonth),
       createdAt: new Date().toISOString(),
+      hourlyRate: 0,
+      securityEnabled: false
     };
 
     onComplete(userProfile);
