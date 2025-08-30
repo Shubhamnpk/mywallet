@@ -1,0 +1,317 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Enhanced light theme colors for better contrast and accessibility */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.15 0.01 258.34);
+  --card: oklch(0.98 0.002 258.34);
+  --card-foreground: oklch(0.15 0.01 258.34);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.01 258.34);
+  --primary: oklch(0.5 0.18 162.4);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.01 258.34);
+  --secondary-foreground: oklch(0.15 0.01 258.34);
+  --muted: oklch(0.96 0.005 258.34);
+  --muted-foreground: oklch(0.45 0.01 258.34);
+  --accent: oklch(0.55 0.18 162.4);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.55 0.25 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.005 258.34);
+  --input: oklch(0.96 0.005 258.34);
+  --ring: oklch(0.5 0.18 162.4);
+  --chart-1: oklch(0.6 0.15 162.4);
+  --chart-2: oklch(0.45 0.15 162.4);
+  --chart-3: oklch(0.97 0.005 258.34);
+  --chart-4: oklch(0.35 0.01 258.34);
+  --chart-5: oklch(0.92 0.005 258.34);
+  --radius: 0.5rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.35 0.01 258.34);
+  --sidebar-primary: oklch(0.45 0.15 162.4);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.6 0.15 162.4);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.92 0.005 258.34);
+  --sidebar-ring: oklch(0.45 0.15 162.4);
+  --base-font-size: 16px;
+}
+
+.dark {
+  /* Enhanced dark theme colors for better contrast and readability */
+  --background: oklch(0.08 0.005 258.34);
+  --foreground: oklch(0.95 0.005 258.34);
+  --card: oklch(0.12 0.005 258.34);
+  --card-foreground: oklch(0.95 0.005 258.34);
+  --popover: oklch(0.08 0.005 258.34);
+  --popover-foreground: oklch(0.95 0.005 258.34);
+  --primary: oklch(0.6 0.15 162.4);
+  --primary-foreground: oklch(0.08 0.005 258.34);
+  --secondary: oklch(0.2 0.01 258.34);
+  --secondary-foreground: oklch(0.95 0.005 258.34);
+  --muted: oklch(0.2 0.01 258.34);
+  --muted-foreground: oklch(0.7 0.005 258.34);
+  --accent: oklch(0.6 0.15 162.4);
+  --accent-foreground: oklch(0.08 0.005 258.34);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.95 0.005 258.34);
+  --border: oklch(0.2 0.01 258.34);
+  --input: oklch(0.2 0.01 258.34);
+  --ring: oklch(0.6 0.15 162.4);
+  --chart-1: oklch(0.6 0.15 162.4);
+  --chart-2: oklch(0.45 0.15 162.4);
+  --chart-3: oklch(0.7 0.1 162.4);
+  --chart-4: oklch(0.8 0.05 162.4);
+  --chart-5: oklch(0.3 0.05 162.4);
+  --sidebar: oklch(0.08 0.005 258.34);
+  --sidebar-foreground: oklch(0.95 0.005 258.34);
+  --sidebar-primary: oklch(0.6 0.15 162.4);
+  --sidebar-primary-foreground: oklch(0.08 0.005 258.34);
+  --sidebar-accent: oklch(0.2 0.01 258.34);
+  --sidebar-accent-foreground: oklch(0.95 0.005 258.34);
+  --sidebar-border: oklch(0.2 0.01 258.34);
+  --sidebar-ring: oklch(0.6 0.15 162.4);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Added smooth theme transitions and accessibility improvements */
+    transition: background-color 0.3s ease, color 0.3s ease;
+    /* Improved text rendering for better readability */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: var(--base-font-size);
+  }
+
+  /* Enhanced accessibility for theme transitions and focus states */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    body {
+      transition: none;
+    }
+  }
+
+  /* Improved focus visibility for better accessibility */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+    transition: outline-color 0.2s ease;
+  }
+
+  /* Enhanced button and interactive element accessibility */
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+    transition: box-shadow 0.2s ease;
+  }
+
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    :root {
+      --border: oklch(0.3 0 0);
+      --ring: oklch(0.2 0 0);
+      --primary: oklch(0.4 0.2 162.4);
+    }
+    .dark {
+      --border: oklch(0.8 0 0);
+      --ring: oklch(0.9 0 0);
+      --primary: oklch(0.8 0.2 162.4);
+    }
+  }
+
+  /* Screen Reader Optimizations */
+  .screen-reader-optimized {
+    /* Enhanced ARIA support and screen reader friendly styles */
+  }
+
+  .screen-reader-optimized * {
+    /* Ensure all text is readable by screen readers */
+    speak: normal;
+  }
+
+  .screen-reader-optimized [aria-hidden="true"] {
+    /* Properly hide decorative elements from screen readers */
+    speak: none;
+  }
+
+  .screen-reader-optimized .sr-only {
+    /* Enhanced screen reader only text */
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  /* Keyboard Navigation Enhancements */
+  .keyboard-nav-enabled *:focus {
+    /* Enhanced focus styles for keyboard navigation */
+    outline: 3px solid var(--ring) !important;
+    outline-offset: 2px !important;
+    border-radius: 4px;
+  }
+
+  .keyboard-nav-enabled button:focus,
+  .keyboard-nav-enabled [role="button"]:focus,
+  .keyboard-nav-enabled input:focus,
+  .keyboard-nav-enabled textarea:focus,
+  .keyboard-nav-enabled select:focus {
+    /* Enhanced interactive element focus */
+    box-shadow: 0 0 0 3px var(--ring), 0 0 0 6px rgba(var(--ring), 0.3) !important;
+    transform: scale(1.02);
+    transition: all 0.2s ease;
+  }
+
+  .keyboard-nav-enabled [tabindex="0"]:focus,
+  .keyboard-nav-enabled [tabindex="-1"]:focus {
+    /* Focus styles for custom focusable elements */
+    outline: 2px solid var(--ring) !important;
+    outline-offset: 1px !important;
+  }
+
+  /* Enhanced Focus Indicators */
+  .enhanced-focus *:focus-visible {
+    /* More prominent focus indicators */
+    outline: 4px solid var(--ring) !important;
+    outline-offset: 3px !important;
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 6px var(--ring) !important;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+  }
+
+  .enhanced-focus button:focus-visible,
+  .enhanced-focus [role="button"]:focus-visible {
+    /* Enhanced button focus with animation */
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 6px var(--ring), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  .enhanced-focus input:focus-visible,
+  .enhanced-focus textarea:focus-visible,
+  .enhanced-focus select:focus-visible {
+    /* Enhanced form element focus */
+    border-color: var(--ring) !important;
+    box-shadow: 0 0 0 1px var(--ring), 0 0 0 4px rgba(var(--ring), 0.2) !important;
+  }
+
+  /* High Contrast Mode Enhancements */
+  .high-contrast {
+    /* Enhanced contrast for better visibility */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0 0 0);
+    --border: oklch(0.2 0 0);
+    --ring: oklch(0.1 0 0);
+  }
+
+  .high-contrast.dark {
+    --background: oklch(0 0 0);
+    --foreground: oklch(1 0 0);
+    --border: oklch(0.8 0 0);
+    --ring: oklch(0.9 0 0);
+  }
+
+  .high-contrast button,
+  .high-contrast [role="button"] {
+    border: 2px solid var(--foreground) !important;
+  }
+
+  /* Reduced Motion Support Enhancement */
+  .reduce-motion * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reduce-motion *:focus {
+    transition: none !important;
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: calc(var(--base-font-size) * var(--heading-scale, 1.5));
+}
+
+.text-sm {
+  font-size: calc(var(--base-font-size) * 0.875);
+}
+
+.text-xs {
+  font-size: calc(var(--base-font-size) * 0.75);
+}
+
+.text-lg {
+  font-size: calc(var(--base-font-size) * 1.125);
+}
+
+.text-xl {
+  font-size: calc(var(--base-font-size) * 1.25);
+}
+
+.text-2xl {
+  font-size: calc(var(--base-font-size) * 1.5);
+}
