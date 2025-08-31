@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
-import { Clock, Search, TrendingUp, TrendingDown, Calendar, Filter, ArrowUpDown, RefreshCcw } from "lucide-react"
+import { Clock, Search, TrendingUp, TrendingDown, Calendar, Filter, ArrowUpDown, RefreshCcw, Settings } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TransactionDetailsModal } from "./transaction-details-modal"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface TransactionsListProps {
   transactions: Transaction[]
@@ -34,6 +35,8 @@ export function TransactionsList({
   const [sortBy, setSortBy] = useState<"date" | "amount">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  const isMobile = useIsMobile()
+  const [showFilters, setShowFilters] = useState(false)
 
   // Realtime polling (every 20s if fetchTransactions is provided)
   useEffect(() => {
@@ -100,23 +103,36 @@ export function TransactionsList({
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Recent Transactions (Last 7 Days)
-              <span className="text-muted-foreground text-sm">({filteredTransactions.length})</span>
+              Recent Transactions
             </CardTitle>
-            {fetchTransactions && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Refresh transactions"
-                onClick={refreshManually}
-              >
-                <RefreshCcw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {isMobile && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  {showFilters ? "Hide Details" : "View Details"}
+                </Button>
+              )}
+              {fetchTransactions && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Refresh transactions"
+                  onClick={refreshManually}
+                >
+                  <RefreshCcw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-2 mt-3">
+          {showFilters && (
+            <div className="flex flex-col sm:flex-row gap-2 mt-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -166,6 +182,7 @@ export function TransactionsList({
               </Button>
             </div>
           </div>
+          )}
         </CardHeader>
 
         <CardContent>
@@ -206,13 +223,12 @@ export function TransactionsList({
                         <Badge variant="secondary" className="text-xs">
                           {transaction.category}
                         </Badge>
-                        <span>•</span>
-                        <span>{new Date(transaction.date).toLocaleDateString()}</span>
+                        {!isMobile && <><span>•</span><span>{new Date(transaction.date).toLocaleDateString()}</span></>}
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right">
+                  <div className={`text-right ${isMobile ? 'flex flex-col items-end' : ''}`}>
                     <p
                       className={`font-semibold ${transaction.type === "income" ? "text-accent" : "text-red-600"}`}
                     >
@@ -228,6 +244,7 @@ export function TransactionsList({
                         </div>
                       </TimeTooltip>
                     )}
+                    {isMobile && <span className="text-sm text-muted-foreground">{new Date(transaction.date).toLocaleDateString()}</span>}
                   </div>
                 </li>
               ))}

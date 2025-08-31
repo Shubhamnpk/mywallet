@@ -128,11 +128,11 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-        <div>
-          <h2 className="text-2xl font-bold">Smart Budgets</h2>
-          <p className="text-muted-foreground text-sm">Track expenses, stay on target, and manage categories with ease.</p>
-        </div>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Target className="w-5 h-5" />
+          Budgets ({filteredAndSortedBudgets.length})
+        </h3>
         <Button onClick={() => setDialogOpen(true)} className="flex items-center gap-2">
           <PlusCircle className="w-4 h-4" />
           New Budget

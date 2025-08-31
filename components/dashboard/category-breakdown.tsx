@@ -60,30 +60,30 @@ export function CategoryBreakdown() {
           Top Spending Categories
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
         {categoryData.map((item) => (
-          <div key={item.category} className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">{item.category}</span>
-              <span className="text-muted-foreground">
+          <div key={item.category} className="space-y-1 md:space-y-2">
+            <div className="flex items-center justify-between text-xs md:text-sm">
+              <span className="font-medium truncate">{item.category}</span>
+              <span className="text-muted-foreground truncate ml-2">
                 {currencySymbol}
                 {item.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Progress value={item.percentage} className="flex-1" />
-              <span className="text-xs text-muted-foreground w-12 text-right">{item.percentage.toFixed(1)}%</span>
+              <Progress value={item.percentage} className="flex-1 h-1 md:h-2" />
+              <span className="text-xs text-muted-foreground w-10 md:w-12 text-right">{item.percentage.toFixed(1)}%</span>
             </div>
           </div>
         ))}
 
         <div className="pt-2 border-t">
-          <div className="flex items-center justify-between text-sm font-medium">
-            <span className="flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-red-500" />
-              Total Expenses
+          <div className="flex items-center justify-between text-xs md:text-sm font-medium">
+            <span className="flex items-center gap-1 md:gap-2">
+              <TrendingDown className="w-3 h-3 md:w-4 md:h-4 text-red-500" />
+              <span className="truncate">Total Expenses</span>
             </span>
-            <span className="text-red-600">
+            <span className="text-red-600 truncate">
               {currencySymbol}
               {totalExpenses.toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </span>

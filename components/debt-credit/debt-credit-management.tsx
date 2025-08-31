@@ -107,46 +107,57 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <CreditCard className="w-5 h-5" />
+          Debt & Credit ({debtAccounts.length + creditAccounts.length})
+        </h3>
+        <Button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Add Account
+        </Button>
+      </div>
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <TrendingDown className="w-5 h-5 text-red-600" />
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-red-600" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 font-medium">Total Debt</p>
-                <p className="text-lg font-semibold text-red-600">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
+                <p className="text-lg font-semibold text-red-600 truncate">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <CreditCard className="w-5 h-5 text-blue-600" />
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <CreditCard className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 font-medium">Credit Used</p>
-                <p className="text-lg font-semibold text-blue-600">{formatCurrency(totalCreditUsed, userProfile.currency, userProfile.customCurrency)}</p>
+                <p className="text-lg font-semibold text-blue-600 truncate">{formatCurrency(totalCreditUsed, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-2 md:gap-3">
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center ${
                   overallUtilization > 70 ? "bg-red-100" : overallUtilization > 30 ? "bg-yellow-100" : "bg-green-100"
                 }`}
               >
                 <AlertTriangle
-                  className={`w-5 h-5 ${
+                  className={`w-4 h-4 md:w-5 md:h-5 ${
                     overallUtilization > 70
                       ? "text-red-600"
                       : overallUtilization > 30
@@ -155,10 +166,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                   }`}
                 />
               </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Credit Utilization</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 font-medium">Utilization</p>
                 <p
-                  className={`text-lg font-semibold ${
+                  className={`text-lg font-semibold truncate ${
                     overallUtilization > 70
                       ? "text-red-600"
                       : overallUtilization > 30
@@ -176,18 +187,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
       {/* Debt and Credit Management */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5" />
-              Debt & Credit Management
-            </CardTitle>
-            <Button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Account
-            </Button>
-          </div>
-        </CardHeader>
 
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>

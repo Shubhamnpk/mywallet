@@ -147,7 +147,7 @@ export function useWalletData() {
   const handleOnboardingComplete = (profileData: UserProfile) => {
     const completeProfile = {
       ...profileData,
-      securityEnabled: false,
+      securityEnabled: profileData.securityEnabled,
       createdAt: new Date().toISOString(),
     }
 

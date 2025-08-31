@@ -231,7 +231,7 @@ export function FloatingAddButton({
             onTouchMove={handleTouchMove}
             onKeyDown={handleKeyDown}
             className={cn(
-              "fixed h-14 w-14 rounded-full shadow-lg transition-all duration-300 z-50",
+              "fixed h-14 w-14 rounded-full shadow-lg transition-all duration-300 z-[100]",
               "bg-primary hover:bg-primary/90 text-primary-foreground",
               "hover:shadow-xl hover:scale-105 active:scale-95",
               "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -242,8 +242,9 @@ export function FloatingAddButton({
               isPressed && "scale-95 shadow-inner",
               // Haptic feedback visual
               hapticFeedback && "animate-pulse",
-              // Position
+              // Position with mobile gap
               positionClasses[position],
+              isMobile && position === 'bottom-right' && "bottom-20",
               className
             )}
             size="icon"

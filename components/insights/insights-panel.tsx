@@ -71,59 +71,66 @@ export function InsightsPanel({
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <BarChart3 className="w-5 h-5" />
+          Insights
+        </h3>
+      </div>
+
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
         <Card className="border-accent/20 dark:border-accent/30">
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Work Time Earned</p>
-                <p className="text-2xl font-bold text-accent">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Work Time Earned</p>
+                <p className="text-lg md:text-2xl font-bold text-accent truncate">
                   {formatTime(totalWorkTimeEarned)}
                 </p>
-                <p className="text-xs text-accent/80 mt-1">{formatCurrency(totalIncome, userProfile.currency, userProfile.customCurrency)}</p>
+                <p className="text-xs text-accent/80 mt-1 truncate">{formatCurrency(totalIncome, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
-              <div className="h-12 w-12 bg-accent/10 dark:bg-accent/20 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-accent" />
+              <div className="h-8 w-8 md:h-12 md:w-12 bg-accent/10 dark:bg-accent/20 rounded-lg flex items-center justify-center ml-2">
+                <Clock className="w-4 h-4 md:w-6 md:h-6 text-accent" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-red-200 dark:border-red-800">
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Work Time Spent</p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Work Time Spent</p>
+                <p className="text-lg md:text-2xl font-bold text-red-600 dark:text-red-400 truncate">
                   {formatTime(totalWorkTimeSpent)}
                 </p>
-                <p className="text-xs text-red-700 dark:text-red-300 mt-1">{formatCurrency(totalExpenses, userProfile.currency, userProfile.customCurrency)}</p>
+                <p className="text-xs text-red-700 dark:text-red-300 mt-1 truncate">{formatCurrency(totalExpenses, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
-              <div className="h-12 w-12 bg-red-100 dark:bg-red-900/50 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-red-600 dark:text-red-400" />
+              <div className="h-8 w-8 md:h-12 md:w-12 bg-red-100 dark:bg-red-900/50 rounded-lg flex items-center justify-center ml-2">
+                <Clock className="w-4 h-4 md:w-6 md:h-6 text-red-600 dark:text-red-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className={`${netWorth >= 0 ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}`}>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Net Worth</p>
-                <p className={`text-2xl font-bold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Net Worth</p>
+                <p className={`text-lg md:text-2xl font-bold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"} truncate`}>
                   {formatCurrency(Math.abs(netWorth), userProfile.currency, userProfile.customCurrency)}
                 </p>
-                <p className={`text-xs mt-1 ${netWorth >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
+                <p className={`text-xs mt-1 ${netWorth >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"} truncate`}>
                   {formatTime(Math.abs(totalWorkTimeEarned - totalWorkTimeSpent))} time difference
                 </p>
               </div>
-              <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${netWorth >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-red-100 dark:bg-red-900/50'}`}>
+              <div className={`h-8 w-8 md:h-12 md:w-12 rounded-lg flex items-center justify-center ml-2 ${netWorth >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-red-100 dark:bg-red-900/50'}`}>
                 {netWorth >= 0 ? (
-                  <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                  <TrendingUp className="w-4 h-4 md:w-6 md:h-6 text-emerald-600 dark:text-emerald-400" />
                 ) : (
-                  <TrendingDown className="w-6 h-6 text-red-600 dark:text-red-400" />
+                  <TrendingDown className="w-4 h-4 md:w-6 md:h-6 text-red-600 dark:text-red-400" />
                 )}
               </div>
             </div>
@@ -131,19 +138,19 @@ export function InsightsPanel({
         </Card>
 
         <Card className="border-blue-200 dark:border-blue-800">
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Savings Rate</p>
-                <p className={`text-2xl font-bold ${savingsRate >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">Savings Rate</p>
+                <p className={`text-lg md:text-2xl font-bold ${savingsRate >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"} truncate`}>
                   {savingsRate.toFixed(1)}%
                 </p>
-                <p className={`text-xs mt-1 ${savingsRate >= 20 ? "text-emerald-700 dark:text-emerald-300" : savingsRate >= 10 ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"}`}>
+                <p className={`text-xs mt-1 ${savingsRate >= 20 ? "text-emerald-700 dark:text-emerald-300" : savingsRate >= 10 ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"} truncate`}>
                   {savingsRate >= 20 ? "Excellent" : savingsRate >= 10 ? "Good" : savingsRate >= 0 ? "Fair" : "Needs attention"}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center">
-                <Target className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="h-8 w-8 md:h-12 md:w-12 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center ml-2">
+                <Target className="w-4 h-4 md:w-6 md:h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -204,7 +211,7 @@ export function InsightsPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-2 md:gap-4">
             <div className="bg-accent/5 dark:bg-accent/10 border border-accent/20 dark:border-accent/30 p-4 rounded-lg">
               <h4 className="font-semibold text-accent mb-2">Time Balance</h4>
               <p className="text-sm text-accent/80">
@@ -294,7 +301,7 @@ export function InsightsPanel({
       </Card>
 
       {/* Creative Financial Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Time-Money Efficiency Score */}
         <Card>
           <CardHeader>

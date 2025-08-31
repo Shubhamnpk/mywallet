@@ -1,5 +1,6 @@
 "use client"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Wallet, Settings, Menu } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
@@ -12,12 +13,23 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
 
+  const getInitials = () => {
+    return userProfile.name
+      ? userProfile.name
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
+      : "U"
+  }
+
   return (
     <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Wallet className="w-5 h-5 text-primary-foreground" />
+          <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
+            <img src="/image.png" alt="MyWallet Logo" width={34} height={34} />
           </div>
           <div>
             <h1 className="text-xl font-bold">MyWallet</h1>
@@ -30,19 +42,41 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             <ThemeToggle />
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden sm:flex hover:bg-primary"
+          <button
+            className="hidden sm:flex w-10 h-10 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
             onClick={() => router.push("/settings")}
             aria-label="Open settings"
+            title="Settings & Profile"
           >
-            <Settings className="w-4 h-4" />
-          </Button>
+            <Avatar className="w-full h-full">
+              <AvatarImage
+                src={userProfile.avatar || undefined}
+                className="object-cover"
+              />
+              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold text-base">
+                {getInitials()}
+              </AvatarFallback>
+            </Avatar>
+          </button>
 
-          <Button variant="ghost" size="icon" className="sm:hidden">
-            <Menu className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2 sm:hidden">
+            <button
+              className="w-9 h-9 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
+              onClick={() => router.push("/settings")}
+              aria-label="Open settings"
+              title="Settings & Profile"
+            >
+              <Avatar className="w-full h-full">
+                <AvatarImage
+                  src={userProfile.avatar || undefined}
+                  className="object-cover"
+                />
+                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold text-sm">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </div>
         </div>
       </div>
     </header>

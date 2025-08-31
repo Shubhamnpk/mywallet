@@ -15,6 +15,8 @@ export interface UserProfile {
     symbol: string
     name: string
   }
+  // Profile avatar/image
+  avatar?: string // Base64 encoded image or URL
 }
 
 export interface Transaction {

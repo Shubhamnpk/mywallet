@@ -63,28 +63,24 @@ export function MainTabs({
       value: "transactions",
       label: "Transactions",
       icon: Receipt,
-      badge: recentTransactions > 0 ? recentTransactions : null,
       description: "Track your income and expenses",
     },
     {
       value: "budgets",
       label: "Budgets",
       icon: PiggyBank,
-      badge: activeBudgets > 0 ? activeBudgets : null,
       description: "Manage your spending limits",
     },
     {
       value: "goals",
       label: "Goals",
       icon: Target,
-      badge: activeGoals > 0 ? activeGoals : null,
       description: "Save for your dreams",
     },
     {
       value: "categories",
       label: "Categories",
       icon: FolderOpen,
-      badge: customCategories > 0 ? customCategories : null,
       description: "Organize your spending",
     },
     {
@@ -98,13 +94,13 @@ export function MainTabs({
       value: "insights",
       label: "Insights",
       icon: TrendingUp,
-      badge: hasInsights ? "NEW" : null,
+      badge: null,
       description: "Financial analytics",
     },
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-6">
       <Tabs defaultValue="transactions" className="w-full">
         {/* Desktop Tabs */}
         <div className="hidden lg:block">
@@ -120,7 +116,6 @@ export function MainTabs({
                   <span className="font-medium">{tab.label}</span>
                   {tab.badge && (
                     <Badge variant="secondary" className="text-xs h-5 px-1.5">
-                      {tab.badge}
                     </Badge>
                   )}
                 </div>
@@ -130,27 +125,25 @@ export function MainTabs({
           </TabsList>
         </div>
 
-        {/* Mobile/Tablet Tabs */}
+        {/* Mobile Bottom Navigation */}
         <div className="block lg:hidden">
-          <ScrollArea className="w-full whitespace-nowrap">
-            <TabsList className="inline-flex h-auto p-1 bg-muted/50 min-w-full">
-              {tabs.map((tab) => (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className="flex items-center gap-2 p-3 data-[state=active]:bg-background data-[state=active]:shadow-sm whitespace-nowrap"
-                >
-                  <tab.icon className="w-4 h-4" />
-                  <span className="font-medium text-sm">{tab.label}</span>
+          <TabsList className="fixed bottom-0 left-0 right-0 w-full bg-background/95 backdrop-blur-md border-t border-border shadow-lg z-50 flex justify-around items-center py-5 px-2 h-20">
+            {tabs.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="flex flex-col items-center justify-center p-3 text-xs flex-1 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg transition-all duration-200 ease-in-out"
+              >
+                <div className="relative">
+                  <tab.icon className="w-6 h-6" />
                   {tab.badge && (
-                    <Badge variant="secondary" className="text-xs h-4 px-1">
-                      {tab.badge}
+                    <Badge variant="secondary" className="text-xs h-4 px-1 absolute -top-2 -right-2 bg-red-500 text-white">
                     </Badge>
                   )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </ScrollArea>
+                </div>
+              </TabsTrigger>
+            ))}
+          </TabsList>
         </div>
 
         {/* Tab Contents */}
@@ -180,20 +173,6 @@ export function MainTabs({
           </TabsContent>
 
           <TabsContent value="categories" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">Categories Management</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <FolderOpen className="w-3 h-3" />
-                  Organization
-                </Badge>
-                {customCategories > 0 && (
-                  <Badge className="bg-blue-600 hover:bg-blue-700">{customCategories} Custom</Badge>
-                )}
-              </div>
-            </div>
             <CategoriesManagement
               categories={categories}
               transactions={transactions}
@@ -206,31 +185,10 @@ export function MainTabs({
           </TabsContent>
 
           <TabsContent value="debt-credit" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">Debt & Credit Management</h2>
-              </div>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <CreditCard className="w-3 h-3" />
-                Management Tools
-              </Badge>
-            </div>
             <DebtCreditManagement userProfile={userProfile} />
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">Financial Insights</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3" />
-                  Analytics
-                </Badge>
-                {hasInsights && <Badge className="bg-accent hover:bg-accent/90 text-accent-foreground">Data Available</Badge>}
-              </div>
-            </div>
             <InsightsPanel
               transactions={transactions}
               userProfile={userProfile}

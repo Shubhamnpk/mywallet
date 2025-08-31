@@ -9,7 +9,9 @@ import { WalletDataProvider } from "@/contexts/wallet-data-context"
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
   description: "Track your finances and understand spending in terms of time invested",
-  generator: "v0.app",
+  icons: {
+    icon: '/image.png',
+  },
 }
 
 export default function RootLayout({

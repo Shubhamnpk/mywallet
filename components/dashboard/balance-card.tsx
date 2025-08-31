@@ -211,18 +211,18 @@ export function CombinedBalanceCard() {
         </CardContent>
       </Card>
 
-      {/* Income & Expenses Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Income & Expenses Row */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4">
         <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
-                <TrendingUp className="w-6 h-6 text-white" />
+          <CardContent className="p-3 sm:p-5">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
+                <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Income</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Income</p>
                 <TimeTooltip amount={totalIncome}>
-                  <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                  <p className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400 truncate">
                     {showBalance ? formatCurrency(totalIncome) : "••••••"}
                   </p>
                 </TimeTooltip>
@@ -232,15 +232,15 @@ export function CombinedBalanceCard() {
         </Card>
 
         <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">
-                <TrendingDown className="w-6 h-6 text-white" />
+          <CardContent className="p-3 sm:p-5">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">
+                <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Expenses</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Expenses</p>
                 <TimeTooltip amount={totalExpenses}>
-                  <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                  <p className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400 truncate">
                     {showBalance ? formatCurrency(totalExpenses) : "••••••"}
                   </p>
                 </TimeTooltip>
@@ -252,17 +252,17 @@ export function CombinedBalanceCard() {
 
       {/* Debt & Credit Grid */}
       {(totalDebt > 0 || totalCreditUsed > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 md:gap-4">
           {totalDebt > 0 && (
             <Card className="group hover:shadow-md transition-all duration-200 border-orange-200/50 dark:border-orange-800/50">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
-                    <AlertTriangle className="w-6 h-6 text-white" />
+              <CardContent className="p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-4">
+                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
+                    <AlertTriangle className="w-4 h-4 md:w-6 md:h-6 text-white" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Debt</p>
-                    <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Debt</p>
+                    <p className="text-lg md:text-xl font-bold text-orange-600 dark:text-orange-400 truncate">
                       {showBalance ? formatCurrency(totalDebt) : "••••••"}
                     </p>
                   </div>
@@ -273,37 +273,37 @@ export function CombinedBalanceCard() {
 
           {totalCreditUsed > 0 && (
             <Card className="group hover:shadow-md transition-all duration-200 border-blue-200/50 dark:border-blue-800/50">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-                    <CreditCard className="w-6 h-6 text-white" />
+              <CardContent className="p-3 md:p-5">
+                <div className="flex items-center gap-2 md:gap-4">
+                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                    <CreditCard className="w-4 h-4 md:w-6 md:h-6 text-white" />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Credit Used</p>
-                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    <p className="text-lg md:text-xl font-bold text-blue-600 dark:text-blue-400 truncate">
                       {showBalance ? formatCurrency(totalCreditUsed) : "••••••"}
                     </p>
                     {showBalance && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-muted-foreground">
-                          Available: {formatCurrency(availableCredit)}
+                      <div className="flex items-center gap-1 md:gap-2 mt-1">
+                        <p className="text-xs text-muted-foreground truncate">
+                          Avail: {formatCurrency(availableCredit)}
                         </p>
                         <span className={`text-xs font-medium ${getCreditUtilizationColor()}`}>
-                          ({creditUtilization.toFixed(0)}% used)
+                          ({creditUtilization.toFixed(0)}%)
                         </span>
                       </div>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Credit Utilization Bar */}
                 {showBalance && totalCreditLimit > 0 && (
-                  <div className="mt-3">
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div className="mt-2 md:mt-3">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 md:h-2">
                       <div
-                        className={`h-2 rounded-full transition-all duration-500 ${
-                          creditUtilization >= 90 
-                            ? "bg-gradient-to-r from-red-500 to-red-600" 
+                        className={`h-1 md:h-2 rounded-full transition-all duration-500 ${
+                          creditUtilization >= 90
+                            ? "bg-gradient-to-r from-red-500 to-red-600"
                             : creditUtilization >= 70
                             ? "bg-gradient-to-r from-amber-500 to-orange-600"
                             : creditUtilization >= 30

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -22,13 +22,20 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
   const { userProfile, updateUserProfile } = useWalletData()
   const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
-  const [pinEnabled, setPinEnabled] = useState(!!userProfile?.pin)
+  const [pinEnabled, setPinEnabled] = useState(!!userProfile?.securityEnabled && !!userProfile?.pin)
   const [showPinDialog, setShowPinDialog] = useState(false)
   const [currentPin, setCurrentPin] = useState("")
   const [newPin, setNewPin] = useState("")
   const [confirmPin, setConfirmPin] = useState("")
   const [step, setStep] = useState<"current" | "new" | "confirm">("current")
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Update pinEnabled state when userProfile changes
+  useEffect(() => {
+    if (userProfile) {
+      setPinEnabled(!!userProfile.securityEnabled && !!userProfile.pin)
+    }
+  }, [userProfile])
 
   if (!userProfile) {
     return (

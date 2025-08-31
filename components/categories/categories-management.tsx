@@ -203,7 +203,14 @@ export function CategoriesManagement({
     <div className="space-y-6">
       {/* Header Actions */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <BarChart3 className="w-5 h-5" />
+          Category 
+        </h3>
+      </div>
         <div className="flex flex-col sm:flex-row gap-3 flex-1">
+          
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -305,37 +312,37 @@ export function CategoriesManagement({
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-blue-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Enabled Categories</p>
-                <p className="text-xl font-bold">{categories.filter(c => !disabledCategories.has(c.id)).length}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground">Enabled</p>
+                <p className="text-lg md:text-xl font-bold">{categories.filter(c => !disabledCategories.has(c.id)).length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-accent" />
-              <div>
-                <p className="text-sm text-muted-foreground">Active Categories</p>
-                <p className="text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground">Active</p>
+                <p className="text-lg md:text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-amber-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Top Category</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground">Top Category</p>
                 <p className="text-sm font-bold truncate">
                   {categoryStats.length > 0
                     ? categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]?.name
@@ -347,12 +354,12 @@ export function CategoriesManagement({
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-purple-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">This Month</p>
-                <p className="text-xl font-bold">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground">This Month</p>
+                <p className="text-lg md:text-xl font-bold truncate">
                   {currencySymbol}
                   {categoryStats.reduce((sum, c) => sum + c.monthlyAverage, 0).toFixed(0)}
                 </p>

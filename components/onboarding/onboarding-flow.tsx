@@ -1,28 +1,34 @@
 
-import { useState } from 'react';
+"use client"
+
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
-import { 
-  Wallet, 
-  Clock, 
-  TrendingUp, 
-  Target, 
-  Shield, 
-  Lock, 
-  BarChart3, 
-  PiggyBank, 
-  ArrowRight, 
+import {
+  Wallet,
+  Clock,
+  TrendingUp,
+  Target,
+  Shield,
+  Lock,
+  BarChart3,
+  PiggyBank,
+  ArrowRight,
   CheckCircle,
   ArrowLeft,
   User,
   DollarSign,
   Calendar,
-  Sparkles
+  Sparkles,
+  Camera,
+  ImageIcon,
+  X
 } from 'lucide-react';
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
@@ -35,37 +41,44 @@ interface OnboardingProps {
 }
 
 const steps = [
-  { 
-    id: 1, 
-    title: "Welcome", 
+  {
+    id: 1,
+    title: "Welcome",
     subtitle: "Let's get started",
     icon: User,
     description: "Tell us about yourself"
   },
-  { 
-    id: 2, 
-    title: "Earnings", 
+  {
+    id: 2,
+    title: "Profile Picture",
+    subtitle: "Personalize your account",
+    icon: User,
+    description: "Add a profile picture or use your initials"
+  },
+  {
+    id: 3,
+    title: "Earnings",
     subtitle: "Your income details",
     icon: DollarSign,
     description: "Help us calculate your time value"
   },
-  { 
-    id: 3, 
-    title: "Schedule", 
+  {
+    id: 4,
+    title: "Schedule",
     subtitle: "Work preferences",
     icon: Calendar,
     description: "Fine-tune your working hours"
   },
-  { 
-    id: 4, 
-    title: "Security", 
+  {
+    id: 5,
+    title: "Security",
     subtitle: "Protect your data",
     icon: Shield,
     description: "Keep your information safe"
   },
-  { 
-    id: 5, 
-    title: "Complete", 
+  {
+    id: 6,
+    title: "Complete",
     subtitle: "You're all set!",
     icon: Sparkles,
     description: "Ready to start your journey"
@@ -108,6 +121,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    avatar: null as string | null,
     monthlyEarning: '',
     currency: 'USD',
     workingHoursPerDay: '8',
@@ -117,8 +131,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     confirmPin: '',
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
   const currentStep = steps.find(s => s.id === step) || steps[0];
-  const maxStep = formData.enableSecurity ? 5 : 4;
+  const maxStep = formData.enableSecurity ? 6 : 5;
 
   const validateStep = () => {
     switch (step) {
@@ -129,12 +146,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         }
         break;
       case 2:
+        // Profile picture step - no validation required
+        break;
+      case 3:
         if (!formData.monthlyEarning || parseFloat(formData.monthlyEarning) <= 0) {
           toast.error('Please enter a valid monthly earning');
           return false;
         }
         break;
-      case 3:
+      case 4:
         const hours = parseFloat(formData.workingHoursPerDay);
         const days = parseFloat(formData.workingDaysPerMonth);
         if (hours <= 0 || hours > 24 || days <= 0 || days > 31) {
@@ -142,7 +162,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           return false;
         }
         break;
-      case 4:
+      case 5:
         if (formData.enableSecurity) {
           if (formData.pin.length !== 6) {
             toast.error('Please enter a 6-digit PIN');
@@ -160,37 +180,73 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const handleNext = () => {
     if (!validateStep()) return;
-    
-    if (step === 3 && !formData.enableSecurity) {
-      setStep(5); // Skip PIN setup
+
+    if (step === 4 && !formData.enableSecurity) {
+      setStep(6); // Skip PIN setup
     } else {
       setStep(Math.min(step + 1, maxStep));
     }
   };
 
   const handleBack = () => {
-    if (step === 5 && !formData.enableSecurity) {
-      setStep(3); // Skip PIN setup
+    if (step === 6 && !formData.enableSecurity) {
+      setStep(4); // Skip PIN setup
     } else {
       setStep(Math.max(step - 1, 1));
     }
   };
 
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file.')
+        return
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Please select an image smaller than 5MB.')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const result = e.target?.result as string
+        setFormData({ ...formData, avatar: result })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleFileUpload = () => {
+    if (fileInputRef.current) fileInputRef.current.click()
+  }
+
+  const handleCameraCapture = () => {
+    if (cameraInputRef.current) cameraInputRef.current.click()
+  }
+
+  const handleRemoveAvatar = () => {
+    setFormData({ ...formData, avatar: null })
+  }
+
+  const getInitials = () => {
+    return formData.name
+      ? formData.name
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
+      : "U"
+  }
+
   const handleComplete = async () => {
     setIsLoading(true);
-    
-    try {
-      const userProfile: UserProfile = {
-        name: formData.name.trim(),
-        monthlyEarning: parseFloat(formData.monthlyEarning),
-        currency: formData.currency,
-        workingHoursPerDay: parseFloat(formData.workingHoursPerDay),
-        workingDaysPerMonth: parseFloat(formData.workingDaysPerMonth),
-        createdAt: new Date().toISOString(),
-        hourlyRate: 0,
-        securityEnabled: formData.enableSecurity
-      };
 
+    try {
       // Set up PIN if security is enabled
       if (formData.enableSecurity && formData.pin) {
         const pinSetupSuccess = await SecurePinManager.setupPin(formData.pin);
@@ -199,6 +255,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           return;
         }
       }
+
+      // Get PIN data from localStorage if security is enabled
+      let pinData = {};
+      if (formData.enableSecurity && formData.pin) {
+        const pinHash = localStorage.getItem('wallet_pin_hash');
+        const pinSalt = localStorage.getItem('wallet_pin_salt');
+        if (pinHash && pinSalt) {
+          pinData = {
+            pin: pinHash,
+            pinSalt: pinSalt
+          };
+        }
+      }
+
+      const userProfile: UserProfile = {
+        name: formData.name.trim(),
+        monthlyEarning: parseFloat(formData.monthlyEarning),
+        currency: formData.currency,
+        workingHoursPerDay: parseFloat(formData.workingHoursPerDay),
+        workingDaysPerMonth: parseFloat(formData.workingDaysPerMonth),
+        createdAt: new Date().toISOString(),
+        hourlyRate: 0,
+        securityEnabled: formData.enableSecurity,
+        avatar: formData.avatar || undefined,
+        ...pinData
+      };
 
       onComplete(userProfile);
       toast.success(`Welcome, ${userProfile.name}! Your financial journey begins now.`);
@@ -255,7 +337,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     className="h-10"
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-3">
                   {features.slice(0, 2).map((feature, index) => (
                     <div key={index} className="p-3 rounded-lg bg-background-secondary border">
@@ -268,8 +350,108 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 2 - Earnings */}
+            {/* Step 2 - Profile Picture */}
             {step === 2 && (
+              <div className="space-y-6">
+
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative group">
+                    {/* Hidden file inputs */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                      aria-label="Upload avatar image"
+                    />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                      aria-label="Take photo"
+                    />
+
+                    {/* Avatar with hover overlay */}
+                    <div
+                      className="relative cursor-pointer"
+                      onClick={() => !formData.avatar && handleFileUpload()}
+                    >
+                      <Avatar className="w-32 h-32 ring-4 ring-background shadow-lg transition-all duration-300 group-hover:ring-primary/20 group-hover:shadow-xl">
+                        <AvatarImage
+                          src={formData.avatar || undefined}
+                          className="object-cover"
+                        />
+                        <AvatarFallback className="bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-bold text-3xl">
+                          {getInitials()}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      {/* Hover overlay with options */}
+                      <div className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                        <div className="flex gap-2">
+                          {!formData.avatar ? (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFileUpload();
+                                }}
+                                className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                                title="Upload from gallery"
+                              >
+                                <ImageIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCameraCapture();
+                                }}
+                                className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                                title="Take photo"
+                              >
+                                <Camera className="w-5 h-5" />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveAvatar();
+                              }}
+                              className="w-10 h-10 bg-destructive/80 rounded-full flex items-center justify-center text-white hover:bg-destructive transition-colors"
+                              title="Remove avatar"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {formData.avatar
+                        ? "✨ Profile picture uploaded! Hover to remove"
+                        : "📸 Click the avatar or hover for options"
+                      }
+                    </p>
+                    {!formData.avatar && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Or continue with beautiful auto-generated initials
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 - Earnings */}
+            {step === 3 && (
               <div className="space-y-4">
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -309,8 +491,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 3 - Schedule */}
-            {step === 3 && (
+            {/* Step 4 - Schedule */}
+            {step === 4 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -350,8 +532,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 4 - Security */}
-            {step === 4 && (
+            {/* Step 5 - Security */}
+            {step === 5 && (
               <div className="space-y-4">
                 <div className="text-center space-y-2">
                   <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
@@ -428,8 +610,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 5 - Complete */}
-            {step === 5 && (
+            {/* Step 6 - Complete */}
+            {step === 6 && (
               <div className="space-y-4">
                 <div className="text-center space-y-3">
                   <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl">
