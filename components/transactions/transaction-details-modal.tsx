@@ -27,7 +27,7 @@ export function TransactionDetailsModal({
 }: TransactionDetailsModalProps) {
   const getTimeEquivalentDisplay = (amount: number) => {
     const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
-    return breakdown ? breakdown.formatted.short : ""
+    return breakdown ? breakdown.formatted.userFriendly : ""
   }
 
   const handleDelete = () => {

@@ -46,11 +46,11 @@ export function TimeTooltip({ amount, children }: TimeTooltipProps) {
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                <span>{breakdown.formatted.short}</span>
+                <span>{breakdown.formatted.userFriendly}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
-                <span>{breakdown.days.toFixed(1)} days</span>
+                <span>{breakdown.days.toFixed(1)} work days</span>
               </div>
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3" />

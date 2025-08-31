@@ -19,6 +19,7 @@ import {
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Upload, Trash2, Database, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { DeleteDataDialog } from "./delete-data-dialog"
 
 export function DataSettings() {
   const { userProfile, transactions, budgets, goals, clearAllData, importData } = useWalletData()
@@ -215,32 +216,18 @@ export function DataSettings() {
                 Permanently delete all transactions, budgets, goals, and settings
               </p>
             </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
+            <DeleteDataDialog
+              trigger={
                 <Button variant="destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Clear All
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all your wallet data including
-                    transactions, budgets, goals, and settings. Consider exporting your data first.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleClearAllData}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Delete Everything
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              }
+              title="Clear All Data"
+              description="This will permanently delete all your wallet data including transactions, budgets, goals, and settings. Your PIN and security data will also be completely removed."
+              onConfirm={handleClearAllData}
+              type="data"
+            />
           </div>
         </CardContent>
       </Card>

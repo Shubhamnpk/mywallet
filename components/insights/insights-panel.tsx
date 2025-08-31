@@ -3,9 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown, Clock, Download, PieChart, BarChart3, Target } from "lucide-react"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 
 interface InsightsPanelProps {
   transactions: Transaction[]
@@ -25,12 +27,19 @@ export function InsightsPanel({
   const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
   const netWorth = totalIncome - totalExpenses
 
+  // Use the same calculation method as balance card for consistency
+  const calculateTimeFromAmount = (amount: number) => {
+    if (!userProfile || !amount) return 0
+    const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
+    return (amount / hourlyRate) * 60 // Convert hours to minutes
+  }
+
   const totalWorkTimeEarned = transactions
     .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + (t.timeEquivalent || 0), 0)
+    .reduce((sum, t) => sum + calculateTimeFromAmount(t.amount), 0)
   const totalWorkTimeSpent = transactions
     .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + (t.timeEquivalent || 0), 0)
+    .reduce((sum, t) => sum + calculateTimeFromAmount(t.amount), 0)
 
   // Category breakdown
   const expensesByCategory = transactions
@@ -48,12 +57,14 @@ export function InsightsPanel({
     .slice(0, 5)
 
   const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    if (hours > 0) {
-      return `${hours}h ${mins}m`
-    }
-    return `${mins}m`
+    if (!minutes || minutes < 0 || !userProfile) return "0m"
+
+    // Calculate equivalent currency amount using the same method as balance card
+    const hours = minutes / 60
+    const equivalentAmount = hours * (userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay))
+
+    const breakdown = getTimeEquivalentBreakdown(equivalentAmount, userProfile)
+    return breakdown ? breakdown.formatted.userFriendly : "0m"
   }
 
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0
@@ -160,7 +171,7 @@ export function InsightsPanel({
             <div className="space-y-4">
               {topCategories.map(([category, amount]) => {
                 const percentage = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0
-                const timeEquivalent = calculateTimeEquivalent(amount)
+                const timeEquivalent = calculateTimeFromAmount(amount)
 
                 return (
                   <div key={category} className="space-y-2">
@@ -200,26 +211,31 @@ export function InsightsPanel({
                 You've earned {formatTime(totalWorkTimeEarned)} and spent {formatTime(totalWorkTimeSpent)} worth of work time.
                 {totalWorkTimeEarned > totalWorkTimeSpent
                   ? ` You're saving ${formatTime(totalWorkTimeEarned - totalWorkTimeSpent)} of work time!`
-                  : ` You're spending ${formatTime(totalWorkTimeSpent - totalWorkTimeEarned)} more than you earn.`}
+                  : totalWorkTimeEarned < totalWorkTimeSpent
+                  ? ` You're spending ${formatTime(totalWorkTimeSpent - totalWorkTimeEarned)} more than you earn.`
+                  : ` Your time investment is perfectly balanced.`}
               </p>
             </div>
 
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
               <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-2">Hourly Rate Impact</h4>
-                <p className="text-sm text-blue-600 dark:text-blue-400">
-                At {formatCurrency(userProfile.hourlyRate, userProfile.currency, userProfile.customCurrency)}/hour, every {formatCurrency(1, userProfile.currency, userProfile.customCurrency)} you spend equals {Math.round(60 / userProfile.hourlyRate)} minutes of work.
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                At {formatCurrency(userProfile.hourlyRate || 0, userProfile.currency, userProfile.customCurrency)}/hour, every {formatCurrency(1, userProfile.currency, userProfile.customCurrency)} you spend equals {userProfile.hourlyRate ? Math.round(60 / userProfile.hourlyRate) : 0} minutes of work.
               </p>
             </div>
           </div>
 
-          {/* Financial Health Summary */}
+          {/* Enhanced Financial Health Summary */}
           <div className="bg-muted/50 border p-4 rounded-lg">
-            <h4 className="font-semibold mb-2">Financial Health Summary</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <h4 className="font-semibold mb-3">Financial Health Summary</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               <div className="text-center">
                 <p className="text-muted-foreground">Income vs Expenses</p>
                 <p className={`font-semibold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                   {netWorth >= 0 ? "Positive" : "Negative"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatCurrency(Math.abs(netWorth), userProfile.currency, userProfile.customCurrency)}
                 </p>
               </div>
               <div className="text-center">
@@ -227,15 +243,200 @@ export function InsightsPanel({
                 <p className={`font-semibold ${totalWorkTimeEarned >= totalWorkTimeSpent ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                   {totalWorkTimeEarned >= totalWorkTimeSpent ? "Efficient" : "Overspending"}
                 </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {totalWorkTimeEarned > 0 ? `${((totalWorkTimeEarned - totalWorkTimeSpent) / totalWorkTimeEarned * 100).toFixed(1)}%` : "0%"} efficiency
+                </p>
               </div>
               <div className="text-center">
                 <p className="text-muted-foreground">Savings Goal</p>
                 <p className={`font-semibold ${savingsRate >= 20 ? "text-emerald-600 dark:text-emerald-400" : savingsRate >= 10 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"}`}>
                   {savingsRate >= 20 ? "Excellent" : savingsRate >= 10 ? "On Track" : "Needs Work"}
                 </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {savingsRate.toFixed(1)}% rate
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Time Value</p>
+                <p className="font-semibold text-blue-600 dark:text-blue-400">
+                  {formatCurrency(userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay), userProfile.currency, userProfile.customCurrency)}/hr
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your hourly rate
+                </p>
               </div>
             </div>
           </div>
+
+          {/* Time Investment Analysis */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+            <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-3">Time Investment Analysis</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-blue-600 dark:text-blue-400 mb-1">Daily Time Investment</p>
+                <p className="font-semibold text-lg">
+                  {formatTime(totalWorkTimeSpent / Math.max(1, Math.ceil((new Date().getTime() - new Date(userProfile.createdAt).getTime()) / (1000 * 60 * 60 * 24))))}
+                </p>
+                <p className="text-xs text-blue-500 dark:text-blue-400">Average per day</p>
+              </div>
+              <div>
+                <p className="text-blue-600 dark:text-blue-400 mb-1">Most Time-Intensive Category</p>
+                <p className="font-semibold text-lg">
+                  {topCategories.length > 0 ? topCategories[0][0] : "None"}
+                </p>
+                <p className="text-xs text-blue-500 dark:text-blue-400">
+                  {topCategories.length > 0 ? formatTime(calculateTimeFromAmount(topCategories[0][1])) : "No data"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Creative Financial Metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Time-Money Efficiency Score */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Time-Money Efficiency
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-primary mb-2">
+                  {totalWorkTimeEarned > 0 ? ((totalWorkTimeEarned - totalWorkTimeSpent) / totalWorkTimeEarned * 100).toFixed(1) : 0}%
+                </div>
+                <p className="text-sm text-muted-foreground">Efficiency Score</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Time Earned</span>
+                  <span className="font-medium text-green-600">{formatTime(totalWorkTimeEarned)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Time Spent</span>
+                  <span className="font-medium text-red-600">{formatTime(totalWorkTimeSpent)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold">
+                  <span>Net Time Value</span>
+                  <span className={totalWorkTimeEarned - totalWorkTimeSpent >= 0 ? "text-green-600" : "text-red-600"}>
+                    {formatTime(Math.abs(totalWorkTimeEarned - totalWorkTimeSpent))}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Future Value Projection */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Future Value Projection
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600 mb-1">
+                  {formatCurrency(netWorth * 1.05, userProfile.currency, userProfile.customCurrency)}
+                </div>
+                <p className="text-sm text-muted-foreground">Projected in 1 year (5% growth)</p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Current Net Worth</span>
+                  <span className="font-medium">{formatCurrency(netWorth, userProfile.currency, userProfile.customCurrency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Monthly Savings</span>
+                  <span className="font-medium text-green-600">
+                    {formatCurrency(totalIncome * (savingsRate / 100), userProfile.currency, userProfile.customCurrency)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Time Saved Monthly</span>
+                  <span className="font-medium text-blue-600">
+                    {formatTime((totalIncome - totalExpenses) / (userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)) * 60)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Category Time-Value Analysis */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5" />
+            Category Time-Value Analysis
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {topCategories.length > 0 ? (
+            <div className="space-y-4">
+              {topCategories.slice(0, 5).map(([category, amount], index) => {
+                const timeValue = calculateTimeFromAmount(amount)
+                const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
+                const timeCostPerHour = (amount / (timeValue / 60)) // Cost per hour of time spent
+
+                return (
+                  <div key={category} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{category}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          #{index + 1}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {formatCurrency(amount, userProfile.currency, userProfile.customCurrency)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="font-semibold text-lg">{formatTime(timeValue)}</div>
+                        <div className="text-muted-foreground">Work Time</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-lg text-blue-600">
+                          {formatCurrency(timeCostPerHour, userProfile.currency, userProfile.customCurrency)}
+                        </div>
+                        <div className="text-muted-foreground">Cost/Hour</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`font-semibold text-lg ${
+                          timeCostPerHour > hourlyRate ? "text-red-600" :
+                          timeCostPerHour > hourlyRate * 0.8 ? "text-amber-600" :
+                          "text-green-600"
+                        }`}>
+                          {timeCostPerHour > hourlyRate ? "High" :
+                           timeCostPerHour > hourlyRate * 0.8 ? "Fair" :
+                           "Good"}
+                        </div>
+                        <div className="text-muted-foreground">Value</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center text-muted-foreground py-8">
+              <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No category data available</p>
+              <p className="text-sm">Add expenses to see time-value analysis</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

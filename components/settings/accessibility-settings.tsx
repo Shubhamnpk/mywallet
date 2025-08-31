@@ -55,8 +55,26 @@ export function AccessibilitySettings() {
   const [selectedSound, setSelectedSound] = useState("gentle-chime")
   const [customSoundUrl, setCustomSoundUrl] = useState("")
 
+  // Per-activity sound settings
+  const [transactionSuccessEnabled, setTransactionSuccessEnabled] = useState(true)
+  const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(false)
+  const [pinSuccessEnabled, setPinSuccessEnabled] = useState(true)
+  const [pinFailedEnabled, setPinFailedEnabled] = useState(false)
+  const [transactionSuccessSelectedSound, setTransactionSuccessSelectedSound] = useState("success-tone")
+  const [transactionFailedSelectedSound, setTransactionFailedSelectedSound] = useState("notification")
+  const [pinSuccessSelectedSound, setPinSuccessSelectedSound] = useState("success-tone")
+  const [pinFailedSelectedSound, setPinFailedSelectedSound] = useState("notification")
+  const [transactionSuccessCustomUrl, setTransactionSuccessCustomUrl] = useState("")
+  const [transactionFailedCustomUrl, setTransactionFailedCustomUrl] = useState("")
+  const [pinSuccessCustomUrl, setPinSuccessCustomUrl] = useState("")
+  const [pinFailedCustomUrl, setPinFailedCustomUrl] = useState("")
+
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const transactionSuccessFileInputRef = useRef<HTMLInputElement>(null)
+  const transactionFailedFileInputRef = useRef<HTMLInputElement>(null)
+  const pinSuccessFileInputRef = useRef<HTMLInputElement>(null)
+  const pinFailedFileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -70,6 +88,20 @@ export function AccessibilitySettings() {
     const savedSelectedSound = localStorage.getItem("wallet_selected_sound") || "gentle-chime"
     const savedCustomSoundUrl = localStorage.getItem("wallet_custom_sound_url") || ""
 
+    // Load per-activity settings with defaults
+    const savedTransactionSuccessEnabled = localStorage.getItem("wallet_transaction_success_enabled")
+    const savedTransactionFailedEnabled = localStorage.getItem("wallet_transaction_failed_enabled")
+    const savedPinSuccessEnabled = localStorage.getItem("wallet_pin_success_enabled")
+    const savedPinFailedEnabled = localStorage.getItem("wallet_pin_failed_enabled")
+    const savedTransactionSuccessSelectedSound = localStorage.getItem("wallet_transaction_success_selected_sound") || "success-tone"
+    const savedTransactionFailedSelectedSound = localStorage.getItem("wallet_transaction_failed_selected_sound") || "notification"
+    const savedPinSuccessSelectedSound = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
+    const savedPinFailedSelectedSound = localStorage.getItem("wallet_pin_failed_selected_sound") || "notification"
+    const savedTransactionSuccessCustomUrl = localStorage.getItem("wallet_transaction_success_custom_url") || ""
+    const savedTransactionFailedCustomUrl = localStorage.getItem("wallet_transaction_failed_custom_url") || ""
+    const savedPinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
+    const savedPinFailedCustomUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
+
     setScreenReader(savedScreenReader)
     setKeyboardNav(savedKeyboardNav)
     setFontSize([savedFontSize])
@@ -78,6 +110,19 @@ export function AccessibilitySettings() {
     setTooltips(savedTooltips)
     setSelectedSound(savedSelectedSound)
     setCustomSoundUrl(savedCustomSoundUrl)
+
+    setTransactionSuccessEnabled(savedTransactionSuccessEnabled === null ? true : savedTransactionSuccessEnabled === "true")
+    setTransactionFailedEnabled(savedTransactionFailedEnabled === null ? false : savedTransactionFailedEnabled === "true")
+    setPinSuccessEnabled(savedPinSuccessEnabled === null ? true : savedPinSuccessEnabled === "true")
+    setPinFailedEnabled(savedPinFailedEnabled === null ? false : savedPinFailedEnabled === "true")
+    setTransactionSuccessSelectedSound(savedTransactionSuccessSelectedSound)
+    setTransactionFailedSelectedSound(savedTransactionFailedSelectedSound)
+    setPinSuccessSelectedSound(savedPinSuccessSelectedSound)
+    setPinFailedSelectedSound(savedPinFailedSelectedSound)
+    setTransactionSuccessCustomUrl(savedTransactionSuccessCustomUrl)
+    setTransactionFailedCustomUrl(savedTransactionFailedCustomUrl)
+    setPinSuccessCustomUrl(savedPinSuccessCustomUrl)
+    setPinFailedCustomUrl(savedPinFailedCustomUrl)
 
     applyAccessibilitySettings(savedScreenReader, savedKeyboardNav, savedFontSize, savedFocusIndicators)
   }, [])
@@ -116,22 +161,53 @@ export function AccessibilitySettings() {
     }
   }
 
-  const playSound = (action = "default") => {
+  const playSound = (activity = "default") => {
     if (!soundEffects) return
 
+    let enabled = false
+    let selected = selectedSound
+    let customUrl = customSoundUrl
+
+    switch (activity) {
+      case "transaction-success":
+        enabled = transactionSuccessEnabled
+        selected = transactionSuccessSelectedSound
+        customUrl = transactionSuccessCustomUrl
+        break
+      case "transaction-failed":
+        enabled = transactionFailedEnabled
+        selected = transactionFailedSelectedSound
+        customUrl = transactionFailedCustomUrl
+        break
+      case "pin-success":
+        enabled = pinSuccessEnabled
+        selected = pinSuccessSelectedSound
+        customUrl = pinSuccessCustomUrl
+        break
+      case "pin-failed":
+        enabled = pinFailedEnabled
+        selected = pinFailedSelectedSound
+        customUrl = pinFailedCustomUrl
+        break
+      default:
+        enabled = true
+    }
+
+    if (!enabled) return
+
     try {
-      if (selectedSound === "custom" && customSoundUrl) {
+      if (selected === "custom" && customUrl) {
         // Use custom uploaded sound
         if (audioRef.current) {
-          audioRef.current.src = customSoundUrl
+          audioRef.current.src = customUrl
           audioRef.current.play().catch(console.error)
         } else {
-          audioRef.current = new Audio(customSoundUrl)
+          audioRef.current = new Audio(customUrl)
           audioRef.current.play().catch(console.error)
         }
-      } else if (selectedSound !== "none") {
+      } else if (selected !== "none") {
         // Use generated tone
-        const soundConfig = PRESET_SOUNDS[selectedSound as keyof typeof PRESET_SOUNDS]
+        const soundConfig = PRESET_SOUNDS[selected as keyof typeof PRESET_SOUNDS]
         if (soundConfig?.generator) {
           soundConfig.generator()
         }
@@ -249,6 +325,106 @@ export function AccessibilitySettings() {
     }
   }
 
+  const handleActivityToggle = (activity: string) => (enabled: boolean) => {
+    switch (activity) {
+      case "transaction-success":
+        setTransactionSuccessEnabled(enabled)
+        localStorage.setItem("wallet_transaction_success_enabled", enabled.toString())
+        break
+      case "transaction-failed":
+        setTransactionFailedEnabled(enabled)
+        localStorage.setItem("wallet_transaction_failed_enabled", enabled.toString())
+        break
+      case "pin-success":
+        setPinSuccessEnabled(enabled)
+        localStorage.setItem("wallet_pin_success_enabled", enabled.toString())
+        break
+      case "pin-failed":
+        setPinFailedEnabled(enabled)
+        localStorage.setItem("wallet_pin_failed_enabled", enabled.toString())
+        break
+    }
+    announceToScreenReader(`${activity.replace("-", " ")} sound ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleActivitySoundChange = (activity: string) => (value: string) => {
+    switch (activity) {
+      case "transaction-success":
+        setTransactionSuccessSelectedSound(value)
+        localStorage.setItem("wallet_transaction_success_selected_sound", value)
+        break
+      case "transaction-failed":
+        setTransactionFailedSelectedSound(value)
+        localStorage.setItem("wallet_transaction_failed_selected_sound", value)
+        break
+      case "pin-success":
+        setPinSuccessSelectedSound(value)
+        localStorage.setItem("wallet_pin_success_selected_sound", value)
+        break
+      case "pin-failed":
+        setPinFailedSelectedSound(value)
+        localStorage.setItem("wallet_pin_failed_selected_sound", value)
+        break
+    }
+
+    // Play preview if not none or custom
+    if (value !== "none" && value !== "custom") {
+      try {
+        const soundConfig = PRESET_SOUNDS[value as keyof typeof PRESET_SOUNDS]
+        if (soundConfig?.generator) {
+          soundConfig.generator()
+        }
+      } catch (error) {
+        console.error("Error playing preview sound:", error)
+      }
+    }
+  }
+
+  const handleActivityCustomSoundUpload = (activity: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      if (file.type.startsWith("audio/")) {
+        const url = URL.createObjectURL(file)
+        switch (activity) {
+          case "transaction-success":
+            setTransactionSuccessCustomUrl(url)
+            setTransactionSuccessSelectedSound("custom")
+            localStorage.setItem("wallet_transaction_success_custom_url", url)
+            localStorage.setItem("wallet_transaction_success_selected_sound", "custom")
+            break
+          case "transaction-failed":
+            setTransactionFailedCustomUrl(url)
+            setTransactionFailedSelectedSound("custom")
+            localStorage.setItem("wallet_transaction_failed_custom_url", url)
+            localStorage.setItem("wallet_transaction_failed_selected_sound", "custom")
+            break
+          case "pin-success":
+            setPinSuccessCustomUrl(url)
+            setPinSuccessSelectedSound("custom")
+            localStorage.setItem("wallet_pin_success_custom_url", url)
+            localStorage.setItem("wallet_pin_success_selected_sound", "custom")
+            break
+          case "pin-failed":
+            setPinFailedCustomUrl(url)
+            setPinFailedSelectedSound("custom")
+            localStorage.setItem("wallet_pin_failed_custom_url", url)
+            localStorage.setItem("wallet_pin_failed_selected_sound", "custom")
+            break
+        }
+        toast({
+          title: "Custom sound uploaded",
+          description: "Your custom sound effect has been set successfully.",
+        })
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload an audio file (MP3, WAV, etc.)",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
   const resetToDefaults = () => {
     const defaults = {
       screenReader: false,
@@ -259,6 +435,18 @@ export function AccessibilitySettings() {
       tooltips: true,
       selectedSound: "gentle-chime",
       customSoundUrl: "",
+      transactionSuccessEnabled: true,
+      transactionFailedEnabled: false,
+      pinSuccessEnabled: true,
+      pinFailedEnabled: false,
+      transactionSuccessSelectedSound: "success-tone",
+      transactionFailedSelectedSound: "notification",
+      pinSuccessSelectedSound: "success-tone",
+      pinFailedSelectedSound: "notification",
+      transactionSuccessCustomUrl: "",
+      transactionFailedCustomUrl: "",
+      pinSuccessCustomUrl: "",
+      pinFailedCustomUrl: "",
     }
 
     setScreenReader(defaults.screenReader)
@@ -269,6 +457,18 @@ export function AccessibilitySettings() {
     setTooltips(defaults.tooltips)
     setSelectedSound(defaults.selectedSound)
     setCustomSoundUrl(defaults.customSoundUrl)
+    setTransactionSuccessEnabled(defaults.transactionSuccessEnabled)
+    setTransactionFailedEnabled(defaults.transactionFailedEnabled)
+    setPinSuccessEnabled(defaults.pinSuccessEnabled)
+    setPinFailedEnabled(defaults.pinFailedEnabled)
+    setTransactionSuccessSelectedSound(defaults.transactionSuccessSelectedSound)
+    setTransactionFailedSelectedSound(defaults.transactionFailedSelectedSound)
+    setPinSuccessSelectedSound(defaults.pinSuccessSelectedSound)
+    setPinFailedSelectedSound(defaults.pinFailedSelectedSound)
+    setTransactionSuccessCustomUrl(defaults.transactionSuccessCustomUrl)
+    setTransactionFailedCustomUrl(defaults.transactionFailedCustomUrl)
+    setPinSuccessCustomUrl(defaults.pinSuccessCustomUrl)
+    setPinFailedCustomUrl(defaults.pinFailedCustomUrl)
 
     // Clear localStorage
     Object.keys(defaults).forEach((key) => {
@@ -394,66 +594,274 @@ export function AccessibilitySettings() {
             <Volume2 className="w-5 h-5" />
             Audio Feedback
           </CardTitle>
-          <CardDescription>Sound effects and audio cues for actions</CardDescription>
+          <CardDescription>Sound effects and audio cues for specific actions</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <Label htmlFor="sound-effects">Sound Effects</Label>
-              <p className="text-sm text-muted-foreground">Play sounds for actions like adding transactions</p>
+              <Label htmlFor="sound-effects">Enable Sound Effects</Label>
+              <p className="text-sm text-muted-foreground">Master toggle for all audio feedback</p>
             </div>
             <Switch id="sound-effects" checked={soundEffects} onCheckedChange={handleSoundEffectsChange} />
           </div>
 
           {soundEffects && (
-            <div className="space-y-4 pt-4 border-t">
-              <div className="space-y-2">
-                <Label htmlFor="sound-selection">Sound Selection</Label>
-                <div className="flex items-center gap-2">
-                  <Select value={selectedSound} onValueChange={handleSoundChange}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Choose a sound" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
-                        <SelectItem key={key} value={key}>
-                          {sound.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="custom">Custom Sound</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => playSound("test")}
-                    disabled={selectedSound === "none"}
-                  >
-                    <Play className="w-4 h-4" />
-                  </Button>
+            <div className="space-y-6 pt-4 border-t">
+              {/* Transaction Success */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Transaction Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when transaction is added successfully</p>
+                  </div>
+                  <Switch
+                    checked={transactionSuccessEnabled}
+                    onCheckedChange={handleActivityToggle("transaction-success")}
+                  />
                 </div>
+                {transactionSuccessEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={transactionSuccessSelectedSound}
+                        onValueChange={handleActivitySoundChange("transaction-success")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>
+                              {sound.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => playSound("transaction-success")}
+                        disabled={transactionSuccessSelectedSound === "none"}
+                      >
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {transactionSuccessSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={transactionSuccessFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleActivityCustomSoundUpload("transaction-success")}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => transactionSuccessFileInputRef.current?.click()}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {selectedSound === "custom" && (
-                <div className="space-y-2">
-                  <Label htmlFor="custom-sound">Upload Custom Sound</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="audio/*"
-                      onChange={handleCustomSoundUpload}
-                      className="flex-1"
-                    />
-                    <Button variant="outline" size="icon" onClick={() => fileInputRef.current?.click()}>
-                      <Upload className="w-4 h-4" />
-                    </Button>
+              {/* Transaction Failed */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Transaction Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when transaction fails</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Upload MP3, WAV, or other audio files for custom sound effects
-                  </p>
+                  <Switch
+                    checked={transactionFailedEnabled}
+                    onCheckedChange={handleActivityToggle("transaction-failed")}
+                  />
                 </div>
-              )}
+                {transactionFailedEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={transactionFailedSelectedSound}
+                        onValueChange={handleActivitySoundChange("transaction-failed")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>
+                              {sound.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => playSound("transaction-failed")}
+                        disabled={transactionFailedSelectedSound === "none"}
+                      >
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {transactionFailedSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={transactionFailedFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleActivityCustomSoundUpload("transaction-failed")}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => transactionFailedFileInputRef.current?.click()}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* PIN Success */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>PIN Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when PIN is entered successfully</p>
+                  </div>
+                  <Switch
+                    checked={pinSuccessEnabled}
+                    onCheckedChange={handleActivityToggle("pin-success")}
+                  />
+                </div>
+                {pinSuccessEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={pinSuccessSelectedSound}
+                        onValueChange={handleActivitySoundChange("pin-success")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>
+                              {sound.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => playSound("pin-success")}
+                        disabled={pinSuccessSelectedSound === "none"}
+                      >
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {pinSuccessSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={pinSuccessFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleActivityCustomSoundUpload("pin-success")}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => pinSuccessFileInputRef.current?.click()}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* PIN Failed */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>PIN Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when PIN entry fails</p>
+                  </div>
+                  <Switch
+                    checked={pinFailedEnabled}
+                    onCheckedChange={handleActivityToggle("pin-failed")}
+                  />
+                </div>
+                {pinFailedEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={pinFailedSelectedSound}
+                        onValueChange={handleActivitySoundChange("pin-failed")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>
+                              {sound.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => playSound("pin-failed")}
+                        disabled={pinFailedSelectedSound === "none"}
+                      >
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {pinFailedSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={pinFailedFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleActivityCustomSoundUpload("pin-failed")}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => pinFailedFileInputRef.current?.click()}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </CardContent>

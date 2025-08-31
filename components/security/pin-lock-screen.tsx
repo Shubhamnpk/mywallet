@@ -8,12 +8,14 @@ import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { Wallet, Lock, AlertCircle, Shield } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { useAccessibility } from "@/hooks/use-accessibility"
 
 interface PinLockScreenProps {
   onUnlock: () => void
 }
 
 export function PinLockScreen({ onUnlock }: PinLockScreenProps) {
+  const { playSound } = useAccessibility()
   const [pin, setPin] = useState("")
   const [confirmPin, setConfirmPin] = useState("")
   const [authStatus, setAuthStatus] = useState(SecurePinManager.getAuthStatus())
@@ -98,6 +100,7 @@ export function PinLockScreen({ onUnlock }: PinLockScreenProps) {
              title: "Welcome Back!",
              description: "PIN verified successfully.",
            })
+           playSound("pin-success")
          } else {
           setPin("")
           setAuthStatus(SecurePinManager.getAuthStatus())
@@ -115,6 +118,7 @@ export function PinLockScreen({ onUnlock }: PinLockScreenProps) {
               variant: "destructive",
             })
           }
+          playSound("pin-failed")
         }
       } catch (error) {
         console.error("[v0] PIN validation error:", error)

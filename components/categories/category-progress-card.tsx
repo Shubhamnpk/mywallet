@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3, Trash2, Edit } from "lucide-react"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import type { Category, UserProfile } from "@/types/wallet"
 
@@ -19,23 +19,18 @@ interface CategoryProgressCardProps {
   }
   userProfile: UserProfile
   onViewDetails?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  showActions?: boolean
 }
 
-export function CategoryProgressCard({ category, userProfile, onViewDetails }: CategoryProgressCardProps) {
+export function CategoryProgressCard({ category, userProfile, onViewDetails, onEdit, onDelete, showActions = false }: CategoryProgressCardProps) {
   const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
 
-  // Calculate time equivalent (guard against division by zero)
-  const hourlyRate =
-    userProfile.workingDaysPerMonth && userProfile.workingHoursPerDay
-      ? userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
-      : 0
-  const timeEquivalent = hourlyRate > 0 ? category.totalSpent / hourlyRate : 0
-
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60)
-    const mins = Math.floor(minutes % 60)
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-  }
+  // Calculate time equivalent using the new function
+  const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
+  const timeBreakdown = getTimeEquivalentBreakdown(category.totalSpent, userProfile)
+  const timeEquivalent = timeBreakdown ? timeBreakdown.formatted.userFriendly : "0m"
 
   const getProgressColor = () => {
     if (category.percentage > 30) return "bg-red-500"
@@ -86,7 +81,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
             <div className="text-lg font-bold">{formatCurrency(category.totalSpent, userProfile.currency, userProfile.customCurrency)}</div>
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {formatTime(timeEquivalent)}
+              {timeEquivalent}
             </div>
           </div>
         </div>
@@ -153,15 +148,41 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails }: C
           </div>
         )}
 
-        {/* Action Button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onViewDetails}
-          className="w-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-transparent"
-        >
-          View Details
-        </Button>
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          {showActions && !category.isDefault && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onEdit}
+                className="flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              >
+                <Edit className="w-3 h-3 mr-1" />
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onDelete}
+                className="flex-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-destructive hover:text-destructive"
+              >
+                <Trash2 className="w-3 h-3 mr-1" />
+                Delete
+              </Button>
+            </>
+          )}
+          {!showActions && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onViewDetails}
+              className="w-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-transparent"
+            >
+              View Details
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

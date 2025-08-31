@@ -52,6 +52,27 @@ const colorThemes = [
   },
 ]
 
+const themeOptions = [
+  {
+    id: "light",
+    name: "Light",
+    icon: Sun,
+    description: "Clean and bright"
+  },
+  {
+    id: "dark", 
+    name: "Dark",
+    icon: Moon,
+    description: "Easy on the eyes"
+  },
+  {
+    id: "system",
+    name: "System",
+    icon: Monitor,
+    description: "Follows device setting"
+  }
+]
+
 export function ThemeSettings() {
   const { theme, setTheme } = useTheme()
   const [colorTheme, setColorTheme] = useState("emerald")
@@ -70,6 +91,12 @@ export function ThemeSettings() {
     setUseGradient(savedUseGradient)
     setHighContrast(savedHighContrast)
     setReducedMotion(savedReducedMotion)
+
+    // Apply the saved color theme to CSS variables
+    const selectedTheme = colorThemes.find((t) => t.id === savedColorTheme)
+    if (selectedTheme) {
+      document.documentElement.style.setProperty("--primary", selectedTheme.primary)
+    }
   }, [])
 
   const handleColorThemeChange = (newTheme: string) => {
@@ -115,39 +142,61 @@ export function ThemeSettings() {
 
   return (
     <div className="space-y-6">
-      {/* Theme Mode */}
+      {/* Enhanced Theme Mode */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Sun className="w-5 h-5" />
             Theme Mode
           </CardTitle>
           <CardDescription>Choose your preferred theme mode</CardDescription>
         </CardHeader>
         <CardContent>
-          <RadioGroup value={theme} onValueChange={setTheme}>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="light" id="light" />
-              <Label htmlFor="light" className="flex items-center gap-2 cursor-pointer">
-                <Sun className="w-4 h-4" />
-                Light
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="dark" id="dark" />
-              <Label htmlFor="dark" className="flex items-center gap-2 cursor-pointer">
-                <Moon className="w-4 h-4" />
-                Dark
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="system" id="system" />
-              <Label htmlFor="system" className="flex items-center gap-2 cursor-pointer">
-                <Monitor className="w-4 h-4" />
-                System
-              </Label>
-            </div>
-          </RadioGroup>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {themeOptions.map((themeOption) => {
+              const IconComponent = themeOption.icon
+              const isSelected = theme === themeOption.id
+              
+              return (
+                <div
+                  key={themeOption.id}
+                  onClick={() => setTheme(themeOption.id)}
+                  className={`
+                    relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md
+                    ${isSelected 
+                      ? 'border-primary bg-primary/5 shadow-sm' 
+                      : 'border-border hover:border-primary/30 hover:bg-primary/50'
+                    }
+                  `}
+                >
+                  <div className="flex flex-col items-center text-center space-y-2">
+                    <div className={`
+                      p-2 rounded-lg transition-colors
+                      ${isSelected 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-primary text-accent-foreground'
+                      }
+                    `}>
+                      <IconComponent className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{themeOption.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
+                        {themeOption.description}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Selection indicator */}
+                  {isSelected && (
+                    <div className="absolute top-2 right-2">
+                      <div className="w-2 h-2 bg-primary rounded-full"></div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </CardContent>
       </Card>
 

@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile, Goal } from "@/types/wallet"
 
-import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
+import { getCurrencySymbol } from "@/lib/currency"
 
 interface GoalDialogProps {
   isOpen: boolean
@@ -30,7 +31,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
   })
 
   const currencySymbol = useMemo(
-    () => getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency),
+    () => getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency),
     [userProfile?.currency, (userProfile as any)?.customCurrency],
   )
 

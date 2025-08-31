@@ -24,11 +24,11 @@ import {
   SortAsc,
   SortDesc,
   Calendar,
-  DollarSign,
 } from "lucide-react"
 import { BudgetDialog } from "./budget-dialog"
 import type { Budget, UserProfile } from "@/types/wallet"
-import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
+import { getCurrencySymbol } from "@/lib/currency"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -39,6 +39,11 @@ interface BudgetsListProps {
 
 export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget }: BudgetsListProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  // Get currency symbol
+  const currencySymbol = useMemo(() => {
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sortBy, setSortBy] = useState("name")
@@ -101,7 +106,12 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
   }, [budgets, searchQuery, statusFilter, sortBy, sortOrder])
 
   const formatTimeEquivalent = (minutes: number) => {
-    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`
+    // Convert minutes back to amount for proper calculation
+    const hourlyRate = userProfile.hourlyRate || (userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay))
+    const amount = (minutes / 60) * hourlyRate
+    const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
+    const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
+    return breakdown ? breakdown.formatted.userFriendly : "0m"
   }
 
   const handleAddBudget = (budgetData: any) => {
@@ -263,7 +273,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                     <div className="space-y-2 mt-3">
                       <div className="flex justify-between text-sm">
                           <span className="flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" />
+                          <span className="font-medium">{currencySymbol}</span>
                           Spent: {formatCurrency(budget.spent, userProfile.currency, userProfile.customCurrency)}
                         </span>
                         <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>

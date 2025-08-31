@@ -4,13 +4,14 @@ import { useState, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target, Trash2, Eye, EyeOff } from "lucide-react"
 import { getCurrencySymbol } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
+import { CreateCategoryModal } from "./create-category-modal"
+import { DeleteCategoryDialog } from "./delete-category-dialog"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 
 interface CategoriesManagementProps {
@@ -37,9 +38,10 @@ export function CategoriesManagement({
   const [sortBy, setSortBy] = useState<"usage" | "amount" | "transactions" | "name">("usage")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-  const [newCategoryName, setNewCategoryName] = useState("")
-  const [newCategoryType, setNewCategoryType] = useState<"income" | "expense">("expense")
-  const [newCategoryColor, setNewCategoryColor] = useState("#3b82f6")
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false)
+  const [disabledCategories, setDisabledCategories] = useState<Set<string>>(new Set())
 
   const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
 
@@ -101,7 +103,8 @@ export function CategoriesManagement({
     const filtered = categoryStats.filter((category) => {
       const matchesSearch = category.name.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesType = filterType === "all" || category.type === filterType
-      return matchesSearch && matchesType
+      const isEnabled = !disabledCategories.has(category.id)
+      return matchesSearch && matchesType && isEnabled
     })
 
     // Sort categories
@@ -127,70 +130,73 @@ export function CategoriesManagement({
   const defaultCategories = filteredCategories.filter((c) => c.isDefault)
   const customCategories = filteredCategories.filter((c) => !c.isDefault)
 
-  const handleAddCategory = () => {
-    if (!newCategoryName.trim() || !onAddCategory) return
-
-    // Check if category already exists
-    const exists = categories.some(
-      (c) => c.name.toLowerCase() === newCategoryName.trim().toLowerCase() && c.type === newCategoryType,
-    )
-
-    if (exists) {
-      alert("A category with this name already exists for this type")
-      return
-    }
-
-    onAddCategory({
-      name: newCategoryName.trim(),
-      type: newCategoryType,
-      color: newCategoryColor,
-      isDefault: false,
-    })
-
-    // Reset form
-    setNewCategoryName("")
-    setNewCategoryType("expense")
-    setNewCategoryColor("#3b82f6")
-    setIsAddDialogOpen(false)
-  }
-
-  const handleEditCategory = (category: Category) => {
-    setEditingCategory(category)
-    setNewCategoryName(category.name)
-    setNewCategoryColor(category.color || "#3b82f6")
-  }
-
-  const handleUpdateCategory = () => {
-    if (!editingCategory || !newCategoryName.trim() || !onUpdateCategory) return
-
-    onUpdateCategory(editingCategory.id, {
-      name: newCategoryName.trim(),
-      color: newCategoryColor,
-    })
-
-    setEditingCategory(null)
-    setNewCategoryName("")
-    setNewCategoryColor("#3b82f6")
-  }
 
   const handleDeleteCategory = (category: Category) => {
-    if (!onDeleteCategory) return
+    setDeletingCategory(category)
+  }
 
-    if (category.isDefault) {
-      alert("Cannot delete default categories")
+  const handleConfirmDelete = (categoryId: string) => {
+    if (!onDeleteCategory) return
+    onDeleteCategory(categoryId)
+    setDeletingCategory(null)
+  }
+
+  const handleToggleCategory = (categoryId: string) => {
+    setDisabledCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId)
+      } else {
+        newSet.add(categoryId)
+      }
+      return newSet
+    })
+  }
+
+  const handleSelectCategory = (categoryId: string) => {
+    setSelectedCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId)
+      } else {
+        newSet.add(categoryId)
+      }
+      return newSet
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedCategories.size === customCategories.length) {
+      setSelectedCategories(new Set())
+    } else {
+      setSelectedCategories(new Set(customCategories.map(c => c.id)))
+    }
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedCategories.size === 0) return
+
+    // Check if any selected categories are in use
+    const categoriesInUse = Array.from(selectedCategories).filter(categoryId => {
+      const category = categories.find(c => c.id === categoryId)
+      if (!category) return false
+      return transactions.some(t => t.category === category.name)
+    })
+
+    if (categoriesInUse.length > 0) {
+      alert(`Cannot delete ${categoriesInUse.length} category(ies) that are currently in use. Please remove them from transactions first.`)
       return
     }
 
-    // Check if category is being used
-    const isUsed = transactions.some((t) => t.category === category.name)
-    if (isUsed) {
-      const confirmDelete = confirm(
-        `This category is used in ${category.transactionCount} transactions. Deleting it may affect your transaction history. Continue?`,
-      )
-      if (!confirmDelete) return
+    if (confirm(`Are you sure you want to delete ${selectedCategories.size} selected categories? This action cannot be undone.`)) {
+      selectedCategories.forEach(categoryId => {
+        if (onDeleteCategory) {
+          onDeleteCategory(categoryId)
+        }
+      })
+      setSelectedCategories(new Set())
+      setBulkDeleteMode(false)
     }
-
-    onDeleteCategory(category.id)
   }
 
   return (
@@ -238,73 +244,64 @@ export function CategoriesManagement({
           </div>
         </div>
 
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Category
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Category</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="category-name">Category Name</Label>
-                <Input
-                  id="category-name"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="e.g., Coffee, Subscriptions, Consulting"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="category-type">Type</Label>
-                <Select
-                  value={newCategoryType}
-                  onValueChange={(value: "income" | "expense") => setNewCategoryType(value)}
+        <div className="flex items-center gap-3">
+          {bulkDeleteMode && customCategories.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={selectedCategories.size === customCategories.length}
+                onCheckedChange={handleSelectAll}
+                aria-label="Select all categories"
+              />
+              <span className="text-sm text-muted-foreground">
+                {selectedCategories.size} of {customCategories.length} selected
+              </span>
+              {selectedCategories.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  className="flex items-center gap-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="expense">Expense</SelectItem>
-                    <SelectItem value="income">Income</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="category-color">Color</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    aria-label="Select category color"
-                    value={newCategoryColor}
-                    onChange={(e) => setNewCategoryColor(e.target.value)}
-                    className="w-12 h-10 rounded border border-input"
-                  />
-                  <Input
-                    value={newCategoryColor}
-                    onChange={(e) => setNewCategoryColor(e.target.value)}
-                    placeholder="#3b82f6"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="flex-1">
-                  Cancel
+                  <Trash2 className="w-3 h-3" />
+                  Delete Selected ({selectedCategories.size})
                 </Button>
-                <Button onClick={handleAddCategory} className="flex-1">
-                  Create Category
-                </Button>
-              </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBulkDeleteMode(false)
+                  setSelectedCategories(new Set())
+                }}
+              >
+                Cancel
+              </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+
+          {!bulkDeleteMode && (
+            <>
+              {customCategories.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkDeleteMode(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Bulk Delete
+                </Button>
+              )}
+              <Button
+                onClick={() => setIsAddDialogOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Category
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -314,8 +311,8 @@ export function CategoriesManagement({
             <div className="flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-blue-600" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Categories</p>
-                <p className="text-xl font-bold">{categories.length}</p>
+                <p className="text-sm text-muted-foreground">Enabled Categories</p>
+                <p className="text-xl font-bold">{categories.filter(c => !disabledCategories.has(c.id)).length}</p>
               </div>
             </div>
           </CardContent>
@@ -327,7 +324,7 @@ export function CategoriesManagement({
               <Target className="w-4 h-4 text-accent" />
               <div>
                 <p className="text-sm text-muted-foreground">Active Categories</p>
-                <p className="text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0).length}</p>
+                <p className="text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}</p>
               </div>
             </div>
           </CardContent>
@@ -370,11 +367,11 @@ export function CategoriesManagement({
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="custom" className="flex items-center gap-2">
             <FolderOpen className="w-4 h-4" />
-            Custom ({customCategories.length})
+            Custom ({customCategories.filter(c => !disabledCategories.has(c.id)).length})
           </TabsTrigger>
           <TabsTrigger value="default" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
-            Default ({defaultCategories.length})
+            Default ({defaultCategories.filter(c => !disabledCategories.has(c.id)).length})
           </TabsTrigger>
         </TabsList>
 
@@ -396,14 +393,49 @@ export function CategoriesManagement({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {customCategories.map((category) => (
-                <CategoryProgressCard
-                  key={category.id}
-                  category={category}
-                  userProfile={userProfile}
-                  onViewDetails={() => {
-                    /* TODO: Implement details view */
-                  }}
-                />
+                <div key={category.id} className="relative">
+                  {bulkDeleteMode && (
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox
+                        checked={selectedCategories.has(category.id)}
+                        onCheckedChange={() => handleSelectCategory(category.id)}
+                        aria-label={`Select ${category.name}`}
+                        className="bg-background border-2"
+                      />
+                    </div>
+                  )}
+                  <CategoryProgressCard
+                    category={category}
+                    userProfile={userProfile}
+                    onViewDetails={() => {
+                      /* TODO: Implement details view */
+                    }}
+                    onEdit={() => setEditingCategory(category)}
+                    onDelete={() => handleDeleteCategory(category)}
+                    showActions={!bulkDeleteMode}
+                  />
+                  {!bulkDeleteMode && (
+                    <div className="absolute top-2 right-2 z-10">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleCategory(category.id)}
+                        className={`p-1 h-6 w-6 rounded-full ${
+                          disabledCategories.has(category.id)
+                            ? 'text-muted-foreground hover:text-foreground'
+                            : 'text-accent hover:text-accent/80'
+                        }`}
+                        title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
+                      >
+                        {disabledCategories.has(category.id) ? (
+                          <EyeOff className="w-3 h-3" />
+                        ) : (
+                          <Eye className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -412,65 +444,96 @@ export function CategoriesManagement({
         <TabsContent value="default" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {defaultCategories.map((category) => (
-              <CategoryProgressCard
-                key={category.id}
-                category={category}
-                userProfile={userProfile}
-                onViewDetails={() => {
-                  /* TODO: Implement details view */
-                }}
-              />
+              <div key={category.id} className="relative">
+                <CategoryProgressCard
+                  category={category}
+                  userProfile={userProfile}
+                  onViewDetails={() => {
+                    /* TODO: Implement details view */
+                  }}
+                  onEdit={() => setEditingCategory(category)}
+                  showActions={true}
+                />
+                <div className="absolute top-2 right-2 z-10">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleCategory(category.id)}
+                    className={`p-1 h-6 w-6 rounded-full ${
+                      disabledCategories.has(category.id)
+                        ? 'text-muted-foreground hover:text-foreground'
+                        : 'text-accent hover:text-accent/80'
+                    }`}
+                    title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
+                  >
+                    {disabledCategories.has(category.id) ? (
+                      <EyeOff className="w-3 h-3" />
+                    ) : (
+                      <Eye className="w-3 h-3" />
+                    )}
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Edit Category Dialog */}
-      <Dialog open={!!editingCategory} onOpenChange={() => setEditingCategory(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Category</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-category-name">Category Name</Label>
-              <Input
-                id="edit-category-name"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="Category name"
-              />
-            </div>
+      {/* Edit Category Modal */}
+      {editingCategory && (
+        <CreateCategoryModal
+          isOpen={!!editingCategory}
+          onClose={() => setEditingCategory(null)}
+          onCreateCategory={(categoryData) => {
+            if (!onUpdateCategory || !editingCategory) return
 
-            <div>
-              <Label htmlFor="edit-category-color">Color</Label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  aria-label="Edit category color"
-                  value={newCategoryColor}
-                  onChange={(e) => setNewCategoryColor(e.target.value)}
-                  className="w-12 h-10 rounded border border-input"
-                />
-                <Input
-                  value={newCategoryColor}
-                  onChange={(e) => setNewCategoryColor(e.target.value)}
-                  placeholder="#3b82f6"
-                />
-              </div>
-            </div>
+            onUpdateCategory(editingCategory.id, {
+              name: categoryData.name,
+              color: categoryData.color,
+              icon: categoryData.icon,
+            })
+            setEditingCategory(null)
+          }}
+          categoryType={editingCategory.type}
+        />
+      )}
 
-            <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={() => setEditingCategory(null)} className="flex-1">
-                Cancel
-              </Button>
-              <Button onClick={handleUpdateCategory} className="flex-1">
-                Update Category
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* New Modern Category Creation Modal */}
+      <CreateCategoryModal
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+        onCreateCategory={(categoryData) => {
+          if (!onAddCategory) return
+
+          // Check if category already exists
+          const exists = categories.some(
+            (c) => c.name.toLowerCase() === categoryData.name.toLowerCase() && c.type === categoryData.type,
+          )
+
+          if (exists) {
+            alert("A category with this name already exists for this type")
+            return
+          }
+
+          onAddCategory({
+            name: categoryData.name,
+            type: categoryData.type,
+            color: categoryData.color,
+            icon: categoryData.icon,
+            isDefault: false,
+          })
+        }}
+        categoryType="expense"
+      />
+
+      {/* Delete Category Confirmation Dialog */}
+      <DeleteCategoryDialog
+        isOpen={!!deletingCategory}
+        onClose={() => setDeletingCategory(null)}
+        category={deletingCategory}
+        transactions={transactions}
+        onConfirmDelete={handleConfirmDelete}
+      />
     </div>
   )
 }

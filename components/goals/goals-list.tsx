@@ -13,7 +13,6 @@ import {
   Target,
   Plus,
   Calendar,
-  DollarSign,
   Send,
   ArrowRight,
   Search,
@@ -30,7 +29,8 @@ import {
 import { GoalDialog } from "./goal-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, UserProfile } from "@/types/wallet"
-import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
+import { getCurrencySymbol } from "@/lib/currency"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -44,6 +44,11 @@ type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
   const { transferToGoal, balance, updateGoal, deleteGoal } = useWalletData()
+
+  // Get currency symbol
+  const currencySymbol = useMemo(() => {
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set())
@@ -150,13 +155,9 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   }
 
   const formatTimeEquivalent = (amount: number) => {
-    const hourlyRate =
-      userProfile.workingDaysPerMonth && userProfile.workingHoursPerDay
-        ? userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
-        : 0
-    if (hourlyRate <= 0) return "0m"
-    const minutes = (amount / hourlyRate) * 60
-    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${Math.floor(minutes % 60)}m` : `${Math.floor(minutes)}m`
+    const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
+    const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
+    return breakdown ? breakdown.formatted.userFriendly : "0m"
   }
 
   const handleTransfer = async () => {
@@ -362,7 +363,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground font-medium">{currencySymbol}</span>
                           <div>
                             <p className="text-muted-foreground">Current</p>
                             <p className="font-medium">{formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)}</p>

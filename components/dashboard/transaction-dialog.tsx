@@ -10,11 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { TrendingUp, TrendingDown, DollarSign, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle } from "lucide-react"
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { getCurrencySymbol } from "@/lib/currency"
+import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { useAccessibility } from "@/hooks/use-accessibility"
 
 interface FormData {
   amount: string
@@ -47,6 +50,7 @@ const initialFormData: FormData = {
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: UnifiedTransactionDialogProps = {}) {
   const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
     useWalletData()
+  const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
   const open = isOpen !== undefined ? isOpen : internalOpen
 
@@ -64,14 +68,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
+  const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
   const amountInputRef = useRef<HTMLInputElement>(null)
 
   const currencySymbol = useMemo(() => {
-    if (!userProfile) return "$"
-    const custom = (userProfile as any).customCurrency
-    if (custom && custom.symbol) return custom.symbol
-    const map: Record<string, string> = { USD: "$", NPR: "रु", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
-    return map[(userProfile.currency as string) || "USD"] || "$"
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
   }, [userProfile?.currency, (userProfile as any)?.customCurrency])
 
   const numAmount = useMemo(() => {
@@ -79,9 +80,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
     return isNaN(parsed) ? 0 : parsed
   }, [formData.amount])
 
-  const timeEquivalent = useMemo(() => {
-    return numAmount > 0 && userProfile ? calculateTimeEquivalent(numAmount) : 0
-  }, [numAmount, userProfile, calculateTimeEquivalent])
+  const timeEquivalentBreakdown = useMemo(() => {
+    if (!numAmount || !userProfile) return null
+    const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
+    return getTimeEquivalentBreakdown(numAmount, userProfile)
+  }, [numAmount, userProfile])
 
   const subcategoryOptions = useMemo(() => {
     if (!formData.category || !settings?.customBudgetCategories) return []
@@ -96,10 +99,16 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   }, [formData.allocationType, goals])
 
   const availableCategories = useMemo(() => {
-    return categories
+    const contextCategories = categories
       .filter((cat) => cat.type === type)
       .map((cat) => cat.name)
-      .sort()
+
+    // If no categories in context, use default categories
+    if (contextCategories.length === 0) {
+      return getDefaultCategoryNames(type)
+    }
+
+    return contextCategories.sort()
   }, [categories, type])
 
   // Validation logic - only show errors when appropriate
@@ -210,6 +219,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
     setType("expense")
     setShowAddCategory(false)
     setNewCategoryName("")
+    setNewCategoryIcon("📦")
   }, [])
 
   const handleOpenChange = useCallback(
@@ -268,6 +278,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
           duration: 3000,
         })
 
+        playSound("transaction-success")
+
         setTimeout(() => {
           resetForm()
           handleOpenChange(false)
@@ -276,6 +288,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
         toast.error("Failed to add transaction", {
           description: error instanceof Error ? error.message : "Please try again."
         })
+        playSound("transaction-failed")
       } finally {
         setIsSubmitting(false)
       }
@@ -356,6 +369,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
       name: newCategoryName.trim(),
       type: type,
       color: "#3b82f6",
+      icon: newCategoryIcon,
       isDefault: false,
     })
 
@@ -365,6 +379,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
       category: { touched: true, blurred: false }
     }))
     setNewCategoryName("")
+    setNewCategoryIcon("📦")
     setShowAddCategory(false)
 
     toast.success("Category added!", {
@@ -395,10 +410,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 "p-2 rounded-lg",
                 type === "income" ? "bg-green-100 dark:bg-green-900/20" : "bg-blue-100 dark:bg-blue-900/20"
               )}>
-                <DollarSign className={cn(
-                  "w-5 h-5",
+                <span className={cn(
+                  "text-lg font-bold",
                   type === "income" ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"
-                )} />
+                )}>
+                  {currencySymbol}
+                </span>
               </div>
               Add New Transaction
             </DialogTitle>
@@ -429,10 +446,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
               {/* Amount Field */}
               <div className="space-y-2">
                 <Label htmlFor="amount" className="text-sm font-medium flex items-center gap-1">
-                  Amount ({currencySymbol})
+                  Amount
                   <span className="text-orange-500">*</span>
                 </Label>
                 <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground font-medium">
+                    {currencySymbol}
+                  </span>
                   <Input
                     ref={amountInputRef}
                     id="amount"
@@ -444,7 +464,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                     onBlur={() => handleFieldBlur("amount")}
                     placeholder="0.00"
                     className={cn(
-                      "text-lg font-medium transition-all duration-200",
+                      "text-lg font-medium transition-all duration-200 pl-10",
                       errors.amount ? "border-red-300 focus:border-red-500 bg-red-50/50 dark:bg-red-900/10" :
                       numAmount > 0 ? "border-green-300 focus:border-green-500 bg-green-50/50 dark:bg-green-900/10" : ""
                     )}
@@ -469,7 +489,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                 )}
 
                 {/* Time Equivalent Display */}
-                {numAmount > 0 && timeEquivalent > 0 && (
+                {numAmount > 0 && timeEquivalentBreakdown && (
                   <div className="mt-3 p-4 bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg">
                     <div className="flex items-center gap-2 mb-1">
                       <Clock className="w-4 h-4 text-primary" />
@@ -484,9 +504,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
                       </Tooltip>
                     </div>
                     <p className="text-lg font-semibold text-primary">
-                      {timeEquivalent >= 60
-                        ? `${Math.floor(timeEquivalent / 60)}h ${timeEquivalent % 60}m`
-                        : `${timeEquivalent}m`}
+                      {timeEquivalentBreakdown.formatted.userFriendly}
                     </p>
                     <p className="text-xs text-primary/70 mt-1">
                       {type === "expense"

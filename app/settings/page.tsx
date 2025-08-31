@@ -9,9 +9,28 @@ import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
 import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
 import { useRouter } from "next/navigation"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { useEffect } from "react"
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { userProfile, showOnboarding } = useWalletData()
+
+  // Redirect to home if no user profile or onboarding is needed
+  useEffect(() => {
+    if (!userProfile || showOnboarding) {
+      router.push('/')
+    }
+  }, [userProfile, showOnboarding, router])
+
+  // Show loading while redirecting
+  if (!userProfile || showOnboarding) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">

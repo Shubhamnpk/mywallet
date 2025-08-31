@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Target, DollarSign, Clock, Plus, X } from "lucide-react"
+import { Target, Clock, Plus, X } from "lucide-react"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { getCurrencySymbol } from "@/lib/currency"
+import { getDefaultCategoryNames } from "@/lib/categories"
 import type { UserProfile } from "@/types/wallet"
 
 interface BudgetDialogProps {
@@ -20,20 +23,10 @@ interface BudgetDialogProps {
   onAddBudget: (budget: any) => void
 }
 
-const defaultCategories = [
-  "Food",
-  "Transport",
-  "Shopping",
-  "Bills",
-  "Entertainment",
-  "Health",
-  "Education",
-  "Home",
-  "Other",
-]
 const periods = ["weekly", "monthly", "yearly"]
 
 export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: BudgetDialogProps) {
+  const { categories, addCategory } = useWalletData()
   const [amount, setAmount] = useState("")
   const [budgetName, setBudgetName] = useState("")
   const [period, setPeriod] = useState("monthly")
@@ -41,9 +34,32 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: B
   const [customCategory, setCustomCategory] = useState("")
   const [emergencyUses, setEmergencyUses] = useState("3")
 
-  const timeEquivalent = amount ? Math.round(Number.parseFloat(amount) / (userProfile.hourlyRate / 60)) : 0
-  const timeText =
-    timeEquivalent >= 60 ? `${Math.floor(timeEquivalent / 60)}h ${timeEquivalent % 60}m` : `${timeEquivalent}m`
+  // Get expense categories from the context, falling back to default categories
+  const expenseCategories = useMemo(() => {
+    const contextCategories = categories
+      .filter((cat) => cat.type === "expense")
+      .map((cat) => cat.name)
+
+    // If no categories in context, use default categories
+    if (contextCategories.length === 0) {
+      return getDefaultCategoryNames("expense")
+    }
+
+    return contextCategories.sort()
+  }, [categories])
+
+  // Get currency symbol
+  const currencySymbol = useMemo(() => {
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+
+  const timeEquivalentBreakdown = useMemo(() => {
+    if (!amount || !userProfile) return null
+    const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
+    return getTimeEquivalentBreakdown(Number.parseFloat(amount), userProfile)
+  }, [amount, userProfile])
+
+  const timeText = timeEquivalentBreakdown ? timeEquivalentBreakdown.formatted.userFriendly : "0m"
 
   const handleCategoryToggle = (category: string) => {
     setSelectedCategories((prev) =>
@@ -53,6 +69,20 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: B
 
   const addCustomCategory = () => {
     if (customCategory.trim() && !selectedCategories.includes(customCategory.trim())) {
+      // Add the category to the global categories if it doesn't exist
+      const existingCategory = categories.find(
+        (cat) => cat.name.toLowerCase() === customCategory.trim().toLowerCase() && cat.type === "expense"
+      )
+
+      if (!existingCategory && addCategory) {
+        addCategory({
+          name: customCategory.trim(),
+          type: "expense",
+          color: "#3b82f6",
+          isDefault: false,
+        })
+      }
+
       setSelectedCategories((prev) => [...prev, customCategory.trim()])
       setCustomCategory("")
     }
@@ -110,9 +140,11 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: B
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="budget-amount">Budget Amount</Label>
+            <Label htmlFor="budget-amount">Budget Amount ({currencySymbol})</Label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground font-medium">
+                {currencySymbol}
+              </span>
               <Input
                 id="budget-amount"
                 type="number"
@@ -169,7 +201,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget }: B
             <p className="text-sm text-muted-foreground">Select which expense categories this budget should cover</p>
 
             <div className="grid grid-cols-2 gap-2">
-              {defaultCategories.map((category) => (
+              {expenseCategories.map((category) => (
                 <div key={category} className="flex items-center space-x-2">
                   <Checkbox
                     id={category}

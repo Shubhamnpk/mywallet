@@ -578,9 +578,17 @@ export function useWalletData() {
   }
 
   const clearAllData = async () => {
+    // Clear data integrity records
     DataIntegrityManager.clearIntegrityRecords()
+
+    // Clear all encryption keys
     SecureKeyManager.clearAllKeys()
 
+    // Clear all PIN and security data
+    const { SecurePinManager } = await import("@/lib/secure-pin-manager")
+    SecurePinManager.resetPin()
+
+    // Clear all wallet data from localStorage
     localStorage.removeItem("userProfile")
     localStorage.removeItem("transactions")
     localStorage.removeItem("budgets")
@@ -591,6 +599,10 @@ export function useWalletData() {
     localStorage.removeItem("debtCreditTransactions")
     localStorage.removeItem("categories")
 
+    // Clear session data
+    localStorage.removeItem("wallet_session")
+
+    // Reset all state
     setUserProfile(null)
     setTransactions([])
     setBudgets([])
@@ -603,7 +615,11 @@ export function useWalletData() {
     await saveDataWithIntegrity("categories", defaultCategories)
     setEmergencyFund(0)
     setBalance(0)
+    setIsAuthenticated(false)
     setShowOnboarding(true)
+    setIsFirstTime(true)
+
+    console.log("[v0] All data and security information cleared completely")
   }
 
   const exportData = () => {

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { PieChart, TrendingDown } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol } from "@/lib/utils"
+import { getCurrencySymbol } from "@/lib/currency"
 
 export function CategoryBreakdown() {
   const { transactions, userProfile } = useWalletData()
@@ -22,7 +22,7 @@ export function CategoryBreakdown() {
     )
 
   const totalExpenses = Object.values(expensesByCategory).reduce((sum, amount) => sum + amount, 0)
-  const currencySymbol = getCurrencySymbol(userProfile?.currency, userProfile?.customCurrency)
+  const currencySymbol = getCurrencySymbol(userProfile?.currency || "USD", userProfile?.customCurrency)
 
   const categoryData = Object.entries(expensesByCategory)
     .map(([category, amount]) => ({

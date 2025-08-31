@@ -33,7 +33,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden sm:flex"
+            className="hidden sm:flex hover:bg-primary"
             onClick={() => router.push("/settings")}
             aria-label="Open settings"
           >

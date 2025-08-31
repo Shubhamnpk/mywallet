@@ -8,31 +8,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { LogOut, Trash2, Upload, Save, Plus, PencilLine } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-
-const currencies = [
-  { value: "USD", label: "US Dollar ($)", symbol: "$" },
-  { value: "EUR", label: "Euro (€)", symbol: "€" },
-  { value: "GBP", label: "British Pound (£)", symbol: "£" },
-  { value: "JPY", label: "Japanese Yen (¥)", symbol: "¥" },
-  { value: "CAD", label: "Canadian Dollar (C$)", symbol: "C$" },
-  { value: "AUD", label: "Australian Dollar (A$)", symbol: "A$" },
-  { value: "INR", label: "Indian Rupee (₹)", symbol: "₹" },
-  { value: "CUSTOM", label: "Custom Currency", symbol: "" },
-]
+import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
+import { DeleteDataDialog } from "./delete-data-dialog"
 
 export function UserProfileSettings() {
   const { userProfile, updateUserProfile, clearAllData } = useWalletData()
@@ -74,8 +54,7 @@ export function UserProfileSettings() {
   }
 
   const getCurrentCurrencySymbol = useMemo(() => {
-    if (formData?.currency === "CUSTOM") return formData?.customCurrency?.symbol || ""
-    return (currencies.find((c) => c.value === formData?.currency)?.symbol as string) || "$"
+    return getCurrencySymbol(formData?.currency, formData?.customCurrency)
   }, [formData?.currency, formData?.customCurrency])
 
   const hourlyRate = useMemo(() => {
@@ -165,10 +144,7 @@ export function UserProfileSettings() {
               <div className="space-y-2">
                 <p className="text-lg font-semibold">{formData.name || "Unnamed User"}</p>
                 <p className="text-sm text-muted-foreground">
-                  Currency:{" "}
-                  {formData.currency === "CUSTOM"
-                    ? `${formData.customCurrency.name} (${formData.customCurrency.symbol})`
-                    : currencies.find((c) => c.value === formData.currency)?.label}
+                  Currency: {getCurrencyLabel(formData.currency, formData.customCurrency)}
                 </p>
               </div>
             ) : (
@@ -188,7 +164,7 @@ export function UserProfileSettings() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {currencies.map((currency) => (
+                      {CURRENCIES.map((currency) => (
                         <SelectItem key={currency.value} value={currency.value}>
                           {currency.label}
                         </SelectItem>
@@ -334,31 +310,18 @@ export function UserProfileSettings() {
           <Separator />
           <div className="flex items-center justify-between">
             <p className="font-medium text-destructive">Delete Account</p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
+            <DeleteDataDialog
+              trigger={
                 <Button variant="destructive">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete Account
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete your account and all associated data.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDeleteAccount}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Delete Account
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              }
+              title="Delete Account"
+              description="This will permanently delete your account and all associated data including your PIN, encryption keys, and security settings. This action cannot be undone."
+              onConfirm={handleDeleteAccount}
+              type="account"
+            />
           </div>
         </CardContent>
       </Card>

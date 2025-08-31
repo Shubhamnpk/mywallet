@@ -18,6 +18,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import { useMemo, useState } from "react"
 import { getTimeEquivalentBreakdown, formatTimeEquivalent } from "@/lib/wallet-utils"
+import { getCurrencySymbol } from "@/lib/currency"
 
 export function CombinedBalanceCard() {
   const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange } =
@@ -69,11 +70,7 @@ export function CombinedBalanceCard() {
 
   // Memoize currency symbol and balance calculations
   const currencySymbol = useMemo(() => {
-    if (!userProfile) return "$"
-    const custom = (userProfile as any).customCurrency
-    if (custom && custom.symbol) return custom.symbol
-    const map: Record<string, string> = { USD: "$", NPR: "रु", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
-    return map[(userProfile.currency as string) || "USD"] || "$"
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
   }, [userProfile?.currency, (userProfile as any)?.customCurrency])
   
   const isPositive = balance >= 0
@@ -195,15 +192,10 @@ export function CombinedBalanceCard() {
               </div>
               <div className="flex flex-col">
                 <span className="font-semibold text-white">
-                  {timeEquivalentBreakdown.formatted.short} of work
+                  {timeEquivalentBreakdown.formatted.userFriendly}
                 </span>
                 <span className="text-xs text-amber-100/80">
-                  {timeEquivalentBreakdown.days >= 1
-                    ? `${timeEquivalentBreakdown.days.toFixed(1)} work days`
-                    : timeEquivalentBreakdown.weeks >= 1
-                    ? `${timeEquivalentBreakdown.weeks.toFixed(1)} weeks`
-                    : `${timeEquivalentBreakdown.months.toFixed(1)} months`
-                  }
+                  of work time
                 </span>
               </div>
             </div>

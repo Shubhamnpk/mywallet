@@ -1,4 +1,5 @@
 import type { UserProfile, Category, Transaction } from "@/types/wallet"
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, getCategoryColor, getCategoryIcon } from "./categories"
 
 export function generateId(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -11,54 +12,30 @@ export function calculateBalance(transactions: Transaction[]) {
 }
 
 export const initializeDefaultCategories = (): Category[] => {
-  const expenseCategories = [
-    "Food & Dining",
-    "Transportation",
-    "Shopping",
-    "Entertainment",
-    "Bills & Utilities",
-    "Healthcare",
-    "Education",
-    "Travel",
-    "Groceries",
-    "Housing",
-    "Insurance",
-    "Other",
-  ]
-
-  const incomeCategories = [
-    "Salary",
-    "Freelance",
-    "Business",
-    "Investment",
-    "Gift",
-    "Bonus",
-    "Side Hustle",
-    "Rental Income",
-    "Refund",
-    "Other",
-  ]
-
   const defaultCats: Category[] = []
 
-  expenseCategories.forEach((name, index) => {
+  DEFAULT_EXPENSE_CATEGORIES.forEach((category, index) => {
     defaultCats.push({
       id: `expense_${Date.now()}_${index}`,
-      name,
+      name: category.name,
       type: "expense",
       isDefault: true,
+      color: category.color,
+      icon: category.icon,
       createdAt: new Date().toISOString(),
       totalSpent: 0,
       transactionCount: 0,
     })
   })
 
-  incomeCategories.forEach((name, index) => {
+  DEFAULT_INCOME_CATEGORIES.forEach((category, index) => {
     defaultCats.push({
       id: `income_${Date.now()}_${index}`,
-      name,
+      name: category.name,
       type: "income",
       isDefault: true,
+      color: category.color,
+      icon: category.icon,
       createdAt: new Date().toISOString(),
       totalSpent: 0,
       transactionCount: 0,
@@ -74,15 +51,18 @@ export function calculateTimeEquivalent(amount: number, profile: UserProfile): n
 }
 
 export interface TimeEquivalentBreakdown {
+  years: number
+  months: number
+  weeks: number
+  days: number
   hours: number
   minutes: number
-  days: number
-  weeks: number
-  months: number
+  seconds: number
   formatted: {
     short: string
     long: string
     detailed: string
+    userFriendly: string
   }
 }
 
@@ -96,18 +76,43 @@ export function getTimeEquivalentBreakdown(amount: number, profile: UserProfile)
 
   if (totalHours <= 0) return null
 
-  const hours = Math.floor(totalHours)
-  const minutes = Math.round((totalHours - hours) * 60)
+  // Calculate time units more accurately
+  const totalMinutes = totalHours * 60
+  const totalSeconds = totalMinutes * 60
 
-  const dailyHours = profile.workingHoursPerDay
-  const weeklyHours = profile.workingDaysPerMonth * profile.workingHoursPerDay / 4.33 // Average weeks per month
-  const monthlyHours = profile.workingDaysPerMonth * profile.workingHoursPerDay
+  // Use standard time conversions
+  const years = Math.floor(totalHours / (profile.workingDaysPerMonth * profile.workingHoursPerDay * 12))
+  const remainingHoursAfterYears = totalHours % (profile.workingDaysPerMonth * profile.workingHoursPerDay * 12)
 
-  const days = totalHours / dailyHours
-  const weeks = totalHours / weeklyHours
-  const months = totalHours / monthlyHours
+  const months = Math.floor(remainingHoursAfterYears / (profile.workingDaysPerMonth * profile.workingHoursPerDay))
+  const remainingHoursAfterMonths = remainingHoursAfterYears % (profile.workingDaysPerMonth * profile.workingHoursPerDay)
 
-  // Format helpers
+  const weeks = Math.floor(remainingHoursAfterMonths / (profile.workingDaysPerMonth * profile.workingHoursPerDay / 4.333))
+  const remainingHoursAfterWeeks = remainingHoursAfterMonths % (profile.workingDaysPerMonth * profile.workingHoursPerDay / 4.333)
+
+  const days = Math.floor(remainingHoursAfterWeeks / profile.workingHoursPerDay)
+  const remainingHoursAfterDays = remainingHoursAfterWeeks % profile.workingHoursPerDay
+
+  const hours = Math.floor(remainingHoursAfterDays)
+  const minutes = Math.floor((remainingHoursAfterDays - hours) * 60)
+  const seconds = Math.floor(((remainingHoursAfterDays - hours) * 60 - minutes) * 60)
+
+  // User-friendly format function
+  const formatUserFriendly = (): string => {
+    const parts: string[] = []
+
+    if (years > 0) parts.push(`${years}y`)
+    if (months > 0) parts.push(`${months}mo`)
+    if (weeks > 0) parts.push(`${weeks}w`)
+    if (days > 0) parts.push(`${days}d`)
+    if (hours > 0) parts.push(`${hours}h`)
+    if (minutes > 0) parts.push(`${minutes}m`)
+    if (seconds > 0 && parts.length === 0) parts.push(`${seconds}s`) // Only show seconds if no larger units
+
+    return parts.slice(0, 2).join(' ') || '0m' // Show max 2 units, fallback to 0m
+  }
+
+  // Legacy format helpers for backward compatibility
   const formatTime = (h: number, m: number): string => {
     if (h === 0) return `${m}m`
     if (m === 0) return `${h}h`
@@ -129,15 +134,18 @@ export function getTimeEquivalentBreakdown(amount: number, profile: UserProfile)
   }
 
   return {
+    years,
+    months,
+    weeks,
+    days,
     hours: totalHours,
-    minutes: minutes,
-    days: days,
-    weeks: weeks,
-    months: months,
+    minutes,
+    seconds,
     formatted: {
       short: formatTime(hours, minutes),
       long: formatDetailed(hours, minutes),
-      detailed: `${formatTime(hours, minutes)} • ${days.toFixed(1)} work days • ${weeks.toFixed(1)} weeks`
+      detailed: `${formatTime(hours, minutes)} • ${days.toFixed(1)} work days • ${weeks.toFixed(1)} weeks`,
+      userFriendly: formatUserFriendly()
     }
   }
 }
