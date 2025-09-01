@@ -1,56 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { useTheme } from "next-themes"
+import { useColorTheme } from "@/hooks/use-color-theme"
 import { Palette, Sun, Moon, Monitor, Contrast } from "lucide-react"
-
-const colorThemes = [
-  {
-    id: "emerald",
-    name: "Emerald",
-    primary: "hsl(142, 76%, 36%)",
-    description: "Fresh and natural",
-    gradient: "from-emerald-600 via-emerald-500 to-green-400",
-    solid: "bg-emerald-600"
-  },
-  {
-    id: "blue",
-    name: "Ocean Blue",
-    primary: "hsl(221, 83%, 53%)",
-    description: "Professional and trustworthy",
-    gradient: "from-blue-600 via-blue-500 to-indigo-400",
-    solid: "bg-blue-600"
-  },
-  {
-    id: "purple",
-    name: "Royal Purple",
-    primary: "hsl(262, 83%, 58%)",
-    description: "Creative and modern",
-    gradient: "from-purple-600 via-purple-500 to-pink-400",
-    solid: "bg-purple-600"
-  },
-  {
-    id: "orange",
-    name: "Sunset Orange",
-    primary: "hsl(25, 95%, 53%)",
-    description: "Energetic and warm",
-    gradient: "from-orange-600 via-orange-500 to-red-400",
-    solid: "bg-orange-600"
-  },
-  {
-    id: "rose",
-    name: "Rose Pink",
-    primary: "hsl(330, 81%, 60%)",
-    description: "Elegant and sophisticated",
-    gradient: "from-rose-600 via-rose-500 to-pink-400",
-    solid: "bg-rose-600"
-  },
-]
 
 const themeOptions = [
   {
@@ -60,7 +17,7 @@ const themeOptions = [
     description: "Clean and bright"
   },
   {
-    id: "dark", 
+    id: "dark",
     name: "Dark",
     icon: Moon,
     description: "Easy on the eyes"
@@ -75,70 +32,17 @@ const themeOptions = [
 
 export function ThemeSettings() {
   const { theme, setTheme } = useTheme()
-  const [colorTheme, setColorTheme] = useState("emerald")
-  const [useGradient, setUseGradient] = useState(true)
-  const [highContrast, setHighContrast] = useState(false)
-  const [reducedMotion, setReducedMotion] = useState(false)
-
-  useEffect(() => {
-    // Load saved theme preferences
-    const savedColorTheme = localStorage.getItem("wallet_color_theme") || "emerald"
-    const savedUseGradient = localStorage.getItem("wallet_use_gradient") !== "false" // Default to true
-    const savedHighContrast = localStorage.getItem("wallet_high_contrast") === "true"
-    const savedReducedMotion = localStorage.getItem("wallet_reduced_motion") === "true"
-
-    setColorTheme(savedColorTheme)
-    setUseGradient(savedUseGradient)
-    setHighContrast(savedHighContrast)
-    setReducedMotion(savedReducedMotion)
-
-    // Apply the saved color theme to CSS variables
-    const selectedTheme = colorThemes.find((t) => t.id === savedColorTheme)
-    if (selectedTheme) {
-      document.documentElement.style.setProperty("--primary", selectedTheme.primary)
-    }
-  }, [])
-
-  const handleColorThemeChange = (newTheme: string) => {
-    setColorTheme(newTheme)
-    localStorage.setItem("wallet_color_theme", newTheme)
-
-    // Apply theme to document root
-    const root = document.documentElement
-    const selectedTheme = colorThemes.find((t) => t.id === newTheme)
-    if (selectedTheme) {
-      root.style.setProperty("--primary", selectedTheme.primary)
-    }
-  }
-
-  const handleGradientToggle = (enabled: boolean) => {
-    setUseGradient(enabled)
-    localStorage.setItem("wallet_use_gradient", enabled.toString())
-  }
-
-  const handleHighContrastChange = (enabled: boolean) => {
-    setHighContrast(enabled)
-    localStorage.setItem("wallet_high_contrast", enabled.toString())
-
-    // Apply high contrast mode
-    if (enabled) {
-      document.documentElement.classList.add("high-contrast")
-    } else {
-      document.documentElement.classList.remove("high-contrast")
-    }
-  }
-
-  const handleReducedMotionChange = (enabled: boolean) => {
-    setReducedMotion(enabled)
-    localStorage.setItem("wallet_reduced_motion", enabled.toString())
-
-    // Apply reduced motion
-    if (enabled) {
-      document.documentElement.classList.add("reduce-motion")
-    } else {
-      document.documentElement.classList.remove("reduce-motion")
-    }
-  }
+  const {
+    colorTheme,
+    useGradient,
+    highContrast,
+    reducedMotion,
+    colorThemes,
+    handleColorThemeChange,
+    handleGradientToggle,
+    handleHighContrastChange,
+    handleReducedMotionChange,
+  } = useColorTheme()
 
   return (
     <div className="space-y-6">

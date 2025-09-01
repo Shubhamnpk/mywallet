@@ -8,6 +8,7 @@ import { SecuritySettings } from "@/components/settings/security-settings"
 import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
 import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
+import { AboutSettings } from "@/components/settings/about-settings"
 import { useRouter } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
@@ -50,12 +51,13 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="theme">Theme</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="accessibility">A11y</TabsTrigger>
+            <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
@@ -76,6 +78,10 @@ export default function SettingsPage() {
 
           <TabsContent value="accessibility">
             <AccessibilitySettings />
+          </TabsContent>
+
+          <TabsContent value="about">
+            <AboutSettings />
           </TabsContent>
         </Tabs>
       </div>

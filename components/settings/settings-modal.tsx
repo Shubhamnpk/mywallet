@@ -8,7 +8,8 @@ import { SecuritySettings } from "./security-settings"
 import { ThemeSettings } from "./theme-settings"
 import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
-import { User, Shield, Palette, Database, Accessibility } from "lucide-react"
+import { AboutSettings } from "./about-settings"
+import { User, Shield, Palette, Database, Accessibility, Info } from "lucide-react"
 
 interface SettingsModalProps {
   open: boolean
@@ -31,7 +32,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
@@ -51,6 +52,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             <TabsTrigger value="accessibility" className="flex items-center gap-2">
               <Accessibility className="w-4 h-4" />
               <span className="hidden sm:inline">A11y</span>
+            </TabsTrigger>
+            <TabsTrigger value="about" className="flex items-center gap-2">
+              <Info className="w-4 h-4" />
+              <span className="hidden sm:inline">About</span>
             </TabsTrigger>
           </TabsList>
 
@@ -73,6 +78,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
             <TabsContent value="accessibility" className="space-y-6">
               <AccessibilitySettings />
+            </TabsContent>
+
+            <TabsContent value="about" className="space-y-6">
+              <AboutSettings />
             </TabsContent>
           </div>
         </Tabs>
