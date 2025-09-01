@@ -5,6 +5,7 @@ import { Wallet, Settings, Menu } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
+import { OfflineBadge } from "@/components/ui/offline-badge"
 
 interface DashboardHeaderProps {
   userProfile: UserProfile
@@ -38,9 +39,10 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex">
-            <ThemeToggle />
-          </div>
+           <div className="hidden sm:flex">
+             <OfflineBadge />
+             <ThemeToggle />
+           </div>
 
           <button
             className="hidden sm:flex w-10 h-10 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
@@ -60,6 +62,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           </button>
 
           <div className="flex items-center gap-2 sm:hidden">
+            <OfflineBadge />
             <button
               className="w-9 h-9 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
               onClick={() => router.push("/settings")}

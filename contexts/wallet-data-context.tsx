@@ -69,13 +69,6 @@ interface WalletDataProviderProps {
 export function WalletDataProvider({ children }: WalletDataProviderProps) {
   const walletData = useWalletDataHook()
 
-  console.log(
-    "[v0] WalletDataProvider render - balance:",
-    walletData.balance,
-    "transactions:",
-    walletData.transactions?.length,
-  )
-
   return <WalletDataContext.Provider value={walletData}>{children}</WalletDataContext.Provider>
 }
 

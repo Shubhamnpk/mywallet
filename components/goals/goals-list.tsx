@@ -33,6 +33,10 @@ import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { GoalProgressVisualization } from "./goal-progress-visualization"
+import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
+import { MilestoneCelebrations } from "./milestone-celebrations"
 
 interface EnhancedGoalsListProps {
   goals: Goal[]
@@ -200,30 +204,39 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Target className="w-5 h-5" />
-          Financial Goals ({filteredAndSortedGoals.length})
-        </h3>
-        <div className="flex items-center gap-2">
-          {selectedGoals.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="flex items-center gap-2">
-              <Trash2 className="w-4 h-4" />
-              Delete ({selectedGoals.size})
-            </Button>
-          )}
-          <Button
-            onClick={() => {
-              setEditingGoal(null)
-              setIsDialogOpen(true)
-            }}
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Goal
-          </Button>
-        </div>
-      </div>
+      <Tabs defaultValue="goals" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="goals">Goals</TabsTrigger>
+          <TabsTrigger value="progress">Progress</TabsTrigger>
+          <TabsTrigger value="planning">Planning</TabsTrigger>
+          <TabsTrigger value="achievements">Achievements</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="goals" className="space-y-4 mt-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Financial Goals ({filteredAndSortedGoals.length})
+            </h3>
+            <div className="flex items-center gap-2">
+              {selectedGoals.size > 0 && (
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Delete ({selectedGoals.size})
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  setEditingGoal(null)
+                  setIsDialogOpen(true)
+                }}
+                className="flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Goal
+              </Button>
+            </div>
+          </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -431,7 +444,27 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
           })}
         </div>
       )}
+        </TabsContent>
 
+        <TabsContent value="progress" className="space-y-4 mt-6">
+          <GoalProgressVisualization goals={goals} userProfile={userProfile} />
+        </TabsContent>
+
+        <TabsContent value="planning" className="space-y-4 mt-6">
+          <ScenarioPlanningCalculator
+            goals={goals}
+            userProfile={userProfile}
+            currentBalance={balance}
+            monthlyIncome={userProfile.monthlyEarning}
+          />
+        </TabsContent>
+
+        <TabsContent value="achievements" className="space-y-4 mt-6">
+          <MilestoneCelebrations goals={goals} userProfile={userProfile} />
+        </TabsContent>
+      </Tabs>
+
+      {/* Dialogs outside of tabs */}
       <GoalDialog
         isOpen={isDialogOpen}
         onClose={() => {

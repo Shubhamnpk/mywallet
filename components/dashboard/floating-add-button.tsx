@@ -1,305 +1,344 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import React, { useState, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, PowerOff, Settings, User } from "lucide-react"
+import { Plus, Camera, Mic, Calculator, Lock } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 
 interface FloatingAddButtonProps {
   className?: string
   onAddTransaction?: () => void
   onLockWallet?: () => void
-  showQuickActions?: boolean
-  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 }
 
-export function FloatingAddButton({ 
+const quickActions = [
+  { id: 'scan', icon: Camera, label: 'Scan', color: 'bg-emerald-500' },
+  { id: 'voice', icon: Mic, label: 'Voice', color: 'bg-blue-500' },
+  { id: 'calc', icon: Calculator, label: 'Calc', color: 'bg-amber-500' },
+  { id: 'lock', icon: Lock, label: 'Lock', color: 'bg-red-500' }
+]
+
+const getVoiceAction = (isListening: boolean) => ({
+  id: 'voice',
+  icon: Mic,
+  label: isListening ? 'Listening...' : 'Voice',
+  color: isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500'
+})
+
+export function FloatingAddButton({
   className,
   onAddTransaction,
-  onLockWallet,
-  showQuickActions = true,
-  position = 'bottom-right'
+  onLockWallet
 }: FloatingAddButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isPressed, setIsPressed] = useState(false)
-  const [hapticFeedback, setHapticFeedback] = useState(false)
-  
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const isLongPressRef = useRef(false)
-  const touchStartTimeRef = useRef<number>(0)
-  const menuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
+  const [calculatorValue, setCalculatorValue] = useState("")
+  const [isListening, setIsListening] = useState(false)
+  const [prefilledAmount, setPrefilledAmount] = useState("")
+  const [prefilledDescription, setPrefilledDescription] = useState("")
+  const recognitionRef = useRef<any>(null)
 
-  const { isAuthenticated, hasPin, lockApp } = useAuthentication()
+  const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
 
-  // Position classes mapping
-  const positionClasses = {
-    'bottom-right': 'bottom-6 right-6',
-    'bottom-left': 'bottom-6 left-6',
-    'top-right': 'top-6 right-6',
-    'top-left': 'top-6 left-6',
-  }
+  const handleMainAction = useCallback(() => {
+    if (isMobile && isAuthenticated) {
+      setIsExpanded(!isExpanded)
+    } else {
+      onAddTransaction?.() ?? setIsDialogOpen(true)
+    }
+  }, [isMobile, isAuthenticated, isExpanded, onAddTransaction])
 
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current)
-      }
-      if (menuTimeoutRef.current) {
-        clearTimeout(menuTimeoutRef.current)
+  const handleScanReceipt = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        toast.success(`Receipt "${file.name}" selected for scanning`)
+        // Here you would integrate with OCR service
+        setPrefilledDescription(`Receipt: ${file.name}`)
+        setIsDialogOpen(true)
       }
     }
+    input.click()
   }, [])
 
-  // Handle primary button action (add transaction)
-  const handleButtonClick = useCallback((e: React.MouseEvent) => {
-    // Prevent click if it was a long press
-    if (isLongPressRef.current) {
-      isLongPressRef.current = false
+  const handleVoiceCommand = useCallback(() => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      toast.error('Voice recognition not supported in this browser')
       return
     }
 
-    // Haptic feedback for mobile
-    if (isMobile && 'vibrate' in navigator) {
-      navigator.vibrate(50)
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      toast.info('Listening... Say something like "Add expense 50 dollars for groceries"')
     }
 
-    // Custom handler or default dialog
-    if (onAddTransaction) {
-      onAddTransaction()
-    } else {
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      toast.success(`Heard: "${transcript}"`)
+
+      // Parse voice command for amount and description
+      const amountMatch = transcript.match(/(\d+(?:\.\d+)?)/)
+      const amount = amountMatch ? amountMatch[0] : ""
+
+      // Extract description (remove amount and common words)
+      let description = transcript
+        .replace(/(\d+(?:\.\d+)?)/g, '')
+        .replace(/\b(add|expense|income|spend|paid|cost|buy|bought|purchase|purchased|for|dollars?|bucks?|cash)\b/gi, '')
+        .trim()
+
+      if (description.length < 3) {
+        description = transcript.replace(/(\d+(?:\.\d+)?)/g, '').trim()
+      }
+
+      setPrefilledAmount(amount)
+      setPrefilledDescription(description || "Voice transaction")
       setIsDialogOpen(true)
     }
 
-    // Close menu if open
-    setIsMenuOpen(false)
-  }, [isMobile, onAddTransaction])
+    recognition.onerror = (event: any) => {
+      toast.error('Voice recognition error: ' + event.error)
+      setIsListening(false)
+    }
 
-  // Handle dialog state changes
-  const handleDialogOpenChange = useCallback((open: boolean) => {
-    setIsDialogOpen(open)
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
   }, [])
 
-  // Handle lock wallet action
-  const handleLockWallet = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    
-    // Haptic feedback
-    if (isMobile && 'vibrate' in navigator) {
-      navigator.vibrate([50, 50, 100])
-    }
-
-    if (onLockWallet) {
-      onLockWallet()
-    } else {
-      lockApp()
-    }
-    
-    setIsMenuOpen(false)
-  }, [lockApp, onLockWallet, isMobile])
-
-  // Desktop hover handlers with debouncing
-  const handleMouseEnter = useCallback(() => {
-    if (!isMobile && isAuthenticated && hasPin && showQuickActions) {
-      // Clear any existing timeout
-      if (menuTimeoutRef.current) {
-        clearTimeout(menuTimeoutRef.current)
-      }
-      
-      // Small delay to prevent accidental triggers
-      menuTimeoutRef.current = setTimeout(() => {
-        setIsMenuOpen(true)
-      }, 100)
-    }
-  }, [isMobile, isAuthenticated, hasPin, showQuickActions])
-
-  const handleMouseLeave = useCallback(() => {
-    if (!isMobile) {
-      // Clear the enter timeout
-      if (menuTimeoutRef.current) {
-        clearTimeout(menuTimeoutRef.current)
-      }
-      
-      // Delay closing to allow moving to popover
-      menuTimeoutRef.current = setTimeout(() => {
-        setIsMenuOpen(false)
-      }, 200)
-    }
-  }, [isMobile])
-
-  // Popover mouse handlers to keep it open
-  const handlePopoverMouseEnter = useCallback(() => {
-    if (menuTimeoutRef.current) {
-      clearTimeout(menuTimeoutRef.current)
-    }
+  const handleCalculator = useCallback(() => {
+    setIsCalculatorOpen(true)
   }, [])
 
-  const handlePopoverMouseLeave = useCallback(() => {
-    if (!isMobile) {
-      setIsMenuOpen(false)
+  const handleActionClick = useCallback((actionId: string) => {
+    setIsExpanded(false)
+
+    switch (actionId) {
+      case 'lock':
+        onLockWallet?.() ?? lockApp()
+        break
+      case 'scan':
+        handleScanReceipt()
+        break
+      case 'voice':
+        handleVoiceCommand()
+        break
+      case 'calc':
+        handleCalculator()
+        break
+      default:
+        setIsDialogOpen(true)
     }
-  }, [isMobile])
-
-  // Enhanced mobile touch handlers
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || !isAuthenticated || !hasPin || !showQuickActions) return
-
-    touchStartTimeRef.current = Date.now()
-    isLongPressRef.current = false
-    setIsPressed(true)
-
-    // Start long press timer
-    longPressTimerRef.current = setTimeout(() => {
-      isLongPressRef.current = true
-      setIsMenuOpen(true)
-      setHapticFeedback(true)
-      
-      // Strong haptic feedback for long press
-      if ('vibrate' in navigator) {
-        navigator.vibrate([100, 50, 100])
-      }
-      
-      setTimeout(() => setHapticFeedback(false), 200)
-    }, 500)
-  }, [isMobile, isAuthenticated, hasPin, showQuickActions])
-
-  const handleTouchEnd = useCallback(() => {
-    setIsPressed(false)
-    
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-
-    // If it was a quick tap and menu is open, close it
-    const touchDuration = Date.now() - touchStartTimeRef.current
-    if (touchDuration < 500 && isMenuOpen) {
-      setIsMenuOpen(false)
-    }
-  }, [isMenuOpen])
-
-  const handleTouchMove = useCallback(() => {
-    // Cancel long press on touch move
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-    setIsPressed(false)
-  }, [])
-
-  // Keyboard accessibility
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      handleButtonClick(e as any)
-    }
-    
-    // Open menu with context menu key or long press simulation
-    if (e.key === 'ContextMenu' || (e.key === 'Enter' && e.shiftKey)) {
-      e.preventDefault()
-      if (isAuthenticated && hasPin && showQuickActions) {
-        setIsMenuOpen(!isMenuOpen)
-      }
-    }
-  }, [handleButtonClick, isAuthenticated, hasPin, showQuickActions, isMenuOpen])
-
-  const showQuickActionsMenu = isAuthenticated && hasPin && showQuickActions
+  }, [onLockWallet, lockApp, handleScanReceipt, handleVoiceCommand, handleCalculator])
 
   return (
     <>
-      <Popover 
-        open={isMenuOpen} 
-        onOpenChange={setIsMenuOpen}
-      >
-        <PopoverTrigger asChild>
-          <Button
-            onClick={handleButtonClick}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchMove}
-            onKeyDown={handleKeyDown}
-            className={cn(
-              "fixed h-14 w-14 rounded-full shadow-lg transition-all duration-300 z-[100]",
-              "bg-primary hover:bg-primary/90 text-primary-foreground",
-              "hover:shadow-xl hover:scale-105 active:scale-95",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-              "border-2 border-transparent hover:border-primary/20",
-              // Enhanced mobile interactions
-              isMobile && "active:shadow-2xl",
-              // Pressed state for touch feedback
-              isPressed && "scale-95 shadow-inner",
-              // Haptic feedback visual
-              hapticFeedback && "animate-pulse",
-              // Position with mobile gap
-              positionClasses[position],
-              isMobile && position === 'bottom-right' && "bottom-20",
-              className
-            )}
-            size="icon"
-            aria-label={isMenuOpen ? "Close quick actions menu" : "Add transaction or open quick actions (long press)"}
-            aria-expanded={isMenuOpen}
-            aria-haspopup={showQuickActionsMenu ? "true" : "false"}
-            type="button"
-          >
-            <Plus 
-              className={cn(
-                "w-6 h-6 transition-transform duration-200",
-                isMenuOpen && "rotate-45"
-              )} 
-            />
-          </Button>
-        </PopoverTrigger>
+      {/* Action Menu - Mobile */}
+      {isMobile && isExpanded && (
+        <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setIsExpanded(false)}>
+          <div className="absolute bottom-[152px] right-6 flex flex-col gap-3">
+            {quickActions.map((action, index) => {
+              const actionData = action.id === 'voice' ? getVoiceAction(isListening) : action
+              return (
+                <Button
+                  key={action.id}
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleActionClick(action.id)
+                  }}
+                  className={cn(
+                    "h-12 w-12 rounded-full shadow-lg transition-all duration-200",
+                    actionData.color,
+                    "hover:scale-110 active:scale-95",
+                    "animate-in slide-in-from-bottom-2 fade-in-0"
+                  )}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <actionData.icon className="h-5 w-5 text-white" />
+                  <span className="sr-only">{actionData.label}</span>
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
-        {showQuickActionsMenu && (
-          <PopoverContent
-            className={cn(
-              "w-48 p-2 bg-popover/95 backdrop-blur-sm border border-border/50",
-              "shadow-lg rounded-lg animate-in fade-in-0 zoom-in-95",
-              "duration-200"
-            )}
-            align="end"
-            side={position.includes('top') ? 'bottom' : 'top'}
-            sideOffset={8}
-            onMouseEnter={handlePopoverMouseEnter}
-            onMouseLeave={handlePopoverMouseLeave}
-          >
-            <div className="space-y-1">
-              <button
-                onClick={handleLockWallet}
-                className={cn(
-                  "flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md",
-                  "hover:bg-accent hover:text-accent-foreground transition-colors",
-                  "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
-                  "cursor-pointer"
-                )}
-                type="button"
-                aria-label="Lock wallet"
-              >
-                <PowerOff className="w-4 h-4 text-destructive" />
-                <span>Lock Wallet</span>
-              </button>
-              
-            </div>
-          </PopoverContent>
+      {/* Main FAB */}
+      <Button
+        onClick={handleMainAction}
+        className={cn(
+          "fixed right-6 h-14 w-14 rounded-full shadow-lg z-50",
+          isMobile ? "bottom-16" : "bottom-6",
+          "bg-primary hover:bg-primary/90 transition-all duration-200",
+          "hover:scale-105 active:scale-95 hover:shadow-xl",
+          className
         )}
-      </Popover>
+        size="icon"
+      >
+        <Plus 
+          className={cn(
+            "h-6 w-6 transition-transform duration-200",
+            isExpanded && "rotate-45"
+          )} 
+        />
+      </Button>
 
-      <UnifiedTransactionDialog 
-        isOpen={isDialogOpen} 
-        onOpenChange={handleDialogOpenChange} 
+      {/* Desktop Hover Menu */}
+      {!isMobile && isAuthenticated && (
+        <div className="fixed bottom-6 right-20 z-40 group">
+          <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-2">
+            {quickActions.map((action) => {
+              const actionData = action.id === 'voice' ? getVoiceAction(isListening) : action
+              return (
+                <Button
+                  key={action.id}
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleActionClick(action.id)}
+                  className="h-10 px-3 shadow-md hover:shadow-lg transition-all duration-200"
+                >
+                  <actionData.icon className="h-4 w-4 mr-2" />
+                  {actionData.label}
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <UnifiedTransactionDialog
+        isOpen={isDialogOpen}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open)
+          if (!open) {
+            // Clear prefilled data when dialog closes
+            setPrefilledAmount("")
+            setPrefilledDescription("")
+          }
+        }}
+        initialAmount={prefilledAmount}
+        initialDescription={prefilledDescription}
       />
+
+      {/* Calculator Dialog */}
+      <Dialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Quick Calculator</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="calc-input">Enter calculation</Label>
+              <Input
+                id="calc-input"
+                value={calculatorValue}
+                onChange={(e) => setCalculatorValue(e.target.value)}
+                placeholder="e.g., 25.50 + 10.25"
+                className="text-lg"
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {['7', '8', '9', '/'].map((btn) => (
+                <Button
+                  key={btn}
+                  variant="outline"
+                  onClick={() => setCalculatorValue(prev => prev + btn)}
+                >
+                  {btn}
+                </Button>
+              ))}
+              {['4', '5', '6', '*'].map((btn) => (
+                <Button
+                  key={btn}
+                  variant="outline"
+                  onClick={() => setCalculatorValue(prev => prev + btn)}
+                >
+                  {btn}
+                </Button>
+              ))}
+              {['1', '2', '3', '-'].map((btn) => (
+                <Button
+                  key={btn}
+                  variant="outline"
+                  onClick={() => setCalculatorValue(prev => prev + btn)}
+                >
+                  {btn}
+                </Button>
+              ))}
+              {['0', '.', '=', '+'].map((btn) => (
+                <Button
+                  key={btn}
+                  variant={btn === '=' ? "default" : "outline"}
+                  onClick={() => {
+                    if (btn === '=') {
+                      try {
+                        const result = eval(calculatorValue)
+                        setCalculatorValue(result.toString())
+                        toast.success(`Result: ${result}`)
+                      } catch {
+                        toast.error('Invalid calculation')
+                      }
+                    } else {
+                      setCalculatorValue(prev => prev + btn)
+                    }
+                  }}
+                >
+                  {btn}
+                </Button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCalculatorValue("")}
+                className="flex-1"
+              >
+                Clear
+              </Button>
+              <Button
+                onClick={() => {
+                  const result = eval(calculatorValue)
+                  if (!isNaN(result)) {
+                    setPrefilledAmount(result.toString())
+                    setPrefilledDescription("Calculator transaction")
+                    setIsCalculatorOpen(false)
+                    setIsDialogOpen(true)
+                    toast.success(`Amount ${result} copied to transaction`)
+                  } else {
+                    toast.error('Invalid calculation result')
+                  }
+                }}
+                className="flex-1"
+                disabled={!calculatorValue.trim()}
+              >
+                Use Amount
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

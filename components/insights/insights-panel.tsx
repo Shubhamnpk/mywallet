@@ -5,13 +5,21 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown, Clock, Download, PieChart, BarChart3, Target } from "lucide-react"
-import type { Transaction, UserProfile } from "@/types/wallet"
+import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
+import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
+import { FinancialHealthScore } from "./financial-health-score"
+import { BillReminderSystem } from "../productivity/bill-reminder-system"
+import { SpendingBenchmarks } from "../social/spending-benchmarks"
 
 interface InsightsPanelProps {
   transactions: Transaction[]
   userProfile: UserProfile
+  budgets: Budget[]
+  goals: Goal[]
+  debtAccounts: DebtAccount[]
   onExportData: () => void
   calculateTimeEquivalent: (amount: number) => number
 }
@@ -19,6 +27,9 @@ interface InsightsPanelProps {
 export function InsightsPanel({
   transactions,
   userProfile,
+  budgets,
+  goals,
+  debtAccounts,
   onExportData,
   calculateTimeEquivalent,
 }: InsightsPanelProps) {
@@ -446,6 +457,54 @@ export function InsightsPanel({
           )}
         </CardContent>
       </Card>
+
+      {/* Enhanced Analytics Section */}
+      <div className="space-y-6">
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5" />
+            Enhanced Analytics
+          </h3>
+
+          {/* Spending Trends Analysis */}
+          <SpendingTrendsAnalysis
+            transactions={transactions}
+            userProfile={userProfile}
+          />
+
+          {/* Category Performance Dashboard */}
+          <div className="mt-6">
+            <CategoryPerformanceDashboard
+              transactions={transactions}
+              userProfile={userProfile}
+            />
+          </div>
+
+          {/* Financial Health Score */}
+          <div className="mt-6">
+            <FinancialHealthScore
+              transactions={transactions}
+              userProfile={userProfile}
+              budgets={budgets}
+              goals={goals}
+              debtAccounts={debtAccounts}
+            />
+          </div>
+
+          {/* Bill Reminder System */}
+          <div className="mt-6">
+            <BillReminderSystem userProfile={userProfile} />
+          </div>
+
+          {/* Spending Benchmarks */}
+          <div className="mt-6">
+            <SpendingBenchmarks
+              transactions={transactions}
+              userProfile={userProfile}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Export Data */}
       <Card>

@@ -9,7 +9,8 @@ import { ThemeSettings } from "./theme-settings"
 import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
-import { User, Shield, Palette, Database, Accessibility, Info } from "lucide-react"
+import { BiometricAuth } from "../security/biometric-auth"
+import { User, Shield, Palette, Database, Accessibility, Info, Fingerprint } from "lucide-react"
 
 interface SettingsModalProps {
   open: boolean
@@ -32,7 +33,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
@@ -40,6 +41,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             <TabsTrigger value="security" className="flex items-center gap-2">
               <Shield className="w-4 h-4" />
               <span className="hidden sm:inline">Security</span>
+            </TabsTrigger>
+            <TabsTrigger value="biometric" className="flex items-center gap-2">
+              <Fingerprint className="w-4 h-4" />
+              <span className="hidden sm:inline">Biometric</span>
             </TabsTrigger>
             <TabsTrigger value="theme" className="flex items-center gap-2">
               <Palette className="w-4 h-4" />
@@ -66,6 +71,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
             <TabsContent value="security" className="space-y-6">
               <SecuritySettings onLock={() => onOpenChange(false)} />
+            </TabsContent>
+
+            <TabsContent value="biometric" className="space-y-6">
+              <BiometricAuth />
             </TabsContent>
 
             <TabsContent value="theme" className="space-y-6">

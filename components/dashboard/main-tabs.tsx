@@ -29,6 +29,7 @@ interface MainTabsProps {
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
   onUpdateCategoryStats?: () => void
+  debtAccounts?: any[] // Add debt accounts prop
 }
 
 export function MainTabs({
@@ -48,6 +49,7 @@ export function MainTabs({
   onUpdateCategory,
   onDeleteCategory,
   onUpdateCategoryStats,
+  debtAccounts = [],
 }: MainTabsProps) {
   // Calculate summary stats for badges
   const recentTransactions = transactions.slice(0, 5).length
@@ -100,7 +102,7 @@ export function MainTabs({
   ]
 
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className="space-y-6 pb-32 lg:pb-6">
       <Tabs defaultValue="transactions" className="w-full">
         {/* Desktop Tabs */}
         <div className="hidden lg:block">
@@ -192,6 +194,9 @@ export function MainTabs({
             <InsightsPanel
               transactions={transactions}
               userProfile={userProfile}
+              budgets={budgets}
+              goals={goals}
+              debtAccounts={debtAccounts}
               onExportData={onExportData}
               calculateTimeEquivalent={calculateTimeEquivalent}
             />

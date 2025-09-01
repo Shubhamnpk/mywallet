@@ -31,6 +31,8 @@ interface FormData {
 interface UnifiedTransactionDialogProps {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  initialAmount?: string
+  initialDescription?: string
 }
 
 interface FieldState {
@@ -47,7 +49,7 @@ const initialFormData: FormData = {
   allocationTarget: "",
 }
 
-export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: UnifiedTransactionDialogProps = {}) {
+export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription }: UnifiedTransactionDialogProps = {}) {
   const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
     useWalletData()
   const { playSound } = useAccessibility()
@@ -55,7 +57,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   const open = isOpen !== undefined ? isOpen : internalOpen
 
   const [type, setType] = useState<"income" | "expense">("expense")
-  const [formData, setFormData] = useState<FormData>(initialFormData)
+  const [formData, setFormData] = useState<FormData>(() => ({
+    ...initialFormData,
+    amount: initialAmount || "",
+    description: initialDescription || ""
+  }))
   const [fieldStates, setFieldStates] = useState<Record<keyof FormData, FieldState>>({
     amount: { touched: false, blurred: false },
     category: { touched: false, blurred: false },
@@ -127,7 +133,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
         if (!formData.category) return "Category is required"
         break
       case 'description':
-        if (!formData.description.trim()) return "Description is required"
+        // Description is now optional
         break
       case 'allocationTarget':
         if (formData.allocationType !== "direct" && !formData.allocationTarget) {
@@ -149,11 +155,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
 
   const isFormValid = useMemo(() => {
     return Object.keys(errors).length === 0 &&
-           formData.amount &&
-           numAmount > 0 &&
-           (formData.allocationType === "goal" || formData.category) &&
-           formData.description.trim() &&
-           (formData.allocationType === "direct" || formData.allocationTarget)
+            formData.amount &&
+            numAmount > 0 &&
+            (formData.allocationType === "goal" || formData.category) &&
+            (formData.allocationType === "direct" || formData.allocationTarget)
   }, [errors, formData, numAmount])
 
   // Focus management
@@ -163,20 +168,38 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
         amountInputRef.current?.focus()
       }, 150)
 
-      // Load persisted form data
-      const persisted = localStorage.getItem("transaction-dialog-form")
-      if (persisted) {
-        try {
-          const parsed = JSON.parse(persisted)
-          setFormData({ ...initialFormData, ...parsed })
-        } catch (error) {
-          // Ignore invalid data
+      // Load persisted form data only if no initial data provided
+      if (!initialAmount && !initialDescription) {
+        const persisted = localStorage.getItem("transaction-dialog-form")
+        if (persisted) {
+          try {
+            const parsed = JSON.parse(persisted)
+            setFormData({ ...initialFormData, ...parsed })
+          } catch (error) {
+            // Ignore invalid data
+          }
         }
       }
     } else {
       localStorage.removeItem("transaction-dialog-form")
     }
-  }, [open])
+  }, [open, initialAmount, initialDescription])
+
+  // Update form data when initial props change
+  useEffect(() => {
+    if (initialAmount || initialDescription) {
+      setFormData(prev => ({
+        ...prev,
+        amount: initialAmount || prev.amount,
+        description: initialDescription || prev.description
+      }))
+      setFieldStates(prev => ({
+        ...prev,
+        amount: initialAmount ? { touched: true, blurred: false } : prev.amount,
+        description: initialDescription ? { touched: true, blurred: false } : prev.description
+      }))
+    }
+  }, [initialAmount, initialDescription])
 
   // Persist form data
   useEffect(() => {
@@ -206,12 +229,16 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
   }, [])
 
   const resetForm = useCallback(() => {
-    setFormData(initialFormData)
+    setFormData({
+      ...initialFormData,
+      amount: initialAmount || "",
+      description: initialDescription || ""
+    })
     setFieldStates({
-      amount: { touched: false, blurred: false },
+      amount: { touched: !!initialAmount, blurred: false },
       category: { touched: false, blurred: false },
       subcategory: { touched: false, blurred: false },
-      description: { touched: false, blurred: false },
+      description: { touched: !!initialDescription, blurred: false },
       allocationType: { touched: false, blurred: false },
       allocationTarget: { touched: false, blurred: false },
     })
@@ -220,7 +247,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
     setShowAddCategory(false)
     setNewCategoryName("")
     setNewCategoryIcon("📦")
-  }, [])
+  }, [initialAmount, initialDescription])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
@@ -259,7 +286,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
           amount: numAmount,
           category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
           subcategory: formData.subcategory || undefined,
-          description: formData.description || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
+          description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
           date: new Date().toISOString(),
           allocationType: formData.allocationType,
           allocationTarget: formData.allocationTarget || undefined,
@@ -751,9 +778,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange }: Unifi
 
               {/* Description Field */}
               <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-medium flex items-center gap-1">
+                <Label htmlFor="description" className="text-sm font-medium">
                   Description
-                  <span className="text-orange-500">*</span>
                 </Label>
                 <Textarea
                   id="description"

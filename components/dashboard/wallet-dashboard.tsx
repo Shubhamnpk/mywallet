@@ -8,6 +8,7 @@ import { MainTabs } from "./main-tabs"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
 import { Toaster } from "@/components/ui/sonner"
+import { QuickActionsWidget } from "../ui/quick-actions-widget"
 
 interface WalletDashboardProps {
   userProfile: UserProfile
@@ -35,6 +36,7 @@ export function WalletDashboard({ userProfile }: WalletDashboardProps) {
           categories={walletData.categories}
           userProfile={userProfile}
           balance={walletData.balance}
+          debtAccounts={walletData.debtAccounts}
           onExportData={walletData.exportData}
           calculateTimeEquivalent={walletData.calculateTimeEquivalent}
           onDeleteTransaction={walletData.deleteTransaction}
