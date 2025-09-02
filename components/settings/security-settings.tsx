@@ -11,6 +11,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { BiometricAuth } from "../security/biometric-auth"
 import { Shield, Lock, Key } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
@@ -288,6 +289,9 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
           </Dialog>
         </CardContent>
       </Card>
+
+      {/* Biometric Authentication */}
+      <BiometricAuth pinEnabled={pinEnabled} />
 
       {/* Lock App */}
       {isAuthenticated && hasPin && (

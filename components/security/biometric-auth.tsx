@@ -16,11 +16,12 @@ import {
 } from "lucide-react"
 
 interface BiometricAuthProps {
+  pinEnabled?: boolean
   onAuthenticated?: () => void
   onError?: (error: string) => void
 }
 
-export function BiometricAuth({ onAuthenticated, onError }: BiometricAuthProps) {
+export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: BiometricAuthProps) {
   const [isSupported, setIsSupported] = useState(false)
   const [isEnrolled, setIsEnrolled] = useState(false)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -255,6 +256,31 @@ export function BiometricAuth({ onAuthenticated, onError }: BiometricAuthProps) 
     const isEdge = /Edg/.test(userAgent)
 
     return { isChrome, isFirefox, isSafari, isEdge }
+  }
+
+  // If PIN is not enabled, show a message requiring PIN setup first
+  if (!pinEnabled) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Fingerprint className="w-5 h-5" />
+            Biometric Authentication
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <span className="text-sm text-amber-700 font-medium">PIN Required</span>
+            </div>
+            <p className="text-sm text-amber-600 mt-2">
+              Biometric authentication requires PIN protection to be enabled first. Please set up your PIN in the section above.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
