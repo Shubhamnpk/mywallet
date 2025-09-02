@@ -298,6 +298,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               description: warning.details || "Please review your budget allocation."
             })
           })
+          // Play budget warning sound
+          playSound("budget-warning")
         }
 
         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
