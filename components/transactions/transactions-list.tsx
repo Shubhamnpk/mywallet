@@ -206,7 +206,7 @@ export function TransactionsList({
                     <div
                       className={`p-2 rounded-full ${
                         transaction.type === "income"
-                          ? "bg-accent/10 text-accent dark:bg-accent/20"
+                          ? "bg-primary/10 text-primary dark:bg-primary/20"
                           : "bg-red-100 text-red-600 dark:bg-red-900/20"
                       }`}
                     >
@@ -230,7 +230,7 @@ export function TransactionsList({
 
                   <div className={`text-right ${isMobile ? 'flex flex-col items-end' : ''}`}>
                     <p
-                      className={`font-semibold ${transaction.type === "income" ? "text-accent" : "text-red-600"}`}
+                      className={`font-semibold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}
                     >
                       {transaction.type === "income" ? "+" : "-"}
                       {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}

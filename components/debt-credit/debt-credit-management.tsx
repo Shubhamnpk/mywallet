@@ -457,7 +457,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Minus className="w-5 h-5 text-accent" />
+              <Minus className="w-5 h-5 text-primary" />
               Make Payment
             </DialogTitle>
           </DialogHeader>

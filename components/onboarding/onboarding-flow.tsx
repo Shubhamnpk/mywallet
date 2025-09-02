@@ -14,7 +14,6 @@ import {
   Wallet,
   Clock,
   TrendingUp,
-  Target,
   Shield,
   Lock,
   BarChart3,
@@ -32,7 +31,6 @@ import {
 } from 'lucide-react';
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
-import { ONBOARDING_EXPENSE_CATEGORIES } from '@/lib/categories';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 

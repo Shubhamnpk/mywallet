@@ -35,12 +35,12 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails, onE
   const getProgressColor = () => {
     if (category.percentage > 30) return "bg-red-500"
     if (category.percentage > 20) return "bg-amber-500"
-    return "bg-accent"
+    return "bg-primary"
   }
 
   const getTrendIcon = () => {
     if (category.weeklyTrend > 0) return <TrendingUp className="w-3 h-3 text-red-500" />
-    if (category.weeklyTrend < 0) return <TrendingDown className="w-3 h-3 text-accent" />
+    if (category.weeklyTrend < 0) return <TrendingDown className="w-3 h-3 text-primary" />
     return <BarChart3 className="w-3 h-3 text-muted-foreground" />
   }
 
@@ -63,7 +63,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails, onE
               <CardTitle className="text-base truncate">{category.name}</CardTitle>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {category.type === "income" ? (
-                  <TrendingUp className="w-3 h-3 text-accent" />
+                  <TrendingUp className="w-3 h-3 text-primary" />
                 ) : (
                   <TrendingDown className="w-3 h-3 text-red-600" />
                 )}
@@ -133,7 +133,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails, onE
               category.weeklyTrend > 0
                 ? "text-red-600"
                 : category.weeklyTrend < 0
-                  ? "text-accent"
+                  ? "text-primary"
                   : "text-muted-foreground"
             }`}
           >

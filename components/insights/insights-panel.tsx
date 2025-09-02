@@ -91,18 +91,18 @@ export function InsightsPanel({
 
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
-        <Card className="border-accent/20 dark:border-accent/30">
+        <Card className="border-primary/20 dark:border-primary/30">
           <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
                 <p className="text-xs md:text-sm font-medium text-muted-foreground">Work Time Earned</p>
-                <p className="text-lg md:text-2xl font-bold text-accent truncate">
+                <p className="text-lg md:text-2xl font-bold text-primary truncate">
                   {formatTime(totalWorkTimeEarned)}
                 </p>
-                <p className="text-xs text-accent/80 mt-1 truncate">{formatCurrency(totalIncome, userProfile.currency, userProfile.customCurrency)}</p>
+                <p className="text-xs text-primary/80 mt-1 truncate">{formatCurrency(totalIncome, userProfile.currency, userProfile.customCurrency)}</p>
               </div>
-              <div className="h-8 w-8 md:h-12 md:w-12 bg-accent/10 dark:bg-accent/20 rounded-lg flex items-center justify-center ml-2">
-                <Clock className="w-4 h-4 md:w-6 md:h-6 text-accent" />
+              <div className="h-8 w-8 md:h-12 md:w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center ml-2">
+                <Clock className="w-4 h-4 md:w-6 md:h-6 text-primary" />
               </div>
             </div>
           </CardContent>
@@ -223,9 +223,9 @@ export function InsightsPanel({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-2 gap-2 md:gap-4">
-            <div className="bg-accent/5 dark:bg-accent/10 border border-accent/20 dark:border-accent/30 p-4 rounded-lg">
-              <h4 className="font-semibold text-accent mb-2">Time Balance</h4>
-              <p className="text-sm text-accent/80">
+            <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 dark:border-primary/30 p-4 rounded-lg">
+              <h4 className="font-semibold text-primary mb-2">Time Balance</h4>
+              <p className="text-sm text-primary/80">
                 You've earned {formatTime(totalWorkTimeEarned)} and spent {formatTime(totalWorkTimeSpent)} worth of work time.
                 {totalWorkTimeEarned > totalWorkTimeSpent
                   ? ` You're saving ${formatTime(totalWorkTimeEarned - totalWorkTimeSpent)} of work time!`

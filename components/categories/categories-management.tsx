@@ -328,7 +328,7 @@ export function CategoriesManagement({
         <Card>
           <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-accent" />
+              <Target className="w-4 h-4 text-primary" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs md:text-sm text-muted-foreground">Active</p>
                 <p className="text-lg md:text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}</p>
@@ -415,7 +415,7 @@ export function CategoriesManagement({
                         className={`p-1 h-6 w-6 rounded-full ${
                           disabledCategories.has(category.id)
                             ? 'text-muted-foreground hover:text-foreground'
-                            : 'text-accent hover:text-accent/80'
+                            : 'text-primary hover:text-primary/80'
                         }`}
                         title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
                       >
@@ -454,7 +454,7 @@ export function CategoriesManagement({
                     className={`p-1 h-6 w-6 rounded-full ${
                       disabledCategories.has(category.id)
                         ? 'text-muted-foreground hover:text-foreground'
-                        : 'text-accent hover:text-accent/80'
+                        : 'text-primary hover:text-primary/80'
                     }`}
                     title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
                   >

@@ -196,7 +196,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     const isCompleted = progress >= 100
     const isOverdue = new Date(goal.targetDate) < new Date() && !isCompleted
 
-    if (isCompleted) return { status: "completed", color: "bg-accent", icon: CheckCircle2 }
+    if (isCompleted) return { status: "completed", color: "bg-primary", icon: CheckCircle2 }
     if (isOverdue) return { status: "overdue", color: "bg-red-600", icon: AlertCircle }
     if (progress > 75) return { status: "near-completion", color: "bg-amber-600", icon: TrendingUp }
     return { status: "active", color: "bg-blue-600", icon: Target }
@@ -315,7 +315,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
             return (
               <Card
                 key={goal.id}
-                className={`${isCompleted ? "border-accent/20 bg-accent/5" : ""} ${isSelected ? "ring-2 ring-blue-500" : ""}`}
+                className={`${isCompleted ? "border-primary/20 bg-primary/5" : ""} ${isSelected ? "ring-2 ring-blue-500" : ""}`}
               >
                 <Collapsible open={isExpanded} onOpenChange={() => toggleGoalExpansion(goal.id)}>
                   <CollapsibleTrigger asChild>
@@ -479,7 +479,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Send className="w-5 h-5 text-accent" />
+              <Send className="w-5 h-5 text-primary" />
               Transfer to Goal
             </DialogTitle>
           </DialogHeader>

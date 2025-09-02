@@ -77,7 +77,7 @@ export function ThemeSettings() {
                     <div className={`
                       p-2 rounded-lg transition-colors
                       ${isSelected 
-                        ? 'bg-primary text-primary-foreground' 
+                        ? 'bg-primary text-accent-foreground' 
                         : 'bg-primary text-accent-foreground'
                       }
                     `}>

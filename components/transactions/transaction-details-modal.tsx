@@ -43,7 +43,7 @@ export function TransactionDetailsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {transaction.type === "income" ? (
-              <TrendingUp className="w-5 h-5 text-accent" />
+              <TrendingUp className="w-5 h-5 text-primary" />
             ) : (
               <TrendingDown className="w-5 h-5 text-red-600" />
             )}
@@ -55,7 +55,7 @@ export function TransactionDetailsModal({
           {/* Amount */}
           <div className="text-center p-4 bg-muted/50 rounded-lg">
             <p className="text-sm text-muted-foreground mb-1">Amount</p>
-            <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-accent" : "text-red-600"}`}>
+            <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}>
               {transaction.type === "income" ? "+" : "-"}
               {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
             </p>

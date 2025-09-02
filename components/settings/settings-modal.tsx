@@ -26,7 +26,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
-              <User className="w-4 h-4 text-primary-foreground" />
+              <User className="w-4 h-4 text-accent-foreground" />
             </div>
             Settings
           </DialogTitle>

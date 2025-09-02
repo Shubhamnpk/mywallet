@@ -138,7 +138,7 @@ export function PinLockScreen({ onUnlock }: PinLockScreenProps) {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-8 h-8 text-primary-foreground" />
+            <Shield className="w-8 h-8 text-accent-foreground" />
           </div>
           <CardTitle className="flex items-center justify-center gap-2">
             {isSetupMode ? (

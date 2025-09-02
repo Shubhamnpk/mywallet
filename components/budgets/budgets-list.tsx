@@ -54,7 +54,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
     const percentage = (budget.spent / budget.limit) * 100
     if (percentage >= 100) return { status: "exceeded", color: "text-red-600", icon: AlertTriangle }
     if (percentage >= 80) return { status: "warning", color: "text-amber-600", icon: AlertTriangle }
-    return { status: "good", color: "text-accent", icon: CheckCircle }
+    return { status: "good", color: "text-primary", icon: CheckCircle }
   }
 
   const filteredAndSortedBudgets = useMemo(() => {
@@ -246,7 +246,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                     <div className="flex items-center justify-between">
                       <CollapsibleTrigger asChild>
                         <div className="flex items-center gap-2 cursor-pointer flex-1">
-                          <Target className="w-5 h-5 text-accent" />
+                          <Target className="w-5 h-5 text-primary" />
                           <CardTitle className="text-lg">{budget.name}</CardTitle>
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </div>
