@@ -12,6 +12,7 @@ import { AboutSettings } from "@/components/settings/about-settings"
 import { useRouter } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
+import { SessionManager } from "@/lib/session-manager"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -21,6 +22,14 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!userProfile || showOnboarding) {
       router.push('/')
+      return
+    }
+
+    // Validate session on page load
+    if (!SessionManager.isSessionValid()) {
+      console.log('[SettingsPage] Session invalid on page load, dispatching expiry event')
+      const event = new CustomEvent('wallet-session-expired')
+      window.dispatchEvent(event)
     }
   }, [userProfile, showOnboarding, router])
 

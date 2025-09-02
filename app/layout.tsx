@@ -6,6 +6,8 @@ import "./globals.css"
 import { ThemeProviderWrapper } from "@/components/theme-provider-wrapper"
 import { WalletDataProvider } from "@/contexts/wallet-data-context"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
+import { SessionGuard } from "@/components/security/session-guard"
+import { SessionDebug } from "@/components/security/session-debug"
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -30,7 +32,9 @@ export default function RootLayout({
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <ThemeProviderWrapper>
           <PrivacyModeProvider>
-            <WalletDataProvider>{children}</WalletDataProvider>
+            <WalletDataProvider>
+              <SessionGuard>{children}</SessionGuard>
+            </WalletDataProvider>
           </PrivacyModeProvider>
         </ThemeProviderWrapper>
       </body>

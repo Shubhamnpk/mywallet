@@ -344,7 +344,7 @@ export function AccessibilitySettings() {
         localStorage.setItem("wallet_pin_failed_enabled", enabled.toString())
         break
     }
-    announceToScreenReader(`${activity.replace("-", " ")} sound ${enabled ? "enabled" : "disabled"}`)
+    announceToScreenReader(`${activity.replace("-", " ").replace("pin", "auth")} sound ${enabled ? "enabled" : "disabled"}`)
   }
 
   const handleActivitySoundChange = (activity: string) => (value: string) => {
@@ -739,8 +739,8 @@ export function AccessibilitySettings() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <Label>PIN Success Sound</Label>
-                    <p className="text-sm text-muted-foreground">Play sound when PIN is entered successfully</p>
+                    <Label>Auth Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication is successful</p>
                   </div>
                   <Switch
                     checked={pinSuccessEnabled}
@@ -803,8 +803,8 @@ export function AccessibilitySettings() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <Label>PIN Failed Sound</Label>
-                    <p className="text-sm text-muted-foreground">Play sound when PIN entry fails</p>
+                    <Label>Auth Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication fails</p>
                   </div>
                   <Switch
                     checked={pinFailedEnabled}

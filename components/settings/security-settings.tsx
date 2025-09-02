@@ -12,7 +12,7 @@ import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { BiometricAuth } from "../security/biometric-auth"
-import { Shield, Lock, Key } from "lucide-react"
+import { Shield, Lock, Key, Volume2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
 interface SecuritySettingsProps {
@@ -292,6 +292,31 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
 
       {/* Biometric Authentication */}
       <BiometricAuth pinEnabled={pinEnabled} />
+
+      {/* Audio Feedback for Authentication */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Volume2 className="w-5 h-5" />
+            Authentication Sounds
+          </CardTitle>
+          <CardDescription>Sound feedback for PIN and biometric authentication</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
+              <Volume2 className="w-4 h-4" />
+              <span className="text-sm font-medium">Sound Settings</span>
+            </div>
+            <p className="text-sm text-blue-600 dark:text-blue-500">
+              Authentication sounds are configured in Accessibility Settings. Both PIN and biometric authentication use the same success and failure sound settings.
+            </p>
+            <p className="text-sm text-blue-600 dark:text-blue-500 mt-2">
+              Go to Settings → Accessibility → Audio Feedback to customize sounds for Auth success, Auth failure, and other activities.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Lock App */}
       {isAuthenticated && hasPin && (

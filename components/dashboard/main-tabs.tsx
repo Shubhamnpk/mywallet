@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -10,6 +11,7 @@ import { EnhancedGoalsList } from "@/components/goals/goals-list"
 import { DebtCreditManagement } from "@/components/debt-credit/debt-credit-management"
 import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
+import { SessionManager } from "@/lib/session-manager"
 import type { UserProfile, Transaction, Budget, Goal, Category } from "@/types/wallet"
 
 interface MainTabsProps {
@@ -59,6 +61,38 @@ export function MainTabs({
 
   // Calculate insights badge (simplified check for activity)
   const hasInsights = transactions.length > 0
+
+  // Validate session on component mount and tab changes
+  useEffect(() => {
+    const validateSession = () => {
+      if (!SessionManager.isSessionValid()) {
+        console.log('[MainTabs] Session invalid, dispatching expiry event')
+        const event = new CustomEvent('wallet-session-expired')
+        window.dispatchEvent(event)
+      }
+    }
+
+    // Validate on mount
+    validateSession()
+
+    // Listen for tab changes (since this is our "navigation")
+    const handleTabChange = () => {
+      validateSession()
+    }
+
+    // Add event listener for when tabs might change
+    // Since shadcn tabs don't emit events, we'll validate on any click
+    const handleClick = () => {
+      // Small delay to allow tab state to update
+      setTimeout(validateSession, 100)
+    }
+
+    document.addEventListener('click', handleClick)
+
+    return () => {
+      document.removeEventListener('click', handleClick)
+    }
+  }, [])
 
   const tabs = [
     {

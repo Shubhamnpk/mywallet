@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { SecurePinManager, PinAttemptResult } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { SessionManager } from "@/lib/session-manager"
 import { toast } from "@/hooks/use-toast"
 
 export interface AuthState {
@@ -41,10 +42,6 @@ export function useAuthentication(): AuthState & AuthActions {
     const initializeAuth = async () => {
       try {
         const status = SecurePinManager.getAuthStatus()
-        const lastAuth = localStorage.getItem("wallet_last_auth")
-        const now = Date.now()
-        const fiveMinutes = 5 * 60 * 1000
-        const isRecentAuth = lastAuth && (now - Number.parseInt(lastAuth)) <= fiveMinutes
         const hasMasterKey = SecureKeyManager.hasMasterKey()
 
         setAuthState({
@@ -55,33 +52,64 @@ export function useAuthentication(): AuthState & AuthActions {
           attemptsRemaining: status.attemptsRemaining,
           lockoutTimeRemaining: status.lockoutTimeRemaining,
         })
-        if (!status.hasPin) {
-          setAuthState(prev => ({ ...prev, isAuthenticated: true }))
-        }
 
-        // If we have a cached key and PIN is set up, try to authenticate automatically
-        if (hasMasterKey && status.hasPin && !status.isLocked && isRecentAuth) {
-          const cachedKey = SecureKeyManager.isKeyCacheValid()
-          if (cachedKey) {
-            const masterKey = await SecureKeyManager.getMasterKey("") // Empty PIN for cached retrieval
-            if (masterKey) {
-              setAuthState(prev => ({
-                ...prev,
-                isAuthenticated: true,
-                masterKey: masterKey || undefined,
-              }))
-            } else {
-            }
-          } else {
-          }
+        // If no PIN is set up, allow access
+        if (!status.hasPin) {
+          console.log('[useAuthentication] No PIN required, allowing access')
+          setAuthState(prev => ({ ...prev, isAuthenticated: true }))
         } else {
+          // If PIN is set up, check if we have a valid session
+          const sessionStatus = SessionManager.getSessionStatus()
+          console.log('[useAuthentication] PIN required, checking session:', sessionStatus)
+
+          if (sessionStatus && sessionStatus.isValid && hasMasterKey) {
+            // We have a valid session and master key, authenticate automatically
+            console.log('[useAuthentication] Valid session found, authenticating automatically')
+            try {
+              const masterKey = await SecureKeyManager.getMasterKey("")
+              if (masterKey) {
+                setAuthState(prev => ({
+                  ...prev,
+                  isAuthenticated: true,
+                  masterKey: masterKey,
+                }))
+                console.log('[useAuthentication] Auto-authentication successful')
+                return
+              }
+            } catch (error) {
+              console.log('[useAuthentication] Auto-authentication failed:', error)
+            }
+          }
+
+          // No valid session or auto-auth failed, stay unauthenticated
+          console.log('[useAuthentication] No valid session, staying unauthenticated')
+          setAuthState(prev => ({
+            ...prev,
+            isAuthenticated: false,
+          }))
         }
       } catch (error) {
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     }
 
+    // Listen for session expiry events
+    const handleSessionExpiry = () => {
+      console.log('[useAuthentication] Session expired, updating auth state')
+      setAuthState(prev => ({
+        ...prev,
+        isAuthenticated: false,
+        masterKey: undefined,
+      }))
+    }
+
+    window.addEventListener('wallet-session-expired', handleSessionExpiry)
+
     initializeAuth()
+
+    return () => {
+      window.removeEventListener('wallet-session-expired', handleSessionExpiry)
+    }
   }, [])
 
   // Setup PIN for first time
@@ -131,16 +159,53 @@ export function useAuthentication(): AuthState & AuthActions {
     }
   }, [])
 
-  // Validate PIN for authentication
+  // Validate PIN for authentication (also handles biometric auth with empty PIN)
   const validatePin = useCallback(async (pin: string): Promise<PinAttemptResult> => {
     setAuthState(prev => ({ ...prev, isLoading: true }))
 
     try {
+      // Handle biometric authentication (empty PIN)
+      if (pin === "") {
+        console.log('[useAuthentication] Biometric authentication detected')
+        // For biometric auth, we don't validate PIN but create session directly
+        // This assumes biometric validation has already happened
+
+        // Load master key for biometric authentication
+        const masterKey = await SecureKeyManager.getMasterKey("")
+
+        setAuthState({
+          isAuthenticated: true,
+          isLoading: false,
+          hasPin: true,
+          isLocked: false,
+          attemptsRemaining: 5, // Reset attempts for biometric
+          masterKey: masterKey, // Load cached master key
+        })
+
+        // Create session for biometric auth
+        SessionManager.createSession()
+
+        toast({
+          title: "Authentication Successful",
+          description: "Welcome back to your wallet!",
+        })
+
+        return {
+          success: true,
+          attemptsRemaining: 5,
+          isLocked: false,
+        }
+      }
+
+      // Regular PIN validation
       const result = await SecurePinManager.validatePin(pin)
 
       if (result.success) {
         // Get master key after successful validation
         const masterKey = await SecureKeyManager.getMasterKey(pin)
+
+        // Create session after successful authentication
+        SessionManager.createSession()
 
         setAuthState({
           isAuthenticated: true,
@@ -259,6 +324,9 @@ export function useAuthentication(): AuthState & AuthActions {
 
   // Lock App - manually lock and return to PIN screen
   const lockApp = useCallback(() => {
+    // Clear session
+    SessionManager.clearSession()
+
     // Clear cached keys
     SecureKeyManager.expireKeyCache()
 
