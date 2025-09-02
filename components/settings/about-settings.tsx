@@ -19,7 +19,7 @@ export function AboutSettings() {
   }
 
   const handleGithubLink = () => {
-    window.open('https://github.com/shubhamy/my-wallet-app', '_blank')
+    window.open('https://github.com/Shubhamnpk/mywallet', '_blank')
   }
 
   return (
@@ -36,11 +36,11 @@ export function AboutSettings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Version</span>
-            <Badge variant="secondary">v0.1.0</Badge>
+            <Badge variant="secondary">v0.5.0</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Build</span>
-            <span className="text-sm text-muted-foreground">2025.01.01</span>
+            <span className="text-sm text-muted-foreground">2025.09.02</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Platform</span>
@@ -150,7 +150,7 @@ export function AboutSettings() {
               <User className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="font-medium">Shubham Nirual</p>
+              <p className="font-medium">Shubham Niraual</p>
               <p className="text-sm text-muted-foreground">Full Stack Developer</p>
             </div>
           </div>
