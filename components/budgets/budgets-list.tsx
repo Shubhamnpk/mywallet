@@ -196,7 +196,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
             <Target className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold">No budgets yet</h3>
             <p className="text-muted-foreground mb-4">Start by creating your first smart budget today.</p>
-            <Button onClick={() => setDialogOpen(true)} className="flex items-center gap-2">
+            <Button onClick={() => setDialogOpen(true)} className=" gap-2">
               <PlusCircle className="w-4 h-4" />
               Create Budget
             </Button>

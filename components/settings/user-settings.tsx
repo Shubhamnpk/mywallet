@@ -279,19 +279,6 @@ export function UserProfileSettings() {
 
             {/* Enhanced status text with better styling */}
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/10">
-                {getAvatarSrc() ? (
-                  <>
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <p className="text-sm font-medium text-primary">Profile picture active</p>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                    <p className="text-sm font-medium text-muted-foreground">Using initials</p>
-                  </>
-                )}
-              </div>
               <p className="text-xs text-muted-foreground max-w-xs">
                 {editMode ? (
                   getAvatarSrc()
@@ -321,24 +308,24 @@ export function UserProfileSettings() {
                 </div>
 
                 {/* Profile Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                       {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
                     </div>
                     <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hourly Rate</div>
                   </div>
                   <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    <div className="text-xl font-bold text-green-600 dark:text-green-400">
                       {formData.workingHoursPerDay}h
                     </div>
                     <div className="text-sm text-green-600/70 dark:text-green-400/70">Daily Hours</div>
                   </div>
                   <div className="p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800">
-                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
                       {formData.workingDaysPerMonth}
                     </div>
-                    <div className="text-sm text-purple-600/70 dark:text-purple-400/70">Work Days/Month</div>
+                    <div className="text-sm text-purple-600/70 dark:text-purple-400/70">Work Days</div>
                   </div>
                 </div>
               </div>
@@ -447,7 +434,7 @@ export function UserProfileSettings() {
         </CardHeader>
         <CardContent className="space-y-6">
           {!editMode ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                 <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
                   {getCurrentCurrencySymbol}{formData.monthlyEarning.toLocaleString()}

@@ -47,19 +47,19 @@ const PRESET_SOUNDS = {
 
 export function AccessibilitySettings() {
   const [screenReader, setScreenReader] = useState(false)
-  const [keyboardNav, setKeyboardNav] = useState(true)
+  const [keyboardNav, setKeyboardNav] = useState(false)
   const [fontSize, setFontSize] = useState([16])
   const [soundEffects, setSoundEffects] = useState(false)
-  const [focusIndicators, setFocusIndicators] = useState(true)
-  const [tooltips, setTooltips] = useState(true)
+  const [focusIndicators, setFocusIndicators] = useState(false)
+  const [tooltips, setTooltips] = useState(false)
   const [selectedSound, setSelectedSound] = useState("gentle-chime")
   const [customSoundUrl, setCustomSoundUrl] = useState("")
 
   // Per-activity sound settings
   const [transactionSuccessEnabled, setTransactionSuccessEnabled] = useState(true)
-  const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(false)
+  const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(true)
   const [pinSuccessEnabled, setPinSuccessEnabled] = useState(true)
-  const [pinFailedEnabled, setPinFailedEnabled] = useState(false)
+  const [pinFailedEnabled, setPinFailedEnabled] = useState(true)
   const [transactionSuccessSelectedSound, setTransactionSuccessSelectedSound] = useState("success-tone")
   const [transactionFailedSelectedSound, setTransactionFailedSelectedSound] = useState("notification")
   const [pinSuccessSelectedSound, setPinSuccessSelectedSound] = useState("success-tone")
@@ -79,7 +79,7 @@ export function AccessibilitySettings() {
 
   useEffect(() => {
     // Load saved accessibility preferences
-    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
+    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "false"
     const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") !== "false"
     const savedFontSize = Number.parseInt(localStorage.getItem("wallet_font_size") || "16")
     const savedSoundEffects = localStorage.getItem("wallet_sound_effects") === "true"
@@ -428,17 +428,17 @@ export function AccessibilitySettings() {
   const resetToDefaults = () => {
     const defaults = {
       screenReader: false,
-      keyboardNav: true,
+      keyboardNav: false,
       fontSize: 16,
-      soundEffects: false,
-      focusIndicators: true,
-      tooltips: true,
+      soundEffects: true,
+      focusIndicators: false,
+      tooltips: false,
       selectedSound: "gentle-chime",
       customSoundUrl: "",
       transactionSuccessEnabled: true,
-      transactionFailedEnabled: false,
+      transactionFailedEnabled: true,
       pinSuccessEnabled: true,
-      pinFailedEnabled: false,
+      pinFailedEnabled: true,
       transactionSuccessSelectedSound: "success-tone",
       transactionFailedSelectedSound: "notification",
       pinSuccessSelectedSound: "success-tone",

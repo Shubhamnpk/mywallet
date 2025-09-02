@@ -38,7 +38,7 @@ export function getCurrencySymbol(
   }
 
   if (currency === "CUSTOM" && custom && custom.symbol) return custom.symbol
-  const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹" }
+  const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹", NPR:"रु", }
   return map[currency] || currency
 }
 

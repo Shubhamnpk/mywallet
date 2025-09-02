@@ -181,16 +181,16 @@ export function AboutSettings() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-4 border rounded-lg">
+            <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
+              <div className="text-center p-3 border rounded-lg">
                 <div className="font-medium text-sm">OSS</div>
                 <div className="text-xs text-muted-foreground mt-1">Open Source Software</div>
               </div>
-              <div className="text-center p-4 border rounded-lg">
+              <div className="text-center p-3 border rounded-lg">
                 <div className="font-medium text-sm">BitNepal</div>
                 <div className="text-xs text-muted-foreground mt-1">Technology Partner</div>
               </div>
-              <div className="text-center p-4 border rounded-lg">
+              <div className="text-center p-3 border rounded-lg">
                 <div className="font-medium text-sm">Yoguru</div>
                 <div className="text-xs text-muted-foreground mt-1">Community Partner</div>
               </div>

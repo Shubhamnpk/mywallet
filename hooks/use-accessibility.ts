@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 export function useAccessibility() {
-  const [soundEffects, setSoundEffects] = useState(false)
+  const [soundEffects, setSoundEffects] = useState(true)
   const [selectedSound, setSelectedSound] = useState("gentle-chime")
   const [customSoundUrl, setCustomSoundUrl] = useState("")
 

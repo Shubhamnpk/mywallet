@@ -119,9 +119,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
+      <div className="grid grid-cols-3 md:grid-cols-3 gap-2 md:gap-4">
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-red-100 flex items-center justify-center">
                 <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-red-600" />
@@ -135,7 +135,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         </Card>
 
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-blue-100 flex items-center justify-center">
                 <CreditCard className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
@@ -149,7 +149,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         </Card>
 
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div
                 className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center ${

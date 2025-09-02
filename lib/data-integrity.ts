@@ -35,7 +35,6 @@ export class DataIntegrityManager {
     }
 
     localStorage.setItem(this.INTEGRITY_KEY, JSON.stringify(integrityInfo))
-    console.log("[v0] Data integrity record created")
     return integrityInfo
   }
 

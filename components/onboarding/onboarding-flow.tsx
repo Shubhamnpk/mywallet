@@ -123,7 +123,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     name: '',
     avatar: null as string | null,
     monthlyEarning: '',
-    currency: 'USD',
+    currency: 'NPR',
     workingHoursPerDay: '8',
     workingDaysPerMonth: '20',
     enableSecurity: true,
@@ -306,10 +306,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-2xl mb-3 shadow-lg">
             <Wallet className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-black mb-1">
+          <h1 className="text-2xl font-bold  mb-1">
             MyWallet
           </h1>
-          <p className="text-black/80 text-sm">Your time-aware financial companion</p>
+          <p className=" text-sm">Your time-aware financial companion</p>
         </div>
 
         {/* Main Card */}

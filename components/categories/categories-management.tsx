@@ -312,9 +312,9 @@ export function CategoriesManagement({
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+      <div className="grid grid-cols-3 md:grid-cols-3 gap-2 md:gap-4">
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-blue-600" />
               <div className="flex-1 min-w-0">
@@ -326,7 +326,7 @@ export function CategoriesManagement({
         </Card>
 
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-accent" />
               <div className="flex-1 min-w-0">
@@ -338,7 +338,7 @@ export function CategoriesManagement({
         </Card>
 
         <Card>
-          <CardContent className="p-3 md:p-4">
+          <CardContent className="p-2 md:p-4">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-amber-600" />
               <div className="flex-1 min-w-0">
@@ -347,21 +347,6 @@ export function CategoriesManagement({
                   {categoryStats.length > 0
                     ? categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]?.name
                     : "None"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-600" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs md:text-sm text-muted-foreground">This Month</p>
-                <p className="text-lg md:text-xl font-bold truncate">
-                  {currencySymbol}
-                  {categoryStats.reduce((sum, c) => sum + c.monthlyAverage, 0).toFixed(0)}
                 </p>
               </div>
             </div>

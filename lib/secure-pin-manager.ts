@@ -38,7 +38,6 @@ export class SecurePinManager {
   static initializeConfig(config?: Partial<PinSecurityConfig>): void {
     const finalConfig = { ...this.DEFAULT_CONFIG, ...config }
     localStorage.setItem(this.PIN_CONFIG_KEY, JSON.stringify(finalConfig))
-    console.log("[v0] PIN security configuration initialized")
   }
 
   // Get current security configuration
@@ -48,7 +47,6 @@ export class SecurePinManager {
       try {
         return { ...this.DEFAULT_CONFIG, ...JSON.parse(stored) }
       } catch (error) {
-        console.error("[v0] Failed to parse PIN config, using defaults:", error)
       }
     }
     return this.DEFAULT_CONFIG
@@ -83,10 +81,8 @@ export class SecurePinManager {
       // Reset attempt counters
       this.resetAttempts()
 
-      console.log("[v0] PIN setup completed successfully")
       return true
     } catch (error) {
-      console.error("[v0] Failed to setup PIN:", error)
       return false
     }
   }
@@ -124,7 +120,6 @@ export class SecurePinManager {
       const storedSalt = localStorage.getItem(this.PIN_SALT_KEY)
 
       if (!storedHash || !storedSalt) {
-        console.error("[v0] No PIN credentials found")
         return {
           success: false,
           attemptsRemaining: config.maxAttempts - attempts - 1,
@@ -159,7 +154,6 @@ export class SecurePinManager {
           }
         }
 
-        console.log("[v0] PIN validation failed, attempts:", newAttempts)
         return {
           success: false,
           attemptsRemaining: config.maxAttempts - newAttempts,
@@ -167,7 +161,6 @@ export class SecurePinManager {
         }
       }
     } catch (error) {
-      console.error("[v0] PIN validation error:", error)
       return {
         success: false,
         attemptsRemaining: 0,
@@ -182,18 +175,15 @@ export class SecurePinManager {
       // First validate old PIN
       const validation = await this.validatePin(oldPin)
       if (!validation.success) {
-        console.error("[v0] Old PIN validation failed")
         return false
       }
 
       // Setup new PIN
       const success = await this.setupPin(newPin)
       if (success) {
-        console.log("[v0] PIN changed successfully")
       }
       return success
     } catch (error) {
-      console.error("[v0] Failed to change PIN:", error)
       return false
     }
   }
@@ -243,7 +233,6 @@ export class SecurePinManager {
     localStorage.removeItem(this.PIN_SALT_KEY)
     this.resetAttempts()
     SecureKeyManager.clearAllKeys()
-    console.log("[v0] PIN and keys reset")
   }
 
   // Private helper methods
@@ -269,6 +258,5 @@ export class SecurePinManager {
   private static setLockout(): void {
     const lockoutTime = Date.now() + this.getConfig().lockoutDuration
     localStorage.setItem(this.PIN_LOCKOUT_KEY, lockoutTime.toString())
-    console.log("[v0] PIN lockout activated")
   }
 }

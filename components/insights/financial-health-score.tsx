@@ -167,8 +167,8 @@ export function FinancialHealthScore({
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Overall Score */}
-        <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-          <div className="flex items-center justify-center mb-4">
+        <div className="text-center p-5 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-center justify-center mb-3">
             <div className={`p-3 rounded-full ${overallScore.color.split(' ')[1]} border ${overallScore.color.split(' ')[2]}`}>
               {overallScore.icon}
             </div>
@@ -179,7 +179,7 @@ export function FinancialHealthScore({
         </div>
 
         {/* Health Metrics */}
-        <div className="space-y-4">
+        <div className="space-y-2">
           <h4 className="font-semibold">Health Metrics Breakdown</h4>
 
           {healthMetrics.map((metric, index) => (

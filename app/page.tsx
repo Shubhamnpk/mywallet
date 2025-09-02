@@ -12,11 +12,6 @@ export default function MyWallet() {
   const [isUnlocked, setIsUnlocked] = useState(false)
 
   useEffect(() => {
-    console.log("[DEBUG] PIN Lock Check - userProfile:", {
-      pin: userProfile?.pin,
-      securityEnabled: userProfile?.securityEnabled,
-      exists: !!userProfile
-    })
 
     const authStatus = SecurePinManager.getAuthStatus()
     const hasPinCredentials = SecurePinManager.hasPinCredentials()
@@ -37,23 +32,18 @@ export default function MyWallet() {
       // If account is locked, always show lock screen
       if (authStatus.isLocked) {
         setIsUnlocked(false)
-        console.log("[DEBUG] Account is locked - setting isUnlocked to false")
       } else if (!lastAuth || now - Number.parseInt(lastAuth) > fiveMinutes) {
         setIsUnlocked(false)
-        console.log("[DEBUG] No recent auth or expired - setting isUnlocked to false")
       } else {
         setIsUnlocked(true)
-        console.log("[DEBUG] Recent auth found - setting isUnlocked to true")
       }
     } else {
       setIsUnlocked(true)
-      console.log("[DEBUG] No PIN credentials - setting isUnlocked to true")
     }
   }, [userProfile])
 
   const handleUnlock = () => {
     setIsUnlocked(true)
-    // Store authentication timestamp
     localStorage.setItem("wallet_last_auth", Date.now().toString())
   }
 
@@ -80,10 +70,8 @@ export default function MyWallet() {
   })
 
   if (hasPinCredentials && (!isUnlocked || authStatus.isLocked)) {
-    console.log("[DEBUG] Rendering PinLockScreen")
     return <PinLockScreen onUnlock={handleUnlock} />
   }
 
-  console.log("[DEBUG] Rendering WalletDashboard")
   return <WalletDashboard userProfile={userProfile} />
 }

@@ -56,19 +56,19 @@ export function ThemeSettings() {
           <CardDescription>Choose your preferred theme mode</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {themeOptions.map((themeOption) => {
               const IconComponent = themeOption.icon
               const isSelected = theme === themeOption.id
-              
+
               return (
                 <div
                   key={themeOption.id}
                   onClick={() => setTheme(themeOption.id)}
                   className={`
-                    relative p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md
-                    ${isSelected 
-                      ? 'border-primary bg-primary/5 shadow-sm' 
+                    relative p-3 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:shadow-md
+                    ${isSelected
+                      ? 'border-primary bg-primary/5 shadow-sm'
                       : 'border-border hover:border-primary/30 hover:bg-primary/50'
                     }
                   `}
@@ -114,11 +114,11 @@ export function ThemeSettings() {
           <CardDescription>Choose your preferred color scheme</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             {colorThemes.map((themeOption) => (
               <div
                 key={themeOption.id}
-                className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
                   colorTheme === themeOption.id
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"

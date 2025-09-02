@@ -187,7 +187,6 @@ export async function createWalletBackup(allData: any, pin: string) {
   // validate data before backup
   const validation = await DataIntegrityManager.validateAllData(allData)
   if (!validation.isValid) {
-    console.warn("[v0] Creating backup despite validation issues:", validation.issues)
   }
 
   const backup = await createEncryptedBackup(allData, pin)
@@ -213,7 +212,6 @@ export async function restoreWalletBackup(backupJson: string, pin: string, overw
       try {
         localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v))
       } catch (e) {
-        console.error("[v0] Failed to write restored key:", k, e)
       }
     }
     // update integrity record after write

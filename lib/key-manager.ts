@@ -54,10 +54,8 @@ export class SecureKeyManager {
       // Cache the key temporarily
       this.cacheKey(keyId, key)
 
-      console.log("[v0] Master key created and cached")
       return keyId
     } catch (error) {
-      console.error("[v0] Failed to create master key:", error)
       throw new Error("Failed to create master key")
     }
   }
@@ -70,7 +68,6 @@ export class SecureKeyManager {
       // Check cache first
       const cached = this.keyCache.get(keyId)
       if (cached && cached.expires > Date.now()) {
-        console.log("[v0] Using cached master key")
         this.updateKeyUsage(keyId)
         return cached.key
       }
@@ -78,7 +75,6 @@ export class SecureKeyManager {
       // Retrieve salt
       const saltBase64 = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${keyId}_salt`)
       if (!saltBase64) {
-        console.log("[v0] No master key salt found")
         return null
       }
 
@@ -95,10 +91,8 @@ export class SecureKeyManager {
       this.cacheKey(keyId, key)
       this.updateKeyUsage(keyId)
 
-      console.log("[v0] Master key derived and cached")
       return key
     } catch (error) {
-      console.error("[v0] Failed to retrieve master key:", error)
       return null
     }
   }
@@ -111,7 +105,6 @@ export class SecureKeyManager {
     // Set up automatic cache cleanup
     setTimeout(() => {
       this.keyCache.delete(keyId)
-      console.log("[v0] Key cache expired for:", keyId)
     }, this.SESSION_TIMEOUT)
   }
 
@@ -131,7 +124,6 @@ export class SecureKeyManager {
     try {
       return JSON.parse(metadataJson)
     } catch (error) {
-      console.error("[v0] Failed to parse key metadata:", error)
       return null
     }
   }
@@ -151,7 +143,6 @@ export class SecureKeyManager {
     }
 
     keysToRemove.forEach((key) => localStorage.removeItem(key))
-    console.log("[v0] All keys and metadata cleared")
   }
 
   // Rotate master key (change PIN)
@@ -160,7 +151,6 @@ export class SecureKeyManager {
       // Verify old PIN first
       const oldKey = await this.getMasterKey(oldPin)
       if (!oldKey) {
-        console.log("[v0] Old PIN verification failed")
         return false
       }
 
@@ -170,10 +160,8 @@ export class SecureKeyManager {
       // Create new master key
       await this.createMasterKey(newPin)
 
-      console.log("[v0] Master key rotated successfully")
       return true
     } catch (error) {
-      console.error("[v0] Failed to rotate master key:", error)
       return false
     }
   }
@@ -188,10 +176,8 @@ export class SecureKeyManager {
   static expireKeyCache(keyId?: string): void {
     if (keyId) {
       this.keyCache.delete(keyId)
-      console.log("[v0] Key cache expired for:", keyId)
     } else {
       this.keyCache.clear()
-      console.log("[v0] All key caches expired")
     }
   }
 
@@ -257,13 +243,11 @@ export class SecureKeyManager {
         // Check for suspicious activity (too many accesses in short time)
         const timeSinceLastUse = Date.now() - new Date(metadata.lastUsed).getTime()
         if (metadata.accessCount > 10 && timeSinceLastUse < 60000) { // 10 accesses in 1 minute
-          console.warn("[v0] Suspicious key access pattern detected")
           // Could trigger additional security measures here
         }
 
         localStorage.setItem(metadataKey, JSON.stringify(metadata))
       } catch (error) {
-        console.error("[v0] Failed to update key usage:", error)
       }
     }
   }
@@ -274,14 +258,12 @@ export class SecureKeyManager {
       // Verify old PIN through SecurePinManager
       const pinValidation = await SecurePinManager.validatePin(oldPin)
       if (!pinValidation.success) {
-        console.error("[v0] PIN validation failed during rotation")
         return false
       }
 
       // Get current key for data re-encryption if needed
       const oldKey = await this.getMasterKey(oldPin)
       if (!oldKey) {
-        console.error("[v0] Could not retrieve old key for rotation")
         return false
       }
 
@@ -304,19 +286,15 @@ export class SecureKeyManager {
         localStorage.setItem(`${this.METADATA_STORAGE_PREFIX}${newKeyId}`, JSON.stringify(metadata))
       }
 
-      console.log("[v0] Master key rotated securely")
       return true
     } catch (error) {
-      console.error("[v0] Failed to rotate master key securely:", error)
 
       // Attempt to restore from backup
       const backupMetadata = localStorage.getItem(`${this.METADATA_STORAGE_PREFIX}${this.MASTER_KEY_ID}_backup`)
       if (backupMetadata) {
         try {
           localStorage.setItem(`${this.METADATA_STORAGE_PREFIX}${this.MASTER_KEY_ID}`, backupMetadata)
-          console.log("[v0] Restored key metadata from backup")
         } catch (restoreError) {
-          console.error("[v0] Failed to restore backup:", restoreError)
         }
       }
 

@@ -41,7 +41,6 @@ export async function saveToLocalStorage(key: string, data: any, encrypt: boolea
     // Save unencrypted if encryption not available or not requested
     localStorage.setItem(key, typeof data === "string" ? data : JSON.stringify(data))
   } catch (error) {
-    console.error("[v0] Failed to save to localStorage:", error)
     throw error
   }
 }
@@ -56,7 +55,6 @@ export async function decryptData(encryptedData: string): Promise<any> {
     const decryptedString = await SecureWallet.decryptData(encryptedData, masterKey)
     return JSON.parse(decryptedString)
   } catch (error) {
-    console.error("[v0] Failed to decrypt data:", error)
     throw error
   }
 }
@@ -66,7 +64,6 @@ export function saveDataWithIntegrity(allData: any) {
     DataIntegrityManager.updateIntegrityRecord(allData)
     return true
   } catch (e) {
-    console.error("[v0] Failed to save integrity record:", e)
     return false
   }
 }
@@ -83,7 +80,6 @@ export async function saveSecureBatch(dataMap: Record<string, any>, encryptKeys:
     const allData = await loadFromLocalStorage(Object.keys(dataMap))
     return saveDataWithIntegrity(allData)
   } catch (error) {
-    console.error("[v0] Failed to save secure batch:", error)
     return false
   }
 }
@@ -95,13 +91,11 @@ export async function loadSecureBatch(keys: string[]): Promise<Record<string, an
     // Verify integrity
     const integrityCheck = await DataIntegrityManager.verifyDataIntegrity(data)
     if (!integrityCheck.isValid) {
-      console.warn("[v0] Data integrity check failed:", integrityCheck.issues)
       // Could trigger recovery or alert user
     }
 
     return data
   } catch (error) {
-    console.error("[v0] Failed to load secure batch:", error)
     throw error
   }
 }

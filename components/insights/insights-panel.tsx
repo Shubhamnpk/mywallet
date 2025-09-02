@@ -491,11 +491,6 @@ export function InsightsPanel({
             />
           </div>
 
-          {/* Bill Reminder System */}
-          <div className="mt-6">
-            <BillReminderSystem userProfile={userProfile} />
-          </div>
-
           {/* Spending Benchmarks */}
           <div className="mt-6">
             <SpendingBenchmarks
