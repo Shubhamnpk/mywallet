@@ -49,7 +49,7 @@ export function AccessibilitySettings() {
   const [screenReader, setScreenReader] = useState(false)
   const [keyboardNav, setKeyboardNav] = useState(false)
   const [fontSize, setFontSize] = useState([16])
-  const [soundEffects, setSoundEffects] = useState(false)
+  const [soundEffects, setSoundEffects] = useState(true)
   const [focusIndicators, setFocusIndicators] = useState(false)
   const [tooltips, setTooltips] = useState(false)
   const [selectedSound, setSelectedSound] = useState("gentle-chime")
@@ -79,12 +79,12 @@ export function AccessibilitySettings() {
 
   useEffect(() => {
     // Load saved accessibility preferences
-    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "false"
-    const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") !== "false"
+    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
+    const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") === "true"
     const savedFontSize = Number.parseInt(localStorage.getItem("wallet_font_size") || "16")
     const savedSoundEffects = localStorage.getItem("wallet_sound_effects") === "true"
-    const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") !== "false"
-    const savedTooltips = localStorage.getItem("wallet_tooltips") !== "false"
+    const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") === "true"
+    const savedTooltips = localStorage.getItem("wallet_tooltips") === "true"
     const savedSelectedSound = localStorage.getItem("wallet_selected_sound") || "gentle-chime"
     const savedCustomSoundUrl = localStorage.getItem("wallet_custom_sound_url") || ""
 
@@ -105,7 +105,7 @@ export function AccessibilitySettings() {
     setScreenReader(savedScreenReader)
     setKeyboardNav(savedKeyboardNav)
     setFontSize([savedFontSize])
-    setSoundEffects(savedSoundEffects)
+    setSoundEffects(savedSoundEffects || true)
     setFocusIndicators(savedFocusIndicators)
     setTooltips(savedTooltips)
     setSelectedSound(savedSelectedSound)
@@ -125,6 +125,14 @@ export function AccessibilitySettings() {
     setPinFailedCustomUrl(savedPinFailedCustomUrl)
 
     applyAccessibilitySettings(savedScreenReader, savedKeyboardNav, savedFontSize, savedFocusIndicators)
+
+    // Listen for authentication success events
+    const handleAuthSuccess = () => playSound('pin-success')
+    window.addEventListener('wallet-auth-success', handleAuthSuccess)
+
+    return () => {
+      window.removeEventListener('wallet-auth-success', handleAuthSuccess)
+    }
   }, [])
 
   const applyAccessibilitySettings = (sr: boolean, kn: boolean, fs: number, fi: boolean) => {
