@@ -50,17 +50,22 @@ export function useColorTheme() {
   const [useGradient, setUseGradient] = useState(true)
   const [highContrast, setHighContrast] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
-  // Apply color theme to CSS variables
+  // Apply color theme to CSS variables (only on client side)
   const applyColorTheme = (themeId: string) => {
+    if (typeof window === 'undefined') return
+
     const selectedTheme = colorThemes.find((t) => t.id === themeId)
     if (selectedTheme) {
       document.documentElement.style.setProperty("--primary", selectedTheme.primary)
     }
   }
 
-  // Apply accessibility settings
+  // Apply accessibility settings (only on client side)
   const applyAccessibilitySettings = () => {
+    if (typeof window === 'undefined') return
+
     if (highContrast) {
       document.documentElement.classList.add("high-contrast")
     } else {
@@ -76,6 +81,8 @@ export function useColorTheme() {
 
   // Load saved preferences on mount
   useEffect(() => {
+    setMounted(true)
+
     const savedColorTheme = localStorage.getItem("wallet_color_theme") || "emerald"
     const savedUseGradient = localStorage.getItem("wallet_use_gradient") !== "false" // Default to true
     const savedHighContrast = localStorage.getItem("wallet_high_contrast") === "true"
@@ -94,7 +101,7 @@ export function useColorTheme() {
   // Update accessibility settings when they change
   useEffect(() => {
     applyAccessibilitySettings()
-  }, [highContrast, reducedMotion])
+  }, [highContrast, reducedMotion, mounted])
 
   const handleColorThemeChange = (newTheme: string) => {
     setColorTheme(newTheme)

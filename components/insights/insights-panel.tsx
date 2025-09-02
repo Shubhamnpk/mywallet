@@ -1,16 +1,18 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown, Clock, Download, PieChart, BarChart3, Target } from "lucide-react"
+import { TrendingUp, TrendingDown, Clock, Download, PieChart, BarChart3, Target, Award, Shield, Star, Trophy, AlertTriangle, CheckCircle } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useFinancialHealthScore, FinancialHealthScore } from "./financial-health-score"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
 import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
-import { FinancialHealthScore } from "./financial-health-score"
 import { BillReminderSystem } from "../productivity/bill-reminder-system"
 import { SpendingBenchmarks } from "../social/spending-benchmarks"
 
@@ -80,6 +82,11 @@ export function InsightsPanel({
 
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0
 
+  // Financial Health Score Modal Logic
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const { overallScore } = useFinancialHealthScore(transactions, userProfile, budgets, goals, debtAccounts)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -90,7 +97,7 @@ export function InsightsPanel({
       </div>
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-4">
         <Card className="border-primary/20 dark:border-primary/30">
           <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
@@ -162,6 +169,22 @@ export function InsightsPanel({
               </div>
               <div className="h-8 w-8 md:h-12 md:w-12 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center ml-2">
                 <Target className="w-4 h-4 md:w-6 md:h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-purple-200 dark:border-purple-800 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setIsModalOpen(true)}>
+          <CardContent className="p-3 md:p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-muted-foreground">F Health Score</p>
+                <p className="text-lg md:text-2xl font-bold text-primary truncate">
+                  {overallScore.score.toFixed(0)}:{overallScore.grade}
+                </p>
+              </div>
+              <div className="h-8 w-8 md:h-12 md:w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center ml-2">
+                {overallScore.icon}
               </div>
             </div>
           </CardContent>
@@ -240,49 +263,6 @@ export function InsightsPanel({
               <p className="text-sm text-blue-600 dark:text-blue-400">
                 At {formatCurrency(userProfile.hourlyRate || 0, userProfile.currency, userProfile.customCurrency)}/hour, every {formatCurrency(1, userProfile.currency, userProfile.customCurrency)} you spend equals {userProfile.hourlyRate ? Math.round(60 / userProfile.hourlyRate) : 0} minutes of work.
               </p>
-            </div>
-          </div>
-
-          {/* Enhanced Financial Health Summary */}
-          <div className="bg-muted/50 border p-4 rounded-lg">
-            <h4 className="font-semibold mb-3">Financial Health Summary</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-              <div className="text-center">
-                <p className="text-muted-foreground">Income vs Expenses</p>
-                <p className={`font-semibold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {netWorth >= 0 ? "Positive" : "Negative"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatCurrency(Math.abs(netWorth), userProfile.currency, userProfile.customCurrency)}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-muted-foreground">Time Efficiency</p>
-                <p className={`font-semibold ${totalWorkTimeEarned >= totalWorkTimeSpent ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {totalWorkTimeEarned >= totalWorkTimeSpent ? "Efficient" : "Overspending"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {totalWorkTimeEarned > 0 ? `${((totalWorkTimeEarned - totalWorkTimeSpent) / totalWorkTimeEarned * 100).toFixed(1)}%` : "0%"} efficiency
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-muted-foreground">Savings Goal</p>
-                <p className={`font-semibold ${savingsRate >= 20 ? "text-emerald-600 dark:text-emerald-400" : savingsRate >= 10 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"}`}>
-                  {savingsRate >= 20 ? "Excellent" : savingsRate >= 10 ? "On Track" : "Needs Work"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {savingsRate.toFixed(1)}% rate
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-muted-foreground">Time Value</p>
-                <p className="font-semibold text-blue-600 dark:text-blue-400">
-                  {formatCurrency(userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay), userProfile.currency, userProfile.customCurrency)}/hr
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Your hourly rate
-                </p>
-              </div>
             </div>
           </div>
 
@@ -459,12 +439,7 @@ export function InsightsPanel({
       </Card>
 
       {/* Enhanced Analytics Section */}
-      <div className="space-y-6">
-        <div className="border-t pt-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5" />
-            Enhanced Analytics
-          </h3>
+      <div className="space-y-4">
 
           {/* Spending Trends Analysis */}
           <SpendingTrendsAnalysis
@@ -473,32 +448,21 @@ export function InsightsPanel({
           />
 
           {/* Category Performance Dashboard */}
-          <div className="mt-6">
+          <div className="mt-5">
             <CategoryPerformanceDashboard
               transactions={transactions}
               userProfile={userProfile}
             />
           </div>
 
-          {/* Financial Health Score */}
-          <div className="mt-6">
-            <FinancialHealthScore
-              transactions={transactions}
-              userProfile={userProfile}
-              budgets={budgets}
-              goals={goals}
-              debtAccounts={debtAccounts}
-            />
-          </div>
 
           {/* Spending Benchmarks */}
-          <div className="mt-6">
+          <div className="mt-5">
             <SpendingBenchmarks
               transactions={transactions}
               userProfile={userProfile}
             />
           </div>
-        </div>
       </div>
 
       {/* Export Data */}
@@ -526,6 +490,24 @@ export function InsightsPanel({
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Financial Health Score Breakdown</DialogTitle>
+          </DialogHeader>
+          <div className="pr-2">
+            <FinancialHealthScore
+              transactions={transactions}
+              userProfile={userProfile}
+              budgets={budgets}
+              goals={goals}
+              debtAccounts={debtAccounts}
+              compact
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

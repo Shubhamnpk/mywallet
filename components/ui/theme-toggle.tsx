@@ -19,17 +19,17 @@ export function ThemeToggle() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setTheme("light")} className="flex items-center gap-2">
-          <Sun className="h-4 w-4" />
+          <Sun className="h-4 w-4 hover:text-card" />
           Light
           {theme === "light" && <span className="ml-auto text-xs">✓</span>}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("dark")} className="flex items-center gap-2">
-          <Moon className="h-4 w-4" />
+          <Moon className="h-4 w-4 hover:text-card" />
           Dark
           {theme === "dark" && <span className="ml-auto text-xs">✓</span>}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")} className="flex items-center gap-2">
-          <Monitor className="h-4 w-4" />
+          <Monitor className="h-4 w-4 hover:text-card" />
           System
           {theme === "system" && <span className="ml-auto text-xs">✓</span>}
         </DropdownMenuItem>

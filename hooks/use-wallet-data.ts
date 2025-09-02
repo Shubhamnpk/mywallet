@@ -38,6 +38,7 @@ export function useWalletData() {
   useEffect(() => {
     if (isLoaded) return
 
+    console.log('[HYDRATION] Starting to load wallet data from localStorage')
     loadDataWithIntegrityCheck()
   }, [isLoaded])
 
@@ -136,10 +137,17 @@ export function useWalletData() {
       }
 
       setIsLoaded(true)
+      console.log('[HYDRATION] Wallet data loaded:', {
+        userProfile: !!parsedData.userProfile,
+        transactionsCount: parsedData.transactions.length,
+        budgetsCount: parsedData.budgets.length,
+        goalsCount: parsedData.goals.length
+      })
     } catch (error) {
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
+      console.log('[HYDRATION] Error loading wallet data:', error)
     }
   }
 
@@ -830,6 +838,7 @@ export function useWalletData() {
     isFirstTime,
     showOnboarding,
     isAuthenticated,
+    isLoaded,
     balanceChange,
     setShowOnboarding,
     handleOnboardingComplete,

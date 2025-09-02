@@ -4,17 +4,10 @@ import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, CheckCircle } from "lucide-react"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-
-interface FinancialHealthScoreProps {
-  transactions: Transaction[]
-  userProfile: UserProfile
-  budgets: Budget[]
-  goals: Goal[]
-  debtAccounts: DebtAccount[]
-}
 
 interface HealthMetric {
   name: string
@@ -25,13 +18,13 @@ interface HealthMetric {
   icon: React.ReactNode
 }
 
-export function FinancialHealthScore({
-  transactions,
-  userProfile,
-  budgets,
-  goals,
-  debtAccounts
-}: FinancialHealthScoreProps) {
+export function useFinancialHealthScore(
+  transactions: Transaction[],
+  userProfile: UserProfile,
+  budgets: Budget[],
+  goals: Goal[],
+  debtAccounts: DebtAccount[]
+) {
   const healthMetrics = useMemo(() => {
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
     const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
@@ -157,6 +150,138 @@ export function FinancialHealthScore({
     }
   }
 
+  return { healthMetrics, overallScore, getStatusColor, getStatusIcon }
+}
+
+interface FinancialHealthScoreProps {
+  transactions: Transaction[]
+  userProfile: UserProfile
+  budgets: Budget[]
+  goals: Goal[]
+  debtAccounts: DebtAccount[]
+  compact?: boolean
+}
+
+export function FinancialHealthScore({
+  transactions,
+  userProfile,
+  budgets,
+  goals,
+  debtAccounts,
+  compact = false
+}: FinancialHealthScoreProps) {
+  const { healthMetrics, overallScore, getStatusColor, getStatusIcon } = useFinancialHealthScore(
+    transactions,
+    userProfile,
+    budgets,
+    goals,
+    debtAccounts
+  )
+
+  const content = (
+    <div className="space-y-6">
+      {/* Overall Score */}
+      <div className="text-center p-5 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div className="flex items-center justify-center mb-3">
+          <div className={`p-3 rounded-full ${overallScore.color.split(' ')[1]} border ${overallScore.color.split(' ')[2]}`}>
+            {overallScore.icon}
+          </div>
+        </div>
+        <div className="text-4xl font-bold text-primary mb-2">{overallScore.score.toFixed(0)}</div>
+        <div className="text-2xl font-semibold mb-2">{overallScore.grade}</div>
+        <p className="text-muted-foreground mb-4">{overallScore.description}</p>
+
+        {/* Achievement Badges */}
+        <TooltipProvider>
+          <div className="flex justify-center gap-2 flex-wrap">
+            {healthMetrics
+              .filter(metric => metric.status === 'excellent')
+              .map((metric) => (
+                <Tooltip key={metric.name}>
+                  <TooltipTrigger asChild>
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-full cursor-help hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors">
+                      {getStatusIcon(metric.status)}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-medium">{metric.name}</p>
+                    <p className="text-sm text-muted-foreground capitalize">{metric.status}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+          </div>
+        </TooltipProvider>
+      </div>
+      {/* Recommendations */}
+      <div className="p-4 bg-muted/50 border rounded-lg">
+        <h4 className="font-semibold mb-3">💡 Recommendations</h4>
+        <div className="space-y-2 text-sm">
+          {overallScore.score >= 80 && (
+            <p className="text-emerald-700 dark:text-emerald-300">
+              🎉 Excellent work! Consider advanced strategies like investment planning or debt payoff acceleration.
+            </p>
+          )}
+          {overallScore.score >= 60 && overallScore.score < 80 && (
+            <p className="text-blue-700 dark:text-blue-300">
+              📈 Good progress! Focus on increasing your savings rate and building an emergency fund.
+            </p>
+          )}
+          {overallScore.score >= 40 && overallScore.score < 60 && (
+            <p className="text-amber-700 dark:text-amber-300">
+              🎯 Making progress! Review your budget categories and look for areas to reduce discretionary spending.
+            </p>
+          )}
+          {overallScore.score < 40 && (
+            <p className="text-red-700 dark:text-red-300">
+              🚨 Time to take action! Create a strict budget, cut unnecessary expenses, and focus on building savings.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Health Metrics */}
+      <div className="space-y-2">
+        <h4 className="font-semibold">Health Metrics Breakdown</h4>
+
+        {healthMetrics.map((metric, index) => (
+          <div key={metric.name} className="p-4 border rounded-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${getStatusColor(metric.status)}`}>
+                  {getStatusIcon(metric.status)}
+                </div>
+                <div>
+                  <h5 className="font-medium">{metric.name}</h5>
+                  <p className="text-sm text-muted-foreground">{metric.description}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-primary">
+                  {metric.score.toFixed(0)}/{metric.maxScore}
+                </div>
+                <Badge variant="outline" className={getStatusColor(metric.status)}>
+                  {metric.status}
+                </Badge>
+              </div>
+            </div>
+
+            <Progress value={metric.score} className="h-2" />
+            <p className="text-xs text-muted-foreground mt-1">
+              {metric.score.toFixed(1)}% score
+            </p>
+          </div>
+        ))}
+      </div>
+
+      
+
+    </div>
+  )
+
+  if (compact) {
+    return content
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -165,92 +290,8 @@ export function FinancialHealthScore({
           Financial Health Score
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Overall Score */}
-        <div className="text-center p-5 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-          <div className="flex items-center justify-center mb-3">
-            <div className={`p-3 rounded-full ${overallScore.color.split(' ')[1]} border ${overallScore.color.split(' ')[2]}`}>
-              {overallScore.icon}
-            </div>
-          </div>
-          <div className="text-4xl font-bold text-primary mb-2">{overallScore.score.toFixed(0)}</div>
-          <div className="text-2xl font-semibold mb-2">{overallScore.grade}</div>
-          <p className="text-muted-foreground">{overallScore.description}</p>
-        </div>
-
-        {/* Health Metrics */}
-        <div className="space-y-2">
-          <h4 className="font-semibold">Health Metrics Breakdown</h4>
-
-          {healthMetrics.map((metric, index) => (
-            <div key={metric.name} className="p-4 border rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${getStatusColor(metric.status)}`}>
-                    {getStatusIcon(metric.status)}
-                  </div>
-                  <div>
-                    <h5 className="font-medium">{metric.name}</h5>
-                    <p className="text-sm text-muted-foreground">{metric.description}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-primary">
-                    {metric.score.toFixed(0)}/{metric.maxScore}
-                  </div>
-                  <Badge variant="outline" className={getStatusColor(metric.status)}>
-                    {metric.status}
-                  </Badge>
-                </div>
-              </div>
-
-              <Progress value={metric.score} className="h-2" />
-              <p className="text-xs text-muted-foreground mt-1">
-                {metric.score.toFixed(1)}% score
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Recommendations */}
-        <div className="p-4 bg-muted/50 border rounded-lg">
-          <h4 className="font-semibold mb-3">💡 Recommendations</h4>
-          <div className="space-y-2 text-sm">
-            {overallScore.score >= 80 && (
-              <p className="text-emerald-700 dark:text-emerald-300">
-                🎉 Excellent work! Consider advanced strategies like investment planning or debt payoff acceleration.
-              </p>
-            )}
-            {overallScore.score >= 60 && overallScore.score < 80 && (
-              <p className="text-blue-700 dark:text-blue-300">
-                📈 Good progress! Focus on increasing your savings rate and building an emergency fund.
-              </p>
-            )}
-            {overallScore.score >= 40 && overallScore.score < 60 && (
-              <p className="text-amber-700 dark:text-amber-300">
-                🎯 Making progress! Review your budget categories and look for areas to reduce discretionary spending.
-              </p>
-            )}
-            {overallScore.score < 40 && (
-              <p className="text-red-700 dark:text-red-300">
-                🚨 Time to take action! Create a strict budget, cut unnecessary expenses, and focus on building savings.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Achievement Badges */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {healthMetrics.map((metric) => (
-            metric.status === 'excellent' && (
-              <div key={metric.name} className="text-center p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-                <Trophy className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{metric.name}</p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">Excellent</p>
-              </div>
-            )
-          ))}
-        </div>
+      <CardContent>
+        {content}
       </CardContent>
     </Card>
   )

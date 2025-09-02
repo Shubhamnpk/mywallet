@@ -28,6 +28,7 @@ type WalletDataContextType = {
   isFirstTime: boolean
   showOnboarding: boolean
   isAuthenticated: boolean
+  isLoaded: boolean
   balanceChange: { amount: number; type: "income" | "expense" } | null
   setShowOnboarding: (show: boolean) => void
   handleOnboardingComplete: (profileData: UserProfile) => void
@@ -68,6 +69,14 @@ interface WalletDataProviderProps {
 
 export function WalletDataProvider({ children }: WalletDataProviderProps) {
   const walletData = useWalletDataHook()
+
+  if (!walletData.isLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
 
   return <WalletDataContext.Provider value={walletData}>{children}</WalletDataContext.Provider>
 }
