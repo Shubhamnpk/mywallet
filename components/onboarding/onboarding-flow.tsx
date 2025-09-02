@@ -32,6 +32,7 @@ import {
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
+import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 interface OnboardingProps {
@@ -252,6 +253,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           toast.error('Failed to set up PIN. Please try again.');
           return;
         }
+
+        // Create initial session after PIN setup for consistent behavior
+        SessionManager.createSession();
       }
 
       // Get PIN data from localStorage if security is enabled

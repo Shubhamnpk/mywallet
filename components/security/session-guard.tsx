@@ -4,13 +4,11 @@ import { useState, useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
-import { SecureKeyManager } from "@/lib/key-manager"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Wallet, Lock, AlertCircle, Shield, Fingerprint, CheckCircle2, Clock, Smartphone } from "lucide-react"
+import { Lock, AlertCircle, Shield, Fingerprint } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
 // Sound generation functions
@@ -92,17 +90,58 @@ interface SessionGuardProps {
 }
 
 interface SessionPinScreenProps {
-  onUnlock: (pin: string) => Promise<void>
+  onUnlock: (pin: string, emergencyMode?: boolean) => Promise<void>
+  onError?: () => void
 }
 
-function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
+function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
   const [pin, setPin] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [authStatus, setAuthStatus] = useState(SecurePinManager.getAuthStatus())
+  const [emergencyAuthStatus, setEmergencyAuthStatus] = useState(SecurePinManager.getEmergencyAuthStatus())
   const [biometricEnabled, setBiometricEnabled] = useState(false)
   const [biometricSupported, setBiometricSupported] = useState(false)
   const [isBiometricAuthenticating, setIsBiometricAuthenticating] = useState(false)
   const [rememberDevice, setRememberDevice] = useState(false)
+  const [emergencyMode, setEmergencyMode] = useState(false)
+  const [hasEmergencyPin, setHasEmergencyPin] = useState(SecurePinManager.hasEmergencyPin())
+  const [pinError, setPinError] = useState(false)
+
+  // Get current auth status based on mode
+  const getCurrentAuthStatus = () => {
+    if (emergencyMode) {
+      const emergencyStatus = SecurePinManager.getEmergencyAuthStatus()
+      return {
+        isLocked: emergencyStatus.isLocked,
+        attemptsRemaining: emergencyStatus.attemptsRemaining,
+        lockoutTimeRemaining: emergencyStatus.lockoutTimeRemaining,
+        securityLevel: emergencyStatus.securityLevel,
+      }
+    }
+    return authStatus
+  }
+
+  const currentAuthStatus = getCurrentAuthStatus()
+
+  // Format time remaining in MM:SS format
+  const formatTimeRemaining = (milliseconds: number) => {
+    const minutes = Math.floor(milliseconds / 60000)
+    const seconds = Math.floor((milliseconds % 60000) / 1000)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  // Real-time updates for emergency mode status
+  useEffect(() => {
+    if (emergencyMode) {
+      const updateEmergencyAuthStatus = () => {
+        // Force re-render by updating a dummy state
+        setAuthStatus(prev => ({ ...prev }))
+      }
+
+      const interval = setInterval(updateEmergencyAuthStatus, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [emergencyMode])
 
   useEffect(() => {
     // Check if biometrics are enabled
@@ -127,6 +166,37 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
     }
 
     checkBiometricSupport()
+  }, [])
+
+  // Real-time updates for auth status (every 1 second)
+  useEffect(() => {
+    const updateAuthStatus = () => {
+      setAuthStatus(SecurePinManager.getAuthStatus())
+      setEmergencyAuthStatus(SecurePinManager.getEmergencyAuthStatus())
+    }
+
+    // Update immediately
+    updateAuthStatus()
+
+    // Update every second for real-time timer
+    const interval = setInterval(updateAuthStatus, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // Real-time updates for emergency PIN status
+  useEffect(() => {
+    const updateEmergencyStatus = () => {
+      setHasEmergencyPin(SecurePinManager.hasEmergencyPin())
+    }
+
+    // Update immediately
+    updateEmergencyStatus()
+
+    // Update every 2 seconds for emergency PIN status
+    const interval = setInterval(updateEmergencyStatus, 2000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const handleBiometricAuth = async () => {
@@ -185,11 +255,25 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
 
     setIsSubmitting(true)
     try {
-      await onUnlock(pin)
+      await onUnlock(pin, emergencyMode)
     } catch (error) {
+      // Trigger error animation on failed validation
+      triggerErrorAnimation()
+      if (onError) onError()
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Function to trigger error animation
+  const triggerErrorAnimation = () => {
+    setPinError(true)
+    setPin("") // Clear the PIN input
+
+    // Remove error state after animation completes
+    setTimeout(() => {
+      setPinError(false)
+    }, 600) // Match animation duration
   }
 
   return (
@@ -201,10 +285,10 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
           </div>
           <CardTitle className="flex items-center justify-center gap-2">
             <Lock className="w-5 h-5" />
-            MyWallet Locked
+            {emergencyMode ? "Emergency Access" : "MyWallet Locked"}
           </CardTitle>
           <CardDescription>
-            Choose your preferred authentication method
+            {emergencyMode ? "Enter your emergency PIN" : "Choose your preferred authentication method"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -215,7 +299,7 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
               <div className="space-y-3">
                 <Button
                   onClick={handleBiometricAuth}
-                  disabled={isBiometricAuthenticating || authStatus.isLocked}
+                  disabled={isBiometricAuthenticating || currentAuthStatus.isLocked || emergencyMode}
                   className="w-full flex items-center justify-center gap-3 h-12"
                   variant="outline"
                 >
@@ -225,10 +309,26 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
               </div>
             )}
 
+            {/* Emergency PIN Toggle */}
+            {hasEmergencyPin && !emergencyMode && (
+              <div className="space-y-3">
+                <Button
+                  onClick={() => setEmergencyMode(true)}
+                  className="w-full flex items-center justify-center gap-3 h-12"
+                  variant="outline"
+                >
+                  <AlertCircle className="w-5 h-5" />
+                  <span>Use Emergency PIN</span>
+                </Button>
+              </div>
+            )}
+
             {/* PIN Input - Always Available */}
             <div className="space-y-4">
               <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-4">Enter your 6-digit PIN</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {emergencyMode ? "Enter your 6-digit emergency PIN" : "Enter your 6-digit PIN"}
+                </p>
               </div>
 
               <div className="flex justify-center">
@@ -237,41 +337,82 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
                   value={pin}
                   onChange={setPin}
                   disabled={isSubmitting}
+                  className={pinError ? "animate-shake" : ""}
                 >
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
+                  <InputOTPGroup className={pinError ? "border-red-500 bg-red-50" : ""}>
+                    <InputOTPSlot
+                      index={0}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
+                    <InputOTPSlot
+                      index={1}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
+                    <InputOTPSlot
+                      index={2}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
+                    <InputOTPSlot
+                      index={3}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
+                    <InputOTPSlot
+                      index={4}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
+                    <InputOTPSlot
+                      index={5}
+                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                    />
                   </InputOTPGroup>
                 </InputOTP>
               </div>
 
-              <Button
-                onClick={handleSubmit}
-                disabled={pin.length !== 6 || authStatus.isLocked || isSubmitting}
-                className="w-full"
-              >
-                {isSubmitting ? "Verifying..." : authStatus.isLocked ? "Locked" : "Unlock Wallet"}
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  onClick={handleSubmit}
+                  disabled={pin.length !== 6 || currentAuthStatus.isLocked || isSubmitting}
+                  className="w-full"
+                >
+                  {isSubmitting ? "Verifying..." : currentAuthStatus.isLocked ? "Locked" : emergencyMode ? "Unlock with Emergency PIN" : "Unlock Wallet"}
+                </Button>
+
+                {emergencyMode && (
+                  <Button
+                    onClick={() => setEmergencyMode(false)}
+                    variant="ghost"
+                    className="w-full"
+                  >
+                    Back to Regular PIN
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Error Messages */}
-          {!authStatus.isLocked && authStatus.attemptsRemaining < 5 && (
-            <div className="flex items-center gap-2 text-destructive text-sm justify-center">
-              <AlertCircle className="w-4 h-4" />
-              <span>{authStatus.attemptsRemaining} attempts remaining</span>
+          {/* Status Messages */}
+          {!currentAuthStatus.isLocked && (
+            <div className="flex flex-col items-center gap-2 text-muted-foreground text-sm">
+              <div className="flex items-center gap-2 justify-center">
+                <span>{currentAuthStatus.attemptsRemaining} {emergencyMode ? "emergency" : ""} attempts remaining</span>
+              </div>
+              {/* Security Level Display */}
+              {'securityLevel' in currentAuthStatus && (
+                <div className="flex items-center gap-2">
+                  <Badge variant={currentAuthStatus.securityLevel > 0 ? "destructive" : "secondary"} className="text-xs">
+                    <Shield className="w-3 h-3 mr-1" />
+                    Level {currentAuthStatus.securityLevel}
+                  </Badge>
+                </div>
+              )}
             </div>
           )}
 
-          {authStatus.isLocked && (
+          {currentAuthStatus.isLocked && (
             <div className="flex items-center gap-2 text-destructive text-sm justify-center">
               <AlertCircle className="w-4 h-4" />
               <span>
-                Account locked. Please wait {Math.ceil((authStatus.lockoutTimeRemaining || 0) / 60000)} minutes.
+                {emergencyMode ? "Emergency" : "Account"} locked. Please wait {formatTimeRemaining(currentAuthStatus.lockoutTimeRemaining || 0)}.
               </span>
             </div>
           )}
@@ -287,7 +428,7 @@ function SessionPinScreen({ onUnlock }: SessionPinScreenProps) {
 }
 
 export function SessionGuard({ children }: SessionGuardProps) {
-  const { isAuthenticated, hasPin, validatePin } = useAuthentication()
+  const { isAuthenticated, hasPin, validatePin, validateEmergencyPin } = useAuthentication()
   const [showPinScreen, setShowPinScreen] = useState(false)
 
   useEffect(() => {
@@ -335,8 +476,8 @@ export function SessionGuard({ children }: SessionGuardProps) {
   // Show PIN screen when no active session or not authenticated
   return (
     <SessionPinScreen
-      onUnlock={async (pin: string) => {
-        const result = await validatePin(pin)
+      onUnlock={async (pin: string, emergencyMode?: boolean) => {
+        const result = emergencyMode ? await validateEmergencyPin(pin) : await validatePin(pin)
         if (result.success) {
           // Play success sound for PIN authentication
           playSound("pin-success")
@@ -345,6 +486,10 @@ export function SessionGuard({ children }: SessionGuardProps) {
           // Play failed sound for PIN authentication
           playSound("pin-failed")
         }
+      }}
+      onError={() => {
+        // This will be called when PIN validation fails
+        // The error animation is handled in SessionPinScreen component
       }}
     />
   )

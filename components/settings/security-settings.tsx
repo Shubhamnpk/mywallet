@@ -11,6 +11,8 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { SessionManager } from "@/lib/session-manager"
 import { BiometricAuth } from "../security/biometric-auth"
 import { Shield, Lock, Key, Volume2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -80,8 +82,10 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
 
         if (isValid) {
           if (pinEnabled) {
-            // Disabling PIN - clear all security data
+            // Disabling PIN - clear ALL security data completely
             SecureKeyManager.clearAllKeys()
+            SecurePinManager.clearAllSecurityData() // Comprehensive security data cleanup
+
             updateUserProfile({
               ...userProfile,
               pin: undefined,
@@ -90,9 +94,10 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
             })
             setPinEnabled(false)
             setShowPinDialog(false)
+
             toast({
               title: "PIN Disabled",
-              description: "Your PIN and all security keys have been removed.",
+              description: "Your PIN, biometric data, security keys, and session data have been completely removed. The app is now unlocked.",
             })
           } else {
             setStep("new")
@@ -110,23 +115,38 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
         }
       } else if (step === "confirm") {
         if (newPin === confirmPin) {
-          // Create secure PIN hash and master key
-          const { hash, salt } = await SecureWallet.hashPin(newPin)
-          await SecureKeyManager.createMasterKey(newPin)
+          // Use SecurePinManager.setupPin() for consistent behavior with onboarding
+          const pinSetupSuccess = await SecurePinManager.setupPin(newPin)
 
-          updateUserProfile({
-            ...userProfile,
-            pin: hash,
-            pinSalt: salt,
-            securityEnabled: true,
-          })
-          setPinEnabled(true)
-          setShowPinDialog(false)
-          resetPinDialog()
-          toast({
-            title: "PIN Set Successfully",
-            description: "Your PIN has been secured with military-grade encryption.",
-          })
+          if (pinSetupSuccess) {
+            // Get the PIN data from localStorage (set by SecurePinManager)
+            const pinHash = localStorage.getItem('wallet_pin_hash')
+            const pinSalt = localStorage.getItem('wallet_pin_salt')
+
+            updateUserProfile({
+              ...userProfile,
+              pin: pinHash || undefined,
+              pinSalt: pinSalt || undefined,
+              securityEnabled: true,
+            })
+            setPinEnabled(true)
+            setShowPinDialog(false)
+            resetPinDialog()
+
+            // Create session for consistent behavior with onboarding
+            SessionManager.createSession()
+
+            toast({
+              title: "PIN Set Successfully",
+              description: "Your PIN has been secured with military-grade encryption and session-based locking enabled.",
+            })
+          } else {
+            toast({
+              title: "PIN Setup Failed",
+              description: "Failed to set up PIN. Please try again.",
+              variant: "destructive",
+            })
+          }
         } else {
           toast({
             title: "PINs Don't Match",
