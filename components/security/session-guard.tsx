@@ -93,9 +93,12 @@ interface SessionGuardProps {
 interface SessionPinScreenProps {
   onUnlock: (pin: string, emergencyMode?: boolean) => Promise<void>
   onError?: () => void
+  onEmergencyPinUsed?: () => void
+  onNewPinSetupComplete?: () => void
+  showNewPinSetup?: boolean
 }
 
-function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
+function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetupComplete, showNewPinSetup }: SessionPinScreenProps) {
   const [pin, setPin] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [authStatus, setAuthStatus] = useState(SecurePinManager.getAuthStatus())
@@ -107,6 +110,12 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
   const [emergencyMode, setEmergencyMode] = useState(false)
   const [hasEmergencyPin, setHasEmergencyPin] = useState(SecurePinManager.hasEmergencyPin())
   const [pinError, setPinError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
+  const [newRegularPin, setNewRegularPin] = useState("")
+  const [confirmNewRegularPin, setConfirmNewRegularPin] = useState("")
+  const [newPinStep, setNewPinStep] = useState<"new" | "confirm">("new")
+  const [isSettingNewPin, setIsSettingNewPin] = useState(false)
 
   // Get current auth status based on mode
   const getCurrentAuthStatus = () => {
@@ -256,7 +265,12 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
     setIsSubmitting(true)
     try {
       await onUnlock(pin, emergencyMode)
+      // If emergency PIN was used successfully, notify parent component
+      if (emergencyMode && onEmergencyPinUsed) {
+        onEmergencyPinUsed()
+      }
     } catch (error) {
+      console.log('[SessionGuard] PIN validation failed, triggering error animation')
       // Trigger error animation on failed validation
       triggerErrorAnimation()
       if (onError) onError()
@@ -267,18 +281,148 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
 
   // Function to trigger error animation
   const triggerErrorAnimation = () => {
+    console.log('[SessionGuard] Triggering error animation - setting pinError to true')
     setPinError(true)
     setPin("") // Clear the PIN input
+    setErrorMessage(emergencyMode ? "Incorrect Emergency PIN" : "Incorrect PIN")
 
     // Remove error state after animation completes
     setTimeout(() => {
+      console.log('[SessionGuard] Resetting error animation - setting pinError to false')
       setPinError(false)
+      setErrorMessage(null)
     }, 600) // Match animation duration
+  }
+
+  // Handle new regular PIN setup after emergency PIN use
+  const handleNewPinSetup = async () => {
+    setIsSettingNewPin(true)
+
+    try {
+      if (newPinStep === "new") {
+        if (newRegularPin.length === 6) {
+          setNewPinStep("confirm")
+        }
+      } else if (newPinStep === "confirm") {
+        if (newRegularPin === confirmNewRegularPin) {
+          // Setup new regular PIN (recovery mode - preserves existing security data)
+          const success = await SecurePinManager.updatePinForRecovery(newRegularPin)
+
+          if (success) {
+            // Clear emergency PIN usage flag and allow access to dashboard
+            setEmergencyPinUsed(false)
+
+            // Reset states
+            setNewRegularPin("")
+            setConfirmNewRegularPin("")
+            setNewPinStep("new")
+
+            toast({
+              title: "New PIN Set Successfully",
+              description: "Your wallet is now secured with a new regular PIN.",
+            })
+
+            // Create session for the new PIN
+            SessionManager.createSession()
+
+            // Notify parent component to allow dashboard access
+            if (onNewPinSetupComplete) {
+              onNewPinSetupComplete()
+            }
+          } else {
+            toast({
+              title: "PIN Setup Failed",
+              description: "Failed to set up new PIN. Please try again.",
+              variant: "destructive",
+            })
+          }
+        } else {
+          toast({
+            title: "PINs Don't Match",
+            description: "Please make sure both PINs are identical.",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("[New PIN Setup] Failed:", error)
+      toast({
+        title: "PIN Setup Error",
+        description: "Failed to process new PIN. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSettingNewPin(false)
+    }
+  }
+
+  // Show new PIN setup screen if emergency PIN was used
+  if (showNewPinSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/10 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle>Security Update Required</CardTitle>
+            <CardDescription>
+              {newPinStep === "new"
+                ? "Set up a new regular PIN to secure your wallet"
+                : "Confirm your new regular PIN"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800">
+              <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400 mb-2">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">Emergency Access Used</span>
+              </div>
+              <p className="text-sm text-orange-600 dark:text-orange-500">
+                You accessed your wallet using the emergency PIN. For security, you must now set up a new regular PIN.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-4">
+                Enter your new 6-digit regular PIN
+              </p>
+            </div>
+
+            <div className="flex justify-center">
+              <InputOTP
+                maxLength={6}
+                value={newPinStep === "new" ? newRegularPin : confirmNewRegularPin}
+                onChange={newPinStep === "new" ? setNewRegularPin : setConfirmNewRegularPin}
+                disabled={isSettingNewPin}
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+
+            <Button
+              onClick={handleNewPinSetup}
+              disabled={(newPinStep === "new" ? newRegularPin.length !== 6 : confirmNewRegularPin.length !== 6) || isSettingNewPin}
+              className="w-full"
+            >
+              {isSettingNewPin ? "Setting up PIN..." : newPinStep === "new" ? "Continue" : "Set New PIN"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/10 p-4">
-      <Card className="w-full max-w-md">
+      <Card className={`w-full max-w-md ${pinError ? 'ring-2 ring-destructive shadow-lg shadow-destructive/20' : ''} transition-all duration-300`}>
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
             <Shield className="w-8 h-8 text-accent-foreground" />
@@ -306,11 +450,12 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
                   <Fingerprint className="w-5 h-5" />
                   <span>Use Biometric</span>
                 </Button>
+                <p>or</p>
               </div>
             )}
 
-            {/* Emergency PIN Toggle */}
-            {hasEmergencyPin && !emergencyMode && (
+            {/* Emergency PIN Toggle - Only show when user has failed regular PIN attempts (level > 0) */}
+            {hasEmergencyPin && !emergencyMode && currentAuthStatus.securityLevel > 0 && (
               <div className="space-y-3">
                 <Button
                   onClick={() => setEmergencyMode(true)}
@@ -320,6 +465,9 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
                   <AlertCircle className="w-5 h-5" />
                   <span>Use Emergency PIN</span>
                 </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Available after failed regular PIN attempts
+                </p>
               </div>
             )}
 
@@ -339,33 +487,37 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
                   disabled={isSubmitting}
                   className={pinError ? "animate-shake" : ""}
                 >
-                  <InputOTPGroup className={pinError ? "border-red-500 bg-red-50" : ""}>
+                  <InputOTPGroup className={pinError ? "border-destructive/60 bg-destructive/5 shadow-lg shadow-destructive/20" : ""}>
                     <InputOTPSlot
                       index={0}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                     <InputOTPSlot
                       index={1}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                     <InputOTPSlot
                       index={2}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                     <InputOTPSlot
                       index={3}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                     <InputOTPSlot
                       index={4}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                     <InputOTPSlot
                       index={5}
-                      className={pinError ? "border-red-500 bg-red-50 text-red-600" : ""}
+                      className={pinError ? "border-destructive/60 bg-destructive/5 text-destructive shadow-sm" : ""}
                     />
                   </InputOTPGroup>
                 </InputOTP>
+              </div>
+
+              <div className={`text-destructive text-sm text-center mt-2 transition-opacity duration-300 ${errorMessage ? 'opacity-100' : 'opacity-0'}`}>
+                {errorMessage && <><AlertCircle className="w-4 h-4 inline mr-1" />{errorMessage}</>}
               </div>
 
               <div className="space-y-2">
@@ -430,6 +582,8 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
 export function SessionGuard({ children }: SessionGuardProps) {
   const { isAuthenticated, hasPin, validatePin, validateEmergencyPin } = useAuthentication()
   const [showPinScreen, setShowPinScreen] = useState(false)
+  const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
+  const [showNewPinSetup, setShowNewPinSetup] = useState(false)
 
   useEffect(() => {
 
@@ -469,7 +623,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
   }, [isAuthenticated, hasPin])
 
   // If no PIN is required or user is authenticated with valid session, show children
-  if (!hasPin || (isAuthenticated && !showPinScreen)) {
+  if (!hasPin || (isAuthenticated && !showPinScreen && !showNewPinSetup)) {
     return <>{children}</>
   }
 
@@ -481,16 +635,36 @@ export function SessionGuard({ children }: SessionGuardProps) {
         if (result.success) {
           // Play success sound for PIN authentication
           playSound("pin-success")
-          setShowPinScreen(false)
+          if (emergencyMode) {
+            // Emergency PIN used - require new PIN setup
+            setEmergencyPinUsed(true)
+            setShowNewPinSetup(true)
+          } else {
+            // Regular PIN - create session and allow access
+            SessionManager.createSession()
+            setShowPinScreen(false)
+          }
         } else {
           // Play failed sound for PIN authentication
+          console.log('[SessionGuard] PIN validation failed, playing sound and throwing error')
           playSound("pin-failed")
+          throw new Error("PIN validation failed") // Throw error to trigger visual feedback
         }
+      }}
+      onEmergencyPinUsed={() => {
+        setEmergencyPinUsed(true)
+        setShowNewPinSetup(true)
+      }}
+      onNewPinSetupComplete={() => {
+        setShowPinScreen(false)
+        setShowNewPinSetup(false)
+        setEmergencyPinUsed(false)
       }}
       onError={() => {
         // This will be called when PIN validation fails
         // The error animation is handled in SessionPinScreen component
       }}
+      showNewPinSetup={showNewPinSetup}
     />
   )
 }

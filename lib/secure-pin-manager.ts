@@ -403,6 +403,42 @@ export class SecurePinManager {
     }
   }
 
+  // Update PIN without clearing security data (for emergency PIN recovery)
+  static async updatePinForRecovery(newPin: string): Promise<boolean> {
+    try {
+      console.log(`[Progressive] Starting PIN recovery update process`)
+      const config = this.getConfig()
+
+      // Validate PIN length
+      if (newPin.length < config.minLength || newPin.length > config.maxLength) {
+        throw new Error(`PIN must be between ${config.minLength} and ${config.maxLength} characters`)
+      }
+
+      // Validate PIN contains only digits
+      if (!/^\d+$/.test(newPin)) {
+        throw new Error("PIN must contain only numbers")
+      }
+
+      // Generate salt and hash PIN
+      const salt = SecureWallet.generateSalt()
+      const { hash } = await SecureWallet.hashPin(newPin, salt)
+
+      // Store securely (without creating new master key)
+      localStorage.setItem(this.PIN_HASH_KEY, hash)
+      localStorage.setItem(this.PIN_SALT_KEY, btoa(String.fromCharCode(...salt)))
+
+      // Reset attempt counters only
+      console.log(`[Progressive] PIN recovery update - resetting attempts only`)
+      this.resetAttemptsOnly()
+
+      console.log(`[Progressive] PIN recovery update successful`)
+      return true
+    } catch (error) {
+      console.log(`[Progressive] PIN recovery update failed:`, error)
+      return false
+    }
+  }
+
   // Check if PIN is set up
   static hasPin(): boolean {
     return localStorage.getItem(this.PIN_HASH_KEY) !== null &&
