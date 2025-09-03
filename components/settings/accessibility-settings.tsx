@@ -86,7 +86,8 @@ export function AccessibilitySettings() {
     const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
     const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") === "true"
     const savedFontSize = Number.parseInt(localStorage.getItem("wallet_font_size") || "16")
-    const savedSoundEffects = localStorage.getItem("wallet_sound_effects") === "true"
+    const savedSoundEffectsValue = localStorage.getItem("wallet_sound_effects")
+    const savedSoundEffects = savedSoundEffectsValue === null ? true : savedSoundEffectsValue === "true"
     const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") === "true"
     const savedTooltips = localStorage.getItem("wallet_tooltips") === "true"
     const savedSelectedSound = localStorage.getItem("wallet_selected_sound") || "gentle-chime"
@@ -112,7 +113,7 @@ export function AccessibilitySettings() {
     setScreenReader(savedScreenReader)
     setKeyboardNav(savedKeyboardNav)
     setFontSize([savedFontSize])
-    setSoundEffects(savedSoundEffects !== null ? savedSoundEffects : true)
+    setSoundEffects(savedSoundEffects)
     setFocusIndicators(savedFocusIndicators)
     setTooltips(savedTooltips)
     setSelectedSound(savedSelectedSound)
@@ -122,7 +123,7 @@ export function AccessibilitySettings() {
     setTransactionFailedEnabled(savedTransactionFailedEnabled === null ? true : savedTransactionFailedEnabled === "true")
     setBudgetWarningEnabled(savedBudgetWarningEnabled === null ? true : savedBudgetWarningEnabled === "true")
     setPinSuccessEnabled(savedPinSuccessEnabled === null ? true : savedPinSuccessEnabled === "true")
-    setPinFailedEnabled(savedPinFailedEnabled === null ? false : savedPinFailedEnabled === "true")
+    setPinFailedEnabled(savedPinFailedEnabled === null ? true : savedPinFailedEnabled === "true")
     setTransactionSuccessSelectedSound(savedTransactionSuccessSelectedSound)
     setTransactionFailedSelectedSound(savedTransactionFailedSelectedSound)
     setBudgetWarningSelectedSound(savedBudgetWarningSelectedSound)

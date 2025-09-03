@@ -31,7 +31,8 @@ const generateTone = (frequency: number, duration: number, type: OscillatorType 
 }
 
 const playSound = (activity: string) => {
-  const soundEffectsEnabled = localStorage.getItem("wallet_sound_effects") === "true"
+  // Default to true if no saved preference exists
+  const soundEffectsEnabled = localStorage.getItem("wallet_sound_effects") !== "false"
 
   if (!soundEffectsEnabled) return
 
@@ -234,8 +235,7 @@ function SessionPinScreen({ onUnlock, onError }: SessionPinScreenProps) {
         await onUnlock("")
         // Set authentication timestamp to prevent duplicate PIN screen
         localStorage.setItem("wallet_last_auth", Date.now().toString())
-        // Play success sound for biometric authentication
-        playSound("pin-success")
+        // Note: Success sound is played in the onUnlock callback to avoid duplication
       }
     } catch (error) {
       // Play failed sound for biometric authentication

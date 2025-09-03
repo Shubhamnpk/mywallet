@@ -198,8 +198,7 @@ export function useAuthentication(): AuthState & AuthActions {
           description: "Your wallet is now secured with PIN authentication and session-based locking.",
         })
 
-        // Play success sound
-        playAuthSuccessSound()
+        // Note: Success sound is played in the session-guard component to avoid duplication
 
         return true
       } else {
@@ -292,8 +291,7 @@ export function useAuthentication(): AuthState & AuthActions {
           description: "Welcome back to your wallet!",
         })
 
-        // Play success sound
-        playAuthSuccessSound()
+        // Note: Success sound is played in the session-guard component to avoid duplication
       } else {
         setAuthState(prev => ({
           ...prev,
@@ -366,8 +364,7 @@ export function useAuthentication(): AuthState & AuthActions {
           description: "Welcome back to your wallet!",
         })
 
-        // Play success sound
-        playAuthSuccessSound()
+        // Note: Success sound is played in the session-guard component to avoid duplication
 
         return {
           success: true,
@@ -401,8 +398,7 @@ export function useAuthentication(): AuthState & AuthActions {
           description: "Welcome back to your wallet!",
         })
 
-        // Play success sound
-        playAuthSuccessSound()
+        // Note: Success sound is played in the session-guard component to avoid duplication
       } else {
         const status = SecurePinManager.getAuthStatus()
 
