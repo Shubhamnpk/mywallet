@@ -6,12 +6,69 @@
 import { useState, useEffect, useCallback } from "react"
 import { SecurePinManager, PinAttemptResult } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { SessionManager } from "@/lib/session-manager"
 import { toast } from "@/hooks/use-toast"
+
+// Sound generation utilities
+const generateTone = (frequency: number, duration: number, type: OscillatorType = "sine") => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const oscillator = audioContext.createOscillator()
+  const gainNode = audioContext.createGain()
+
+  oscillator.connect(gainNode)
+  gainNode.connect(audioContext.destination)
+
+  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
+  oscillator.type = type
+
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
+
+  oscillator.start(audioContext.currentTime)
+  oscillator.stop(audioContext.currentTime + duration)
+}
+
+const PRESET_SOUNDS = {
+  "gentle-chime": { name: "Gentle Chime", generator: () => generateTone(800, 0.3) },
+  "soft-click": { name: "Soft Click", generator: () => generateTone(1000, 0.1, "square") },
+  "success-tone": {
+    name: "Success Tone",
+    generator: () => {
+      generateTone(523, 0.2)
+      setTimeout(() => generateTone(659, 0.2), 100)
+    },
+  },
+  notification: { name: "Notification", generator: () => generateTone(440, 0.4) },
+  none: { name: "No Sound", generator: () => {} },
+}
+
+const playAuthSuccessSound = () => {
+  const soundEffectsEnabled = localStorage.getItem("wallet_sound_effects") !== "false"
+  if (!soundEffectsEnabled) return
+
+  const pinSuccessEnabled = localStorage.getItem("wallet_pin_success_enabled")
+  const enabled = pinSuccessEnabled === null ? true : pinSuccessEnabled === "true"
+  if (!enabled) return
+
+  const pinSuccessSelectedSound = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
+  const pinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
+
+  if (pinSuccessSelectedSound === "custom" && pinSuccessCustomUrl) {
+    const audio = new Audio(pinSuccessCustomUrl)
+    audio.play().catch(console.error)
+  } else if (pinSuccessSelectedSound !== "none") {
+    const soundConfig = PRESET_SOUNDS[pinSuccessSelectedSound as keyof typeof PRESET_SOUNDS]
+    if (soundConfig?.generator) {
+      soundConfig.generator()
+    }
+  }
+}
 
 export interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   hasPin: boolean
+  hasEmergencyPin: boolean
   isLocked: boolean
   attemptsRemaining: number
   lockoutTimeRemaining?: number
@@ -20,7 +77,9 @@ export interface AuthState {
 
 export interface AuthActions {
   setupPin: (pin: string) => Promise<boolean>
+  setupEmergencyPin: (pin: string) => Promise<boolean>
   validatePin: (pin: string) => Promise<PinAttemptResult>
+  validateEmergencyPin: (pin: string) => Promise<PinAttemptResult>
   changePin: (oldPin: string, newPin: string) => Promise<boolean>
   logout: () => void
   lockApp: () => void
@@ -32,6 +91,7 @@ export function useAuthentication(): AuthState & AuthActions {
     isAuthenticated: false,
     isLoading: true,
     hasPin: false,
+    hasEmergencyPin: false,
     isLocked: false,
     attemptsRemaining: 0,
   })
@@ -41,47 +101,72 @@ export function useAuthentication(): AuthState & AuthActions {
     const initializeAuth = async () => {
       try {
         const status = SecurePinManager.getAuthStatus()
-        const lastAuth = localStorage.getItem("wallet_last_auth")
-        const now = Date.now()
-        const fiveMinutes = 5 * 60 * 1000
-        const isRecentAuth = lastAuth && (now - Number.parseInt(lastAuth)) <= fiveMinutes
         const hasMasterKey = SecureKeyManager.hasMasterKey()
 
         setAuthState({
           isAuthenticated: false, // Always start unauthenticated for security
           isLoading: false,
           hasPin: status.hasPin,
+          hasEmergencyPin: SecurePinManager.hasEmergencyPin(),
           isLocked: status.isLocked,
           attemptsRemaining: status.attemptsRemaining,
           lockoutTimeRemaining: status.lockoutTimeRemaining,
         })
+
+        // If no PIN is set up, allow access
         if (!status.hasPin) {
           setAuthState(prev => ({ ...prev, isAuthenticated: true }))
-        }
-
-        // If we have a cached key and PIN is set up, try to authenticate automatically
-        if (hasMasterKey && status.hasPin && !status.isLocked && isRecentAuth) {
-          const cachedKey = SecureKeyManager.isKeyCacheValid()
-          if (cachedKey) {
-            const masterKey = await SecureKeyManager.getMasterKey("") // Empty PIN for cached retrieval
-            if (masterKey) {
-              setAuthState(prev => ({
-                ...prev,
-                isAuthenticated: true,
-                masterKey: masterKey || undefined,
-              }))
-            } else {
-            }
-          } else {
-          }
         } else {
+          // If PIN is set up, check if we have a valid session
+          const sessionStatus = SessionManager.getSessionStatus()
+
+          if (sessionStatus && sessionStatus.isValid && hasMasterKey) {
+            // We have a valid session and master key, authenticate automatically
+            try {
+              const masterKey = await SecureKeyManager.getMasterKey("")
+              if (masterKey) {
+                setAuthState(prev => ({
+                  ...prev,
+                  isAuthenticated: true,
+                  masterKey: masterKey,
+                }))
+                console.log('[useAuthentication] Auto-authentication successful')
+                return
+              }
+            } catch (error) {
+              console.log('[useAuthentication] Auto-authentication failed:', error)
+            }
+          }
+
+          // No valid session or auto-auth failed, stay unauthenticated
+          console.log('[useAuthentication] No valid session, staying unauthenticated')
+          setAuthState(prev => ({
+            ...prev,
+            isAuthenticated: false,
+          }))
         }
       } catch (error) {
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     }
 
+    // Listen for session expiry events
+    const handleSessionExpiry = () => {
+      console.log('[useAuthentication] Session expired, updating auth state')
+      setAuthState(prev => ({
+        ...prev,
+        isAuthenticated: false,
+        masterKey: undefined,
+      }))
+    }
+
+    window.addEventListener('wallet-session-expired', handleSessionExpiry)
+
     initializeAuth()
+
+    return () => {
+      window.removeEventListener('wallet-session-expired', handleSessionExpiry)
+    }
   }, [])
 
   // Setup PIN for first time
@@ -95,10 +180,14 @@ export function useAuthentication(): AuthState & AuthActions {
         const masterKey = await SecureKeyManager.getMasterKey(pin)
         const status = SecurePinManager.getAuthStatus()
 
+        // Create session after successful PIN setup for consistency
+        SessionManager.createSession()
+
         setAuthState({
           isAuthenticated: true,
           isLoading: false,
           hasPin: true,
+          hasEmergencyPin: SecurePinManager.hasEmergencyPin(),
           isLocked: false,
           attemptsRemaining: status.attemptsRemaining,
           masterKey,
@@ -106,8 +195,10 @@ export function useAuthentication(): AuthState & AuthActions {
 
         toast({
           title: "PIN Setup Complete",
-          description: "Your wallet is now secured with PIN authentication.",
+          description: "Your wallet is now secured with PIN authentication and session-based locking.",
         })
+
+        // Note: Success sound is played in the session-guard component to avoid duplication
 
         return true
       } else {
@@ -131,21 +222,172 @@ export function useAuthentication(): AuthState & AuthActions {
     }
   }, [])
 
-  // Validate PIN for authentication
+  // Setup emergency PIN
+  const setupEmergencyPin = useCallback(async (pin: string): Promise<boolean> => {
+    setAuthState(prev => ({ ...prev, isLoading: true }))
+
+    try {
+      const success = await SecurePinManager.setupEmergencyPin(pin)
+
+      if (success) {
+        setAuthState(prev => ({
+          ...prev,
+          isLoading: false,
+          hasEmergencyPin: true,
+        }))
+
+        toast({
+          title: "Emergency PIN Setup Complete",
+          description: "Your emergency PIN has been configured.",
+        })
+
+        return true
+      } else {
+        setAuthState(prev => ({ ...prev, isLoading: false }))
+        toast({
+          title: "Emergency PIN Setup Failed",
+          description: "Failed to setup emergency PIN. Please try again.",
+          variant: "destructive",
+        })
+        return false
+      }
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }))
+      toast({
+        title: "Emergency PIN Setup Error",
+        description: "An error occurred during emergency PIN setup.",
+        variant: "destructive",
+      })
+      return false
+    }
+  }, [])
+
+  // Validate emergency PIN
+  const validateEmergencyPin = useCallback(async (pin: string): Promise<PinAttemptResult> => {
+    setAuthState(prev => ({ ...prev, isLoading: true }))
+
+    try {
+      const result = await SecurePinManager.validateEmergencyPin(pin)
+
+      if (result.success) {
+        // Get master key after successful validation
+        const masterKey = await SecureKeyManager.getMasterKey("") // Use cached key for emergency
+
+        // Create session after successful authentication
+        SessionManager.createSession()
+
+        setAuthState({
+          isAuthenticated: true,
+          isLoading: false,
+          hasPin: true,
+          hasEmergencyPin: true,
+          isLocked: false,
+          attemptsRemaining: result.attemptsRemaining,
+          masterKey,
+        })
+
+        toast({
+          title: "Emergency Authentication Successful",
+          description: "Welcome back to your wallet!",
+        })
+
+        // Note: Success sound is played in the session-guard component to avoid duplication
+      } else {
+        setAuthState(prev => ({
+          ...prev,
+          isLoading: false,
+          isLocked: result.isLocked,
+          attemptsRemaining: result.attemptsRemaining,
+          lockoutTimeRemaining: result.lockoutTimeRemaining,
+        }))
+
+        if (result.isLocked) {
+          toast({
+            title: "Emergency Account Locked",
+            description: `Too many failed emergency attempts. Try again in ${Math.ceil((result.lockoutTimeRemaining || 0) / 60000)} minutes.`,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Invalid Emergency PIN",
+            description: `${result.attemptsRemaining} emergency attempts remaining.`,
+            variant: "destructive",
+          })
+        }
+      }
+
+      return result
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }))
+      toast({
+        title: "Emergency Authentication Error",
+        description: "An error occurred during emergency authentication.",
+        variant: "destructive",
+      })
+      return {
+        success: false,
+        attemptsRemaining: 0,
+        isLocked: true,
+      }
+    }
+  }, [])
+
+  // Validate PIN for authentication (also handles biometric auth with empty PIN)
   const validatePin = useCallback(async (pin: string): Promise<PinAttemptResult> => {
     setAuthState(prev => ({ ...prev, isLoading: true }))
 
     try {
+      // Handle biometric authentication (empty PIN)
+      if (pin === "") {
+        console.log('[useAuthentication] Biometric authentication detected')
+        // For biometric auth, we don't validate PIN but create session directly
+        // This assumes biometric validation has already happened
+
+        // Load master key for biometric authentication
+        const masterKey = await SecureKeyManager.getMasterKey("")
+
+        setAuthState({
+          isAuthenticated: true,
+          isLoading: false,
+          hasPin: true,
+          hasEmergencyPin: SecurePinManager.hasEmergencyPin(),
+          isLocked: false,
+          attemptsRemaining: 5, // Reset attempts for biometric
+          masterKey: masterKey, // Load cached master key
+        })
+
+        // Create session for biometric auth
+        SessionManager.createSession()
+
+        toast({
+          title: "Authentication Successful",
+          description: "Welcome back to your wallet!",
+        })
+
+        // Note: Success sound is played in the session-guard component to avoid duplication
+
+        return {
+          success: true,
+          attemptsRemaining: 5,
+          isLocked: false,
+        }
+      }
+
+      // Regular PIN validation
       const result = await SecurePinManager.validatePin(pin)
 
       if (result.success) {
         // Get master key after successful validation
         const masterKey = await SecureKeyManager.getMasterKey(pin)
 
+        // Create session after successful authentication
+        SessionManager.createSession()
+
         setAuthState({
           isAuthenticated: true,
           isLoading: false,
           hasPin: true,
+          hasEmergencyPin: SecurePinManager.hasEmergencyPin(),
           isLocked: false,
           attemptsRemaining: result.attemptsRemaining,
           masterKey,
@@ -155,6 +397,8 @@ export function useAuthentication(): AuthState & AuthActions {
           title: "Authentication Successful",
           description: "Welcome back to your wallet!",
         })
+
+        // Note: Success sound is played in the session-guard component to avoid duplication
       } else {
         const status = SecurePinManager.getAuthStatus()
 
@@ -259,6 +503,9 @@ export function useAuthentication(): AuthState & AuthActions {
 
   // Lock App - manually lock and return to PIN screen
   const lockApp = useCallback(() => {
+    // Clear session
+    SessionManager.clearSession()
+
     // Clear cached keys
     SecureKeyManager.expireKeyCache()
 
@@ -279,12 +526,14 @@ export function useAuthentication(): AuthState & AuthActions {
 
   // Reset PIN (emergency/security reset)
   const resetPin = useCallback(() => {
-    SecurePinManager.resetPin()
+    SecureKeyManager.clearAllKeys() // Clear all encryption keys
+    SecurePinManager.clearAllSecurityData() // Comprehensive security data cleanup
 
     setAuthState({
       isAuthenticated: false,
       isLoading: false,
       hasPin: false,
+      hasEmergencyPin: false,
       isLocked: false,
       attemptsRemaining: 0,
       masterKey: undefined,
@@ -292,7 +541,7 @@ export function useAuthentication(): AuthState & AuthActions {
 
     toast({
       title: "PIN Reset",
-      description: "PIN and encryption keys have been reset.",
+      description: "PIN, biometric data, encryption keys, and session data have been completely removed. The app is now unlocked.",
       variant: "destructive",
     })
   }, [])
@@ -300,7 +549,9 @@ export function useAuthentication(): AuthState & AuthActions {
   return {
     ...authState,
     setupPin,
+    setupEmergencyPin,
     validatePin,
+    validateEmergencyPin,
     changePin,
     logout,
     lockApp,

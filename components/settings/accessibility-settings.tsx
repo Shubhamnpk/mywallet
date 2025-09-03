@@ -49,7 +49,7 @@ export function AccessibilitySettings() {
   const [screenReader, setScreenReader] = useState(false)
   const [keyboardNav, setKeyboardNav] = useState(false)
   const [fontSize, setFontSize] = useState([16])
-  const [soundEffects, setSoundEffects] = useState(false)
+  const [soundEffects, setSoundEffects] = useState(true)
   const [focusIndicators, setFocusIndicators] = useState(false)
   const [tooltips, setTooltips] = useState(false)
   const [selectedSound, setSelectedSound] = useState("gentle-chime")
@@ -58,14 +58,17 @@ export function AccessibilitySettings() {
   // Per-activity sound settings
   const [transactionSuccessEnabled, setTransactionSuccessEnabled] = useState(true)
   const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(true)
+  const [budgetWarningEnabled, setBudgetWarningEnabled] = useState(true)
   const [pinSuccessEnabled, setPinSuccessEnabled] = useState(true)
   const [pinFailedEnabled, setPinFailedEnabled] = useState(true)
   const [transactionSuccessSelectedSound, setTransactionSuccessSelectedSound] = useState("success-tone")
   const [transactionFailedSelectedSound, setTransactionFailedSelectedSound] = useState("notification")
+  const [budgetWarningSelectedSound, setBudgetWarningSelectedSound] = useState("notification")
   const [pinSuccessSelectedSound, setPinSuccessSelectedSound] = useState("success-tone")
   const [pinFailedSelectedSound, setPinFailedSelectedSound] = useState("notification")
   const [transactionSuccessCustomUrl, setTransactionSuccessCustomUrl] = useState("")
   const [transactionFailedCustomUrl, setTransactionFailedCustomUrl] = useState("")
+  const [budgetWarningCustomUrl, setBudgetWarningCustomUrl] = useState("")
   const [pinSuccessCustomUrl, setPinSuccessCustomUrl] = useState("")
   const [pinFailedCustomUrl, setPinFailedCustomUrl] = useState("")
 
@@ -73,32 +76,37 @@ export function AccessibilitySettings() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const transactionSuccessFileInputRef = useRef<HTMLInputElement>(null)
   const transactionFailedFileInputRef = useRef<HTMLInputElement>(null)
+  const budgetWarningFileInputRef = useRef<HTMLInputElement>(null)
   const pinSuccessFileInputRef = useRef<HTMLInputElement>(null)
   const pinFailedFileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     // Load saved accessibility preferences
-    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "false"
-    const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") !== "false"
+    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
+    const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") === "true"
     const savedFontSize = Number.parseInt(localStorage.getItem("wallet_font_size") || "16")
-    const savedSoundEffects = localStorage.getItem("wallet_sound_effects") === "true"
-    const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") !== "false"
-    const savedTooltips = localStorage.getItem("wallet_tooltips") !== "false"
+    const savedSoundEffectsValue = localStorage.getItem("wallet_sound_effects")
+    const savedSoundEffects = savedSoundEffectsValue === null ? true : savedSoundEffectsValue === "true"
+    const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") === "true"
+    const savedTooltips = localStorage.getItem("wallet_tooltips") === "true"
     const savedSelectedSound = localStorage.getItem("wallet_selected_sound") || "gentle-chime"
     const savedCustomSoundUrl = localStorage.getItem("wallet_custom_sound_url") || ""
 
     // Load per-activity settings with defaults
     const savedTransactionSuccessEnabled = localStorage.getItem("wallet_transaction_success_enabled")
     const savedTransactionFailedEnabled = localStorage.getItem("wallet_transaction_failed_enabled")
+    const savedBudgetWarningEnabled = localStorage.getItem("wallet_budget_warning_enabled")
     const savedPinSuccessEnabled = localStorage.getItem("wallet_pin_success_enabled")
     const savedPinFailedEnabled = localStorage.getItem("wallet_pin_failed_enabled")
     const savedTransactionSuccessSelectedSound = localStorage.getItem("wallet_transaction_success_selected_sound") || "success-tone"
     const savedTransactionFailedSelectedSound = localStorage.getItem("wallet_transaction_failed_selected_sound") || "notification"
+    const savedBudgetWarningSelectedSound = localStorage.getItem("wallet_budget_warning_selected_sound") || "notification"
     const savedPinSuccessSelectedSound = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
     const savedPinFailedSelectedSound = localStorage.getItem("wallet_pin_failed_selected_sound") || "notification"
     const savedTransactionSuccessCustomUrl = localStorage.getItem("wallet_transaction_success_custom_url") || ""
     const savedTransactionFailedCustomUrl = localStorage.getItem("wallet_transaction_failed_custom_url") || ""
+    const savedBudgetWarningCustomUrl = localStorage.getItem("wallet_budget_warning_custom_url") || ""
     const savedPinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
     const savedPinFailedCustomUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
 
@@ -112,19 +120,30 @@ export function AccessibilitySettings() {
     setCustomSoundUrl(savedCustomSoundUrl)
 
     setTransactionSuccessEnabled(savedTransactionSuccessEnabled === null ? true : savedTransactionSuccessEnabled === "true")
-    setTransactionFailedEnabled(savedTransactionFailedEnabled === null ? false : savedTransactionFailedEnabled === "true")
+    setTransactionFailedEnabled(savedTransactionFailedEnabled === null ? true : savedTransactionFailedEnabled === "true")
+    setBudgetWarningEnabled(savedBudgetWarningEnabled === null ? true : savedBudgetWarningEnabled === "true")
     setPinSuccessEnabled(savedPinSuccessEnabled === null ? true : savedPinSuccessEnabled === "true")
-    setPinFailedEnabled(savedPinFailedEnabled === null ? false : savedPinFailedEnabled === "true")
+    setPinFailedEnabled(savedPinFailedEnabled === null ? true : savedPinFailedEnabled === "true")
     setTransactionSuccessSelectedSound(savedTransactionSuccessSelectedSound)
     setTransactionFailedSelectedSound(savedTransactionFailedSelectedSound)
+    setBudgetWarningSelectedSound(savedBudgetWarningSelectedSound)
     setPinSuccessSelectedSound(savedPinSuccessSelectedSound)
     setPinFailedSelectedSound(savedPinFailedSelectedSound)
     setTransactionSuccessCustomUrl(savedTransactionSuccessCustomUrl)
     setTransactionFailedCustomUrl(savedTransactionFailedCustomUrl)
+    setBudgetWarningCustomUrl(savedBudgetWarningCustomUrl)
     setPinSuccessCustomUrl(savedPinSuccessCustomUrl)
     setPinFailedCustomUrl(savedPinFailedCustomUrl)
 
     applyAccessibilitySettings(savedScreenReader, savedKeyboardNav, savedFontSize, savedFocusIndicators)
+
+    // Listen for authentication success events
+    const handleAuthSuccess = () => playSound('pin-success')
+    window.addEventListener('wallet-auth-success', handleAuthSuccess)
+
+    return () => {
+      window.removeEventListener('wallet-auth-success', handleAuthSuccess)
+    }
   }, [])
 
   const applyAccessibilitySettings = (sr: boolean, kn: boolean, fs: number, fi: boolean) => {
@@ -178,6 +197,11 @@ export function AccessibilitySettings() {
         enabled = transactionFailedEnabled
         selected = transactionFailedSelectedSound
         customUrl = transactionFailedCustomUrl
+        break
+      case "budget-warning":
+        enabled = budgetWarningEnabled
+        selected = budgetWarningSelectedSound
+        customUrl = budgetWarningCustomUrl
         break
       case "pin-success":
         enabled = pinSuccessEnabled
@@ -335,6 +359,10 @@ export function AccessibilitySettings() {
         setTransactionFailedEnabled(enabled)
         localStorage.setItem("wallet_transaction_failed_enabled", enabled.toString())
         break
+      case "budget-warning":
+        setBudgetWarningEnabled(enabled)
+        localStorage.setItem("wallet_budget_warning_enabled", enabled.toString())
+        break
       case "pin-success":
         setPinSuccessEnabled(enabled)
         localStorage.setItem("wallet_pin_success_enabled", enabled.toString())
@@ -344,7 +372,7 @@ export function AccessibilitySettings() {
         localStorage.setItem("wallet_pin_failed_enabled", enabled.toString())
         break
     }
-    announceToScreenReader(`${activity.replace("-", " ")} sound ${enabled ? "enabled" : "disabled"}`)
+    announceToScreenReader(`${activity.replace("-", " ").replace("pin", "auth")} sound ${enabled ? "enabled" : "disabled"}`)
   }
 
   const handleActivitySoundChange = (activity: string) => (value: string) => {
@@ -356,6 +384,10 @@ export function AccessibilitySettings() {
       case "transaction-failed":
         setTransactionFailedSelectedSound(value)
         localStorage.setItem("wallet_transaction_failed_selected_sound", value)
+        break
+      case "budget-warning":
+        setBudgetWarningSelectedSound(value)
+        localStorage.setItem("wallet_budget_warning_selected_sound", value)
         break
       case "pin-success":
         setPinSuccessSelectedSound(value)
@@ -398,6 +430,12 @@ export function AccessibilitySettings() {
             localStorage.setItem("wallet_transaction_failed_custom_url", url)
             localStorage.setItem("wallet_transaction_failed_selected_sound", "custom")
             break
+          case "budget-warning":
+            setBudgetWarningCustomUrl(url)
+            setBudgetWarningSelectedSound("custom")
+            localStorage.setItem("wallet_budget_warning_custom_url", url)
+            localStorage.setItem("wallet_budget_warning_selected_sound", "custom")
+            break
           case "pin-success":
             setPinSuccessCustomUrl(url)
             setPinSuccessSelectedSound("custom")
@@ -437,14 +475,17 @@ export function AccessibilitySettings() {
       customSoundUrl: "",
       transactionSuccessEnabled: true,
       transactionFailedEnabled: true,
+      budgetWarningEnabled: true,
       pinSuccessEnabled: true,
       pinFailedEnabled: true,
       transactionSuccessSelectedSound: "success-tone",
       transactionFailedSelectedSound: "notification",
+      budgetWarningSelectedSound: "notification",
       pinSuccessSelectedSound: "success-tone",
       pinFailedSelectedSound: "notification",
       transactionSuccessCustomUrl: "",
       transactionFailedCustomUrl: "",
+      budgetWarningCustomUrl: "",
       pinSuccessCustomUrl: "",
       pinFailedCustomUrl: "",
     }
@@ -459,14 +500,17 @@ export function AccessibilitySettings() {
     setCustomSoundUrl(defaults.customSoundUrl)
     setTransactionSuccessEnabled(defaults.transactionSuccessEnabled)
     setTransactionFailedEnabled(defaults.transactionFailedEnabled)
+    setBudgetWarningEnabled(defaults.budgetWarningEnabled)
     setPinSuccessEnabled(defaults.pinSuccessEnabled)
     setPinFailedEnabled(defaults.pinFailedEnabled)
     setTransactionSuccessSelectedSound(defaults.transactionSuccessSelectedSound)
     setTransactionFailedSelectedSound(defaults.transactionFailedSelectedSound)
+    setBudgetWarningSelectedSound(defaults.budgetWarningSelectedSound)
     setPinSuccessSelectedSound(defaults.pinSuccessSelectedSound)
     setPinFailedSelectedSound(defaults.pinFailedSelectedSound)
     setTransactionSuccessCustomUrl(defaults.transactionSuccessCustomUrl)
     setTransactionFailedCustomUrl(defaults.transactionFailedCustomUrl)
+    setBudgetWarningCustomUrl(defaults.budgetWarningCustomUrl)
     setPinSuccessCustomUrl(defaults.pinSuccessCustomUrl)
     setPinFailedCustomUrl(defaults.pinFailedCustomUrl)
 
@@ -735,12 +779,76 @@ export function AccessibilitySettings() {
                 )}
               </div>
 
+              {/* Budget Warning */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Budget Warning Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when budget limits are exceeded</p>
+                  </div>
+                  <Switch
+                    checked={budgetWarningEnabled}
+                    onCheckedChange={handleActivityToggle("budget-warning")}
+                  />
+                </div>
+                {budgetWarningEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={budgetWarningSelectedSound}
+                        onValueChange={handleActivitySoundChange("budget-warning")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>
+                              {sound.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => playSound("budget-warning")}
+                        disabled={budgetWarningSelectedSound === "none"}
+                      >
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {budgetWarningSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={budgetWarningFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleActivityCustomSoundUpload("budget-warning")}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => budgetWarningFileInputRef.current?.click()}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* PIN Success */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <Label>PIN Success Sound</Label>
-                    <p className="text-sm text-muted-foreground">Play sound when PIN is entered successfully</p>
+                    <Label>Auth Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication is successful</p>
                   </div>
                   <Switch
                     checked={pinSuccessEnabled}
@@ -803,8 +911,8 @@ export function AccessibilitySettings() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <Label>PIN Failed Sound</Label>
-                    <p className="text-sm text-muted-foreground">Play sound when PIN entry fails</p>
+                    <Label>Auth Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication fails</p>
                   </div>
                   <Switch
                     checked={pinFailedEnabled}

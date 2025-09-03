@@ -10,12 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle } from "lucide-react"
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle, Receipt, X } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 
@@ -26,6 +27,7 @@ interface FormData {
   description: string
   allocationType: "direct" | "goal"
   allocationTarget: string
+  receiptImage?: string
 }
 
 interface UnifiedTransactionDialogProps {
@@ -33,6 +35,9 @@ interface UnifiedTransactionDialogProps {
   onOpenChange?: (open: boolean) => void
   initialAmount?: string
   initialDescription?: string
+  initialType?: "income" | "expense"
+  initialCategory?: string
+  initialReceiptImage?: string
 }
 
 interface FieldState {
@@ -49,26 +54,29 @@ const initialFormData: FormData = {
   allocationTarget: "",
 }
 
-export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription }: UnifiedTransactionDialogProps = {}) {
+export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
   const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
   const open = isOpen !== undefined ? isOpen : internalOpen
 
-  const [type, setType] = useState<"income" | "expense">("expense")
+  const [type, setType] = useState<"income" | "expense">(initialType || "expense")
   const [formData, setFormData] = useState<FormData>(() => ({
     ...initialFormData,
     amount: initialAmount || "",
-    description: initialDescription || ""
+    description: initialDescription || "",
+    category: initialCategory || "",
+    receiptImage: initialReceiptImage || ""
   }))
   const [fieldStates, setFieldStates] = useState<Record<keyof FormData, FieldState>>({
-    amount: { touched: false, blurred: false },
-    category: { touched: false, blurred: false },
+    amount: { touched: !!initialAmount, blurred: false },
+    category: { touched: !!initialCategory, blurred: false },
     subcategory: { touched: false, blurred: false },
-    description: { touched: false, blurred: false },
+    description: { touched: !!initialDescription, blurred: false },
     allocationType: { touched: false, blurred: false },
     allocationTarget: { touched: false, blurred: false },
+    receiptImage: { touched: !!initialReceiptImage, blurred: false },
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
@@ -169,7 +177,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       }, 150)
 
       // Load persisted form data only if no initial data provided
-      if (!initialAmount && !initialDescription) {
+      if (!initialAmount && !initialDescription && !initialType && !initialCategory && !initialReceiptImage) {
         const persisted = localStorage.getItem("transaction-dialog-form")
         if (persisted) {
           try {
@@ -183,23 +191,30 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     } else {
       localStorage.removeItem("transaction-dialog-form")
     }
-  }, [open, initialAmount, initialDescription])
+  }, [open, initialAmount, initialDescription, initialType, initialCategory])
 
   // Update form data when initial props change
   useEffect(() => {
-    if (initialAmount || initialDescription) {
+    if (initialAmount || initialDescription || initialType || initialCategory || initialReceiptImage) {
       setFormData(prev => ({
         ...prev,
         amount: initialAmount || prev.amount,
-        description: initialDescription || prev.description
+        description: initialDescription || prev.description,
+        category: initialCategory || prev.category,
+        receiptImage: initialReceiptImage || prev.receiptImage
       }))
       setFieldStates(prev => ({
         ...prev,
         amount: initialAmount ? { touched: true, blurred: false } : prev.amount,
-        description: initialDescription ? { touched: true, blurred: false } : prev.description
+        description: initialDescription ? { touched: true, blurred: false } : prev.description,
+        category: initialCategory ? { touched: true, blurred: false } : prev.category,
+        receiptImage: initialReceiptImage ? { touched: true, blurred: false } : prev.receiptImage
       }))
+      if (initialType) {
+        setType(initialType)
+      }
     }
-  }, [initialAmount, initialDescription])
+  }, [initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage])
 
   // Persist form data
   useEffect(() => {
@@ -232,22 +247,25 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setFormData({
       ...initialFormData,
       amount: initialAmount || "",
-      description: initialDescription || ""
+      description: initialDescription || "",
+      category: initialCategory || "",
+      receiptImage: initialReceiptImage || ""
     })
     setFieldStates({
       amount: { touched: !!initialAmount, blurred: false },
-      category: { touched: false, blurred: false },
+      category: { touched: !!initialCategory, blurred: false },
       subcategory: { touched: false, blurred: false },
       description: { touched: !!initialDescription, blurred: false },
       allocationType: { touched: false, blurred: false },
       allocationTarget: { touched: false, blurred: false },
+      receiptImage: { touched: !!initialReceiptImage, blurred: false },
     })
     setSubmitAttempted(false)
-    setType("expense")
+    setType(initialType || "expense")
     setShowAddCategory(false)
     setNewCategoryName("")
     setNewCategoryIcon("📦")
-  }, [initialAmount, initialDescription])
+  }, [initialAmount, initialDescription, initialType, initialCategory])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
@@ -298,6 +316,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               description: warning.details || "Please review your budget allocation."
             })
           })
+          // Play budget warning sound
+          playSound("budget-warning")
         }
 
         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
@@ -807,6 +827,43 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   </p>
                 )}
               </div>
+
+              {/* Receipt Image Preview */}
+              {formData.receiptImage && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <Receipt className="w-4 h-4" />
+                      Receipt Image
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleFieldChange("receiptImage", "")}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="relative">
+                    <img
+                      src={formData.receiptImage}
+                      alt="Receipt"
+                      className="w-full max-h-32 object-contain rounded-lg border border-border"
+                    />
+                    <div className="absolute top-2 right-2">
+                      <Badge variant="secondary" className="text-xs">
+                        <Receipt className="w-3 h-3 mr-1" />
+                        Attached
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Receipt image will be saved with this transaction
+                  </p>
+                </div>
+              )}
 
             </div>
 

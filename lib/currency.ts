@@ -12,8 +12,8 @@ export const CURRENCIES: Currency[] = [
   { value: "JPY", label: "Japanese Yen (¥)", symbol: "¥", name: "Japanese Yen" },
   { value: "CAD", label: "Canadian Dollar (C$)", symbol: "C$", name: "Canadian Dollar" },
   { value: "AUD", label: "Australian Dollar (A$)", symbol: "A$", name: "Australian Dollar" },
-  { value: "INR", label: "Indian Rupee (₹)", symbol: "₹", name: "Indian Rupee" },
-  { value: "NPR", label: "Nepalese Rupee (रु)", symbol: "रु", name: "Nepalese Rupee" },
+  { value: "INR", label: "Indian Rupee (₹)", symbol: "₹ ", name: "Indian Rupee" },
+  { value: "NPR", label: "Nepalese Rupee (रु)", symbol: "रु ", name: "Nepalese Rupee" },
   { value: "CUSTOM", label: "Custom Currency", symbol: "", name: "Custom Currency" },
 ]
 

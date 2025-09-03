@@ -20,62 +20,189 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Upload, Trash2, Database, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
+import { createEncryptedBackup, restoreEncryptedBackup } from "@/lib/backup"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { BackupModal } from "./data-settings/backup-modal"
+import { ImportModal } from "./data-settings/import-modal"
 
 export function DataSettings() {
-  const { userProfile, transactions, budgets, goals, clearAllData, importData } = useWalletData()
-  const [importFile, setImportFile] = useState<File | null>(null)
+   const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, clearAllData, importData } = useWalletData()
+   const [importFile, setImportFile] = useState<File | null>(null)
+   const [importPin, setImportPin] = useState("")
+   const [isImporting, setIsImporting] = useState(false)
 
-  const handleExportData = () => {
-    const data = {
-      userProfile,
-      transactions,
-      budgets,
-      goals,
-      exportDate: new Date().toISOString(),
-      version: "1.0",
-    }
+   // Modal state
+   const [showBackupModal, setShowBackupModal] = useState(false)
+   const [showImportModal, setShowImportModal] = useState(false)
+   const [availableImportData, setAvailableImportData] = useState<any>(null)
+   const [backupFileContent, setBackupFileContent] = useState("")
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `mywallet-backup-${new Date().toISOString().split("T")[0]}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    toast({
-      title: "Data Exported",
-      description: "Your wallet data has been downloaded successfully.",
-    })
+  const handleCreateBackup = () => {
+    setShowBackupModal(true)
   }
+
+  const handleBackupSuccess = async (data: any, pin: string) => {
+    try {
+      const { createEncryptedBackup } = await import("@/lib/backup")
+
+      // Create encrypted backup
+      const backupJson = await createEncryptedBackup(data, pin)
+
+      // Download the backup
+      const blob = new Blob([backupJson], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `mywallet-selective-backup-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Selective Backup Created",
+        description: "Your selected wallet data has been encrypted and downloaded successfully.",
+      })
+    } catch (error) {
+      console.error("Backup creation failed:", error)
+      toast({
+        title: "Backup Failed",
+        description: "Failed to create encrypted backup. Please try again.",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
 
   const handleImportData = async () => {
     if (!importFile) return
 
+    setIsImporting(true)
     try {
       const text = await importFile.text()
-      const data = JSON.parse(text)
+      setBackupFileContent(text)
 
-      // Validate data structure
-      if (!data.userProfile || !Array.isArray(data.transactions)) {
+      // Try to parse as JSON first
+      let parsedData
+      try {
+        parsedData = JSON.parse(text)
+      } catch (parseError) {
         throw new Error("Invalid backup file format")
       }
 
-      importData(data)
-      setImportFile(null)
+      let dataToImport = parsedData
 
-      toast({
-        title: "Data Imported",
-        description: "Your wallet data has been restored successfully.",
-      })
+      // Check if this is an encrypted backup (has version, salt, payload fields)
+      if (parsedData.version && parsedData.salt && parsedData.payload) {
+        console.log("[v0] Detected encrypted backup")
+
+        // If PIN is provided, try to decrypt
+        if (importPin) {
+          try {
+            const { restoreEncryptedBackup } = await import("@/lib/backup")
+            dataToImport = await restoreEncryptedBackup(text, importPin)
+            console.log("[v0] Backup decrypted successfully")
+          } catch (decryptError) {
+            console.error("[v0] Decryption failed:", decryptError)
+            toast({
+              title: "Decryption Failed",
+              description: "Invalid PIN or corrupted backup file.",
+              variant: "destructive",
+            })
+            setIsImporting(false)
+            return
+          }
+        } else {
+          // No PIN provided for encrypted backup
+          toast({
+            title: "PIN Required",
+            description: "This is an encrypted backup. Please enter your PIN to decrypt it.",
+            variant: "destructive",
+          })
+          setIsImporting(false)
+          return
+        }
+      } else {
+        console.log("[v0] Detected plain JSON backup")
+      }
+
+      // Store the data (decrypted or plain) for the modal
+      setAvailableImportData(dataToImport)
+      setShowImportModal(true)
+      setIsImporting(false)
     } catch (error) {
+      console.error("[v0] Import error:", error)
+      const errorMessage = error instanceof Error ? error.message : "The backup file is invalid or corrupted."
       toast({
         title: "Import Failed",
-        description: "The backup file is invalid or corrupted.",
+        description: errorMessage,
         variant: "destructive",
       })
+      setIsImporting(false)
+    }
+  }
+
+  const handleConfirmImport = async (importOptions: any) => {
+    if (!availableImportData) return
+
+    setIsImporting(true)
+    try {
+      // Create selective data based on user choices
+      const selectiveData: any = {
+        exportDate: availableImportData.exportDate || new Date().toISOString(),
+        version: availableImportData.version || "1.0",
+      }
+
+      if (importOptions.userProfile && availableImportData.userProfile) {
+        selectiveData.userProfile = availableImportData.userProfile
+      }
+      if (importOptions.transactions && availableImportData.transactions) {
+        selectiveData.transactions = availableImportData.transactions
+      }
+      if (importOptions.budgets && availableImportData.budgets) {
+        selectiveData.budgets = availableImportData.budgets
+      }
+      if (importOptions.goals && availableImportData.goals) {
+        selectiveData.goals = availableImportData.goals
+      }
+      if (importOptions.debtAccounts && availableImportData.debtAccounts) {
+        selectiveData.debtAccounts = availableImportData.debtAccounts
+      }
+      if (importOptions.creditAccounts && availableImportData.creditAccounts) {
+        selectiveData.creditAccounts = availableImportData.creditAccounts
+      }
+      if (importOptions.categories && availableImportData.categories) {
+        selectiveData.categories = availableImportData.categories
+      }
+      if (importOptions.emergencyFund && availableImportData.emergencyFund) {
+        selectiveData.emergencyFund = availableImportData.emergencyFund
+      }
+
+      // Restore scrollbar setting if userProfile is being imported
+      if (importOptions.userProfile && availableImportData.settings?.showScrollbars !== undefined) {
+        selectiveData.settings = {
+          ...selectiveData.settings,
+          showScrollbars: availableImportData.settings.showScrollbars
+        }
+      }
+
+      console.log("[v0] Starting selective data import...")
+      const success = await importData(selectiveData)
+
+      if (success) {
+        setImportFile(null)
+        setImportPin("")
+        setShowImportModal(false)
+        setAvailableImportData(null)
+        setBackupFileContent("")
+      } else {
+        throw new Error("Import failed - data could not be processed")
+      }
+    } catch (error) {
+      throw error // Re-throw to let the modal handle the error
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -146,56 +273,110 @@ export function DataSettings() {
           </CardTitle>
           <CardDescription>Export your data or restore from a backup</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Export */}
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div>
-              <p className="font-medium">Export Data</p>
-              <p className="text-sm text-muted-foreground">Download all your wallet data as a JSON file</p>
+        <CardContent className="p-6">
+          {/* Responsive Grid Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Export Section */}
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 border border-primary/20 p-6 hover:shadow-lg transition-all duration-300">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-full -mr-10 -mt-10"></div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Download className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Export Data</h3>
+                    <p className="text-sm text-muted-foreground">Create secure backup</p>
+                  </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                  Create a selective encrypted backup of your wallet data with advanced security features.
+                </p>
+
+                <Button
+                  onClick={handleCreateBackup}
+                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300"
+                  size="lg"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Create Selective Backup
+                </Button>
+                
+              </div>
+              <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-muted">
+            <div className="flex items-start gap-3">
+              <div className="p-1 bg-blue-500/10 rounded">
+                <FileText className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-medium text-sm mb-1">Backup Features</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  • Selective data export with encryption • Automatic backup type detection • PIN-protected security • Cross-device compatibility
+                </p>
+              </div>
             </div>
-            <Button onClick={handleExportData} variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
+          </div>
+            </div>
+
+            {/* Import Section */}
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500/5 via-green-500/10 to-green-500/5 border border-green-500/20 p-6 hover:shadow-lg transition-all duration-300">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-full -mr-10 -mt-10"></div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-green-500/10 rounded-lg">
+                    <Upload className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Import Data</h3>
+                    <p className="text-sm text-muted-foreground">Restore from backup</p>
+                  </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                  Restore your wallet data from an encrypted backup file with automatic detection.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="backup-file" className="text-sm font-medium">Backup File</Label>
+                    <Input
+                      id="backup-file"
+                      type="file"
+                      accept=".json"
+                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      className="file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="import-pin" className="text-sm font-medium">Enter PIN for decryption (if encrypted)</Label>
+                    <Input
+                      id="import-pin"
+                      type="password"
+                      placeholder="Enter PIN if backup is encrypted"
+                      value={importPin}
+                      onChange={(e) => setImportPin(e.target.value)}
+                      className="border-amber-300 focus:border-amber-500"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleImportData}
+                    disabled={!importFile || isImporting}
+                    className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 shadow-lg hover:shadow-xl transition-all duration-300"
+                    size="lg"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {isImporting ? "Analyzing..." : "Analyze & Import"}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Import */}
-          <div className="p-4 border rounded-lg space-y-3">
-            <div>
-              <p className="font-medium">Import Data</p>
-              <p className="text-sm text-muted-foreground">Restore your wallet data from a backup file</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="backup-file">Select Backup File</Label>
-              <Input
-                id="backup-file"
-                type="file"
-                accept=".json"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-              />
-            </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button disabled={!importFile} className="w-full">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Import Data
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Import Backup Data?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will replace all your current data with the data from the backup file. This action cannot be
-                    undone. Make sure to export your current data first if needed.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleImportData}>Import Data</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
+          {/* Additional Info */}
+          
         </CardContent>
       </Card>
 
@@ -231,6 +412,54 @@ export function DataSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Backup Modal Component */}
+      <BackupModal
+        isOpen={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        onBackupComplete={() => {
+          setShowBackupModal(false)
+          toast({
+            title: "Backup Created",
+            description: "Your selective backup has been created successfully.",
+          })
+        }}
+        onBackupSuccess={handleBackupSuccess}
+        userProfile={userProfile}
+        transactions={transactions}
+        budgets={budgets}
+        goals={goals}
+        debtAccounts={debtAccounts}
+        creditAccounts={creditAccounts}
+        categories={categories}
+        emergencyFund={emergencyFund}
+      />
+
+      {/* Import Modal Component */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => {
+          setShowImportModal(false)
+          setAvailableImportData(null)
+          setImportFile(null)
+          setImportPin("")
+          setBackupFileContent("")
+        }}
+        onImportComplete={() => {
+          setShowImportModal(false)
+          setAvailableImportData(null)
+          setImportFile(null)
+          setImportPin("")
+          setBackupFileContent("")
+          toast({
+            title: "Data Imported",
+            description: "Your selected wallet data has been restored successfully.",
+          })
+        }}
+        availableImportData={availableImportData}
+        onConfirmImport={handleConfirmImport}
+        isImporting={isImporting}
+      />
     </div>
   )
 }

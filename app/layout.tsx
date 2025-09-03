@@ -3,10 +3,11 @@ import type { Metadata } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import { ThemeProviderWrapper } from "@/components/theme-provider-wrapper"
 import { WalletDataProvider } from "@/contexts/wallet-data-context"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
-import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register"
+import { SessionGuard } from "@/components/security/session-guard"
+import { SessionDebug } from "@/components/security/session-debug"
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -22,18 +23,20 @@ export default function RootLayout({
   children: ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#000000" />
-        <link  href="/image.png" />
+        <link rel="icon" href="/image.png" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProviderWrapper>
           <PrivacyModeProvider>
-            <WalletDataProvider>{children}</WalletDataProvider>
+            <WalletDataProvider>
+              <SessionGuard>{children}</SessionGuard>
+            </WalletDataProvider>
           </PrivacyModeProvider>
-        </ThemeProvider>
+        </ThemeProviderWrapper>
       </body>
     </html>
   )

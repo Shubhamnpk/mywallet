@@ -32,6 +32,7 @@ import {
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
+import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 interface OnboardingProps {
@@ -70,9 +71,9 @@ const steps = [
   {
     id: 5,
     title: "Security",
-    subtitle: "Protect your data",
+    subtitle: "Your Privacy First",
     icon: Shield,
-    description: "Keep your information safe"
+    description: "AES-256 encryption, stored locally"
   },
   {
     id: 6,
@@ -252,6 +253,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           toast.error('Failed to set up PIN. Please try again.');
           return;
         }
+
+        // Create initial session after PIN setup for consistent behavior
+        SessionManager.createSession();
       }
 
       // Get PIN data from localStorage if security is enabled
@@ -533,17 +537,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {/* Step 5 - Security */}
             {step === 5 && (
               <div className="space-y-4">
-                <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
-                    <Shield className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">Your Privacy First</h3>
-                    <p className="text-sm text-muted-foreground">
-                      AES-256 encryption, stored locally
-                    </p>
-                  </div>
-                </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 bg-background-secondary rounded-lg border">

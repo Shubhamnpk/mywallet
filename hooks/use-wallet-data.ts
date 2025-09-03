@@ -17,6 +17,7 @@ import type {
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
+import { SessionManager } from "@/lib/session-manager"
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -38,6 +39,7 @@ export function useWalletData() {
   useEffect(() => {
     if (isLoaded) return
 
+    console.log('[HYDRATION] Starting to load wallet data from localStorage')
     loadDataWithIntegrityCheck()
   }, [isLoaded])
 
@@ -130,16 +132,30 @@ export function useWalletData() {
       if (parsedData.categories.length > 0) {
         setCategories(parsedData.categories)
       } else {
-        const defaultCategories = initializeDefaultCategories()
-        setCategories(defaultCategories)
-        await saveDataWithIntegrity("categories", defaultCategories)
+        // Only create default categories if this is NOT a fresh start after clearing
+        const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
+                          parsedData.budgets.length > 0 || parsedData.goals.length > 0
+        if (hasAnyData) {
+          const defaultCategories = initializeDefaultCategories()
+          setCategories(defaultCategories)
+          await saveDataWithIntegrity("categories", defaultCategories)
+        } else {
+          setCategories([])
+        }
       }
 
       setIsLoaded(true)
+      console.log('[HYDRATION] Wallet data loaded:', {
+        userProfile: !!parsedData.userProfile,
+        transactionsCount: parsedData.transactions.length,
+        budgetsCount: parsedData.budgets.length,
+        goalsCount: parsedData.goals.length
+      })
     } catch (error) {
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
+      console.log('[HYDRATION] Error loading wallet data:', error)
     }
   }
 
@@ -584,25 +600,32 @@ export function useWalletData() {
     // Clear all encryption keys
     SecureKeyManager.clearAllKeys()
 
-    // Clear all PIN and security data
+    // Clear all PIN and security data comprehensively
     const { SecurePinManager } = await import("@/lib/secure-pin-manager")
-    SecurePinManager.resetPin()
+    SecurePinManager.clearAllSecurityData()
 
-    // Clear all wallet data from localStorage
-    localStorage.removeItem("userProfile")
-    localStorage.removeItem("transactions")
-    localStorage.removeItem("budgets")
-    localStorage.removeItem("goals")
-    localStorage.removeItem("debtAccounts")
-    localStorage.removeItem("creditAccounts")
-    localStorage.removeItem("emergencyFund")
-    localStorage.removeItem("debtCreditTransactions")
-    localStorage.removeItem("categories")
+    // Clear current session
+    SessionManager.clearSession()
 
-    // Clear session data
-    localStorage.removeItem("wallet_session")
+    // Clear ALL localStorage data for the site
+    localStorage.clear()
 
-    // Reset all state
+    // Also clear sessionStorage if it exists
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.clear()
+    }
+
+    // Clear all cookies for this domain
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(";")
+      for (let cookie of cookies) {
+        const eqPos = cookie.indexOf("=")
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+      }
+    }
+
+    // Reset all state to completely empty (no default data)
     setUserProfile(null)
     setTransactions([])
     setBudgets([])
@@ -610,16 +633,13 @@ export function useWalletData() {
     setDebtAccounts([])
     setCreditAccounts([])
     setDebtCreditTransactions([])
-    const defaultCategories = initializeDefaultCategories()
-    setCategories(defaultCategories)
-    await saveDataWithIntegrity("categories", defaultCategories)
+    setCategories([]) // Empty categories, no defaults
     setEmergencyFund(0)
     setBalance(0)
     setIsAuthenticated(false)
     setShowOnboarding(true)
     setIsFirstTime(true)
 
-    console.log("[v0] All data and security information cleared completely")
   }
 
   const exportData = () => {
@@ -648,32 +668,86 @@ export function useWalletData() {
     URL.revokeObjectURL(url)
   }
 
-  const importData = (jsonData: string) => {
+  const importData = async (dataOrJson: string | any) => {
     try {
-      const data = JSON.parse(jsonData)
+      console.log("[v0] Starting data import...")
+      const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
-      // Skip integrity check for synchronous operation
-      if (data.userProfile) {
-        setUserProfile(data.userProfile)
-        saveDataWithIntegrity("userProfile", data.userProfile)
+      // Validate data structure
+      if (!data.userProfile && !Array.isArray(data.transactions)) {
+        throw new Error("Invalid backup file format - missing required data")
       }
 
-      if (data.transactions) {
+      // Import user profile
+      if (data.userProfile) {
+        console.log("[v0] Importing user profile...")
+        setUserProfile(data.userProfile)
+        await saveDataWithIntegrity("userProfile", data.userProfile)
+      }
+
+      // Import transactions
+      if (data.transactions && Array.isArray(data.transactions)) {
+        console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
-        saveDataWithIntegrity("transactions", data.transactions)
+        await saveDataWithIntegrity("transactions", data.transactions)
         setBalance(calculateBalance(data.transactions))
       }
 
-      setBudgets(data.budgets || [])
-      setGoals(data.goals || [])
-      setDebtAccounts(data.debtAccounts || [])
-      setCreditAccounts(data.creditAccounts || [])
-      setDebtCreditTransactions(data.debtCreditTransactions || [])
-      setEmergencyFund(Number.parseFloat(data.emergencyFund) || 0)
+      // Import other data
+      if (data.budgets && Array.isArray(data.budgets)) {
+        console.log(`[v0] Importing ${data.budgets.length} budgets...`)
+        setBudgets(data.budgets)
+        await saveDataWithIntegrity("budgets", data.budgets)
+      }
 
+      if (data.goals && Array.isArray(data.goals)) {
+        console.log(`[v0] Importing ${data.goals.length} goals...`)
+        setGoals(data.goals)
+        await saveDataWithIntegrity("goals", data.goals)
+      }
+
+      if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
+        console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
+        setDebtAccounts(data.debtAccounts)
+        await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
+      }
+
+      if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
+        console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
+        setCreditAccounts(data.creditAccounts)
+        await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
+      }
+
+      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
+        console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
+        setDebtCreditTransactions(data.debtCreditTransactions)
+        await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
+      }
+
+      if (data.categories && Array.isArray(data.categories)) {
+        console.log(`[v0] Importing ${data.categories.length} categories...`)
+        setCategories(data.categories)
+        await saveDataWithIntegrity("categories", data.categories)
+      }
+
+      // Import emergency fund
+      if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
+        const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
+        console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
+        setEmergencyFund(emergencyFundValue)
+        await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
+      }
+
+      // Import scrollbar setting
+      if (data.settings?.showScrollbars !== undefined) {
+        console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
+        localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
+      }
+
+      console.log("[v0] Data import completed successfully")
       return true
     } catch (error) {
-      console.error("Error importing data:", error)
+      console.error("[v0] Error importing data:", error)
       return false
     }
   }
@@ -830,6 +904,7 @@ export function useWalletData() {
     isFirstTime,
     showOnboarding,
     isAuthenticated,
+    isLoaded,
     balanceChange,
     setShowOnboarding,
     handleOnboardingComplete,

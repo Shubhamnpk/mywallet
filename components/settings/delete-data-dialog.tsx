@@ -143,7 +143,7 @@ export function DeleteDataDialog({ trigger, title, description, onConfirm, type 
             <AlertTriangle className="w-5 h-5 text-destructive" />
             <AlertDialogTitle>{title}</AlertDialogTitle>
           </div>
-          <AlertDialogDescription>
+          <div className="text-sm text-muted-foreground">
             {step === "warning" && (
               <div className="space-y-2">
                 <p>{description}</p>
@@ -178,7 +178,7 @@ export function DeleteDataDialog({ trigger, title, description, onConfirm, type 
                 </p>
               </div>
             )}
-          </AlertDialogDescription>
+          </div>
         </AlertDialogHeader>
 
         <div className="space-y-4">
