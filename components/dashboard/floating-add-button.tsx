@@ -7,10 +7,23 @@ import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
+import { getDefaultCategories, ALL_DEFAULT_CATEGORIES } from "@/lib/categories"
+
+declare global {
+  interface Window {
+    SpeechRecognition: any
+    webkitSpeechRecognition: any
+  }
+}
 
 interface FloatingAddButtonProps {
   className?: string
@@ -19,32 +32,35 @@ interface FloatingAddButtonProps {
 }
 
 const quickActions = [
-  { id: 'scan', icon: Camera, label: 'Scan', color: 'bg-emerald-500' },
-  { id: 'voice', icon: Mic, label: 'Voice', color: 'bg-blue-500' },
-  { id: 'calc', icon: Calculator, label: 'Calc', color: 'bg-amber-500' },
-  { id: 'lock', icon: Lock, label: 'Lock', color: 'bg-red-500' }
+  { id: "scan", icon: Camera, label: "Scan", color: "bg-emerald-500" },
+  { id: "voice", icon: Mic, label: "Voice", color: "bg-blue-500" },
+  { id: "calc", icon: Calculator, label: "Calc", color: "bg-amber-500" },
+  { id: "lock", icon: Lock, label: "Lock", color: "bg-red-500" },
 ]
 
 const getVoiceAction = (isListening: boolean) => ({
-  id: 'voice',
+  id: "voice",
   icon: Mic,
-  label: isListening ? 'Listening...' : 'Voice',
-  color: isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500'
+  label: isListening ? "Listening..." : "Voice",
+  color: isListening ? "bg-red-500 animate-pulse" : "bg-blue-500",
 })
 
 export function FloatingAddButton({
   className,
   onAddTransaction,
-  onLockWallet
+  onLockWallet,
 }: FloatingAddButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
   const [calculatorValue, setCalculatorValue] = useState("")
+  const [calculatorDisplay, setCalculatorDisplay] = useState("0")
+  const [calculatorExpression, setCalculatorExpression] = useState("")
   const [isListening, setIsListening] = useState(false)
   const [prefilledAmount, setPrefilledAmount] = useState("")
   const [prefilledDescription, setPrefilledDescription] = useState("")
-  const recognitionRef = useRef<any>(null)
+  const [prefilledType, setPrefilledType] = useState<"income" | "expense">("expense")
+  const [prefilledCategory, setPrefilledCategory] = useState("")
 
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
@@ -57,109 +73,249 @@ export function FloatingAddButton({
     }
   }, [isMobile, isAuthenticated, isExpanded, onAddTransaction])
 
-  const handleScanReceipt = useCallback(() => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        toast.success(`Receipt "${file.name}" selected for scanning`)
-        // Here you would integrate with OCR service
-        setPrefilledDescription(`Receipt: ${file.name}`)
-        setIsDialogOpen(true)
+  const handleActionClick = useCallback(
+    (actionId: string) => {
+      setIsExpanded(false)
+
+      switch (actionId) {
+        case "lock":
+          onLockWallet?.() ?? lockApp()
+          break
+        case "scan":
+          toast.success("Scan action triggered")
+          break
+        case "voice":
+          startVoiceRecognition()
+          break
+        case "calc":
+          setIsCalculatorOpen(true)
+          break
+        default:
+          setIsDialogOpen(true)
       }
+    },
+    [onLockWallet, lockApp]
+  )
+
+  const handleCalculatorButton = useCallback((value: string) => {
+    if (value === "=") {
+      try {
+        const result = eval(calculatorExpression.replace(/×/g, "*").replace(/÷/g, "/"))
+        setCalculatorDisplay(result.toString())
+        setCalculatorExpression(result.toString())
+      } catch {
+        setCalculatorDisplay("Error")
+        setCalculatorExpression("")
+      }
+    } else if (value === "C") {
+      setCalculatorDisplay("0")
+      setCalculatorExpression("")
+    } else if (value === "⌫") {
+      const newExpression = calculatorExpression.slice(0, -1)
+      setCalculatorExpression(newExpression)
+      setCalculatorDisplay(newExpression || "0")
+    } else {
+      const newExpression = calculatorExpression + value
+      setCalculatorExpression(newExpression)
+      setCalculatorDisplay(newExpression)
     }
-    input.click()
+  }, [calculatorExpression])
+
+  const handleCalculatorClose = useCallback(() => {
+    setIsCalculatorOpen(false)
+    setCalculatorDisplay("0")
+    setCalculatorExpression("")
   }, [])
 
-  const handleVoiceCommand = useCallback(() => {
+  // Helper function to parse voice transcript
+  const parseVoiceTranscript = useCallback((transcript: string) => {
+    const lowerTranscript = transcript.toLowerCase()
+
+    // Keywords for transaction type detection
+    const incomeKeywords = ['income', 'earn', 'received', 'got', 'add money', 'salary', 'bonus', 'freelance', 'gift', 'refund', 'investment', 'dividend']
+    const expenseKeywords = ['expense', 'spent', 'pay', 'bought', 'cost', 'paid', 'purchase', 'buy']
+
+    // Detect transaction type
+    let transactionType: "income" | "expense" = "expense"
+    const hasIncomeKeywords = incomeKeywords.some(keyword => lowerTranscript.includes(keyword))
+    const hasExpenseKeywords = expenseKeywords.some(keyword => lowerTranscript.includes(keyword))
+
+    if (hasIncomeKeywords && !hasExpenseKeywords) {
+      transactionType = "income"
+    } else if (hasExpenseKeywords && !hasIncomeKeywords) {
+      transactionType = "expense"
+    }
+
+    // Get available categories for the detected type
+    const availableCategories = getDefaultCategories(transactionType)
+
+    // Category detection - look for category names in transcript
+    let detectedCategory = ""
+    for (const category of availableCategories) {
+      if (lowerTranscript.includes(category.name.toLowerCase())) {
+        detectedCategory = category.name
+        break
+      }
+    }
+
+    // Alternative category detection with common synonyms
+    if (!detectedCategory) {
+      const categorySynonyms: Record<string, string> = {
+        'food': 'Food & Dining',
+        'restaurant': 'Food & Dining',
+        'dining': 'Food & Dining',
+        'eat': 'Food & Dining',
+        'lunch': 'Food & Dining',
+        'dinner': 'Food & Dining',
+        'supermarket': 'Groceries',
+        'grocery': 'Groceries',
+        'shopping': 'Shopping',
+        'clothes': 'Shopping',
+        'gas': 'Transportation',
+        'fuel': 'Transportation',
+        'car': 'Transportation',
+        'bus': 'Transportation',
+        'taxi': 'Transportation',
+        'uber': 'Transportation',
+        'rent': 'Housing',
+        'house': 'Housing',
+        'apartment': 'Housing',
+        'electricity': 'Bills & Utilities',
+        'water': 'Bills & Utilities',
+        'internet': 'Bills & Utilities',
+        'phone': 'Bills & Utilities',
+        'doctor': 'Healthcare',
+        'medical': 'Healthcare',
+        'hospital': 'Healthcare',
+        'movie': 'Entertainment',
+        'cinema': 'Entertainment',
+        'game': 'Entertainment',
+        'book': 'Education',
+        'course': 'Education',
+        'school': 'Education',
+        'travel': 'Travel',
+        'hotel': 'Travel',
+        'flight': 'Travel',
+        'insurance': 'Insurance'
+      }
+
+      for (const [synonym, category] of Object.entries(categorySynonyms)) {
+        if (lowerTranscript.includes(synonym)) {
+          // Check if this category exists for the transaction type
+          const categoryExists = availableCategories.some(cat => cat.name === category)
+          if (categoryExists) {
+            detectedCategory = category
+            break
+          }
+        }
+      }
+    }
+
+    // Parse number from transcript, handling commas
+    const numberMatch = transcript.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?)/)
+    let amount = ""
+    if (numberMatch) {
+      amount = numberMatch[1].replace(/,/g, '')
+    }
+
+    // Clean description by removing detected elements and common words
+    let cleanedDescription = transcript
+      .replace(numberMatch ? numberMatch[0] : '', '') // Remove the number
+      .replace(/\b(dollars?|bucks?|usd|money|amount|for|to|at|with|and|the|a|an|add|remove|expense|income|spent|paid|bought|received|got|earned|salary|bonus|freelance|gift|refund|investment|dividend|food|restaurant|grocery|shopping|transportation|entertainment|healthcare|education|travel|housing|insurance|bills|utilities|other|category|transaction|eat|lunch|dinner|supermarket|clothes|gas|fuel|car|bus|taxi|uber|rent|house|apartment|electricity|water|internet|phone|doctor|medical|hospital|movie|cinema|game|book|course|school|hotel|flight)\b/gi, '') // Remove common filler words and detected keywords
+      .trim()
+
+    // Remove detected category if found
+    if (detectedCategory) {
+      cleanedDescription = cleanedDescription.replace(new RegExp(`\\b${detectedCategory.replace(/[-\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'gi'), '')
+    }
+
+    // Clean up extra spaces and punctuation
+    cleanedDescription = cleanedDescription.replace(/\s+/g, ' ').replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim()
+
+    return {
+      amount,
+      transactionType,
+      category: detectedCategory,
+      fullDescription: transcript.trim(),
+      cleanedDescription
+    }
+  }, [])
+
+  const startVoiceRecognition = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast.error('Voice recognition not supported in this browser')
+      toast.error("Voice recognition not supported in this browser")
       return
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     const recognition = new SpeechRecognition()
-
     recognition.continuous = false
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
     recognition.onstart = () => {
       setIsListening(true)
-      toast.info('Listening... Say something like "Add expense 50 dollars for groceries"')
+      toast.info("Listening... Say something like 'spent 50 dollars at restaurant' or 'received 1000 salary'")
     }
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
-      toast.success(`Heard: "${transcript}"`)
+      console.log('Voice transcript:', transcript)
 
-      // Parse voice command for amount and description
-      const amountMatch = transcript.match(/(\d+(?:\.\d+)?)/)
-      const amount = amountMatch ? amountMatch[0] : ""
+      const parsed = parseVoiceTranscript(transcript)
 
-      // Extract description (remove amount and common words)
-      let description = transcript
-        .replace(/(\d+(?:\.\d+)?)/g, '')
-        .replace(/\b(add|expense|income|spend|paid|cost|buy|bought|purchase|purchased|for|dollars?|bucks?|cash)\b/gi, '')
-        .trim()
+      if (parsed.amount) {
+        setPrefilledAmount(parsed.amount)
+        setPrefilledType(parsed.transactionType)
+        setPrefilledDescription(parsed.cleanedDescription || parsed.fullDescription)
 
-      if (description.length < 3) {
-        description = transcript.replace(/(\d+(?:\.\d+)?)/g, '').trim()
+        if (parsed.category) {
+          setPrefilledCategory(parsed.category)
+        }
+
+        setIsDialogOpen(true)
+
+        const typeText = parsed.transactionType === 'income' ? 'Income' : 'Expense'
+        const categoryText = parsed.category ? ` in ${parsed.category}` : ''
+        const descText = parsed.cleanedDescription ? ` - ${parsed.cleanedDescription}` : ''
+        toast.success(`${typeText} of $${parsed.amount}${categoryText}${descText}`)
+      } else {
+        toast.error("No amount detected in speech. Try saying something like '50 dollars at restaurant'")
       }
-
-      setPrefilledAmount(amount)
-      setPrefilledDescription(description || "Voice transaction")
-      setIsDialogOpen(true)
     }
 
     recognition.onerror = (event: any) => {
-      toast.error('Voice recognition error: ' + event.error)
-      setIsListening(false)
+      console.error('Voice recognition error:', event.error)
+      toast.error("Voice recognition error. Please try again.")
     }
 
     recognition.onend = () => {
       setIsListening(false)
     }
 
-    recognitionRef.current = recognition
     recognition.start()
-  }, [])
+  }, [parseVoiceTranscript])
 
-  const handleCalculator = useCallback(() => {
-    setIsCalculatorOpen(true)
-  }, [])
-
-  const handleActionClick = useCallback((actionId: string) => {
-    setIsExpanded(false)
-
-    switch (actionId) {
-      case 'lock':
-        onLockWallet?.() ?? lockApp()
-        break
-      case 'scan':
-        handleScanReceipt()
-        break
-      case 'voice':
-        handleVoiceCommand()
-        break
-      case 'calc':
-        handleCalculator()
-        break
-      default:
-        setIsDialogOpen(true)
-    }
-  }, [onLockWallet, lockApp, handleScanReceipt, handleVoiceCommand, handleCalculator])
+  const handleUseResult = useCallback(() => {
+    setPrefilledAmount(calculatorDisplay)
+    setIsCalculatorOpen(false)
+    setIsDialogOpen(true)
+    setCalculatorDisplay("0")
+    setCalculatorExpression("")
+  }, [calculatorDisplay])
 
   return (
     <>
-      {/* Action Menu - Mobile */}
+      {/* Mobile Expanded Actions */}
       {isMobile && isExpanded && (
-        <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setIsExpanded(false)}>
+        <div
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
+          onClick={() => setIsExpanded(false)}
+        >
           <div className="absolute bottom-[152px] right-6 flex flex-col gap-3">
             {quickActions.map((action, index) => {
-              const actionData = action.id === 'voice' ? getVoiceAction(isListening) : action
+              const actionData =
+                action.id === "voice" ? getVoiceAction(isListening) : action
               return (
                 <Button
                   key={action.id}
@@ -169,14 +325,15 @@ export function FloatingAddButton({
                     handleActionClick(action.id)
                   }}
                   className={cn(
-                    "h-12 w-12 rounded-full shadow-lg transition-all duration-200",
-                    actionData.color,
+                    "h-12 w-12 rounded-full shadow-xl transition-all duration-300",
                     "hover:scale-110 active:scale-95",
+                    "bg-opacity-90 text-white",
+                    actionData.color,
                     "animate-in slide-in-from-bottom-2 fade-in-0"
                   )}
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  style={{ animationDelay: `${index * 60}ms` }}
                 >
-                  <actionData.icon className="h-5 w-5 text-white" />
+                  <actionData.icon className="h-5 w-5" />
                   <span className="sr-only">{actionData.label}</span>
                 </Button>
               )
@@ -188,36 +345,41 @@ export function FloatingAddButton({
       {/* Main FAB */}
       <Button
         onClick={handleMainAction}
+        size="icon"
         className={cn(
-          "fixed right-6 h-14 w-14 rounded-full shadow-lg z-50",
+          "fixed right-6 h-14 w-14 rounded-full z-50 flex items-center justify-center",
+          "bg-primary text-white shadow-2xl backdrop-blur-sm",
+          "transition-all duration-300 ease-out",
+          "hover:scale-110 hover:shadow-primary/40 active:scale-95",
           isMobile ? "bottom-16" : "bottom-6",
-          "bg-primary hover:bg-primary/90 transition-all duration-200",
-          "hover:scale-105 active:scale-95 hover:shadow-xl",
           className
         )}
-        size="icon"
       >
-        <Plus 
+        <Plus
           className={cn(
-            "h-6 w-6 transition-transform duration-200",
+            "h-6 w-6 transition-transform duration-300",
             isExpanded && "rotate-45"
-          )} 
+          )}
         />
       </Button>
 
-      {/* Desktop Hover Menu */}
+      {/* Desktop Hover Quick Menu */}
       {!isMobile && isAuthenticated && (
         <div className="fixed bottom-6 right-20 z-40 group">
-          <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-2">
+          <div className="opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 flex gap-2">
             {quickActions.map((action) => {
-              const actionData = action.id === 'voice' ? getVoiceAction(isListening) : action
+              const actionData =
+                action.id === "voice" ? getVoiceAction(isListening) : action
               return (
                 <Button
                   key={action.id}
                   size="sm"
                   variant="secondary"
                   onClick={() => handleActionClick(action.id)}
-                  className="h-10 px-3 shadow-md hover:shadow-lg transition-all duration-200"
+                  className={cn(
+                    "h-10 px-3 rounded-xl shadow-md backdrop-blur-sm",
+                    "hover:shadow-lg transition-all duration-300"
+                  )}
                 >
                   <actionData.icon className="h-4 w-4 mr-2" />
                   {actionData.label}
@@ -228,114 +390,76 @@ export function FloatingAddButton({
         </div>
       )}
 
+      {/* Transaction Dialog */}
       <UnifiedTransactionDialog
         isOpen={isDialogOpen}
         onOpenChange={(open) => {
           setIsDialogOpen(open)
           if (!open) {
-            // Clear prefilled data when dialog closes
             setPrefilledAmount("")
             setPrefilledDescription("")
+            setPrefilledType("expense")
+            setPrefilledCategory("")
           }
         }}
         initialAmount={prefilledAmount}
         initialDescription={prefilledDescription}
+        initialType={prefilledType}
+        initialCategory={prefilledCategory}
       />
 
       {/* Calculator Dialog */}
-      <Dialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={isCalculatorOpen} onOpenChange={handleCalculatorClose}>
+        <DialogContent className="sm:max-w-sm md:max-w-md">
           <DialogHeader>
             <DialogTitle>Quick Calculator</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="calc-input">Enter calculation</Label>
-              <Input
-                id="calc-input"
-                value={calculatorValue}
-                onChange={(e) => setCalculatorValue(e.target.value)}
-                placeholder="e.g., 25.50 + 10.25"
-                className="text-lg"
-              />
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {['7', '8', '9', '/'].map((btn) => (
-                <Button
-                  key={btn}
-                  variant="outline"
-                  onClick={() => setCalculatorValue(prev => prev + btn)}
-                >
-                  {btn}
-                </Button>
-              ))}
-              {['4', '5', '6', '*'].map((btn) => (
-                <Button
-                  key={btn}
-                  variant="outline"
-                  onClick={() => setCalculatorValue(prev => prev + btn)}
-                >
-                  {btn}
-                </Button>
-              ))}
-              {['1', '2', '3', '-'].map((btn) => (
-                <Button
-                  key={btn}
-                  variant="outline"
-                  onClick={() => setCalculatorValue(prev => prev + btn)}
-                >
-                  {btn}
-                </Button>
-              ))}
-              {['0', '.', '=', '+'].map((btn) => (
-                <Button
-                  key={btn}
-                  variant={btn === '=' ? "default" : "outline"}
-                  onClick={() => {
-                    if (btn === '=') {
-                      try {
-                        const result = eval(calculatorValue)
-                        setCalculatorValue(result.toString())
-                        toast.success(`Result: ${result}`)
-                      } catch {
-                        toast.error('Invalid calculation')
-                      }
-                    } else {
-                      setCalculatorValue(prev => prev + btn)
-                    }
-                  }}
-                >
-                  {btn}
-                </Button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setCalculatorValue("")}
-                className="flex-1"
+            {/* Display */}
+            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+              <div
+                className="text-right text-2xl font-mono overflow-hidden"
+                aria-label="Calculator display"
               >
-                Clear
-              </Button>
-              <Button
-                onClick={() => {
-                  const result = eval(calculatorValue)
-                  if (!isNaN(result)) {
-                    setPrefilledAmount(result.toString())
-                    setPrefilledDescription("Calculator transaction")
-                    setIsCalculatorOpen(false)
-                    setIsDialogOpen(true)
-                    toast.success(`Amount ${result} copied to transaction`)
-                  } else {
-                    toast.error('Invalid calculation result')
-                  }
-                }}
-                className="flex-1"
-                disabled={!calculatorValue.trim()}
-              >
-                Use Amount
-              </Button>
+                {calculatorDisplay}
+              </div>
             </div>
+
+            {/* Button Grid */}
+<div className="grid grid-cols-5 gap-2">
+  {[
+    "7", "8", "9", "÷", "⌫",
+    "4", "5", "6", "×", "C",
+    "1", "2", "3", "-","%",
+    "0", ".", "+","=",
+  ].map((btn) => (
+    <Button
+      key={btn}
+      variant={btn === "=" ? "default" : "outline"}
+      size="lg"
+      onClick={() => handleCalculatorButton(btn)}
+      className={cn(
+        "h-12 text-lg font-semibold",
+        btn === "0" && "col-span-2",
+        (btn === "C" || btn === "⌫") && "text-red-600 hover:text-red-700",
+        btn === "=" && "bg-blue-600 text-white hover:bg-blue-700"
+      )}
+      aria-label={`Calculator button ${btn}`}
+    >
+      {btn}
+    </Button>
+  ))}
+</div>
+
+{/* Use Result Button */}
+<Button
+  onClick={handleUseResult}
+  className="w-full mt-2"
+  disabled={calculatorDisplay === "0" || calculatorDisplay === "Error"}
+>
+  Use Result in Transaction
+</Button>
+
           </div>
         </DialogContent>
       </Dialog>

@@ -33,6 +33,8 @@ interface UnifiedTransactionDialogProps {
   onOpenChange?: (open: boolean) => void
   initialAmount?: string
   initialDescription?: string
+  initialType?: "income" | "expense"
+  initialCategory?: string
 }
 
 interface FieldState {
@@ -49,24 +51,25 @@ const initialFormData: FormData = {
   allocationTarget: "",
 }
 
-export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription }: UnifiedTransactionDialogProps = {}) {
+export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory }: UnifiedTransactionDialogProps = {}) {
   const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
   const open = isOpen !== undefined ? isOpen : internalOpen
 
-  const [type, setType] = useState<"income" | "expense">("expense")
+  const [type, setType] = useState<"income" | "expense">(initialType || "expense")
   const [formData, setFormData] = useState<FormData>(() => ({
     ...initialFormData,
     amount: initialAmount || "",
-    description: initialDescription || ""
+    description: initialDescription || "",
+    category: initialCategory || ""
   }))
   const [fieldStates, setFieldStates] = useState<Record<keyof FormData, FieldState>>({
-    amount: { touched: false, blurred: false },
-    category: { touched: false, blurred: false },
+    amount: { touched: !!initialAmount, blurred: false },
+    category: { touched: !!initialCategory, blurred: false },
     subcategory: { touched: false, blurred: false },
-    description: { touched: false, blurred: false },
+    description: { touched: !!initialDescription, blurred: false },
     allocationType: { touched: false, blurred: false },
     allocationTarget: { touched: false, blurred: false },
   })
@@ -169,7 +172,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       }, 150)
 
       // Load persisted form data only if no initial data provided
-      if (!initialAmount && !initialDescription) {
+      if (!initialAmount && !initialDescription && !initialType && !initialCategory) {
         const persisted = localStorage.getItem("transaction-dialog-form")
         if (persisted) {
           try {
@@ -183,23 +186,28 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     } else {
       localStorage.removeItem("transaction-dialog-form")
     }
-  }, [open, initialAmount, initialDescription])
+  }, [open, initialAmount, initialDescription, initialType, initialCategory])
 
   // Update form data when initial props change
   useEffect(() => {
-    if (initialAmount || initialDescription) {
+    if (initialAmount || initialDescription || initialType || initialCategory) {
       setFormData(prev => ({
         ...prev,
         amount: initialAmount || prev.amount,
-        description: initialDescription || prev.description
+        description: initialDescription || prev.description,
+        category: initialCategory || prev.category
       }))
       setFieldStates(prev => ({
         ...prev,
         amount: initialAmount ? { touched: true, blurred: false } : prev.amount,
-        description: initialDescription ? { touched: true, blurred: false } : prev.description
+        description: initialDescription ? { touched: true, blurred: false } : prev.description,
+        category: initialCategory ? { touched: true, blurred: false } : prev.category
       }))
+      if (initialType) {
+        setType(initialType)
+      }
     }
-  }, [initialAmount, initialDescription])
+  }, [initialAmount, initialDescription, initialType, initialCategory])
 
   // Persist form data
   useEffect(() => {
@@ -232,22 +240,23 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setFormData({
       ...initialFormData,
       amount: initialAmount || "",
-      description: initialDescription || ""
+      description: initialDescription || "",
+      category: initialCategory || ""
     })
     setFieldStates({
       amount: { touched: !!initialAmount, blurred: false },
-      category: { touched: false, blurred: false },
+      category: { touched: !!initialCategory, blurred: false },
       subcategory: { touched: false, blurred: false },
       description: { touched: !!initialDescription, blurred: false },
       allocationType: { touched: false, blurred: false },
       allocationTarget: { touched: false, blurred: false },
     })
     setSubmitAttempted(false)
-    setType("expense")
+    setType(initialType || "expense")
     setShowAddCategory(false)
     setNewCategoryName("")
     setNewCategoryIcon("📦")
-  }, [initialAmount, initialDescription])
+  }, [initialAmount, initialDescription, initialType, initialCategory])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
