@@ -60,6 +60,7 @@ export function BackupModal({
     creditAccounts: true,
     categories: true,
     emergencyFund: true,
+    showScrollbars: true,
   })
 
   const handleExportData = async () => {
@@ -102,6 +103,15 @@ export function BackupModal({
       if (backupOptions.creditAccounts) data.creditAccounts = creditAccounts
       if (backupOptions.categories) data.categories = categories
       if (backupOptions.emergencyFund) data.emergencyFund = emergencyFund
+
+      // Include scrollbar setting if userProfile is being backed up
+      if (backupOptions.userProfile) {
+        const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
+        data.settings = {
+          ...data.settings,
+          showScrollbars
+        }
+      }
 
       // Call the parent component to handle the backup creation
       await onBackupSuccess(data, exportPin)
@@ -236,6 +246,17 @@ export function BackupModal({
               />
               <Label htmlFor="backup-emergencyFund" className="text-sm">
                 Emergency Fund (${emergencyFund.toFixed(2)})
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="backup-showScrollbars"
+                checked={backupOptions.showScrollbars}
+                onCheckedChange={(checked) => setBackupOptions(prev => ({ ...prev, showScrollbars: !!checked }))}
+              />
+              <Label htmlFor="backup-showScrollbars" className="text-sm">
+                Scrollbar Settings (Theme preference)
               </Label>
             </div>
           </div>

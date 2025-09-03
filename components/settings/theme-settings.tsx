@@ -37,11 +37,13 @@ export function ThemeSettings() {
     useGradient,
     highContrast,
     reducedMotion,
+    showScrollbars,
     colorThemes,
     handleColorThemeChange,
     handleGradientToggle,
     handleHighContrastChange,
     handleReducedMotionChange,
+    handleShowScrollbarsChange,
   } = useColorTheme()
 
   return (
@@ -176,6 +178,14 @@ export function ThemeSettings() {
               <p className="text-sm text-muted-foreground">Minimizes animations and transitions</p>
             </div>
             <Switch id="reduced-motion" checked={reducedMotion} onCheckedChange={handleReducedMotionChange} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="show-scrollbars">Show Scrollbars</Label>
+              <p className="text-sm text-muted-foreground">Display scrollbars with primary color theme</p>
+            </div>
+            <Switch id="show-scrollbars" checked={showScrollbars} onCheckedChange={handleShowScrollbarsChange} />
           </div>
         </CardContent>
       </Card>

@@ -187,7 +187,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
           </div>
           <Avatar className="w-12 h-12 mr-4">
             <AvatarImage src={userProfile?.avatar} />
-            <AvatarFallback className="bg-gradient-to-br from-gray-400 to-gray-600 text-white">
+            <AvatarFallback className="bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 text-primary font-bold text-2xl shadow-inner">
               {getInitials()}
             </AvatarFallback>
           </Avatar>
@@ -210,7 +210,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       </div>
 
       {/* Content */}
-      <div className=" px-4 pb-4 bg-background overflow-y-auto">
+      <div className=" px-4 pb-4 bg-background overflow-y-auto scrollbar-hide">
         {/* Settings Items */}
         <div className="space-y-1">
           {filteredSettingsItems.length > 0 ? (
@@ -294,7 +294,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto bg-muted">
+        <div className="flex-1 overflow-y-auto bg-muted scrollbar-hide">
           <div className="p-4">
             {renderContent()}
           </div>

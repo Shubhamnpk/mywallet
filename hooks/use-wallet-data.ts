@@ -17,6 +17,7 @@ import type {
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
+import { SessionManager } from "@/lib/session-manager"
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -131,9 +132,16 @@ export function useWalletData() {
       if (parsedData.categories.length > 0) {
         setCategories(parsedData.categories)
       } else {
-        const defaultCategories = initializeDefaultCategories()
-        setCategories(defaultCategories)
-        await saveDataWithIntegrity("categories", defaultCategories)
+        // Only create default categories if this is NOT a fresh start after clearing
+        const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
+                          parsedData.budgets.length > 0 || parsedData.goals.length > 0
+        if (hasAnyData) {
+          const defaultCategories = initializeDefaultCategories()
+          setCategories(defaultCategories)
+          await saveDataWithIntegrity("categories", defaultCategories)
+        } else {
+          setCategories([])
+        }
       }
 
       setIsLoaded(true)
@@ -596,84 +604,28 @@ export function useWalletData() {
     const { SecurePinManager } = await import("@/lib/secure-pin-manager")
     SecurePinManager.clearAllSecurityData()
 
-    // Clear all wallet data from localStorage
-    localStorage.removeItem("userProfile")
-    localStorage.removeItem("transactions")
-    localStorage.removeItem("budgets")
-    localStorage.removeItem("goals")
-    localStorage.removeItem("debtAccounts")
-    localStorage.removeItem("creditAccounts")
-    localStorage.removeItem("emergencyFund")
-    localStorage.removeItem("debtCreditTransactions")
-    localStorage.removeItem("categories")
+    // Clear current session
+    SessionManager.clearSession()
 
-    // Clear session data
-    localStorage.removeItem("wallet_session")
+    // Clear ALL localStorage data for the site
+    localStorage.clear()
 
-    // Clear additional user-related data
-    localStorage.removeItem("wallet_sound_effects")
-    localStorage.removeItem("wallet_pin_success_enabled")
-    localStorage.removeItem("wallet_pin_success_selected_sound")
-    localStorage.removeItem("wallet_pin_success_custom_url")
-    localStorage.removeItem("wallet_last_auth")
+    // Also clear sessionStorage if it exists
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.clear()
+    }
 
-    // Clear theme and accessibility preferences
-    localStorage.removeItem("wallet_color_theme")
-    localStorage.removeItem("wallet_use_gradient")
-    localStorage.removeItem("wallet_high_contrast")
-    localStorage.removeItem("wallet_reduced_motion")
-
-    // Clear all accessibility sound settings
-    localStorage.removeItem("wallet_selected_sound")
-    localStorage.removeItem("wallet_custom_sound_url")
-    localStorage.removeItem("wallet_transaction_success_enabled")
-    localStorage.removeItem("wallet_transaction_failed_enabled")
-    localStorage.removeItem("wallet_budget_warning_enabled")
-    localStorage.removeItem("wallet_pin_failed_enabled")
-    localStorage.removeItem("wallet_transaction_success_selected_sound")
-    localStorage.removeItem("wallet_transaction_failed_selected_sound")
-    localStorage.removeItem("wallet_budget_warning_selected_sound")
-    localStorage.removeItem("wallet_pin_failed_selected_sound")
-    localStorage.removeItem("wallet_transaction_success_custom_url")
-    localStorage.removeItem("wallet_transaction_failed_custom_url")
-    localStorage.removeItem("wallet_budget_warning_custom_url")
-    localStorage.removeItem("wallet_pin_failed_custom_url")
-    localStorage.removeItem("wallet_screen_reader")
-
-    // Clear additional accessibility settings
-    localStorage.removeItem("wallet_keyboard_nav")
-    localStorage.removeItem("wallet_font_size")
-    localStorage.removeItem("wallet_focus_indicators")
-    localStorage.removeItem("wallet_tooltips")
-
-    // Clear privacy mode settings
-    localStorage.removeItem("wallet_privacy_mode")
-
-    // Clear any additional MyWallet-specific keys that might be missed
-    localStorage.removeItem("userProfile")
-    localStorage.removeItem("transactions")
-    localStorage.removeItem("budgets")
-    localStorage.removeItem("goals")
-    localStorage.removeItem("debtAccounts")
-    localStorage.removeItem("creditAccounts")
-    localStorage.removeItem("emergencyFund")
-    localStorage.removeItem("debtCreditTransactions")
-    localStorage.removeItem("categories")
-
-    // Clear all MyWallet-related localStorage keys
-    // Use setTimeout to ensure this happens after all other operations
-    setTimeout(() => {
-      const keysToRemove: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && (key.startsWith("wallet_") || key.includes("mywallet"))) {
-          keysToRemove.push(key)
-        }
+    // Clear all cookies for this domain
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(";")
+      for (let cookie of cookies) {
+        const eqPos = cookie.indexOf("=")
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
       }
-      keysToRemove.forEach((key) => localStorage.removeItem(key))
-    }, 100)
+    }
 
-    // Reset all state
+    // Reset all state to completely empty (no default data)
     setUserProfile(null)
     setTransactions([])
     setBudgets([])
@@ -681,9 +633,7 @@ export function useWalletData() {
     setDebtAccounts([])
     setCreditAccounts([])
     setDebtCreditTransactions([])
-    const defaultCategories = initializeDefaultCategories()
-    setCategories(defaultCategories)
-    await saveDataWithIntegrity("categories", defaultCategories)
+    setCategories([]) // Empty categories, no defaults
     setEmergencyFund(0)
     setBalance(0)
     setIsAuthenticated(false)
@@ -786,6 +736,12 @@ export function useWalletData() {
         console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
         setEmergencyFund(emergencyFundValue)
         await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
+      }
+
+      // Import scrollbar setting
+      if (data.settings?.showScrollbars !== undefined) {
+        console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
+        localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
       console.log("[v0] Data import completed successfully")

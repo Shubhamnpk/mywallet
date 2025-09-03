@@ -50,6 +50,7 @@ export function useColorTheme() {
   const [useGradient, setUseGradient] = useState(true)
   const [highContrast, setHighContrast] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
+  const [showScrollbars, setShowScrollbars] = useState(true)
   const [mounted, setMounted] = useState(false)
 
   // Apply color theme to CSS variables (only on client side)
@@ -77,6 +78,14 @@ export function useColorTheme() {
     } else {
       document.documentElement.classList.remove("reduce-motion")
     }
+
+    if (showScrollbars) {
+      document.documentElement.classList.remove("hide-scrollbars")
+      document.documentElement.classList.add("show-scrollbars")
+    } else {
+      document.documentElement.classList.add("hide-scrollbars")
+      document.documentElement.classList.remove("show-scrollbars")
+    }
   }
 
   // Load saved preferences on mount
@@ -87,11 +96,19 @@ export function useColorTheme() {
     const savedUseGradient = localStorage.getItem("wallet_use_gradient") !== "false" // Default to true
     const savedHighContrast = localStorage.getItem("wallet_high_contrast") === "true"
     const savedReducedMotion = localStorage.getItem("wallet_reduced_motion") === "true"
+    const savedShowScrollbarsValue = localStorage.getItem("wallet_show_scrollbars")
+    const savedShowScrollbars = savedShowScrollbarsValue === null ? true : savedShowScrollbarsValue === "true"
 
     setColorTheme(savedColorTheme)
     setUseGradient(savedUseGradient)
     setHighContrast(savedHighContrast)
     setReducedMotion(savedReducedMotion)
+    setShowScrollbars(savedShowScrollbars)
+
+    // Save default values to localStorage if not already set
+    if (localStorage.getItem("wallet_show_scrollbars") === null) {
+      localStorage.setItem("wallet_show_scrollbars", "true")
+    }
 
     // Apply the saved settings
     applyColorTheme(savedColorTheme)
@@ -101,7 +118,7 @@ export function useColorTheme() {
   // Update accessibility settings when they change
   useEffect(() => {
     applyAccessibilitySettings()
-  }, [highContrast, reducedMotion, mounted])
+  }, [highContrast, reducedMotion, showScrollbars, mounted])
 
   const handleColorThemeChange = (newTheme: string) => {
     setColorTheme(newTheme)
@@ -124,15 +141,30 @@ export function useColorTheme() {
     localStorage.setItem("wallet_reduced_motion", enabled.toString())
   }
 
+  const handleShowScrollbarsChange = (enabled: boolean) => {
+    setShowScrollbars(enabled)
+    localStorage.setItem("wallet_show_scrollbars", enabled.toString())
+    // Also apply immediately for instant effect
+    if (enabled) {
+      document.documentElement.classList.remove("hide-scrollbars")
+      document.documentElement.classList.add("show-scrollbars")
+    } else {
+      document.documentElement.classList.add("hide-scrollbars")
+      document.documentElement.classList.remove("show-scrollbars")
+    }
+  }
+
   return {
     colorTheme,
     useGradient,
     highContrast,
     reducedMotion,
+    showScrollbars,
     colorThemes,
     handleColorThemeChange,
     handleGradientToggle,
     handleHighContrastChange,
     handleReducedMotionChange,
+    handleShowScrollbarsChange,
   }
 }

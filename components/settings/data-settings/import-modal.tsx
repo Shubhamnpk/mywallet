@@ -42,6 +42,7 @@ export function ImportModal({
     creditAccounts: false,
     categories: false,
     emergencyFund: false,
+    showScrollbars: false,
   })
 
   // Update import options when availableImportData changes
@@ -56,6 +57,7 @@ export function ImportModal({
         creditAccounts: Array.isArray(availableImportData.creditAccounts),
         categories: Array.isArray(availableImportData.categories),
         emergencyFund: typeof availableImportData.emergencyFund === 'number',
+        showScrollbars: !!(availableImportData.settings?.showScrollbars),
       })
     }
   }, [availableImportData])
@@ -81,6 +83,7 @@ export function ImportModal({
       creditAccounts: true,
       categories: true,
       emergencyFund: true,
+      showScrollbars: true,
     })
   }
 
@@ -190,6 +193,18 @@ export function ImportModal({
                 />
                 <Label htmlFor="import-emergencyFund" className="text-sm">
                   Emergency Fund {typeof availableImportData.emergencyFund === 'number' ? `($${availableImportData.emergencyFund.toFixed(2)})` : "(Not in backup)"}
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="import-showScrollbars"
+                  checked={importOptions.showScrollbars}
+                  onCheckedChange={(checked) => setImportOptions(prev => ({ ...prev, showScrollbars: !!checked }))}
+                  disabled={!availableImportData.settings?.showScrollbars}
+                />
+                <Label htmlFor="import-showScrollbars" className="text-sm">
+                  Scrollbar Settings {availableImportData.settings?.showScrollbars ? "(Available)" : "(Not in backup)"}
                 </Label>
               </div>
             </div>

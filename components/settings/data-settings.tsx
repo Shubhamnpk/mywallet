@@ -179,6 +179,14 @@ export function DataSettings() {
         selectiveData.emergencyFund = availableImportData.emergencyFund
       }
 
+      // Restore scrollbar setting if userProfile is being imported
+      if (importOptions.userProfile && availableImportData.settings?.showScrollbars !== undefined) {
+        selectiveData.settings = {
+          ...selectiveData.settings,
+          showScrollbars: availableImportData.settings.showScrollbars
+        }
+      }
+
       console.log("[v0] Starting selective data import...")
       const success = await importData(selectiveData)
 
