@@ -12,7 +12,7 @@ export function useAccessibility() {
   const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(true)
   const [budgetWarningEnabled, setBudgetWarningEnabled] = useState(true)
   const [pinSuccessEnabled, setPinSuccessEnabled] = useState(true)
-  const [pinFailedEnabled, setPinFailedEnabled] = useState(false)
+  const [pinFailedEnabled, setPinFailedEnabled] = useState(true)
   const [transactionSuccessSelectedSound, setTransactionSuccessSelectedSound] = useState("success-tone")
   const [transactionFailedSelectedSound, setTransactionFailedSelectedSound] = useState("notification")
   const [budgetWarningSelectedSound, setBudgetWarningSelectedSound] = useState("notification")
@@ -25,7 +25,8 @@ export function useAccessibility() {
   const [pinFailedCustomUrl, setPinFailedCustomUrl] = useState("")
 
   useEffect(() => {
-    const savedSoundEffects = localStorage.getItem("wallet_sound_effects") === "true"
+    const savedSoundEffectsValue = localStorage.getItem("wallet_sound_effects")
+    const savedSoundEffects = savedSoundEffectsValue === null ? true : savedSoundEffectsValue === "true"
     const savedSelectedSound = localStorage.getItem("wallet_selected_sound") || "gentle-chime"
     const savedCustomSoundUrl = localStorage.getItem("wallet_custom_sound_url") || ""
 
@@ -46,7 +47,7 @@ export function useAccessibility() {
     const savedPinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
     const savedPinFailedCustomUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
 
-    setSoundEffects(savedSoundEffects !== null ? savedSoundEffects : true)
+    setSoundEffects(savedSoundEffects)
     setSelectedSound(savedSelectedSound)
     setCustomSoundUrl(savedCustomSoundUrl)
 
@@ -54,7 +55,7 @@ export function useAccessibility() {
     setTransactionFailedEnabled(savedTransactionFailedEnabled === null ? true : savedTransactionFailedEnabled === "true")
     setBudgetWarningEnabled(savedBudgetWarningEnabled === null ? true : savedBudgetWarningEnabled === "true")
     setPinSuccessEnabled(savedPinSuccessEnabled === null ? true : savedPinSuccessEnabled === "true")
-    setPinFailedEnabled(savedPinFailedEnabled === null ? false : savedPinFailedEnabled === "true")
+    setPinFailedEnabled(savedPinFailedEnabled === null ? true : savedPinFailedEnabled === "true")
     setTransactionSuccessSelectedSound(savedTransactionSuccessSelectedSound)
     setTransactionFailedSelectedSound(savedTransactionFailedSelectedSound)
     setBudgetWarningSelectedSound(savedBudgetWarningSelectedSound)
