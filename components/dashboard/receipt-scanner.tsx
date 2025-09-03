@@ -1,17 +1,10 @@
 "use client"
 
-import React, { useState, useCallback, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
 import { getDefaultCategories } from "@/lib/categories"
+import ReceiptScannerModal from "./receipt-scanner-modal"
+import QRCodeScanner from "./qr-code-scanner"
 
 interface ReceiptScannerProps {
   isOpen: boolean
@@ -45,15 +38,64 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
   const [isProcessing, setIsProcessing] = useState(false)
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
+  const [cameraFacingMode, setCameraFacingMode] = useState<'environment' | 'user'>('environment')
+  const [isInitializingCamera, setIsInitializingCamera] = useState(false)
+  const [isVideoReady, setIsVideoReady] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+
+  // Cleanup camera on unmount or dialog close
+  useEffect(() => {
+    return () => {
+      // Stop all streams
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+
+      // Clean up video elements
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
+    }
+  }, [])
+
+  // Log when video element is mounted
+  useEffect(() => {
+    if (videoRef.current) {
+      console.log('Video element mounted:', videoRef.current)
+      // Small delay to ensure element is fully rendered
+      setTimeout(() => {
+        setIsVideoReady(true)
+        console.log('Video element ready for use')
+      }, 100)
+    } else {
+      setIsVideoReady(false)
+    }
+  }, [])
+
+  // Force video element to be ready when camera view is shown
+  useEffect(() => {
+    if ((isCameraActive || isInitializingCamera) && !isVideoReady) {
+      console.log('Camera view shown, checking video element...')
+      if (videoRef.current) {
+        console.log('Video element found in camera view')
+        setIsVideoReady(true)
+      }
+    }
+  }, [isCameraActive, isInitializingCamera, isVideoReady])
 
   // Initialize Tesseract.js for OCR
   const loadTesseract = async () => {
     try {
       const { createWorker } = await import('tesseract.js')
-      return await createWorker('eng')
+      const worker = await createWorker('eng')
+      await worker.setParameters({
+        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$.,/- '
+      })
+      return worker
     } catch (error) {
       console.error('Failed to load Tesseract:', error)
       throw new Error('OCR functionality not available')
@@ -65,8 +107,12 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     const worker = await loadTesseract()
 
     try {
+      toast.info('Processing receipt with OCR...')
+
       const { data: { text } } = await worker.recognize(imageData)
       await worker.terminate()
+
+      console.log('OCR Extracted text:', text)
       return text
     } catch (error) {
       await worker.terminate()
@@ -250,45 +296,186 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     }
   }, [])
 
+  // Check if camera is supported
+  const isCameraSupported = useCallback(() => {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+  }, [])
+
   // Handle camera capture
   const startCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setIsCameraActive(true)
-      }
-    } catch (error) {
-      console.error('Camera access denied:', error)
-      toast.error('Camera access denied. Please allow camera permissions.')
+    if (!isCameraSupported()) {
+      toast.error('Camera is not supported in this browser')
+      return
     }
-  }, [])
+
+    setIsInitializingCamera(true)
+    try {
+      // Stop any existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+
+      const constraints = {
+        video: {
+          facingMode: cameraFacingMode,
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        },
+        audio: false
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      streamRef.current = stream
+
+      // Wait for video element to be available with retry
+      let attempts = 0
+      const maxAttempts = 10
+
+      while (!videoRef.current && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        attempts++
+      }
+
+      if (!videoRef.current) {
+        throw new Error('Video element not available')
+      }
+
+
+      // Remove any existing event listeners
+      videoRef.current.onloadedmetadata = null
+      videoRef.current.oncanplay = null
+      videoRef.current.onerror = null
+
+      // Set the stream
+      videoRef.current.srcObject = stream
+
+      // Wait for video to be ready with timeout
+      const videoReady = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.warn('Video load timeout')
+          reject(new Error('Video load timeout'))
+        }, 10000) // 10 second timeout
+
+        const cleanup = () => {
+          clearTimeout(timeout)
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = null
+            videoRef.current.oncanplay = null
+            videoRef.current.onerror = null
+          }
+        }
+
+        if (videoRef.current) {
+          videoRef.current.onloadedmetadata = () => {
+            cleanup()
+            resolve()
+          }
+          videoRef.current.oncanplay = () => {
+            cleanup()
+            resolve()
+          }
+          videoRef.current.onerror = (e) => {
+            cleanup()
+            reject(new Error('Video failed to load'))
+          }
+        } else {
+          cleanup()
+          reject(new Error('Video element lost'))
+        }
+      })
+
+      await videoReady
+      setIsCameraActive(true)
+      toast.success('Camera started successfully')
+    } catch (error) {
+
+      // Provide specific error messages
+      let errorMessage = 'Camera access failed'
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Camera access denied. Please allow camera permissions.'
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No camera found on this device.'
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'Camera is already in use by another application.'
+        } else if (error.message.includes('Video element')) {
+          errorMessage = 'Video display error. Please refresh the page and try again.'
+        } else {
+          errorMessage = `Camera error: ${error.message}`
+        }
+      }
+
+      toast.error(errorMessage)
+    } finally {
+      setIsInitializingCamera(false)
+    }
+  }, [cameraFacingMode, isCameraSupported])
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach(track => track.stop())
-      setIsCameraActive(false)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setIsCameraActive(false)
+    setIsVideoReady(false)
+    toast.info('Camera stopped')
   }, [])
 
-  const captureImage = useCallback(() => {
-    if (videoRef.current && canvasRef.current) {
-      const canvas = canvasRef.current
-      const video = videoRef.current
-      const context = canvas.getContext('2d')
+  const switchCamera = useCallback(() => {
+    setCameraFacingMode(prev => prev === 'environment' ? 'user' : 'environment')
+    // Restart camera with new facing mode
+    setTimeout(() => {
+      startCamera()
+    }, 100)
+  }, [startCamera])
 
-      if (context) {
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        context.drawImage(video, 0, 0)
-        const imageData = canvas.toDataURL('image/jpeg', 0.8)
-        setSelectedImage(imageData)
-        setExtractedData(null)
-        stopCamera()
-      }
+  const captureImage = useCallback(() => {
+    
+    if (!videoRef.current) {
+      toast.error('Camera not ready. Please try again.')
+      return
+    }
+
+    if (!canvasRef.current) {
+      toast.error('Capture failed. Please try again.')
+      return
+    }
+
+    const canvas = canvasRef.current
+    const video = videoRef.current
+
+    // Check if video has valid dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error('Camera feed not ready. Please wait a moment.')
+      return
+    }
+
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      toast.error('Capture failed. Please try again.')
+      return
+    }
+
+    try {
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      context.drawImage(video, 0, 0)
+
+      const imageData = canvas.toDataURL('image/jpeg', 0.9) // Higher quality for OCR
+
+      setSelectedImage(imageData)
+      setExtractedData(null)
+      stopCamera()
+      toast.success('Photo captured! Ready to scan.')
+    } catch (error) {
+      toast.error('Failed to capture photo. Please try again.')
     }
   }, [stopCamera])
 
@@ -301,16 +488,12 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
       toast.info('Extracting text from receipt...')
 
       const extractedText = await extractTextFromImage(selectedImage)
-      console.log('Extracted text:', extractedText)
-
       const parsedData = parseReceiptText(extractedText)
-      console.log('Parsed data:', parsedData)
 
       setExtractedData(parsedData)
 
       toast.success('Receipt processed successfully!')
     } catch (error) {
-      console.error('Processing error:', error)
       toast.error('Failed to process receipt. Please try again.')
     } finally {
       setIsProcessing(false)
@@ -331,78 +514,67 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     onOpenChange(false)
 
     // Reset state
-    setSelectedImage(null)
-    setExtractedData(null)
-    setIsCameraActive(false)
+    resetScanner()
   }, [extractedData, selectedImage, onTransactionData, onOpenChange])
+
+  // Reset extracted data only (for scan again)
+  const handleScanAgain = useCallback(() => {
+    setExtractedData(null)
+  }, [])
+
+
+
+
+
+
+
+
 
   // Reset everything
   const resetScanner = useCallback(() => {
+    // Stop all camera streams
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    // Reset all state
     setSelectedImage(null)
     setExtractedData(null)
     setIsCameraActive(false)
-    stopCamera()
-  }, [stopCamera])
+    setIsInitializingCamera(false)
+    setCameraFacingMode('environment')
+    setIsVideoReady(false)
+  }, [])
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Scan className="w-5 h-5" />
-            Receipt Scanner
-          </DialogTitle>
-        </DialogHeader>
+    <ReceiptScannerModal
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      selectedImage={selectedImage}
+      isProcessing={isProcessing}
+      extractedData={extractedData}
+      isCameraActive={isCameraActive}
+      isInitializingCamera={isInitializingCamera}
+      cameraFacingMode={cameraFacingMode}
+      onFileUpload={handleFileUpload}
+      onStartCamera={startCamera}
+      onStopCamera={stopCamera}
+      onSwitchCamera={switchCamera}
+      onCaptureImage={captureImage}
+      onProcessImage={processImage}
+      onConfirmTransaction={confirmTransaction}
+      onResetScanner={resetScanner}
+      onScanAgain={handleScanAgain}
+      fileInputRef={fileInputRef}
+      videoRef={videoRef}
+      canvasRef={canvasRef}
+      determineTransactionDetails={determineTransactionDetails}
+    />
+  )
+}
 
-        <div className="space-y-6">
-          {/* Image Selection */}
-          {!selectedImage && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Select Receipt Image</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <Button
-                    onClick={() => fileInputRef.current?.click()}
-                    variant="outline"
-                    className="h-24 flex flex-col gap-2"
-                  >
-                    <Upload className="w-6 h-6" />
-                    Upload Image
-                  </Button>
-
-                  <Button
-                    onClick={startCamera}
-                    variant="outline"
-                    className="h-24 flex flex-col gap-2"
-                  >
-                    <Camera className="w-6 h-6" />
-                    Take Photo
-                  </Button>
-                </div>
-
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Camera View */}
-          {isCameraActive && (
-            <Card>
-              <CardContent className="p-4">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-64 object-cover rounded-lg"
-                  />
-                  <canvas ref={canvasRef} className="hidden" />
-
+export default ReceiptScanner

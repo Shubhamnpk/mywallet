@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { getDefaultCategories, ALL_DEFAULT_CATEGORIES } from "@/lib/categories"
+import ReceiptScanner from "./receipt-scanner"
 
 declare global {
   interface Window {
@@ -61,6 +62,8 @@ export function FloatingAddButton({
   const [prefilledDescription, setPrefilledDescription] = useState("")
   const [prefilledType, setPrefilledType] = useState<"income" | "expense">("expense")
   const [prefilledCategory, setPrefilledCategory] = useState("")
+  const [prefilledReceiptImage, setPrefilledReceiptImage] = useState("")
+  const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false)
 
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
@@ -82,7 +85,7 @@ export function FloatingAddButton({
           onLockWallet?.() ?? lockApp()
           break
         case "scan":
-          toast.success("Scan action triggered")
+          setIsReceiptScannerOpen(true)
           break
         case "voice":
           startVoiceRecognition()
@@ -296,6 +299,17 @@ export function FloatingAddButton({
     recognition.start()
   }, [parseVoiceTranscript])
 
+  const handleReceiptData = useCallback((data: any) => {
+    setPrefilledAmount(data.amount)
+    setPrefilledType(data.type)
+    setPrefilledDescription(data.description)
+    setPrefilledCategory(data.category)
+    setPrefilledReceiptImage(data.receiptImage || "")
+    setIsReceiptScannerOpen(false)
+    setIsDialogOpen(true)
+    toast.success(`Receipt scanned! Amount: $${data.amount}`)
+  }, [])
+
   const handleUseResult = useCallback(() => {
     setPrefilledAmount(calculatorDisplay)
     setIsCalculatorOpen(false)
@@ -400,12 +414,14 @@ export function FloatingAddButton({
             setPrefilledDescription("")
             setPrefilledType("expense")
             setPrefilledCategory("")
+            setPrefilledReceiptImage("")
           }
         }}
         initialAmount={prefilledAmount}
         initialDescription={prefilledDescription}
         initialType={prefilledType}
         initialCategory={prefilledCategory}
+        initialReceiptImage={prefilledReceiptImage}
       />
 
       {/* Calculator Dialog */}
@@ -463,6 +479,13 @@ export function FloatingAddButton({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Receipt Scanner */}
+      <ReceiptScanner
+        isOpen={isReceiptScannerOpen}
+        onOpenChange={setIsReceiptScannerOpen}
+        onTransactionData={handleReceiptData}
+      />
     </>
   )
 }
