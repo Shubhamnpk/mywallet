@@ -592,9 +592,9 @@ export function useWalletData() {
     // Clear all encryption keys
     SecureKeyManager.clearAllKeys()
 
-    // Clear all PIN and security data
+    // Clear all PIN and security data comprehensively
     const { SecurePinManager } = await import("@/lib/secure-pin-manager")
-    SecurePinManager.resetPin()
+    SecurePinManager.clearAllSecurityData()
 
     // Clear all wallet data from localStorage
     localStorage.removeItem("userProfile")
@@ -609,6 +609,69 @@ export function useWalletData() {
 
     // Clear session data
     localStorage.removeItem("wallet_session")
+
+    // Clear additional user-related data
+    localStorage.removeItem("wallet_sound_effects")
+    localStorage.removeItem("wallet_pin_success_enabled")
+    localStorage.removeItem("wallet_pin_success_selected_sound")
+    localStorage.removeItem("wallet_pin_success_custom_url")
+    localStorage.removeItem("wallet_last_auth")
+
+    // Clear theme and accessibility preferences
+    localStorage.removeItem("wallet_color_theme")
+    localStorage.removeItem("wallet_use_gradient")
+    localStorage.removeItem("wallet_high_contrast")
+    localStorage.removeItem("wallet_reduced_motion")
+
+    // Clear all accessibility sound settings
+    localStorage.removeItem("wallet_selected_sound")
+    localStorage.removeItem("wallet_custom_sound_url")
+    localStorage.removeItem("wallet_transaction_success_enabled")
+    localStorage.removeItem("wallet_transaction_failed_enabled")
+    localStorage.removeItem("wallet_budget_warning_enabled")
+    localStorage.removeItem("wallet_pin_failed_enabled")
+    localStorage.removeItem("wallet_transaction_success_selected_sound")
+    localStorage.removeItem("wallet_transaction_failed_selected_sound")
+    localStorage.removeItem("wallet_budget_warning_selected_sound")
+    localStorage.removeItem("wallet_pin_failed_selected_sound")
+    localStorage.removeItem("wallet_transaction_success_custom_url")
+    localStorage.removeItem("wallet_transaction_failed_custom_url")
+    localStorage.removeItem("wallet_budget_warning_custom_url")
+    localStorage.removeItem("wallet_pin_failed_custom_url")
+    localStorage.removeItem("wallet_screen_reader")
+
+    // Clear additional accessibility settings
+    localStorage.removeItem("wallet_keyboard_nav")
+    localStorage.removeItem("wallet_font_size")
+    localStorage.removeItem("wallet_focus_indicators")
+    localStorage.removeItem("wallet_tooltips")
+
+    // Clear privacy mode settings
+    localStorage.removeItem("wallet_privacy_mode")
+
+    // Clear any additional MyWallet-specific keys that might be missed
+    localStorage.removeItem("userProfile")
+    localStorage.removeItem("transactions")
+    localStorage.removeItem("budgets")
+    localStorage.removeItem("goals")
+    localStorage.removeItem("debtAccounts")
+    localStorage.removeItem("creditAccounts")
+    localStorage.removeItem("emergencyFund")
+    localStorage.removeItem("debtCreditTransactions")
+    localStorage.removeItem("categories")
+
+    // Clear all MyWallet-related localStorage keys
+    // Use setTimeout to ensure this happens after all other operations
+    setTimeout(() => {
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (key.startsWith("wallet_") || key.includes("mywallet"))) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key))
+    }, 100)
 
     // Reset all state
     setUserProfile(null)
@@ -627,7 +690,6 @@ export function useWalletData() {
     setShowOnboarding(true)
     setIsFirstTime(true)
 
-    console.log("[v0] All data and security information cleared completely")
   }
 
   const exportData = () => {
@@ -656,32 +718,80 @@ export function useWalletData() {
     URL.revokeObjectURL(url)
   }
 
-  const importData = (jsonData: string) => {
+  const importData = async (dataOrJson: string | any) => {
     try {
-      const data = JSON.parse(jsonData)
+      console.log("[v0] Starting data import...")
+      const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
-      // Skip integrity check for synchronous operation
-      if (data.userProfile) {
-        setUserProfile(data.userProfile)
-        saveDataWithIntegrity("userProfile", data.userProfile)
+      // Validate data structure
+      if (!data.userProfile && !Array.isArray(data.transactions)) {
+        throw new Error("Invalid backup file format - missing required data")
       }
 
-      if (data.transactions) {
+      // Import user profile
+      if (data.userProfile) {
+        console.log("[v0] Importing user profile...")
+        setUserProfile(data.userProfile)
+        await saveDataWithIntegrity("userProfile", data.userProfile)
+      }
+
+      // Import transactions
+      if (data.transactions && Array.isArray(data.transactions)) {
+        console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
-        saveDataWithIntegrity("transactions", data.transactions)
+        await saveDataWithIntegrity("transactions", data.transactions)
         setBalance(calculateBalance(data.transactions))
       }
 
-      setBudgets(data.budgets || [])
-      setGoals(data.goals || [])
-      setDebtAccounts(data.debtAccounts || [])
-      setCreditAccounts(data.creditAccounts || [])
-      setDebtCreditTransactions(data.debtCreditTransactions || [])
-      setEmergencyFund(Number.parseFloat(data.emergencyFund) || 0)
+      // Import other data
+      if (data.budgets && Array.isArray(data.budgets)) {
+        console.log(`[v0] Importing ${data.budgets.length} budgets...`)
+        setBudgets(data.budgets)
+        await saveDataWithIntegrity("budgets", data.budgets)
+      }
 
+      if (data.goals && Array.isArray(data.goals)) {
+        console.log(`[v0] Importing ${data.goals.length} goals...`)
+        setGoals(data.goals)
+        await saveDataWithIntegrity("goals", data.goals)
+      }
+
+      if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
+        console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
+        setDebtAccounts(data.debtAccounts)
+        await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
+      }
+
+      if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
+        console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
+        setCreditAccounts(data.creditAccounts)
+        await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
+      }
+
+      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
+        console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
+        setDebtCreditTransactions(data.debtCreditTransactions)
+        await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
+      }
+
+      if (data.categories && Array.isArray(data.categories)) {
+        console.log(`[v0] Importing ${data.categories.length} categories...`)
+        setCategories(data.categories)
+        await saveDataWithIntegrity("categories", data.categories)
+      }
+
+      // Import emergency fund
+      if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
+        const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
+        console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
+        setEmergencyFund(emergencyFundValue)
+        await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
+      }
+
+      console.log("[v0] Data import completed successfully")
       return true
     } catch (error) {
-      console.error("Error importing data:", error)
+      console.error("[v0] Error importing data:", error)
       return false
     }
   }

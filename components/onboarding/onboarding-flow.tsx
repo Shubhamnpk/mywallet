@@ -71,9 +71,9 @@ const steps = [
   {
     id: 5,
     title: "Security",
-    subtitle: "Protect your data",
+    subtitle: "Your Privacy First",
     icon: Shield,
-    description: "Keep your information safe"
+    description: "AES-256 encryption, stored locally"
   },
   {
     id: 6,
@@ -537,17 +537,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {/* Step 5 - Security */}
             {step === 5 && (
               <div className="space-y-4">
-                <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
-                    <Shield className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">Your Privacy First</h3>
-                    <p className="text-sm text-muted-foreground">
-                      AES-256 encryption, stored locally
-                    </p>
-                  </div>
-                </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 bg-background-secondary rounded-lg border">
