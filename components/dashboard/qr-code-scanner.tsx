@@ -718,6 +718,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                     <li>• Keep QR code within the viewfinder</li>
                     <li>• Try different angles if scanning fails</li>
                     <li>• Supports URLs, contacts, WiFi, emails, and more</li>
+                    <li>• you can use our allternative they are also offline they have more qrcode foused</li>
+                    <li>• <a href="https://yoqr.netlify.app/" className="text-blue-500 underline">yoqr</a></li>
                   </ul>
                 </div>
               </div>
