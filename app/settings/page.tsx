@@ -9,14 +9,18 @@ import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
 import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
 import { AboutSettings } from "@/components/settings/about-settings"
+import { MobileSettingsPage } from "@/components/settings/mobile-settings-page"
 import { useRouter } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { SessionManager } from "@/lib/session-manager"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 export default function SettingsPage() {
   const router = useRouter()
   const { userProfile, showOnboarding } = useWalletData()
+  const isMobile = useIsMobile()
+  const [showMobileSettings, setShowMobileSettings] = useState(false)
 
   // Redirect to home if no user profile or onboarding is needed
   useEffect(() => {
@@ -33,6 +37,13 @@ export default function SettingsPage() {
     }
   }, [userProfile, showOnboarding, router])
 
+  // Show mobile settings on mobile devices
+  useEffect(() => {
+    if (isMobile && userProfile && !showOnboarding) {
+      setShowMobileSettings(true)
+    }
+  }, [isMobile, userProfile, showOnboarding])
+
   // Show loading while redirecting
   if (!userProfile || showOnboarding) {
     return (
@@ -40,6 +51,11 @@ export default function SettingsPage() {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     )
+  }
+
+  // Show mobile settings page
+  if (showMobileSettings) {
+    return <MobileSettingsPage onClose={() => router.push('/')} />
   }
 
   return (

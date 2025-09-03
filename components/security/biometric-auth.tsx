@@ -56,7 +56,6 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
         setAuthError('No biometric authenticator available on this device.')
       }
     } catch (error) {
-      console.error('Error checking biometric support:', error)
       setIsSupported(false)
       setAuthError('Error checking biometric support. Please try again.')
     }
@@ -205,12 +204,10 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
       }) as PublicKeyCredential
 
       if (assertion) {
-        console.log('Biometric authentication successful')
         onAuthenticated?.()
       }
 
     } catch (error) {
-      console.error('Biometric authentication failed:', error)
       let errorMessage = 'Biometric authentication failed'
 
       if (error instanceof Error) {

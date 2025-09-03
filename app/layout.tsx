@@ -34,7 +34,6 @@ export default function RootLayout({
           <PrivacyModeProvider>
             <WalletDataProvider>
               <SessionGuard>{children}</SessionGuard>
-              <SessionDebug />
             </WalletDataProvider>
           </PrivacyModeProvider>
         </ThemeProviderWrapper>

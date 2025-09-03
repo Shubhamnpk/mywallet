@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { CURRENCIES } from "./currency"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -18,6 +19,10 @@ export function formatTime(hours: number): string {
 export function formatCurrency(amount: number, currency: string, customCurrency?: { code: string; symbol: string; name: string; }): string {
   if (currency === "CUSTOM" && customCurrency) {
     return `${customCurrency.symbol}${amount.toFixed(2)}`
+  }
+  const symbol = getCurrencySymbol(currency, customCurrency)
+  if (symbol && symbol !== currency) {
+    return `${symbol}${amount.toFixed(2)}`
   }
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -38,8 +43,8 @@ export function getCurrencySymbol(
   }
 
   if (currency === "CUSTOM" && custom && custom.symbol) return custom.symbol
-  const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "C$", AUD: "A$", INR: "₹", NPR:"रु", }
-  return map[currency] || currency
+  const currencyObj = CURRENCIES.find(c => c.value === currency)
+  return currencyObj?.symbol || currency
 }
 
 export function generateId(prefix = ""): string {
@@ -61,6 +66,10 @@ export function debounce<T extends (...args: any[]) => any>(func: T, wait: numbe
 export function formatCurrencyLocalized(amount: number, currency: string, locale = "en-US", customCurrency?: { code: string; symbol: string; name: string; }): string {
   if (currency === "CUSTOM" && customCurrency) {
     return `${customCurrency.symbol}${amount.toFixed(2)}`
+  }
+  const symbol = getCurrencySymbol(currency, customCurrency)
+  if (symbol && symbol !== currency) {
+    return `${symbol}${amount.toFixed(2)}`
   }
   return new Intl.NumberFormat(locale, {
     style: "currency",

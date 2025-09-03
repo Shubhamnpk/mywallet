@@ -244,7 +244,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
         await onUnlock("")
         // Set authentication timestamp to prevent duplicate PIN screen
         localStorage.setItem("wallet_last_auth", Date.now().toString())
-        // Note: Success sound is played in the onUnlock callback to avoid duplication
       }
     } catch (error) {
       // Play failed sound for biometric authentication
@@ -270,7 +269,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
         onEmergencyPinUsed()
       }
     } catch (error) {
-      console.log('[SessionGuard] PIN validation failed, triggering error animation')
       // Trigger error animation on failed validation
       triggerErrorAnimation()
       if (onError) onError()
@@ -281,14 +279,12 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
   // Function to trigger error animation
   const triggerErrorAnimation = () => {
-    console.log('[SessionGuard] Triggering error animation - setting pinError to true')
     setPinError(true)
     setPin("") // Clear the PIN input
     setErrorMessage(emergencyMode ? "Incorrect Emergency PIN" : "Incorrect PIN")
 
     // Remove error state after animation completes
     setTimeout(() => {
-      console.log('[SessionGuard] Resetting error animation - setting pinError to false')
       setPinError(false)
       setErrorMessage(null)
     }, 600) // Match animation duration
@@ -305,7 +301,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
         }
       } else if (newPinStep === "confirm") {
         if (newRegularPin === confirmNewRegularPin) {
-          // Setup new regular PIN (recovery mode - preserves existing security data)
           const success = await SecurePinManager.updatePinForRecovery(newRegularPin)
 
           if (success) {
@@ -321,8 +316,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
               title: "New PIN Set Successfully",
               description: "Your wallet is now secured with a new regular PIN.",
             })
-
-            // Create session for the new PIN
             SessionManager.createSession()
 
             // Notify parent component to allow dashboard access
@@ -345,7 +338,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
         }
       }
     } catch (error) {
-      console.error("[New PIN Setup] Failed:", error)
       toast({
         title: "PIN Setup Error",
         description: "Failed to process new PIN. Please try again.",
@@ -438,7 +430,6 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
         <CardContent className="space-y-6">
           {/* Authentication Methods */}
           <div className="space-y-4">
-            {/* Biometric Option - Optional */}
             {biometricEnabled && biometricSupported && (
               <div className="space-y-3">
                 <Button
@@ -450,7 +441,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
                   <Fingerprint className="w-5 h-5" />
                   <span>Use Biometric</span>
                 </Button>
-                <p>or</p>
+                <p className="w-full flex items-center justify-center gap-3 h-12">or</p>
               </div>
             )}
 
@@ -608,7 +599,6 @@ export function SessionGuard({ children }: SessionGuardProps) {
     // Listen for window focus events to validate session
     const handleWindowFocus = () => {
       if (hasPin && !SessionManager.isSessionValid()) {
-        console.log('[SessionGuard] Session invalid on window focus, showing PIN screen')
         setShowPinScreen(true)
       }
     }
@@ -633,20 +623,15 @@ export function SessionGuard({ children }: SessionGuardProps) {
       onUnlock={async (pin: string, emergencyMode?: boolean) => {
         const result = emergencyMode ? await validateEmergencyPin(pin) : await validatePin(pin)
         if (result.success) {
-          // Play success sound for PIN authentication
           playSound("pin-success")
           if (emergencyMode) {
-            // Emergency PIN used - require new PIN setup
             setEmergencyPinUsed(true)
             setShowNewPinSetup(true)
           } else {
-            // Regular PIN - create session and allow access
             SessionManager.createSession()
             setShowPinScreen(false)
           }
         } else {
-          // Play failed sound for PIN authentication
-          console.log('[SessionGuard] PIN validation failed, playing sound and throwing error')
           playSound("pin-failed")
           throw new Error("PIN validation failed") // Throw error to trigger visual feedback
         }
@@ -661,8 +646,6 @@ export function SessionGuard({ children }: SessionGuardProps) {
         setEmergencyPinUsed(false)
       }}
       onError={() => {
-        // This will be called when PIN validation fails
-        // The error animation is handled in SessionPinScreen component
       }}
       showNewPinSetup={showNewPinSetup}
     />
