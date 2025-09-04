@@ -1,27 +1,87 @@
 // Service Worker for MyWallet PWA
-const CACHE_NAME = 'mywallet-v1'
-const STATIC_CACHE = 'mywallet-static-v1'
-const DYNAMIC_CACHE = 'mywallet-dynamic-v1'
+const CACHE_VERSION = 'v2'
+const STATIC_CACHE = `mywallet-static-${CACHE_VERSION}`
+const DYNAMIC_CACHE = `mywallet-dynamic-${CACHE_VERSION}`
+const API_CACHE = `mywallet-api-${CACHE_VERSION}`
 
 // Resources to cache immediately
 const STATIC_ASSETS = [
   '/',
+  '/offline',
   '/manifest.json',
   '/favicon.ico',
   '/image.png',
-  // Add other static assets
+  '/mywallet.png',
+  // Add Next.js critical assets
+  '/_next/static/css/',
+  '/_next/static/js/',
+  // Cache all app routes for offline access
+  '/settings',
+  '/dashboard',
+  '/transactions',
+  '/goals',
+  '/budgets',
+  '/categories'
+]
+
+// API endpoints to cache
+const API_ENDPOINTS = [
+  '/api/transactions',
+  '/api/goals',
+  '/api/budgets',
+  '/api/categories',
+  '/api/user',
+  '/api/dashboard'
+]
+
+// Routes that should work offline
+const OFFLINE_ROUTES = [
+  '/',
+  '/offline',
+  '/settings',
+  '/dashboard',
+  '/transactions',
+  '/goals',
+  '/budgets',
+  '/categories'
 ]
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   console.log('Service Worker: Installing...')
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('Service Worker: Caching static assets')
-        return cache.addAll(STATIC_ASSETS)
-      })
-      .then(() => self.skipWaiting())
+    Promise.all([
+      // Cache static assets
+      caches.open(STATIC_CACHE)
+        .then((cache) => {
+          console.log('Service Worker: Caching static assets')
+          return cache.addAll(STATIC_ASSETS)
+        }),
+
+      // Cache critical routes for offline access
+      caches.open(DYNAMIC_CACHE)
+        .then((cache) => {
+          console.log('Service Worker: Pre-caching critical routes')
+          // We'll cache these when they're first visited, but we can try to cache them here
+          return Promise.all(
+            OFFLINE_ROUTES.map(route => {
+              return fetch(route)
+                .then(response => {
+                  if (response.ok) {
+                    return cache.put(route, response)
+                  }
+                })
+                .catch(error => {
+                  console.log('Failed to pre-cache route:', route, error)
+                })
+            })
+          )
+        })
+    ])
+    .then(() => {
+      console.log('Service Worker: Installation complete')
+      return self.skipWaiting()
+    })
   )
 })
 
@@ -32,13 +92,17 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
+          // Delete old cache versions
+          if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE && cacheName !== API_CACHE) {
             console.log('Service Worker: Deleting old cache:', cacheName)
             return caches.delete(cacheName)
           }
         })
       )
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      console.log('Service Worker: Claiming clients')
+      return self.clients.claim()
+    })
   )
 })
 
@@ -53,28 +117,117 @@ self.addEventListener('fetch', (event) => {
   // Skip Chrome extension requests
   if (url.protocol === 'chrome-extension:') return
 
-  // Handle API requests differently
+  // Handle API requests with better caching strategy
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache successful API responses
-          if (response.status === 200) {
-            const responseClone = response.clone()
-            caches.open(DYNAMIC_CACHE)
-              .then((cache) => cache.put(request, responseClone))
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            // Return cached response and update in background
+            fetch(request)
+              .then((response) => {
+                if (response.status === 200) {
+                  const responseClone = response.clone()
+                  caches.open(API_CACHE)
+                    .then((cache) => cache.put(request, responseClone))
+                }
+              })
+              .catch((error) => {
+                console.error('Background fetch failed:', error)
+              })
+            return cachedResponse
           }
-          return response
-        })
-        .catch(() => {
-          // Return cached API response if available
-          return caches.match(request)
+  
+          // No cache, fetch from network
+          return fetch(request)
+            .then((response) => {
+              if (response.status === 200) {
+                const responseClone = response.clone()
+                caches.open(API_CACHE)
+                  .then((cache) => cache.put(request, responseClone))
+              }
+              return response
+            })
+            .catch((error) => {
+              console.error('API fetch failed:', error)
+              // Return offline fallback for critical endpoints
+              if (API_ENDPOINTS.some(endpoint => url.pathname.startsWith(endpoint))) {
+                return new Response(JSON.stringify({ error: 'Offline', message: 'Data will sync when online' }), {
+                  status: 503,
+                  headers: { 'Content-Type': 'application/json' }
+                })
+              }
+            })
         })
     )
     return
   }
 
-  // Handle static assets and pages
+  // Handle Next.js assets (JS, CSS)
+  if (url.pathname.startsWith('/_next/')) {
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse
+          }
+
+          return fetch(request)
+            .then((response) => {
+              if (response.status === 200) {
+                const responseClone = response.clone()
+                caches.open(STATIC_CACHE)
+                  .then((cache) => cache.put(request, responseClone))
+              }
+              return response
+            })
+        })
+    )
+    return
+  }
+
+  // Handle navigation requests (SPA routes)
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse
+          }
+
+          return fetch(request)
+            .then((response) => {
+              if (response.status === 200) {
+                const responseClone = response.clone()
+                caches.open(DYNAMIC_CACHE)
+                  .then((cache) => cache.put(request, responseClone))
+              }
+              return response
+            })
+            .catch(() => {
+              // Return cached offline page for navigation requests when offline
+              console.log('Offline navigation: redirecting to offline page')
+              return caches.match('/offline') || caches.match('/') || new Response(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta http-equiv="refresh" content="0; url=/offline">
+                  <title>Redirecting to Offline Page...</title>
+                </head>
+                <body>
+                  <p>Redirecting to offline page...</p>
+                </body>
+                </html>
+              `, {
+                headers: { 'Content-Type': 'text/html' }
+              })
+            })
+        })
+    )
+    return
+  }
+
+  // Handle other static assets and pages
   event.respondWith(
     caches.match(request)
       .then((cachedResponse) => {
@@ -96,10 +249,32 @@ self.addEventListener('fetch', (event) => {
 
             return response
           })
-          .catch(() => {
-            // Return offline fallback for navigation requests
-            if (request.mode === 'navigate') {
-              return caches.match('/')
+          .catch((error) => {
+            console.log('Fetch failed for:', request.url, error)
+            // For HTML pages, return cached version or offline page
+            if (request.headers.get('accept').includes('text/html')) {
+              return caches.match('/') || new Response(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <title>MyWallet - Offline</title>
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .offline-message { max-width: 400px; margin: 0 auto; }
+                  </style>
+                </head>
+                <body>
+                  <div class="offline-message">
+                    <h1>You're Offline</h1>
+                    <p>This page isn't cached yet. Please check your internet connection and try again.</p>
+                    <button onclick="window.location.reload()">Retry</button>
+                  </div>
+                </body>
+                </html>
+              `, {
+                headers: { 'Content-Type': 'text/html' }
+              })
             }
           })
       })
@@ -108,7 +283,6 @@ self.addEventListener('fetch', (event) => {
 
 // Background sync for when connection is restored
 self.addEventListener('sync', (event) => {
-  console.log('Service Worker: Background sync triggered')
 
   if (event.tag === 'sync-pending-data') {
     event.waitUntil(syncPendingData())
@@ -117,39 +291,118 @@ self.addEventListener('sync', (event) => {
 
 async function syncPendingData() {
   try {
-    // Get all pending data from IndexedDB or localStorage
+    console.log('Service Worker: Starting background sync...')
+
+    // Get all pending data from localStorage
     const pendingTransactions = localStorage.getItem('wallet_pending_transactions')
     const pendingGoals = localStorage.getItem('wallet_pending_goals')
     const pendingBudgets = localStorage.getItem('wallet_pending_budgets')
 
-    // Sync with server (implement your sync logic here)
+    const syncResults = {
+      transactions: { synced: 0, failed: 0 },
+      goals: { synced: 0, failed: 0 },
+      budgets: { synced: 0, failed: 0 }
+    }
+
+    // Sync transactions
     if (pendingTransactions) {
-      console.log('Syncing pending transactions...')
-      // Your sync logic here
+      const transactions = JSON.parse(pendingTransactions)
+      for (const transaction of transactions) {
+        try {
+          const response = await fetch('/api/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(transaction)
+          })
+
+          if (response.ok) {
+            syncResults.transactions.synced++
+          } else {
+            syncResults.transactions.failed++
+            console.error('Failed to sync transaction:', transaction.id)
+          }
+        } catch (error) {
+          syncResults.transactions.failed++
+          console.error('Error syncing transaction:', error)
+        }
+      }
+
+      if (syncResults.transactions.synced > 0) {
+        localStorage.removeItem('wallet_pending_transactions')
+      }
     }
 
+    // Sync goals
     if (pendingGoals) {
-      console.log('Syncing pending goals...')
-      // Your sync logic here
+      const goals = JSON.parse(pendingGoals)
+      for (const goal of goals) {
+        try {
+          const response = await fetch('/api/goals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(goal)
+          })
+
+          if (response.ok) {
+            syncResults.goals.synced++
+          } else {
+            syncResults.goals.failed++
+            console.error('Failed to sync goal:', goal.id)
+          }
+        } catch (error) {
+          syncResults.goals.failed++
+          console.error('Error syncing goal:', error)
+        }
+      }
+
+      if (syncResults.goals.synced > 0) {
+        localStorage.removeItem('wallet_pending_goals')
+      }
     }
 
+    // Sync budgets
     if (pendingBudgets) {
-      console.log('Syncing pending budgets...')
-      // Your sync logic here
+      const budgets = JSON.parse(pendingBudgets)
+      for (const budget of budgets) {
+        try {
+          const response = await fetch('/api/budgets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(budget)
+          })
+
+          if (response.ok) {
+            syncResults.budgets.synced++
+          } else {
+            syncResults.budgets.failed++
+            console.error('Failed to sync budget:', budget.id)
+          }
+        } catch (error) {
+          syncResults.budgets.failed++
+          console.error('Error syncing budget:', error)
+        }
+      }
+
+      if (syncResults.budgets.synced > 0) {
+        localStorage.removeItem('wallet_pending_budgets')
+      }
     }
+
+    console.log('Service Worker: Sync completed', syncResults)
 
     // Notify clients that sync is complete
     self.clients.matchAll().then((clients) => {
       clients.forEach((client) => {
         client.postMessage({
           type: 'SYNC_COMPLETE',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          results: syncResults
         })
       })
     })
 
   } catch (error) {
-    console.error('Background sync failed:', error)
+    console.error('Service Worker: Sync failed:', error)
   }
 }
 

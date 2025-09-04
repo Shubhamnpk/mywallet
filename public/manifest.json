@@ -16,14 +16,62 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/image.png",
+      "src": "/mywallet.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/image.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Transaction",
+      "short_name": "Add Transaction",
+      "description": "Quickly add a new transaction",
+      "url": "/?action=add-transaction",
+      "icons": [
+        {
+          "src": "/image.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "View Goals",
+      "short_name": "Goals",
+      "description": "Check your financial goals",
+      "url": "/goals",
+      "icons": [
+        {
+          "src": "/image.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Budget Overview",
+      "short_name": "Budget",
+      "description": "Review your budget status",
+      "url": "/budgets",
+      "icons": [
+        {
+          "src": "/image.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
   "categories": ["finance", "productivity", "utilities"],
   "lang": "en",
   "dir": "ltr",
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "iarc_rating_id": "",
+  "related_applications": []
 }

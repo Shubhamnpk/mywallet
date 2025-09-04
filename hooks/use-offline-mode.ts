@@ -78,34 +78,113 @@ export function useOfflineMode() {
       const pendingGoals = localStorage.getItem('wallet_pending_goals')
       const pendingBudgets = localStorage.getItem('wallet_pending_budgets')
 
+      const syncResults = {
+        transactions: { synced: 0, failed: 0 },
+        goals: { synced: 0, failed: 0 },
+        budgets: { synced: 0, failed: 0 }
+      }
+
       // Sync transactions
       if (pendingTransactions) {
         const transactions = JSON.parse(pendingTransactions)
-        // Here you would sync with your backend
-        console.log('Syncing transactions:', transactions)
-        localStorage.removeItem('wallet_pending_transactions')
+        for (const transaction of transactions) {
+          try {
+            const response = await fetch('/api/transactions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(transaction)
+            })
+
+            if (response.ok) {
+              syncResults.transactions.synced++
+            } else {
+              syncResults.transactions.failed++
+              console.error('Failed to sync transaction:', response.status)
+            }
+          } catch (error) {
+            syncResults.transactions.failed++
+            console.error('Error syncing transaction:', error)
+          }
+        }
+
+        if (syncResults.transactions.synced > 0) {
+          localStorage.removeItem('wallet_pending_transactions')
+        }
       }
 
       // Sync goals
       if (pendingGoals) {
         const goals = JSON.parse(pendingGoals)
-        console.log('Syncing goals:', goals)
-        localStorage.removeItem('wallet_pending_goals')
+        for (const goal of goals) {
+          try {
+            const response = await fetch('/api/goals', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(goal)
+            })
+
+            if (response.ok) {
+              syncResults.goals.synced++
+            } else {
+              syncResults.goals.failed++
+              console.error('Failed to sync goal:', response.status)
+            }
+          } catch (error) {
+            syncResults.goals.failed++
+            console.error('Error syncing goal:', error)
+          }
+        }
+
+        if (syncResults.goals.synced > 0) {
+          localStorage.removeItem('wallet_pending_goals')
+        }
       }
 
       // Sync budgets
       if (pendingBudgets) {
         const budgets = JSON.parse(pendingBudgets)
-        console.log('Syncing budgets:', budgets)
-        localStorage.removeItem('wallet_pending_budgets')
+        for (const budget of budgets) {
+          try {
+            const response = await fetch('/api/budgets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(budget)
+            })
+
+            if (response.ok) {
+              syncResults.budgets.synced++
+            } else {
+              syncResults.budgets.failed++
+              console.error('Failed to sync budget:', response.status)
+            }
+          } catch (error) {
+            syncResults.budgets.failed++
+            console.error('Error syncing budget:', error)
+          }
+        }
+
+        if (syncResults.budgets.synced > 0) {
+          localStorage.removeItem('wallet_pending_budgets')
+        }
       }
 
-      // Update sync time
+      console.log('Sync completed:', syncResults)
+
+      // Update sync time and store in localStorage
+      const syncTime = new Date()
+      localStorage.setItem('wallet_last_sync', syncTime.toISOString())
+
       setState(prev => ({
         ...prev,
-        lastSyncTime: new Date(),
+        lastSyncTime: syncTime,
         pendingSyncItems: 0
       }))
+
+      // Trigger background sync registration if available
+      if ('serviceWorker' in navigator && 'sync' in (window as any).ServiceWorkerRegistration.prototype) {
+        const registration = await navigator.serviceWorker.ready
+        await (registration as any).sync.register('sync-pending-data')
+      }
 
     } catch (error) {
       console.error('Sync failed:', error)
