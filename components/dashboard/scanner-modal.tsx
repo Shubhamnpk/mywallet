@@ -123,15 +123,31 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   const [videoElementReady, setVideoElementReady] = useState(false)
   const [qrScanning, setQrScanning] = useState(false)
   const [qrFlashlightOn, setQrFlashlightOn] = useState(false)
+  const [qrCameraFacingMode, setQrCameraFacingMode] = useState<'environment' | 'user'>('environment')
+  const [scanHistory, setScanHistory] = useState<any[]>([])
+  const [localQrHistory, setLocalQrHistory] = useState<any[]>([])
+
+  // Load scan history from localStorage
+  useEffect(() => {
+    const loadHistory = () => {
+      try {
+        const receiptHistory = JSON.parse(localStorage.getItem('receiptScanHistory') || '[]')
+        const qrScanHistory = JSON.parse(localStorage.getItem('qrScanHistory') || '[]')
+        setScanHistory(receiptHistory)
+        setLocalQrHistory(qrScanHistory)
+      } catch (error) {
+        console.error('Failed to load scan history:', error)
+      }
+    }
+    loadHistory()
+  }, [])
 
   // Check video element readiness
   useEffect(() => {
     const checkVideoElement = () => {
       if (videoRef.current) {
-        console.log('Video element is ready for use')
         setVideoElementReady(true)
       } else {
-        console.log('Video element not yet available')
         setVideoElementReady(false)
       }
     }
@@ -150,13 +166,11 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
     console.log(`Switching from ${activeTab} to ${newTab} tab`)
 
     // Stop any active camera before switching tabs
-    if (isCameraActive || (isScanningQR && onStopQRScan)) {
+    if (isCameraActive || qrScanning) {
       if (activeTab === "receipt") {
-        console.log('Stopping receipt camera')
         onStopCamera()
-      } else if (activeTab === "qr" && onStopQRScan) {
-        console.log('Stopping QR camera')
-        onStopQRScan()
+      } else if (activeTab === "qr") {
+        setQrScanning(false)
       }
 
       // Wait for camera to fully stop before proceeding
@@ -180,16 +194,13 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
       video.onabort = null
       video.onemptied = null
       video.onstalled = null
-
-      console.log('Video element completely reset')
-
       // Small delay to ensure reset completes
       await new Promise(resolve => setTimeout(resolve, 200))
     }
 
     setActiveTab(newTab)
     setVideoElementReady(true)
-  }, [activeTab, isCameraActive, isScanningQR, onStopCamera, onStopQRScan, videoRef])
+  }, [activeTab, isCameraActive, qrScanning, onStopCamera, videoRef])
 
   // Copy QR code data to clipboard
   const copyToClipboard = useCallback(async (text: string) => {
@@ -220,9 +231,44 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
         copyToClipboard(beautified.content || beautified.displayText)
     }
   }, [copyToClipboard])
+
+  // Save receipt scan to history
+  const saveReceiptToHistory = useCallback((data: ExtractedData) => {
+    const historyItem = {
+      id: Date.now().toString(),
+      type: 'receipt',
+      data,
+      timestamp: Date.now()
+    }
+    const updatedHistory = [historyItem, ...scanHistory].slice(0, 10) // Keep last 10
+    setScanHistory(updatedHistory)
+    localStorage.setItem('receiptScanHistory', JSON.stringify(updatedHistory))
+  }, [scanHistory])
+
+  // Save QR scan to history
+  const saveQrToHistory = useCallback((result: QRScanResult) => {
+    const historyItem = {
+      id: Date.now().toString(),
+      type: 'qr',
+      data: result,
+      timestamp: Date.now()
+    }
+    const updatedHistory = [historyItem, ...localQrHistory].slice(0, 10) // Keep last 10
+    setLocalQrHistory(updatedHistory)
+    localStorage.setItem('qrScanHistory', JSON.stringify(updatedHistory))
+  }, [localQrHistory])
+
+  // Clear all history
+  const clearAllHistory = useCallback(() => {
+    setScanHistory([])
+    setLocalQrHistory([])
+    localStorage.removeItem('receiptScanHistory')
+    localStorage.removeItem('qrScanHistory')
+    toast.success('Scan history cleared')
+  }, [])
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full h-full max-w-none max-h-none overflow-y-auto p-4 sm:p-6 sm:max-w-2xl sm:max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Scan className="w-5 h-5" />
@@ -231,20 +277,27 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="receipt" className="flex items-center gap-2">
-              <Scan className="w-4 h-4" />
-              Receipt
+          <TabsList className="grid w-full grid-cols-3 h-9 sm:h-10">
+            <TabsTrigger value="receipt" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+              <Scan className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">Receipt</span>
+              <span className="xs:hidden">Scan</span>
             </TabsTrigger>
-            <TabsTrigger value="qr" className="flex items-center gap-2">
-              <QrCode className="w-4 h-4" />
-              QR Code
+            <TabsTrigger value="qr" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+              <QrCode className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">QR Code</span>
+              <span className="xs:hidden">QR</span>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+              <History className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">History</span>
+              <span className="xs:hidden">Hist</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="receipt" className="space-y-6">
           {/* Image Selection */}
-          {!selectedImage && (
+          {!selectedImage && !isCameraActive && !isInitializingCamera && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">
@@ -252,28 +305,30 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <Button
                     onClick={() => fileInputRef.current?.click()}
                     variant="outline"
-                    className="h-24 flex flex-col gap-2"
+                    className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
                   >
-                    <Upload className="w-6 h-6" />
-                    Upload Image
+                    <Upload className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <span className="text-xs sm:text-sm">Upload</span>
                   </Button>
 
                   <Button
                     onClick={onStartCamera}
                     variant="outline"
-                    className="h-24 flex flex-col gap-2"
+                    className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
                     disabled={isInitializingCamera}
                   >
                     {isInitializingCamera ? (
-                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
                     ) : (
-                      <Camera className="w-6 h-6" />
+                      <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
                     )}
-                    {isInitializingCamera ? 'Starting...' : 'Take Photo'}
+                    <span className="text-xs sm:text-sm">
+                      {isInitializingCamera ? 'Starting...' : 'Take Photo'}
+                    </span>
                   </Button>
                 </div>
 
@@ -297,45 +352,41 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                     <Camera className="w-5 h-5" />
                     Camera {cameraFacingMode === 'environment' ? 'Back' : 'Front'}
                   </CardTitle>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1 sm:gap-2">
                     <Button
                       onClick={onSwitchCamera}
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
+                      className="text-xs sm:text-sm px-2 sm:px-3"
                     >
-                      <RotateCcw className="w-4 h-4 mr-1" />
-                      Switch Camera
+                      <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <span className="hidden sm:inline">Switch Camera</span>
+                      <span className="sm:hidden">Switch</span>
                     </Button>
                     <Button
                       onClick={onToggleFlashlight}
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
+                      className="text-xs sm:text-sm px-2 sm:px-3"
                     >
                       {isFlashlightOn ? (
-                        <FlashlightOff className="w-4 h-4 mr-1" />
+                        <FlashlightOff className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       ) : (
-                        <Flashlight className="w-4 h-4 mr-1" />
+                        <Flashlight className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       )}
-                      {isFlashlightOn ? 'Flash Off' : 'Flash On'}
-                    </Button>
-                    <Button
-                      onClick={onStartCamera}
-                      variant="outline"
-                      size="sm"
-                      disabled={isInitializingCamera}
-                    >
-                      <RotateCcw className="w-4 h-4 mr-1" />
-                      Refresh
+                      <span className="hidden sm:inline">{isFlashlightOn ? 'Flash Off' : 'Flash On'}</span>
+                      <span className="sm:hidden">{isFlashlightOn ? 'Off' : 'On'}</span>
                     </Button>
                     <Button
                       onClick={onStopCamera}
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
+                      className="text-xs sm:text-sm px-2 sm:px-3"
                     >
-                      <Square className="w-4 h-4 mr-1" />
+                      <Square className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       Stop
                     </Button>
                   </div>
@@ -349,30 +400,19 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                     playsInline
                     muted
                     controls={false}
-                    className="w-full h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
+                    className="w-full h-64 sm:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
                     style={{
                       transform: cameraFacingMode === 'user' ? 'scaleX(-1)' : 'none',
                       backgroundColor: '#000'
                     }}
                     onLoadedMetadata={(e) => {
-                      console.log('Video loaded metadata:', e.target)
                       const video = e.target as HTMLVideoElement
-                      console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight)
-                      console.log('Video readyState:', video.readyState)
                     }}
                     onCanPlay={(e) => {
-                      console.log('Video can play')
                       const video = e.target as HTMLVideoElement
-                      console.log('Video dimensions on canPlay:', video.videoWidth, 'x', video.videoHeight)
                     }}
                     onError={(e) => {
-                      console.error('Video element error:', e)
                       const video = e.target as HTMLVideoElement
-                      console.error('Video error details:', {
-                        error: video.error,
-                        networkState: video.networkState,
-                        readyState: video.readyState
-                      })
                       toast.error('Video display error. Please refresh the page and try again.')
                       if (activeTab === "qr" && onStopQRScan) {
                         onStopQRScan()
@@ -381,22 +421,17 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       }
                     }}
                     onAbort={(e) => {
-                      console.log('Video aborted')
                       toast.error('Camera access was interrupted. Please try again.')
                     }}
                     onEmptied={(e) => {
-                      console.log('Video emptied - stream lost')
                       toast.error('Camera stream lost. Please restart scanning.')
                     }}
                     onStalled={(e) => {
-                      console.log('Video stalled')
                       toast.warning('Camera feed stalled. This may affect scanning.')
                     }}
                     onWaiting={(e) => {
-                      console.log('Video waiting for data')
                     }}
                     onPlaying={(e) => {
-                      console.log('Video started playing')
                     }}
                   />
                   <canvas ref={canvasRef} className="hidden" />
@@ -435,10 +470,10 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                   {isCameraActive && !isInitializingCamera && (
                     <>
                       <div className="absolute inset-0 pointer-events-none">
-                        <div className="w-full h-full border-2 border-white/50 rounded-lg">
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-white rounded-full opacity-75"></div>
-                        </div>
-                      </div>
+                    <div className="w-full h-full border-2 border-white/50 rounded-lg">
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-40 h-40 border-2 border-white rounded-lg opacity-75"></div>
+                    </div>
+                  </div>
 
                       {/* Camera status indicator */}
                       <div className="absolute top-4 left-4">
@@ -449,11 +484,8 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       </div>
 
                       {/* Camera controls */}
-                      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                      <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2">
                         <div className="flex flex-col items-center gap-3">
-                          <div className="text-white text-sm font-medium bg-black/50 px-3 py-1 rounded-full">
-                            Position receipt in the center
-                          </div>
                           <Button
                             onClick={onCaptureImage}
                             size="lg"
@@ -461,9 +493,6 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                           >
                             <Camera className="w-6 h-6" />
                           </Button>
-                          <div className="text-white text-xs bg-black/50 px-2 py-1 rounded-full">
-                            Tap to capture
-                          </div>
                         </div>
                       </div>
                     </>
@@ -503,7 +532,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
           )}
 
           {/* Selected Image Preview */}
-          {selectedImage && !isCameraActive && (
+          {selectedImage && !isCameraActive && !extractedData && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -526,25 +555,23 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                   />
                 </div>
 
-                {!extractedData && (
-                  <Button
-                    onClick={onProcessImage}
-                    disabled={isProcessing}
-                    className="w-full"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing Receipt...
-                      </>
-                    ) : (
-                      <>
-                        <Scan className="w-4 h-4 mr-2" />
-                        Scan Receipt
-                      </>
-                    )}
-                  </Button>
-                )}
+                <Button
+                  onClick={onProcessImage}
+                  disabled={isProcessing}
+                  className="w-full"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing Receipt...
+                    </>
+                  ) : (
+                    <>
+                      <Scan className="w-4 h-4 mr-2" />
+                      Scan Receipt
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -559,7 +586,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <Label className="text-sm font-medium">Amount</Label>
                     <div className="text-lg font-semibold">
@@ -621,7 +648,10 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
                 <div className="flex gap-3">
                   <Button
-                    onClick={onConfirmTransaction}
+                    onClick={() => {
+                      saveReceiptToHistory(extractedData)
+                      onConfirmTransaction()
+                    }}
                     className="flex-1"
                     disabled={!extractedData.amount}
                   >
@@ -637,39 +667,121 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
               </CardContent>
             </Card>
           )}
-
-          {/* Instructions */}
-          <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-            <CardContent className="pt-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-500 mt-0.5" />
-                <div className="text-sm text-blue-700 dark:text-blue-300">
-                  <strong>Tips for best results:</strong>
-                  <ul className="mt-2 space-y-1 list-disc list-inside">
-                    <li>Ensure the receipt is well-lit and in focus</li>
-                    <li>Hold the camera steady when capturing</li>
-                    <li>Make sure the text is clearly visible</li>
-                    <li>Try different angles if text extraction fails</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           </TabsContent>
 
           <TabsContent value="qr" className="space-y-6">
             <QRCodeScanner
               isScanning={qrScanning}
-              onScanResult={(result) => {
-                console.log('QR scan result:', result)
-                // Handle QR scan result here
+              onScanResult={(result: QRScanResult) => {
+                // Update the QR scan result in parent component
+                if (onClearQRResult) {
+                  // Clear any previous result first
+                  onClearQRResult()
+                }
+                // Save to history
+                saveQrToHistory(result)
+                // The QRCodeScanner handles its own state, but we can pass this up if needed
+                console.log('QR Code scanned:', result)
               }}
               onScanningChange={setQrScanning}
-              cameraFacingMode={cameraFacingMode}
+              cameraFacingMode={qrCameraFacingMode}
               isFlashlightOn={qrFlashlightOn}
               onFlashlightToggle={() => setQrFlashlightOn(!qrFlashlightOn)}
-              onSwitchCamera={onSwitchCamera}
+              onSwitchCamera={() => setQrCameraFacingMode(qrCameraFacingMode === 'environment' ? 'user' : 'environment')}
             />
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <History className="w-5 h-5" />
+                    Scan History
+                  </CardTitle>
+                  <Button
+                    onClick={clearAllHistory}
+                    variant="outline"
+                    size="sm"
+                    disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                  >
+                    Clear All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {scanHistory.length === 0 && localQrHistory.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No scan history yet</p>
+                    <p className="text-sm">Your recent scans will appear here</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Receipt Scans */}
+                    {scanHistory.map((item) => (
+                      <Card key={item.id} className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <Scan className="w-5 h-5 text-blue-500 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="secondary">Receipt</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(item.timestamp).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium">
+                                  ${item.data.amount || 'Amount not detected'}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {item.data.merchant || 'Merchant not detected'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+
+                    {/* QR Scans */}
+                    {localQrHistory.map((item) => (
+                      <Card key={item.id} className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <QrCode className="w-5 h-5 text-green-500 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="secondary">QR Code</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(item.timestamp).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium">
+                                  {item.data.beautified?.title || 'QR Code'}
+                                </p>
+                                <p className="text-sm text-muted-foreground break-all">
+                                  {item.data.beautified?.displayText || item.data.data}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => handleQRAction(item.data.beautified)}
+                            variant="ghost"
+                            size="sm"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </DialogContent>

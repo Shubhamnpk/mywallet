@@ -3,8 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
-import ReceiptScannerModal from "./receipt-scanner-modal"
-import QRCodeScanner from "./qr-code-scanner"
+import ReceiptScannerModal from "./scanner-modal"
 
 interface ReceiptScannerProps {
   isOpen: boolean
@@ -65,11 +64,9 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
   // Log when video element is mounted
   useEffect(() => {
     if (videoRef.current) {
-      console.log('Video element mounted:', videoRef.current)
       // Small delay to ensure element is fully rendered
       setTimeout(() => {
         setIsVideoReady(true)
-        console.log('Video element ready for use')
       }, 100)
     } else {
       setIsVideoReady(false)
@@ -79,9 +76,7 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
   // Force video element to be ready when camera view is shown
   useEffect(() => {
     if ((isCameraActive || isInitializingCamera) && !isVideoReady) {
-      console.log('Camera view shown, checking video element...')
       if (videoRef.current) {
-        console.log('Video element found in camera view')
         setIsVideoReady(true)
       }
     }
@@ -342,7 +337,6 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
         throw new Error('Video element not available')
       }
 
-
       // Remove any existing event listeners
       videoRef.current.onloadedmetadata = null
       videoRef.current.oncanplay = null
@@ -354,7 +348,6 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
       // Wait for video to be ready with timeout
       const videoReady = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          console.warn('Video load timeout')
           reject(new Error('Video load timeout'))
         }, 10000) // 10 second timeout
 
@@ -521,14 +514,6 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
   const handleScanAgain = useCallback(() => {
     setExtractedData(null)
   }, [])
-
-
-
-
-
-
-
-
 
   // Reset everything
   const resetScanner = useCallback(() => {
