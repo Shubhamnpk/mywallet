@@ -8,6 +8,8 @@ import { WalletDataProvider } from "@/contexts/wallet-data-context"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
 import { SessionGuard } from "@/components/security/session-guard"
 import { SessionDebug } from "@/components/security/session-debug"
+import RegisterSW from '@/components/pwa/register-sw'
+import InstallButton from '@/components/pwa/install-button'
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -30,7 +32,9 @@ export default function RootLayout({
         <link rel="icon" href="/image.png" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <ThemeProviderWrapper>
+  <RegisterSW />
+  <InstallButton />
+  <ThemeProviderWrapper>
           <PrivacyModeProvider>
             <WalletDataProvider>
               <SessionGuard>{children}</SessionGuard>
