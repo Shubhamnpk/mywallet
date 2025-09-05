@@ -7,8 +7,17 @@ export default function InstallButton() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    // Prefer a globally captured deferred prompt (set in RegisterSW)
+    const globalPrompt = (window as any).__deferredPrompt
+    if (globalPrompt) {
+      setDeferredPrompt(globalPrompt)
+      setVisible(true)
+      return
+    }
+
     function handler(e: any) {
       e.preventDefault()
+      try { (window as any).__deferredPrompt = e } catch {}
       setDeferredPrompt(e)
       setVisible(true)
     }
@@ -21,12 +30,21 @@ export default function InstallButton() {
   return (
     <button
       onClick={async () => {
-        if (!deferredPrompt) return
-        deferredPrompt.prompt()
-        const choice = await deferredPrompt.userChoice
-        setVisible(false)
-        setDeferredPrompt(null)
-        console.log('PWA install choice', choice)
+        // prefer global deferred prompt
+        const prompt = deferredPrompt || (window as any).__deferredPrompt
+        if (!prompt) {
+          // nothing to do
+          return
+        }
+        try {
+          prompt.prompt()
+          const choice = await prompt.userChoice
+          setVisible(false)
+          setDeferredPrompt(null)
+          try { delete (window as any).__deferredPrompt } catch {}
+        } catch (e) {
+          // ignore
+        }
       }}
       className="fixed bottom-4 right-4 bg-primary text-white px-4 py-2 rounded-lg shadow-lg"
     >

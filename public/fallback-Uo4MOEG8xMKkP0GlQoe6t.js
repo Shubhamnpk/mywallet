@@ -1,1 +1,0 @@
-(()=>{"use strict";self.fallback=async e=>{switch(e.destination){case"document":return caches.match("/offline.html",{ignoreSearch:!0});case"image":return caches.match("/image.png",{ignoreSearch:!0});default:return Response.error()}}})();

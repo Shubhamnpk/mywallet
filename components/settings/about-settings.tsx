@@ -4,22 +4,68 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Info, RefreshCw, ExternalLink, Github, User, Heart, Star, Building } from "lucide-react"
+import { RefreshCw, ExternalLink, Github, User, Heart, Star, Building, Info } from "lucide-react"
 import { useState } from "react"
+import { toast } from 'sonner'
+import usePWAUpdate from '@/components/pwa/usePWAUpdate'
+import { Switch } from '@/components/ui/switch'
 
 export function AboutSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [clearingCache, setClearingCache] = useState(false)
+  const {
+    isSupported,
+    isUpdateAvailable,
+    autoUpdate,
+    setAutoUpdate,
+    applyUpdate,
+    checkForUpdate
+  } = usePWAUpdate()
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true)
-    // Simulate checking for updates
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setCheckingUpdate(false)
-    // In a real app, this would check for updates
+  // Ask the SW to update
+  await checkForUpdate()
+  // Small UI delay
+  await new Promise(resolve => setTimeout(resolve, 600))
+  setCheckingUpdate(false)
   }
-
   const handleGithubLink = () => {
     window.open('https://github.com/Shubhamnpk/mywallet', '_blank')
+  }
+
+  // Helper to clear caches and unregister service workers
+  async function clearAllCachesAndData() {
+    // Only delete caches that are app/service-worker related to avoid removing user data
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      const keys = await caches.keys()
+      // conservative whitelist: only remove caches that look like SW or app asset caches
+      const keepPattern = /(^(?!.*(?:workbox|precache|next|static-resources|next-static|images|start-url)).*$)/i
+      const toDelete = keys.filter(name => {
+        // remove if it matches known SW/cache names
+        return /workbox|precache|next|static-resources|next-static|images|start-url/i.test(name)
+      })
+      await Promise.all(toDelete.map(k => caches.delete(k)))
+    }
+
+    // Unregister service workers (optional; keeps app behavior consistent)
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.unregister()))
+    }
+  }
+
+  const handleClearCaches = async () => {
+    if (!confirm('Clear app caches (UI assets) and unregister service workers? This will NOT delete your app data (localStorage/IndexedDB).')) return
+    setClearingCache(true)
+    try {
+      await clearAllCachesAndData()
+      toast.success('App caches cleared (UI) and service workers unregistered')
+    } catch (e) {
+      toast.error('Failed to clear caches')
+    } finally {
+      setClearingCache(false)
+    }
   }
 
   return (
@@ -28,7 +74,7 @@ export function AboutSettings() {
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Info className="w-5 h-5" />
+            <Info className="w-6 h-6 rounded-md" />
             My Wallet App
           </CardTitle>
           <CardDescription>Your personal finance management companion</CardDescription>
@@ -36,11 +82,11 @@ export function AboutSettings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Version</span>
-            <Badge variant="secondary">v0.5.0</Badge>
+            <Badge variant="secondary">v1.0.0</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Build</span>
-            <span className="text-sm text-muted-foreground">2025.09.02</span>
+            <span className="text-sm text-muted-foreground">2025.10.02</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Platform</span>
@@ -65,29 +111,50 @@ export function AboutSettings() {
                 <p className="font-medium">Current Version</p>
                 <p className="text-sm text-muted-foreground">You're running the latest version</p>
               </div>
-              <Badge variant="outline" className="text-green-600 border-green-600">
-                Up to date
-              </Badge>
+              <div className="flex flex-col items-end">
+                <Badge variant={isUpdateAvailable ? 'destructive' : 'outline'} className={isUpdateAvailable ? 'text-red-600 border-red-600' : 'text-green-600 border-green-600'}>
+                  {isUpdateAvailable ? 'Update available' : 'Up to date'}
+                </Badge>
+                {isSupported && (
+                  <div className="flex items-center gap-2 mt-2 text-sm">
+                    <Switch checked={autoUpdate} onCheckedChange={(v) => setAutoUpdate(!!v)} />
+                    <span className="text-xs text-muted-foreground">Auto update when online</span>
+                  </div>
+                )}
+              </div>
             </div>
             <Separator />
-            <Button
-              variant="outline"
-              onClick={handleCheckUpdate}
-              disabled={checkingUpdate}
-              className="w-full"
-            >
-              {checkingUpdate ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Checking for updates...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Check for Updates
-                </>
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="w-full"
+              >
+                {checkingUpdate ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Checking for updates...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Check for Updates
+                  </>
+                )}
+              </Button>
+
+              {isUpdateAvailable && (
+                <div className="flex gap-2">
+                  <Button onClick={applyUpdate} className="flex-1">
+                    Apply Update
+                  </Button>
+                  <Button onClick={() => window.location.reload()} variant="outline">
+                    Reload
+                  </Button>
+                </div>
               )}
-            </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -221,6 +288,11 @@ export function AboutSettings() {
               View on GitHub
               <ExternalLink className="w-4 h-4 ml-2" />
             </Button>
+            <div className="mt-2">
+              <Button onClick={handleClearCaches} variant="ghost" className="w-full" disabled={clearingCache}>
+                {clearingCache ? 'Clearing caches...' : 'Clear caches'}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
