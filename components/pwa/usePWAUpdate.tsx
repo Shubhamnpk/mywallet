@@ -18,6 +18,7 @@ export function usePWAUpdate() {
   })
   const updateInitiatedRef = useRef<boolean>(false)
   const reloadingRef = useRef(false)
+  const lastUpdateCheckRef = useRef<number>(0)
 
   useEffect(() => {
     setIsSupported('serviceWorker' in navigator)
@@ -38,17 +39,21 @@ export function usePWAUpdate() {
         }
 
         reg.addEventListener('updatefound', () => {
-          const installing = reg.installing
-          if (!installing) return
-          installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed') {
-              if (reg.waiting) {
-                setWaitingWorker(reg.waiting)
-                setIsUpdateAvailable(true)
-              }
-            }
-          })
-        })
+           const installing = reg.installing
+           if (!installing) return
+           installing.addEventListener('statechange', () => {
+             if (installing.state === 'installed') {
+               if (reg.waiting) {
+                 setWaitingWorker(reg.waiting)
+                 setIsUpdateAvailable(true)
+                 // Always auto-apply update
+                 reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+                 updateInitiatedRef.current = true
+                 try { localStorage.setItem('sw:update:requested', Date.now().toString()) } catch (e) {}
+               }
+             }
+           })
+         })
 
         regReady = true
       } catch (e) {
@@ -58,39 +63,43 @@ export function usePWAUpdate() {
 
     handleReg()
 
-    // reload when the new SW takes control; if we initiated the update, clear caches first
+    // helper: delete only known SW/app caches to avoid deleting user data
+    const clearSWCaches = async () => {
+      if (!('caches' in window)) return
+      try {
+        const keys = await caches.keys()
+        const toDelete = keys.filter(name => /workbox|precache|next|static-resources|next-static|images|start-url|runtime/i.test(name))
+        await Promise.all(toDelete.map(k => caches.delete(k)))
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // reload when the new SW takes control; clear old caches first
     const onControllerChange = async () => {
       if (reloadingRef.current) return
       reloadingRef.current = true
       try {
-        if (updateInitiatedRef.current && 'caches' in window) {
-          const keys = await caches.keys()
-          await Promise.all(keys.map(k => caches.delete(k)))
-        }
+        await clearSWCaches()
       } catch (e) {
-        // ignore cleanup errors
+        // ignore
       }
+      // mark that update was applied so UI can show success after reload (other tabs may read this)
+      try { localStorage.setItem('sw:update:applied', Date.now().toString()) } catch (e) {}
       window.location.reload()
     }
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
 
-    // on online, check for updates and auto-apply if enabled
+  // on online, check for updates (with rate limiting)
     const onOnline = async () => {
+      const now = Date.now()
+      // Only check for updates if it's been more than 5 minutes since last check
+      if (now - lastUpdateCheckRef.current < 5 * 60 * 1000) return
+      lastUpdateCheckRef.current = now
       try {
         const reg = await navigator.serviceWorker.getRegistration()
         if (!reg) return
         await reg.update()
-        if (reg.waiting) {
-          setWaitingWorker(reg.waiting)
-          setIsUpdateAvailable(true)
-          if (autoUpdate) {
-            // request skip waiting and mark that we initiated an update
-            try {
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-              updateInitiatedRef.current = true
-            } catch (e) {}
-          }
-        }
       } catch (e) {
         // ignore
       }
@@ -98,9 +107,33 @@ export function usePWAUpdate() {
 
     window.addEventListener('online', onOnline)
 
+    // listen for update requests from other tabs so we can reflect update state
+    const onStorage = (ev: StorageEvent) => {
+      if (!ev.key) return
+      if (ev.key === 'sw:update:requested') {
+        // another tab asked to update; re-check registration so we update UI
+        (async () => {
+          try {
+            const reg = await navigator.serviceWorker.getRegistration()
+            if (reg && reg.waiting) {
+              setWaitingWorker(reg.waiting)
+              setIsUpdateAvailable(true)
+            }
+          } catch (e) {}
+        })()
+      }
+      if (ev.key === 'sw:update:applied') {
+        // ensure UI state clears in case a different tab applied update
+        setIsUpdateAvailable(false)
+        setWaitingWorker(null)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
       window.removeEventListener('online', onOnline)
+      window.removeEventListener('storage', onStorage)
     }
   }, [autoUpdate])
 
@@ -111,6 +144,7 @@ export function usePWAUpdate() {
         try {
           reg.waiting.postMessage({ type: 'SKIP_WAITING' })
           updateInitiatedRef.current = true
+          try { localStorage.setItem('sw:update:requested', Date.now().toString()) } catch (e) {}
         } catch (e) {}
       }
     } catch (e) {

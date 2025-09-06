@@ -34,6 +34,22 @@ export function AboutSettings() {
     window.open('https://github.com/Shubhamnpk/mywallet', '_blank')
   }
 
+  const handleFeaturesGuide = () => {
+    window.open('https://github.com/Shubhamnpk/mywallet#readme', '_blank')
+  }
+
+  const handleHelpSupport = () => {
+    window.open('https://github.com/Shubhamnpk/mywallet/issues', '_blank')
+  }
+
+  const handlePrivacyPolicy = () => {
+    window.open('https://github.com/Shubhamnpk/mywallet/blob/main/PRIVACY.md', '_blank')
+  }
+
+  const handleTermsOfService = () => {
+    window.open('https://github.com/Shubhamnpk/mywallet/blob/main/TERMS.md', '_blank')
+  }
+
   // Helper to clear caches and unregister service workers
   async function clearAllCachesAndData() {
     // Only delete caches that are app/service-worker related to avoid removing user data
@@ -86,7 +102,7 @@ export function AboutSettings() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Build</span>
-            <span className="text-sm text-muted-foreground">2025.10.02</span>
+            <span className="text-sm text-muted-foreground">2025.9.06</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Platform</span>
@@ -143,7 +159,11 @@ export function AboutSettings() {
                   </>
                 )}
               </Button>
-
+              <div className="mt-2">
+              <Button onClick={handleClearCaches} variant="ghost" className="w-full" disabled={clearingCache}>
+                {clearingCache ? 'Clearing caches...' : 'Clear caches'}
+              </Button>
+            </div>
               {isUpdateAvailable && (
                 <div className="flex gap-2">
                   <Button onClick={applyUpdate} className="flex-1">
@@ -170,28 +190,28 @@ export function AboutSettings() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleFeaturesGuide}>
               <div className="text-left">
                 <div className="font-medium">Features Guide</div>
                 <div className="text-sm text-muted-foreground">Explore all app features</div>
               </div>
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleHelpSupport}>
               <div className="text-left">
                 <div className="font-medium">Help & Support</div>
                 <div className="text-sm text-muted-foreground">Get help and support</div>
               </div>
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handlePrivacyPolicy}>
               <div className="text-left">
                 <div className="font-medium">Privacy Policy</div>
                 <div className="text-sm text-muted-foreground">How we protect your data</div>
               </div>
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleTermsOfService}>
               <div className="text-left">
                 <div className="font-medium">Terms of Service</div>
                 <div className="text-sm text-muted-foreground">Our terms and conditions</div>
@@ -288,11 +308,6 @@ export function AboutSettings() {
               View on GitHub
               <ExternalLink className="w-4 h-4 ml-2" />
             </Button>
-            <div className="mt-2">
-              <Button onClick={handleClearCaches} variant="ghost" className="w-full" disabled={clearingCache}>
-                {clearingCache ? 'Clearing caches...' : 'Clear caches'}
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>

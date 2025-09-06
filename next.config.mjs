@@ -1,6 +1,12 @@
 import withPWA from 'next-pwa'
 
 const runtimeCaching = [
+  // Ensure the start URL is network-first so users get the latest app shell when online
+  {
+    urlPattern: /^\/$/,
+    handler: 'NetworkFirst',
+    options: { cacheName: 'start-url', networkTimeoutSeconds: 10 }
+  },
   {
     urlPattern: /^https?:.*\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
     handler: 'StaleWhileRevalidate',
@@ -27,7 +33,7 @@ const pwa = withPWA({
   dest: 'public',
   disable: process.env.NODE_ENV === 'development',
   register: true,
-  skipWaiting: true,
+  skipWaiting: false,
   fallbacks: { document: '/offline.html', image: '/image.png' },
   // ensure the app shell (start URL) is precached so it can load offline
   additionalManifestEntries: [

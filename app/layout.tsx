@@ -10,6 +10,8 @@ import { SessionGuard } from "@/components/security/session-guard"
 import { SessionDebug } from "@/components/security/session-debug"
 import RegisterSW from '@/components/pwa/register-sw'
 import InstallButton from '@/components/pwa/install-button'
+import UpdateNotification from '@/components/pwa/update-notification'
+import UpdateSuccess from '@/components/pwa/update-success'
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -35,9 +37,10 @@ export default function RootLayout({
         <meta name="msapplication-TileImage" content="/image.png" />
         <meta name="msapplication-TileColor" content="#000000" />
       </head>
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+  <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
   <RegisterSW />
-  <InstallButton />
+  <UpdateNotification />
+  <UpdateSuccess />
   <ThemeProviderWrapper>
           <PrivacyModeProvider>
             <WalletDataProvider>

@@ -4,7 +4,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Enhanced light theme colors for better contrast and accessibility */
   --background: oklch(1 0 0);
   --foreground: oklch(0.15 0.01 258.34);
   --card: oklch(0.98 0.002 258.34);
@@ -42,7 +41,6 @@
 }
 
 .dark {
-  /* Enhanced dark theme colors for better contrast and readability */
   --background: oklch(0.08 0.005 258.34);
   --foreground: oklch(0.95 0.005 258.34);
   --card: oklch(0.12 0.005 258.34);
