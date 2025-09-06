@@ -119,7 +119,15 @@ export function useWalletData() {
 
       if (parsedData.transactions.length > 0) {
         setTransactions(parsedData.transactions)
-        setBalance(calculateBalance(parsedData.transactions))
+        // Calculate balance based on actual cash flow (not including debt amounts)
+        const actualBalance = parsedData.transactions.reduce((sum: number, tx: Transaction) => {
+          if (tx.type === "income") {
+            return sum + (tx.actual ?? tx.amount)
+          } else {
+            return sum - (tx.actual ?? tx.amount)
+          }
+        }, 0)
+        setBalance(actualBalance)
       }
 
       setBudgets(parsedData.budgets)
@@ -145,17 +153,10 @@ export function useWalletData() {
       }
 
       setIsLoaded(true)
-      console.log('[HYDRATION] Wallet data loaded:', {
-        userProfile: !!parsedData.userProfile,
-        transactionsCount: parsedData.transactions.length,
-        budgetsCount: parsedData.budgets.length,
-        goalsCount: parsedData.goals.length
-      })
     } catch (error) {
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
-      console.log('[HYDRATION] Error loading wallet data:', error)
     }
   }
 
@@ -175,157 +176,83 @@ export function useWalletData() {
   }
 
   const addTransaction = async (transaction: Omit<Transaction, "id" | "timeEquivalent">) => {
-    const newTransactionAmount = transaction.type === "income" ? transaction.amount : -transaction.amount
-    const newBalance = balance + newTransactionAmount
-
-    setBalanceChange({
-      amount: transaction.amount,
-      type: transaction.type,
-    })
-
-    setTimeout(() => {
-      setBalanceChange(null)
-    }, 2000)
-
-    const relevantBudgets = budgets.filter((budget) => budget.categories.includes(transaction.category))
-
-    let budgetWarnings: any[] = []
-    let debtAmount = 0
-    let useCredit = false
-
-    if (transaction.type === "expense") {
-      if (newBalance < 0) {
-        const deficit = Math.abs(newBalance)
-        const hasDebtAllowedBudget = relevantBudgets.some((budget) => budget.allowDebt)
-        const availableCredit = creditAccounts.reduce(
-          (total, account) => total + (account.creditLimit - account.balance),
-          0,
-        )
-
-        const totalAvailable = emergencyFund + availableCredit
-
-        if (!hasDebtAllowedBudget && totalAvailable < deficit) {
-    const errorMessage = `Insufficient funds. Need ${userProfile?.currency || "$"}${deficit.toFixed(2)} but only have ${userProfile?.currency || "$"}${totalAvailable.toFixed(2)} available (Emergency: ${userProfile?.currency || "$"}${emergencyFund.toFixed(2)}, Credit: ${userProfile?.currency || "$"}${availableCredit.toFixed(2)})`
-          throw new Error(errorMessage)
-        }
-
-        debtAmount = deficit
-
-        if (emergencyFund >= deficit) {
-        } else if (emergencyFund > 0) {
-          useCredit = true
-        } else {
-          useCredit = true
-        }
+    // Only handle expense transactions for now - income transactions are always normal
+    if (transaction.type === "income") {
+      const newTransaction: Transaction = {
+        ...transaction,
+        id: generateId('tx'),
+        timeEquivalent: userProfile ? calculateTimeEquivalent(transaction.amount, userProfile) : undefined,
+        total: transaction.amount,
+        actual: transaction.amount,
+        debtUsed: 0,
+        debtAccountId: null,
+        status: "normal",
       }
 
-      for (const budget of relevantBudgets) {
-        const newSpent = budget.spent + transaction.amount
-        if (newSpent > budget.limit) {
-          const excess = newSpent - budget.limit
-          if (budget.emergencyUses > 0) {
-            budgetWarnings.push({
-              budget: budget.category,
-              message: `Budget exceeded by ${userProfile?.currency || "$"}${excess.toFixed(2)}. Using emergency override.`,
-              type: "emergency",
-            })
-          } else if (budget.allowDebt && budget.debtLimit && excess <= budget.debtLimit) {
-            const existingDebt = debtAccounts.find((d) => d.name.includes(budget.category))
-            if (!existingDebt) {
-              const newDebtAccount = addDebtAccount({
-                name: `${budget.category} Debt`,
-                balance: excess,
-                interestRate: 18.0,
-                minimumPayment: Math.max(25, excess * 0.02),
-                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                createdAt: new Date().toISOString(),
-              })
-              budgetWarnings.push({
-                budget: budget.category,
-                message: `Created debt account for ${userProfile?.currency || "$"}${excess.toFixed(2)} excess spending.`,
-                type: "debt_created",
-              })
-            }
-            budgetWarnings.push({
-              budget: budget.category,
-              message: `Budget exceeded. Adding ${userProfile?.currency || "$"}${excess.toFixed(2)} to debt.`,
-              type: "debt",
-            })
-          } else {
-            const errorMessage = `Transaction exceeds budget limit for ${budget.category} and no emergency uses or debt allowance available.`
-            throw new Error(errorMessage)
-          }
-        }
+      const updatedTransactions = [...transactions, newTransaction]
+      setTransactions(updatedTransactions)
+      setBalance(balance + transaction.amount)
+      await saveDataWithIntegrity("transactions", updatedTransactions)
+
+      return {
+        transaction: newTransaction,
+        budgetWarnings: [],
+        needsDebtCreation: false,
+        debtAmount: 0
       }
     }
 
-    const newTransaction: Transaction = {
-      ...transaction,
-      id: generateId('tx'),
-      timeEquivalent:
-        transaction.type === "expense" && userProfile
-          ? calculateTimeEquivalent(transaction.amount, userProfile)
-          : undefined,
-    }
+    // Handle expense transactions
+    const transactionAmount = transaction.amount
 
-    const updatedTransactions = [...transactions, newTransaction]
+    // Check if balance is sufficient
+    if (balance >= transactionAmount) {
+      // Normal transaction - fully paid from balance
+      const newTransaction: Transaction = {
+        ...transaction,
+        id: generateId('tx'),
+        timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
+        total: transactionAmount,
+        actual: transactionAmount,
+        debtUsed: 0,
+        debtAccountId: null,
+        status: "normal",
+      }
 
-    setTransactions(updatedTransactions)
-    setBalance(newBalance)
-    await saveDataWithIntegrity("transactions", updatedTransactions)
+      const updatedTransactions = [...transactions, newTransaction]
+      setTransactions(updatedTransactions)
+      setBalance(balance - transactionAmount)
+      await saveDataWithIntegrity("transactions", updatedTransactions)
 
-    console.log("[v0] Updated balance immediately to:", newBalance)
+      // Handle budget spending
+      if (newTransaction.category) {
+        const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
+      }
 
-    if (debtAmount > 0) {
-      if (useCredit) {
-        let remainingDebt = debtAmount
-        if (emergencyFund > 0) {
-          const emergencyUse = Math.min(emergencyFund, remainingDebt)
-          const newEmergencyFund = emergencyFund - emergencyUse
-          setEmergencyFund(newEmergencyFund)
-          saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
-          remainingDebt -= emergencyUse
+      if (newTransaction.allocationType === "goal" && newTransaction.allocationTarget) {
+        updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
+      }
 
-            if (emergencyUse > 0) {
-            budgetWarnings.push({
-              message: `Used ${userProfile?.currency || "$"}${emergencyUse.toFixed(2)} from emergency fund.`,
-              type: "emergency_fund",
-            })
-          }
-        }
-        if (remainingDebt > 0) {
-          const availableCredit = creditAccounts.find(
-            (account) => account.creditLimit - account.balance >= remainingDebt,
-          )
-          if (availableCredit) {
-            updateCreditBalance(availableCredit.id, availableCredit.balance + remainingDebt)
-            budgetWarnings.push({
-              message: `Used ${userProfile?.currency || "$"}${remainingDebt.toFixed(2)} from credit account: ${availableCredit.name}`,
-              type: "credit_used",
-            })
-          }
-        }
-      } else if (emergencyFund >= debtAmount) {
-  const newEmergencyFund = emergencyFund - debtAmount
-  setEmergencyFund(newEmergencyFund)
-  saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
-        budgetWarnings.push({
-          message: `Used ${userProfile?.currency || "$"}${debtAmount.toFixed(2)} from emergency fund.`,
-          type: "emergency_fund",
-        })
+      return {
+        transaction: newTransaction,
+        budgetWarnings: [],
+        needsDebtCreation: false,
+        debtAmount: 0
+      }
+    } else {
+      // Insufficient balance - don't record transaction yet
+      const availableBalance = balance
+      const debtNeeded = transactionAmount - availableBalance
+
+      return {
+        transaction: null,
+        budgetWarnings: [],
+        needsDebtCreation: true,
+        debtAmount: debtNeeded,
+        availableBalance,
+        pendingTransaction: transaction
       }
     }
-
-    if (newTransaction.type === "expense" && newTransaction.category) {
-      const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
-      budgetWarnings = [...budgetWarnings, ...budgetResults]
-    }
-
-    if (newTransaction.allocationType === "goal" && newTransaction.allocationTarget) {
-      updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
-    }
-
-    return { transaction: newTransaction, budgetWarnings }
   }
 
   const updateBudgetSpending = (category: string, amount: number) => {
@@ -380,17 +307,27 @@ export function useWalletData() {
       allocationType: "goal",
       allocationTarget: goalId,
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: amount,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
     }
 
     const updatedTransactions = [...transactions, transferTransaction]
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
-    setBalance(calculateBalance(updatedTransactions))
+    // Calculate balance based on actual cash flow
+    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
+      if (tx.type === "income") {
+        return sum + (tx.actual ?? tx.amount)
+      } else {
+        return sum - (tx.actual ?? tx.amount)
+      }
+    }, 0)
+    setBalance(newBalance)
 
     updateGoalContribution(goalId, amount)
-
-    console.log("[v0] Goal transfer completed successfully")
-
     return {
       success: true,
       transaction: transferTransaction,
@@ -421,6 +358,55 @@ export function useWalletData() {
     setDebtAccounts(updatedDebts)
     saveToLocalStorage("debtAccounts", updatedDebts)
     return newDebt
+  }
+
+  const createDebtForTransaction = async (debtAmount: number, transactionDescription: string) => {
+    // This will be called from the UI after user provides debt details
+    // For now, return the debt amount so the UI can handle the dialog
+    return { debtAmount, transactionDescription }
+  }
+
+  const completeTransactionWithDebt = async (
+    pendingTransaction: Omit<Transaction, "id" | "timeEquivalent">,
+    debtAccountName: string,
+    debtAccountId: string,
+    availableBalance: number,
+    debtAmount: number
+  ) => {
+    // Deduct available balance to 0
+    const newBalance = balance - availableBalance
+    setBalance(newBalance)
+
+    // Create debt transaction record
+    const newTransaction: Transaction = {
+      ...pendingTransaction,
+      id: generateId('tx'),
+      timeEquivalent: userProfile ? calculateTimeEquivalent(pendingTransaction.amount, userProfile) : undefined,
+      total: pendingTransaction.amount,
+      actual: availableBalance,
+      debtUsed: debtAmount,
+      debtAccountId: debtAccountId,
+      status: "debt",
+    }
+
+    const updatedTransactions = [...transactions, newTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    // Handle budget spending
+    if (newTransaction.category) {
+      const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
+    }
+
+    if (newTransaction.allocationType === "goal" && newTransaction.allocationTarget) {
+      updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
+    }
+
+    return {
+      transaction: newTransaction,
+      newBalance,
+      debtAccountId
+    }
   }
 
   const addCreditAccount = (credit: Omit<CreditAccount, "id">) => {
@@ -479,12 +465,25 @@ export function useWalletData() {
       category: "Debt Payment",
       date: new Date().toISOString(),
       timeEquivalent: userProfile ? calculateTimeEquivalent(paymentAmount, userProfile) : undefined,
+      total: paymentAmount,
+      actual: paymentAmount,
+      debtUsed: 0,
+      debtAccountId: debtId,
+      status: "repayment",
     }
 
     const updatedTransactions = [...transactions, paymentTransaction]
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
-    setBalance(calculateBalance(updatedTransactions))
+    // Calculate balance based on actual cash flow
+    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
+      if (tx.type === "income") {
+        return sum + (tx.actual ?? tx.amount)
+      } else {
+        return sum - (tx.actual ?? tx.amount)
+      }
+    }, 0)
+    setBalance(newBalance)
 
   const updatedDebts = debtAccounts.map((d) => {
       if (d.id === debtId) {
@@ -590,7 +589,27 @@ export function useWalletData() {
     const updatedTransactions = transactions.filter((transaction) => transaction.id !== id)
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
-    setBalance(calculateBalance(updatedTransactions))
+    // Calculate balance based on actual cash flow
+    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
+      if (tx.type === "income") {
+        return sum + (tx.actual ?? tx.amount)
+      } else {
+        return sum - (tx.actual ?? tx.amount)
+      }
+    }, 0)
+    setBalance(newBalance)
+  }
+
+  const deleteDebtAccount = async (id: string) => {
+    const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
+    setDebtAccounts(updatedDebtAccounts)
+    await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
+  }
+
+  const deleteCreditAccount = async (id: string) => {
+    const updatedCreditAccounts = creditAccounts.filter((credit) => credit.id !== id)
+    setCreditAccounts(updatedCreditAccounts)
+    await saveDataWithIntegrity("creditAccounts", updatedCreditAccounts)
   }
 
   const clearAllData = async () => {
@@ -690,7 +709,15 @@ export function useWalletData() {
         console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
         await saveDataWithIntegrity("transactions", data.transactions)
-        setBalance(calculateBalance(data.transactions))
+        // Calculate balance based on actual cash flow
+        const actualBalance = data.transactions.reduce((sum: number, tx: Transaction) => {
+          if (tx.type === "income") {
+            return sum + (tx.actual ?? tx.amount)
+          } else {
+            return sum - (tx.actual ?? tx.amount)
+          }
+        }, 0)
+        setBalance(actualBalance)
       }
 
       // Import other data
@@ -772,7 +799,15 @@ export function useWalletData() {
       if (savedTransactions) {
         const parsedTransactions = JSON.parse(savedTransactions)
         setTransactions(parsedTransactions)
-        setBalance(calculateBalance(parsedTransactions))
+        // Calculate balance based on actual cash flow
+        const actualBalance = parsedTransactions.reduce((sum: number, tx: Transaction) => {
+          if (tx.type === "income") {
+            return sum + (tx.actual ?? tx.amount)
+          } else {
+            return sum - (tx.actual ?? tx.amount)
+          }
+        }, 0)
+        setBalance(actualBalance)
       }
 
       if (savedCategories) {
@@ -815,6 +850,11 @@ export function useWalletData() {
       allocationType: "goal",
       allocationTarget: goalId,
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: amount,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
     }
 
     const updatedGoals = goals.map((g) => {
@@ -919,12 +959,16 @@ export function useWalletData() {
     deleteTransaction,
     addDebtAccount,
     addCreditAccount,
+    deleteDebtAccount,
+    deleteCreditAccount,
     addToEmergencyFund,
     updateGoalContribution,
     transferToGoal,
     spendFromGoal,
     makeDebtPayment,
     updateCreditBalance,
+    createDebtForTransaction,
+    completeTransactionWithDebt,
     refreshData,
     clearAllData,
     exportData,

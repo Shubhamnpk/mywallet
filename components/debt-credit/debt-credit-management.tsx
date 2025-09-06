@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
@@ -19,7 +19,7 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
-  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, makeDebtPayment, balance } = useWalletData()
+  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance } = useWalletData()
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -210,7 +210,17 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold">{debt.name}</h4>
+                          <div className="flex items-center gap-2">
                             <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}</Badge>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => deleteDebtAccount(debt.id)}
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
@@ -266,11 +276,21 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="font-semibold">{credit.name}</h4>
-                            <Badge
-                              variant={utilization > 70 ? "destructive" : utilization > 30 ? "secondary" : "default"}
-                            >
-                              {utilization.toFixed(1)}% used
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={utilization > 70 ? "destructive" : utilization > 30 ? "secondary" : "default"}
+                              >
+                                {utilization.toFixed(1)}% used
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteCreditAccount(credit.id)}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="mb-3">

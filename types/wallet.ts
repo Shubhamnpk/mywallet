@@ -22,7 +22,7 @@ export interface UserProfile {
 export interface Transaction {
   id: string
   type: "income" | "expense"
-  amount: number
+  amount: number // This will be the Total amount (real-world cost)
   description: string
   category: string
   date: string
@@ -35,6 +35,12 @@ export interface Transaction {
   allocationType?: "direct" | "goal" | "budget"
   allocationTarget?: string // ID of goal or budget
   subcategory?: string // For budget subcategories
+  // Enhanced debt transaction fields
+  total: number // Real-world cost (including borrowed amounts)
+  actual: number // What was paid from balance immediately
+  debtUsed: number // How much was borrowed to complete the transaction
+  debtAccountId?: string | null // ID of debt account used (null if no debt)
+  status: "normal" | "debt" | "repayment" // Transaction status
 }
 
 export interface Budget {

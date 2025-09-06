@@ -223,27 +223,51 @@ export function TransactionsList({
                         <Badge variant="secondary" className="text-xs">
                           {transaction.category}
                         </Badge>
+                        {transaction.status === "debt" && (
+                          <Badge variant="outline" className="text-xs border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400">
+                            Debt
+                          </Badge>
+                        )}
+                        {transaction.status === "repayment" && (
+                          <Badge variant="outline" className="text-xs border-green-300 text-green-700 dark:border-green-600 dark:text-green-400">
+                            Repayment
+                          </Badge>
+                        )}
                         {!isMobile && <><span>•</span><span>{new Date(transaction.date).toLocaleDateString()}</span></>}
                       </div>
                     </div>
                   </div>
 
                   <div className={`text-right ${isMobile ? 'flex flex-col items-end' : ''}`}>
-                    <p
-                      className={`font-semibold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}
-                    >
-                      {transaction.type === "income" ? "+" : "-"}
-                      {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
-                    </p>
+                    <div className="flex flex-col items-end gap-1">
+                      <p
+                        className={`font-semibold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}
+                       {formatCurrency(transaction.total ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}                      </p>
 
-                    {transaction.type === "expense" && (
-                      <TimeTooltip amount={transaction.amount}>
-                        <div className="flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
-                          <Clock className="w-4 h-4" />
-                          <span>{getTimeEquivalentDisplay(transaction.amount)} work</span>
+                      {(transaction.status === "debt" || transaction.debtUsed > 0 || transaction.debtAccountId) && (
+                        <div className="text-xs text-muted-foreground">
+                          <div>Cash: {formatCurrency(transaction.actual ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}</div>
+                          <div className="text-orange-600">Debt: {formatCurrency(transaction.debtUsed ?? 0, userProfile.currency, userProfile.customCurrency)}</div>
                         </div>
-                      </TimeTooltip>
-                    )}
+                      )}
+
+                      {transaction.status === "repayment" && (
+                        <div className="text-xs text-green-600">
+                          Debt Repayment
+                        </div>
+                      )}
+
+                      {transaction.type === "expense" && transaction.status === "normal" && (
+                        <TimeTooltip amount={transaction.actual ?? transaction.amount}>
+                          <div className="flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
+                            <Clock className="w-4 h-4" />
+                            <span>{getTimeEquivalentDisplay(transaction.actual ?? transaction.amount)} work</span>
+                          </div>
+                        </TimeTooltip>
+                      )}
+                    </div>
                     {isMobile && <span className="text-sm text-muted-foreground">{new Date(transaction.date).toLocaleDateString()}</span>}
                   </div>
                 </li>

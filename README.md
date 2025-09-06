@@ -1,6 +1,6 @@
 # MyWallet App
 
-![MyWallet Logo](public/mywallet.png)
+![MyWallet Logo](public/image.png)
 
 A comprehensive, secure, and user-friendly personal finance management application built with modern web technologies. Take control of your financial future with intuitive budgeting, goal tracking, and insightful analytics.
 

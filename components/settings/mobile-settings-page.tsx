@@ -238,11 +238,11 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
           )}
         </div>
         {/* User Profile */}
-        <div className="flex items-center p-4 mb-4 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
+        <div className="flex items-center p-4 mb-1 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
              onClick={() => setCurrentView("profile")}>
           <div className="flex-1">
             <div className="font-medium text-lg text-gray-900 dark:text-white mb-1">
-              {userProfile?.name || "Unnamed User"}
+              {userProfile?.name || "Mr/Ms lovely user"}
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {getCurrentCurrencySymbol()} • myWallet lovelyUser
@@ -418,7 +418,7 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
   }
 
   return (
-    <div className="mb-4">
+    <div className="mb-1">
       <div
         ref={scrollRef}
         className="flex overflow-x-auto hide-scrollbars snap-x snap-mandatory"

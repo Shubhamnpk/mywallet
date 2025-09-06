@@ -30,6 +30,13 @@ interface FormData {
   receiptImage?: string
 }
 
+interface DebtFormData {
+  name: string
+  minimumPayment: string
+  interestRate: string
+  startDate: string
+}
+
 interface UnifiedTransactionDialogProps {
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
@@ -55,7 +62,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, balance, completeTransactionWithDebt } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -79,11 +86,21 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     receiptImage: { touched: !!initialReceiptImage, blurred: false },
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitAttempted, setSubmitAttempted] = useState(false)
-  const [showAddCategory, setShowAddCategory] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState("")
-  const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
-  const amountInputRef = useRef<HTMLInputElement>(null)
+   const [submitAttempted, setSubmitAttempted] = useState(false)
+   const [showAddCategory, setShowAddCategory] = useState(false)
+   const [newCategoryName, setNewCategoryName] = useState("")
+   const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
+   const [showDebtDialog, setShowDebtDialog] = useState(false)
+   const [debtFormData, setDebtFormData] = useState<DebtFormData>({
+     name: "",
+     minimumPayment: "",
+     interestRate: "",
+     startDate: new Date().toISOString().split('T')[0]
+   })
+   const [pendingTransactionResult, setPendingTransactionResult] = useState<any>(null)
+   const [pendingTransaction, setPendingTransaction] = useState<any>(null)
+   const [showDebtMoreOptions, setShowDebtMoreOptions] = useState(false)
+   const amountInputRef = useRef<HTMLInputElement>(null)
 
   const currencySymbol = useMemo(() => {
     return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
@@ -265,6 +282,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
     setNewCategoryName("")
     setNewCategoryIcon("📦")
+    setShowDebtMoreOptions(false)
+    setPendingTransactionResult(null)
+    setPendingTransaction(null)
   }, [initialAmount, initialDescription, initialType, initialCategory])
 
   const handleOpenChange = useCallback(
@@ -308,29 +328,43 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           date: new Date().toISOString(),
           allocationType: formData.allocationType,
           allocationTarget: formData.allocationTarget || undefined,
+          total: numAmount,
+          actual: numAmount,
+          debtUsed: 0,
+          debtAccountId: null,
+          status: "normal",
         })
 
-        if (result.budgetWarnings && result.budgetWarnings.length > 0) {
-          result.budgetWarnings.forEach((warning: any) => {
-            toast.warning(warning.message, {
-              description: warning.details || "Please review your budget allocation."
-            })
-          })
-          // Play budget warning sound
-          playSound("budget-warning")
+        if (result.needsDebtCreation) {
+          // Show debt creation dialog
+          setPendingTransactionResult(result)
+          setPendingTransaction(result.pendingTransaction)
+          setShowDebtDialog(true)
+          setIsSubmitting(false)
+          return
         }
 
-        toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
-          description: `${currencySymbol}${numAmount} added to ${formData.category}`,
-          duration: 3000,
-        })
+        if (result.budgetWarnings && result.budgetWarnings.length > 0) {
+           result.budgetWarnings.forEach((warning: any) => {
+             toast.warning(warning.message, {
+               description: warning.details || "Please review your budget allocation."
+             })
+           })
+           // Play budget warning sound
+           playSound("budget-warning")
+         }
 
-        playSound("transaction-success")
+         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
+           description: `${currencySymbol}${numAmount} added to ${formData.category}`,
+           duration: 3000,
+         })
 
-        setTimeout(() => {
-          resetForm()
-          handleOpenChange(false)
-        }, 1000)
+         playSound("transaction-success")
+
+         setTimeout(() => {
+           resetForm()
+           handleOpenChange(false)
+         }, 1000)
       } catch (error) {
         toast.error("Failed to add transaction", {
           description: error instanceof Error ? error.message : "Please try again."
@@ -433,6 +467,64 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       description: `${newCategory.name} has been added to your ${type} categories.`
     })
   }, [newCategoryName, addCategory, categories, type])
+
+  const handleCreateDebt = useCallback(async () => {
+    if (!debtFormData.name.trim() || !pendingTransactionResult || !pendingTransaction) return
+
+    try {
+      const debtAmount = pendingTransactionResult.debtAmount
+      const availableBalance = pendingTransactionResult.availableBalance
+      const minimumPayment = debtFormData.minimumPayment ? Number.parseFloat(debtFormData.minimumPayment) : 0
+      const interestRate = debtFormData.interestRate ? Number.parseFloat(debtFormData.interestRate) : 0
+
+      // Create debt account
+      const newDebt = addDebtAccount({
+        name: debtFormData.name.trim(),
+        balance: debtAmount,
+        interestRate: interestRate,
+        minimumPayment: minimumPayment,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      })
+
+      // Complete the transaction with debt
+      await completeTransactionWithDebt(
+        pendingTransaction,
+        debtFormData.name.trim(),
+        newDebt.id,
+        availableBalance,
+        debtAmount
+      )
+
+      toast.success("Transaction completed with debt!", {
+        description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
+        duration: 3000,
+      })
+
+      playSound("transaction-success")
+
+      // Reset forms and close dialogs
+      setShowDebtDialog(false)
+      setPendingTransactionResult(null)
+      setPendingTransaction(null)
+      setDebtFormData({
+        name: "",
+        minimumPayment: "",
+        interestRate: "",
+        startDate: new Date().toISOString().split('T')[0]
+      })
+
+      setTimeout(() => {
+        resetForm()
+        handleOpenChange(false)
+      }, 1000)
+    } catch (error) {
+      toast.error("Failed to create debt account", {
+        description: error instanceof Error ? error.message : "Please try again."
+      })
+      playSound("transaction-failed")
+    }
+  }, [debtFormData, pendingTransactionResult, pendingTransaction, addDebtAccount, completeTransactionWithDebt, currencySymbol, playSound, resetForm, handleOpenChange])
 
   // Smart placeholder text
   const getDescriptionPlaceholder = useCallback(() => {
@@ -899,6 +991,131 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt Creation Dialog */}
+      <Dialog open={showDebtDialog} onOpenChange={setShowDebtDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Debt Account</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+              <p className="text-sm text-orange-700 dark:text-orange-300">
+                Transaction amount: {currencySymbol}{pendingTransaction?.amount?.toFixed(2)}
+                <br />
+                Available balance: {currencySymbol}{pendingTransactionResult?.availableBalance?.toFixed(2)}
+                <br />
+                Amount to record as debt: {currencySymbol}{pendingTransactionResult?.debtAmount?.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="debt-name" className="text-sm font-medium">
+                  Debt Name <span className="text-orange-500">*</span>
+                </Label>
+                <Input
+                  id="debt-name"
+                  value={debtFormData.name}
+                  onChange={(e) => setDebtFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Credit Card, Loan, etc."
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDebtMoreOptions(!showDebtMoreOptions)}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {showDebtMoreOptions ? "Hide" : "Show"} Additional Options
+                </Button>
+              </div>
+
+              {showDebtMoreOptions && (
+                <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                  <div>
+                    <Label htmlFor="debt-minimum-payment" className="text-sm font-medium">
+                      Minimum Payment ({currencySymbol})
+                    </Label>
+                    <Input
+                      id="debt-minimum-payment"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={debtFormData.minimumPayment}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, minimumPayment: e.target.value }))}
+                      placeholder="0.00"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="debt-interest-rate" className="text-sm font-medium">
+                      Interest Rate (%)
+                    </Label>
+                    <Input
+                      id="debt-interest-rate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={debtFormData.interestRate}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, interestRate: e.target.value }))}
+                      placeholder="0.00"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="debt-start-date" className="text-sm font-medium">
+                      Start Date
+                    </Label>
+                    <Input
+                      id="debt-start-date"
+                      type="date"
+                      value={debtFormData.startDate}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowDebtDialog(false)
+                  setPendingTransactionResult(null)
+                  setDebtFormData({
+                    name: "",
+                    minimumPayment: "",
+                    interestRate: "",
+                    startDate: new Date().toISOString().split('T')[0]
+                  })
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleCreateDebt}
+                disabled={!debtFormData.name.trim()}
+                className="flex-1"
+              >
+                Create Debt
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </TooltipProvider>

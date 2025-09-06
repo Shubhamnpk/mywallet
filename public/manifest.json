@@ -29,7 +29,24 @@
     }
   ],
   "categories": ["finance", "productivity", "utilities"],
+  "version": "0.5.0",
   "lang": "en",
   "dir": "ltr",
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Add Transaction",
+      "short_name": "Add",
+      "description": "Quickly add a new transaction",
+      "url": "/",
+      "icons": [{ "src": "/image.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "View Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your financial dashboard",
+      "url": "/",
+      "icons": [{ "src": "/image.png", "sizes": "192x192" }]
+    }
+  ]
 }
