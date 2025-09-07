@@ -170,9 +170,7 @@ export function TransactionDetailsModal({
               </div>
             )}
           </div>
-
           <Separator />
-
           {/* Actions */}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} className="flex-1 bg-transparent">

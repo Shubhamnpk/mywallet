@@ -44,7 +44,6 @@ export function useWalletData() {
   }, [isLoaded])
 
   // Hoisted function so it can be used during initial load before
-  // other const declarations are evaluated.
   async function saveDataWithIntegrity(key: string, data: any) {
     try {
       await saveToLocalStorage(key, data)
@@ -142,7 +141,7 @@ export function useWalletData() {
       } else {
         // Only create default categories if this is NOT a fresh start after clearing
         const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
-                          parsedData.budgets.length > 0 || parsedData.goals.length > 0
+         parsedData.budgets.length > 0 || parsedData.goals.length > 0
         if (hasAnyData) {
           const defaultCategories = initializeDefaultCategories()
           setCategories(defaultCategories)
@@ -176,7 +175,6 @@ export function useWalletData() {
   }
 
   const addTransaction = async (transaction: Omit<Transaction, "id" | "timeEquivalent">) => {
-    // Only handle expense transactions for now - income transactions are always normal
     if (transaction.type === "income") {
       const newTransaction: Transaction = {
         ...transaction,
@@ -207,7 +205,6 @@ export function useWalletData() {
 
     // Check if balance is sufficient
     if (balance >= transactionAmount) {
-      // Normal transaction - fully paid from balance
       const newTransaction: Transaction = {
         ...transaction,
         id: generateId('tx'),
@@ -240,7 +237,6 @@ export function useWalletData() {
         debtAmount: 0
       }
     } else {
-      // Insufficient balance - don't record transaction yet
       const availableBalance = balance
       const debtNeeded = transactionAmount - availableBalance
 
@@ -344,7 +340,6 @@ export function useWalletData() {
   }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
-
   const addDebtAccount = (debt: Omit<DebtAccount, "id">) => {
     const newDebt: DebtAccount = {
       ...debt,
@@ -361,8 +356,6 @@ export function useWalletData() {
   }
 
   const createDebtForTransaction = async (debtAmount: number, transactionDescription: string) => {
-    // This will be called from the UI after user provides debt details
-    // For now, return the debt amount so the UI can handle the dialog
     return { debtAmount, transactionDescription }
   }
 
