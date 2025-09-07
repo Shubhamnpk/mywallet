@@ -222,8 +222,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
         window.location.href = `mailto:${beautified.email}`
         break
       case 'phone':
-        window.location.href = `tel:${beautified.phone}`
-        break
+        window.location.href = `tel:${beautified.phone || beautified.number || beautified.tel}`        
       case 'wifi':
         copyToClipboard(`WiFi Network: ${beautified.ssid}\nPassword: ${beautified.password || 'No password'}`)
         break
@@ -365,7 +364,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       <span className="sm:hidden">Switch</span>
                     </Button>
                     <Button
-                      onClick={onToggleFlashlight}
+                      onClick={() => onToggleFlashlight?.()}
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
@@ -454,8 +453,13 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                         <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-400" />
                         <div className="text-sm mb-3">Camera not active</div>
                         <Button
-                          onClick={activeTab === "qr" ? onStartQRScan : onStartCamera}
-                          size="sm"
+                          onClick={() => {
+                            if (activeTab === "qr") {
+                              onStartQRScan?.()
+                            } else {
+                              onStartCamera?.()
+                            }
+                          }}
                           variant="outline"
                           className="text-white border-white hover:bg-white hover:text-black"
                         >

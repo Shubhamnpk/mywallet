@@ -114,17 +114,17 @@ export function MainTabs({
       description: "Save for your dreams",
     },
     {
-      value: "categories",
-      label: "Categories",
-      icon: FolderOpen,
-      description: "Organize your spending",
-    },
-    {
       value: "debt-credit",
       label: "Debt & Credit",
       icon: CreditCard,
       badge: null,
       description: "Manage debts and credit",
+    },
+     {
+      value: "categories",
+      label: "Categories",
+      icon: FolderOpen,
+      description: "Organize your spending",
     },
     {
       value: "insights",

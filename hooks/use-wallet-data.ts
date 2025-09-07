@@ -366,6 +366,38 @@ export function useWalletData() {
     return { debtAmount, transactionDescription }
   }
 
+  const addDebtToAccount = (debtId: string, amount: number, description?: string) => {
+    const debt = debtAccounts.find((d) => d.id === debtId)
+    if (!debt) return { success: false, error: 'Debt account not found' }
+
+    const updatedDebts = debtAccounts.map((d) => {
+      if (d.id === debtId) {
+        return { ...d, balance: d.balance + amount }
+      }
+      return d
+    })
+
+    setDebtAccounts(updatedDebts)
+    saveToLocalStorage('debtAccounts', updatedDebts)
+
+    const debtCharge: DebtCreditTransaction = {
+      id: generateId('debt_tx'),
+      accountId: debtId,
+      accountType: 'debt',
+      type: 'charge',
+      amount,
+      description: description || `Added to ${debt?.name || 'debt'}`,
+      date: new Date().toISOString(),
+      balanceAfter: (debt ? debt.balance : 0) + amount,
+    }
+
+    const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
+    setDebtCreditTransactions(updatedDebtTransactions)
+    saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions)
+
+    return { success: true, transaction: debtCharge }
+  }
+
   const completeTransactionWithDebt = async (
     pendingTransaction: Omit<Transaction, "id" | "timeEquivalent">,
     debtAccountName: string,
@@ -485,7 +517,7 @@ export function useWalletData() {
     }, 0)
     setBalance(newBalance)
 
-  const updatedDebts = debtAccounts.map((d) => {
+    const updatedDebts = debtAccounts.map((d) => {
       if (d.id === debtId) {
         return {
           ...d,
@@ -495,8 +527,11 @@ export function useWalletData() {
       return d
     })
 
-    setDebtAccounts(updatedDebts)
-  saveToLocalStorage("debtAccounts", updatedDebts)
+    // If any debt reaches zero balance, remove it and add a congratulatory record
+    const debtsAfterCleanup = updatedDebts.filter((d) => d.balance > 0)
+
+    setDebtAccounts(debtsAfterCleanup)
+    saveToLocalStorage("debtAccounts", debtsAfterCleanup)
 
     const debtTransaction: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -512,6 +547,24 @@ export function useWalletData() {
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
   setDebtCreditTransactions(updatedDebtTransactions)
   saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions)
+
+    // If balanceAfter is zero, add a congratulatory transaction note and remove account already handled above
+    if (debtTransaction.balanceAfter === 0) {
+      const congrats: DebtCreditTransaction = {
+        id: generateId('debt_tx'),
+        accountId: debtId,
+        accountType: 'debt',
+        type: 'closed',
+        amount: 0,
+        description: `Debt ${debt.name} fully repaid. Congratulations!`,
+        date: new Date().toISOString(),
+        balanceAfter: 0,
+      }
+
+      const withCongrats = [...updatedDebtTransactions, congrats]
+      setDebtCreditTransactions(withCongrats)
+      saveToLocalStorage('debtCreditTransactions', withCongrats)
+    }
 
     return {
       success: true,
@@ -958,6 +1011,7 @@ export function useWalletData() {
     deleteGoal,
     deleteTransaction,
     addDebtAccount,
+  addDebtToAccount,
     addCreditAccount,
     deleteDebtAccount,
     deleteCreditAccount,

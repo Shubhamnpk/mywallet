@@ -62,7 +62,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, balance, completeTransactionWithDebt } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, balance, completeTransactionWithDebt } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -834,8 +834,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                           <SelectItem key={categoryName} value={categoryName}>
                             <div className="flex items-center gap-2">
                               <div
-                                className="w-3 h-3 rounded-full border border-white/20"
-                                style={{ backgroundColor: categoryData?.color || "#3b82f6" }}
+                                className={cn(
+                                  "w-3 h-3 rounded-full border border-white/20",
+                                  categoryData?.color ? `bg-[${categoryData.color}]` : "bg-[#3b82f6]"
+                                )}
                               />
                               <span>{categoryName}</span>
                               {!categoryData?.isDefault && (
@@ -1014,16 +1016,43 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
             <div className="space-y-3">
               <div>
-                <Label htmlFor="debt-name" className="text-sm font-medium">
-                  Debt Name <span className="text-orange-500">*</span>
-                </Label>
-                <Input
-                  id="debt-name"
-                  value={debtFormData.name}
-                  onChange={(e) => setDebtFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g., Credit Card, Loan, etc."
-                  className="mt-1"
-                />
+                <Label className="text-sm font-medium">Use Existing Debt or Create New</Label>
+                <div className="mt-2 space-y-2">
+                  {debtAccounts.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Select existing debt to attach the owed amount</Label>
+                      <div className="grid gap-2">
+                        {debtAccounts.map((d) => (
+                          <Button
+                            key={d.id}
+                            variant={d.id === debtFormData.name ? 'outline' : 'ghost'}
+                            size="sm"
+                            onClick={() => {
+                              setDebtFormData(prev => ({ ...prev, name: d.id }))
+                            }}
+                          >
+                            {d.name} - {currencySymbol}{d.balance.toFixed(2)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No existing debts. You'll create a new one below.</p>
+                  )}
+
+                  <div className="pt-2">
+                    <Label htmlFor="debt-name" className="text-sm font-medium">
+                      New Debt Name <span className="text-orange-500">*</span>
+                    </Label>
+                    <Input
+                      id="debt-name"
+                      value={typeof debtFormData.name === 'string' && debtFormData.name && debtAccounts.some(d => d.id === debtFormData.name) ? '' : debtFormData.name}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="e.g., Credit Card, Loan, etc."
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -1088,7 +1117,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               )}
             </div>
 
-            <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -1108,11 +1137,56 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               </Button>
               <Button
                 type="button"
-                onClick={handleCreateDebt}
-                disabled={!debtFormData.name.trim()}
+                onClick={async () => {
+                  // If debtFormData.name matches an existing debt id, attach to that
+                  const debtAmount = pendingTransactionResult?.debtAmount
+                  const availableBalance = pendingTransactionResult?.availableBalance
+                  if (!pendingTransaction || !pendingTransactionResult) return
+
+                  const existingDebt = debtAccounts.find(d => d.id === debtFormData.name)
+                  if (existingDebt) {
+                    // Add charge to existing debt (if API available). Fallback: create a new debt with same name and attach.
+                    if (typeof addDebtToAccount === 'function') {
+                      await addDebtToAccount(existingDebt.id, debtAmount, `Charge from transaction: ${pendingTransaction.description || pendingTransaction.category}`)
+                      await completeTransactionWithDebt(pendingTransaction, existingDebt.name, existingDebt.id, availableBalance, debtAmount)
+                    } else {
+                      // Fallback: create a new debt account with the same name and attach the debtAmount
+                      const newDebt = addDebtAccount({
+                        name: existingDebt.name + " (from transaction)",
+                        balance: debtAmount,
+                        interestRate: existingDebt.interestRate || 0,
+                        minimumPayment: existingDebt.minimumPayment || 0,
+                        dueDate: existingDebt.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                        createdAt: new Date().toISOString(),
+                      })
+                      await completeTransactionWithDebt(pendingTransaction, newDebt.name, newDebt.id, availableBalance, debtAmount)
+                    }
+                  } else {
+                    // Create new debt via existing flow
+                    await handleCreateDebt()
+                    return
+                  }
+
+                  toast.success('Transaction completed with debt!', {
+                    description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
+                    duration: 3000,
+                  })
+
+                  // Reset and close
+                  setShowDebtDialog(false)
+                  setPendingTransactionResult(null)
+                  setPendingTransaction(null)
+                  setDebtFormData({ name: "", minimumPayment: "", interestRate: "", startDate: new Date().toISOString().split('T')[0] })
+
+                  setTimeout(() => {
+                    resetForm()
+                    handleOpenChange(false)
+                  }, 1000)
+                }}
+                disabled={!( (debtAccounts.length > 0 && debtAccounts.some(d=>d.id===debtFormData.name)) || debtFormData.name.trim())}
                 className="flex-1"
               >
-                Create Debt
+                Use Selected / Create Debt
               </Button>
             </div>
           </div>

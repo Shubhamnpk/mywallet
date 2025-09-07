@@ -147,7 +147,7 @@ export interface DebtCreditTransaction {
   id: string
   accountId: string
   accountType: "debt" | "credit"
-  type: "payment" | "charge" | "interest"
+  type: "payment" | "charge" | "interest" | "closed"
   amount: number
   description: string
   date: string

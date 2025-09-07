@@ -53,6 +53,7 @@ type WalletDataContextType = {
   updateCreditBalance: (creditId: string, newBalance: number) => void
   createDebtForTransaction: (debtAmount: number, transactionDescription: string) => Promise<any>
   completeTransactionWithDebt: (pendingTransaction: any, debtAccountName: string, debtAccountId: string, availableBalance: number, debtAmount: number) => Promise<any>
+  addDebtToAccount: (debtId: string, amount: number, description?: string) => any
   refreshData: () => void
   clearAllData: () => void
   exportData: () => void

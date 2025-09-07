@@ -8,7 +8,7 @@ import { RefreshCw, X } from 'lucide-react'
 export default function UpdateNotification() {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const [isAvailable, setIsAvailable] = useState(false)
-  const [countdown, setCountdown] = useState(5)
+  const [countdown, setCountdown] = useState(8)
   const updateInitiatedRef = useRef(false)
   const reloadingRef = useRef(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -83,11 +83,16 @@ export default function UpdateNotification() {
   }, [])
 
   const startCountdown = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
     setCountdown(8)
     timerRef.current = setInterval(() => {
       setCountdown(prev => {
-        if (prev === 0) {
-          console.log('Countdown reached zero, applying update')
+        // Apply update on the final tick (last second) before reaching zero
+        if (prev <= 1) {
+          console.log('Countdown reached final tick, applying update')
           if (timerRef.current) clearInterval(timerRef.current)
           setIsAvailable(false) // Close the dialog
           applyUpdate()
@@ -97,7 +102,6 @@ export default function UpdateNotification() {
       })
     }, 1000)
   }
-
   const applyUpdate = async () => {
     console.log('applyUpdate called')
     try {

@@ -19,7 +19,7 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
-  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance } = useWalletData()
+  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = useWalletData()
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -35,6 +35,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     accountType: "debt",
   })
   const [paymentAmount, setPaymentAmount] = useState("")
+  const [debtDetailsDialog, setDebtDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
 
   // Form states
   const [debtForm, setDebtForm] = useState({
@@ -187,7 +188,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
       {/* Debt and Credit Management */}
       <Card>
-
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2">
@@ -211,15 +211,24 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold">{debt.name}</h4>
                           <div className="flex items-center gap-2">
-                            <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}</Badge>
+                                <Badge variant="destructive">{formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}</Badge>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => deleteDebtAccount(debt.id)}
+                                  onClick={() => deleteDebtAccount(debt.id)}
                               className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                             >
                               <Trash2 className="w-3 h-3" />
                             </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
+                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                >
+                                  {/* eye icon */}
+                                  <CreditCard className="w-3 h-3" />
+                                </Button>
                           </div>
                         </div>
 
@@ -469,6 +478,60 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </div>
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt Details Dialog */}
+      <Dialog open={debtDetailsDialog.open} onOpenChange={(open) => setDebtDetailsDialog({ ...debtDetailsDialog, open })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Debt Details</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {debtDetailsDialog.accountId ? (
+              (() => {
+                const acc = debtAccounts.find((d) => d.id === debtDetailsDialog.accountId)
+                const txs = debtCreditTransactions
+                  .filter((t: any) => t.accountId === debtDetailsDialog.accountId)
+                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+                return (
+                  <div>
+                    <h4 className="font-semibold mb-2">{acc?.name}</h4>
+                    <p className="text-sm text-muted-foreground mb-2">Balance: {formatCurrency(acc?.balance || 0, userProfile.currency, userProfile.customCurrency)}</p>
+                    <div className="space-y-2">
+                      {txs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No transactions for this debt.</p>
+                      ) : (
+                        txs.map((tx: any) => (
+                          <div key={tx.id} className="p-2 border rounded">
+                            <div className="flex justify-between">
+                              <div>
+                                <p className="font-medium">{tx.type === 'payment' ? 'Payment' : tx.type === 'charge' ? 'Charge' : 'Closed'}</p>
+                                <p className="text-xs text-muted-foreground">{new Date(tx.date).toLocaleString()}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold">{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}</p>
+                                <p className="text-xs text-muted-foreground">After: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}</p>
+                              </div>
+                            </div>
+                            {tx.description && <p className="text-sm text-muted-foreground mt-2">{tx.description}</p>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )
+              })()
+            ) : (
+              <p>Select a debt to view details.</p>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setDebtDetailsDialog({ open: false, accountId: null })} className="flex-1">Close</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
