@@ -357,12 +357,11 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               onScanResult(result)
               toast.success(`QR Code detected: ${beautified.title}`)
               // Stop scanning after successful detection from image
-              onScanningChange(false)
+              toast.success(`QR Code detected: ${beautified.title}`)
               // Stop scanning and camera after successful detection
               stopQRCamera()
               onScanningChange(false)
-              return
-            }
+              return            }
           }
         } catch (e) {
           // ignore image processing errors
@@ -434,8 +433,11 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       qrStreamRef.current = stream
       if (qrVideoRef.current) {
         qrVideoRef.current.srcObject = stream
-        try { await qrVideoRef.current.play() } catch {}
-      }
+        try {
+          await qrVideoRef.current.play()
+        } catch (e) {
+          console.warn('Video play failed:', e)
+        }      }
 
       const track = stream.getVideoTracks()[0]
       const settings = track.getSettings()

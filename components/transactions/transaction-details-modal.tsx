@@ -111,25 +111,52 @@ export function TransactionDetailsModal({
               </div>
             </div>
 
-            {(transaction.status === "debt" || transaction.debtUsed > 0 || transaction.debtAccountId) && (
+            {(
+              transaction.status === "debt" ||
+              ((transaction.debtUsed ?? 0) > 0) ||
+              Boolean(transaction.debtAccountId)
+            ) && (
               <div className="flex items-center gap-3">
-                <Badge variant="outline" className="border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400">
+                <Badge
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400"
+                >
                   Debt Transaction
                 </Badge>
                 <div>
                   <p className="text-sm text-muted-foreground">Payment Breakdown</p>
-                    <div className="text-sm space-y-1">
-                    <div><span className="font-medium">Total: {formatCurrency(transaction.total ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}</span></div>
-                    <div><span className="font-medium">Cash: {formatCurrency(transaction.actual ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}</span></div>
-                    <div className="text-orange-600 dark:text-orange-400">
-                      Debt: {formatCurrency(transaction.debtUsed ?? 0, userProfile.currency, userProfile.customCurrency)}
+                  <div className="text-sm space-y-1">
+                    <div>
+                      <span className="font-medium">
+                        Total: {formatCurrency(
+                          transaction.total ?? transaction.amount,
+                          userProfile.currency,
+                          userProfile.customCurrency
+                        )}
+                      </span>
                     </div>
+                    <div>
+                      <span className="font-medium">
+                        Cash: {formatCurrency(
+                          transaction.actual ?? transaction.amount,
+                          userProfile.currency,
+                          userProfile.customCurrency
+                        )}
+                      </span>
+                    </div>
+                    {(transaction.debtUsed ?? 0) > 0 && (
+                      <div className="text-orange-600 dark:text-orange-400">
+                        Debt: {formatCurrency(
+                          transaction.debtUsed ?? 0,
+                          userProfile.currency,
+                          userProfile.customCurrency
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            )}
-
-            {transaction.status === "repayment" && (
+            )}            {transaction.status === "repayment" && (
               <div className="flex items-center gap-3">
                 <Badge variant="outline" className="border-green-300 text-green-700 dark:border-green-600 dark:text-green-400">
                   Debt Repayment

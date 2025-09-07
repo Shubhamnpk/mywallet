@@ -23,32 +23,38 @@ export function AboutSettings() {
   } = usePWAUpdate()
 
   const handleCheckUpdate = async () => {
+    if (checkingUpdate || !isSupported) return
     setCheckingUpdate(true)
-  // Ask the SW to update
-  await checkForUpdate()
-  // Small UI delay
-  await new Promise(resolve => setTimeout(resolve, 600))
-  setCheckingUpdate(false)
+    try {
+      // Ask the SW to update
+      await checkForUpdate()
+    } catch (e) {
+      toast.error('Failed to check for updates')
+    } finally {
+      // Small UI delay
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      setCheckingUpdate(false)
+    }
   }
-  const handleGithubLink = () => {
-    window.open('https://github.com/Shubhamnpk/mywallet', '_blank')
+  const openExternal = (url: string) => {
+    try {
+      const newWindow = window.open(url, '_blank', 'noopener,noreferrer')
+      if (newWindow) newWindow.opener = null
+    } catch (e) {
+      // fallback for strict CSP or other issues
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.click()
+    }
   }
 
-  const handleFeaturesGuide = () => {
-    window.open('https://github.com/Shubhamnpk/mywallet#readme', '_blank')
-  }
-
-  const handleHelpSupport = () => {
-    window.open('https://github.com/Shubhamnpk/mywallet/issues', '_blank')
-  }
-
-  const handlePrivacyPolicy = () => {
-    window.open('https://github.com/Shubhamnpk/mywallet/blob/main/PRIVACY.md', '_blank')
-  }
-
-  const handleTermsOfService = () => {
-    window.open('https://github.com/Shubhamnpk/mywallet/blob/main/TERMS.md', '_blank')
-  }
+  const handleGithubLink = () => openExternal('https://github.com/Shubhamnpk/mywallet')
+  const handleFeaturesGuide = () => openExternal('https://github.com/Shubhamnpk/mywallet#readme')
+  const handleHelpSupport = () => openExternal('https://github.com/Shubhamnpk/mywallet/issues')
+  const handlePrivacyPolicy = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/PRIVACY.md')
+  const handleTermsOfService = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/TERMS.md')
 
   // Helper to clear caches and unregister service workers
   async function clearAllCachesAndData() {

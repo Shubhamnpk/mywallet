@@ -19,7 +19,9 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
-  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = useWalletData()
+  const wallet = useWalletData()
+  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = wallet
+  const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -88,15 +90,27 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     setShowAddDialog(false)
   }
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     const amount = Number.parseFloat(paymentAmount)
     if (amount <= 0 || amount > balance) return
 
     if (paymentDialog.accountType === "debt") {
-      const result = makeDebtPayment(paymentDialog.accountId, amount)
-      if (result.success) {
+      const result = await makeDebtPayment(paymentDialog.accountId, amount)
+      if (result && result.success) {
         setPaymentDialog({ open: false, accountId: "", accountName: "", accountType: "debt" })
         setPaymentAmount("")
+      }
+    } else if (paymentDialog.accountType === "credit") {
+      // Only attempt credit payment if API exists
+      if (!hasMakeCreditPayment) return
+      try {
+        const result = await (wallet as any).makeCreditPayment(paymentDialog.accountId, amount)
+        if (result && result.success) {
+          setPaymentDialog({ open: false, accountId: "", accountName: "", accountType: "credit" })
+          setPaymentAmount("")
+        }
+      } catch (err) {
+        // ignore or show toast in future
       }
     }
   }
@@ -334,7 +348,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                 accountType: "credit",
                               })
                             }
-                            disabled={balance <= 0}
+                            disabled={balance <= 0 || !hasMakeCreditPayment}
                             className="w-full"
                           >
                             <Minus className="w-4 h-4 mr-2" />

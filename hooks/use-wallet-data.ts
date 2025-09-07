@@ -405,9 +405,10 @@ export function useWalletData() {
     availableBalance: number,
     debtAmount: number
   ) => {
-    // Deduct available balance to 0
-    const newBalance = balance - availableBalance
+        // Set balance to 0 when all available balance is used
+    const newBalance = 0
     setBalance(newBalance)
+
 
     // Create debt transaction record
     const newTransaction: Transaction = {

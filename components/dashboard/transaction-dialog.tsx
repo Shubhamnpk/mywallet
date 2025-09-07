@@ -834,11 +834,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                           <SelectItem key={categoryName} value={categoryName}>
                             <div className="flex items-center gap-2">
                               <div
-                                className={cn(
-                                  "w-3 h-3 rounded-full border border-white/20",
-                                  categoryData?.color ? `bg-[${categoryData.color}]` : "bg-[#3b82f6]"
-                                )}
-                              />
+                                className="w-3 h-3 rounded-full border border-white/20"
+                                style={{
+                                  backgroundColor: categoryData?.color || "#3b82f6"
+                                }} />
                               <span>{categoryName}</span>
                               {!categoryData?.isDefault && (
                                 <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">

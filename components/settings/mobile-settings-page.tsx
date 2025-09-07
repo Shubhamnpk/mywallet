@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useRef } from "react"
+import type { TouchEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -70,26 +71,24 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
   }
 
   const isSecurityEnabled = () => {
-    // Placeholder: check if PIN or biometric is enabled
     return false
   }
-
   const suggestions: Suggestion[] = [
     {
       id: 'download',
       title: 'Download MyWallet App',
       description: 'Get the full experience',
       action: () => {
-        // Trigger PWA install using the captured deferred prompt
-        const prompt = (window as any).__deferredPrompt
-        if (prompt) {
-          prompt.prompt()
-          prompt.userChoice.then((choice: any) => {
+        const deferredPrompt = (window as any).__deferredPrompt
+        if (deferredPrompt) {
+          deferredPrompt.prompt()
+          deferredPrompt.userChoice.then(() => {
             try { delete (window as any).__deferredPrompt } catch {}
           })
         } else {
-          // no prompt available — open instructions or fallback
-          alert('Install is not available right now. Please open browser menu and choose "Install" or visit this site on a supported browser.');
+          alert(
+            'Install is not available right now. Please open browser menu and choose "Install" or visit this site on a supported browser.'
+          );
         }
       },
       condition: !isAppDownloaded()
@@ -368,6 +367,7 @@ interface Suggestion {
   title: string
   description: string
   action: () => void
+  condition?: boolean
 }
 
 function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggestion[], onDismiss: (id: string) => void }) {
@@ -393,12 +393,12 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
   const [touchEnd, setTouchEnd] = useState(0)
   const minSwipeDistance = 50
 
-  const onTouchStart = (e: React.TouchEvent) => {
+  const onTouchStart = (e: TouchEvent) => {
     setTouchEnd(0)
     setTouchStart(e.targetTouches[0].clientX)
   }
 
-  const onTouchMove = (e: React.TouchEvent) => {
+  const onTouchMove = (e: TouchEvent) => {
     setTouchEnd(e.targetTouches[0].clientX)
   }
 
@@ -438,6 +438,9 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
                 </div>
               </div>
               <button
+              type="button"
+                aria-label={`Dismiss ${suggestion.title}`}
+                title="Dismiss"
                 onClick={() => onDismiss(suggestion.id)}
                 className="ml-2 text-gray-400 hover:text-gray-600"
               >

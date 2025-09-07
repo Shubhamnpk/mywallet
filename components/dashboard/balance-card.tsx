@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
+import BalanceCard from "@/components/dashboard/balance-card-component"
 import { useMemo, useState } from "react"
 import { getTimeEquivalentBreakdown, formatTimeEquivalent } from "@/lib/wallet-utils"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -126,221 +127,70 @@ export function CombinedBalanceCard() {
 
   const netWorthEnabled = totalDebt > 0 || totalCreditUsed > 0
 
+  const mainBalance = isMobile && netWorthEnabled ? (
+    <div className="overflow-x-auto pb-2">
+      <div className="flex gap-4 min-w-max">
+        <div className="w-80 flex-shrink-0">
+          <BalanceCard
+            balanceChange={balanceChange}
+            balance={balance}
+            showBalance={showBalance}
+            setShowBalance={setShowBalance}
+            absoluteBalance={absoluteBalance}
+            isPositive={isPositive}
+            timeEquivalentBreakdown={timeEquivalentBreakdown}
+            emergencyFund={emergencyFund}
+            formatCurrency={formatCurrency}
+            getThemeBasedBackground={getThemeBasedBackground}
+          />
+        </div>
+
+        {/* Net Worth Card */}
+        <div className="w-80 flex-shrink-0">
+          <Card className={`border-2 transition-all duration-200 ${
+            netWorth >= 0
+              ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
+              : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
+          }`}>
+            <CardContent className="p-6 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
+              </div>
+              <p className={`text-3xl font-bold mb-2 ${
+                netWorth >= 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-red-600 dark:text-red-400"
+              }`}>
+                {netWorth < 0 && "-"}
+                {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                Balance + Available Credit - Total Debt
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <BalanceCard
+      balanceChange={balanceChange}
+      balance={balance}
+      showBalance={showBalance}
+      setShowBalance={setShowBalance}
+      absoluteBalance={absoluteBalance}
+      isPositive={isPositive}
+      timeEquivalentBreakdown={timeEquivalentBreakdown}
+      emergencyFund={emergencyFund}
+      formatCurrency={formatCurrency}
+      getThemeBasedBackground={getThemeBasedBackground}
+    />
+  )
+
   return (
     <div className="space-y-6">
-      {isMobile && netWorthEnabled ? (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex gap-4 min-w-max">
-            {/* Main Balance Card */}
-            <div className="w-80 flex-shrink-0">
-              <Card className="relative overflow-hidden border-0 shadow-lg">
-                <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
-                <div className="absolute inset-0 bg-black/10" />
-
-                <CardContent className="relative p-6 text-white">
-                  {/* Balance Change Animation */}
-                  {balanceChange && (
-                    <div className="absolute top-4 right-4 animate-bounce">
-                      <div className={`px-3 py-1 rounded-full text-sm font-bold backdrop-blur-sm ${
-                        balanceChange.type === "income"
-                          ? "bg-green-500/30 text-green-100 border border-green-400/50"
-                          : "bg-red-500/30 text-red-100 border border-red-400/50"
-                      }`}>
-                        {balanceChange.type === "income" ? "+" : "-"}
-                        {formatCurrency(balanceChange.amount)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                        <Wallet className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium opacity-90">Current Balance</span>
-                        {balance < 0 && (
-                          <Badge variant="destructive" className="ml-2 bg-red-500/30 text-red-100 border-red-400/50">
-                            <AlertTriangle className="w-3 h-3 mr-1" />
-                            Negative
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Privacy Toggle */}
-                    <button
-                      onClick={() => setShowBalance(!showBalance)}
-                      className="p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all duration-200"
-                      aria-label={showBalance ? "Hide balance" : "Show balance"}
-                    >
-                      {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Balance Display */}
-                  <TimeTooltip amount={absoluteBalance}>
-                    <div className={`transition-all duration-500 ${balanceChange ? "animate-pulse scale-105" : ""}`}>
-                      <div className="text-4xl font-bold mb-1 tracking-tight">
-                        {showBalance ? (
-                          <>
-                            {isPositive ? "" : "-"}
-                            {formatCurrency(absoluteBalance)}
-                          </>
-                        ) : (
-                          "••••••"
-                        )}
-                      </div>
-                    </div>
-                  </TimeTooltip>
-
-                  {/* Time Equivalent */}
-                  {showBalance && timeEquivalentBreakdown && (
-                    <div className="flex items-center gap-2 text-sm bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2 mt-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-                        <Clock className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-white">
-                          {timeEquivalentBreakdown.formatted.userFriendly}
-                        </span>
-                        <span className="text-xs text-amber-100/80">
-                          of work time
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Emergency Fund */}
-                  {showBalance && emergencyFund > 0 && (
-                    <div className="flex items-center gap-2 text-sm text-white/80 mt-2">
-                      <Sparkles className="w-4 h-4" />
-                      <span>Emergency Fund: {formatCurrency(emergencyFund)}</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Net Worth Card */}
-            <div className="w-80 flex-shrink-0">
-              <Card className={`border-2 transition-all duration-200 ${
-                netWorth >= 0
-                  ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
-                  : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-              }`}>
-                <CardContent className="p-6 text-center">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
-                    <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
-                  </div>
-                  <p className={`text-3xl font-bold mb-2 ${
-                    netWorth >= 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-red-600 dark:text-red-400"
-                  }`}>
-                    {netWorth < 0 && "-"}
-                    {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
-                  </p>
-                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                    Balance + Available Credit - Total Debt
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <Card className="relative overflow-hidden border-0 shadow-lg">
-          <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
-          <div className="absolute inset-0 bg-black/10" />
-
-          <CardContent className="relative p-6 text-white">
-            {/* Balance Change Animation */}
-            {balanceChange && (
-              <div className="absolute top-4 right-4 animate-bounce">
-                <div className={`px-3 py-1 rounded-full text-sm font-bold backdrop-blur-sm ${
-                  balanceChange.type === "income"
-                    ? "bg-green-500/30 text-green-100 border border-green-400/50"
-                    : "bg-red-500/30 text-red-100 border border-red-400/50"
-                }`}>
-                  {balanceChange.type === "income" ? "+" : "-"}
-                  {formatCurrency(balanceChange.amount)}
-                </div>
-              </div>
-            )}
-
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                  <Wallet className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <span className="text-sm font-medium opacity-90">Current Balance</span>
-                  {balance < 0 && (
-                    <Badge variant="destructive" className="ml-2 bg-red-500/30 text-red-100 border-red-400/50">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      Negative
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              {/* Privacy Toggle */}
-              <button
-                onClick={() => setShowBalance(!showBalance)}
-                className="p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all duration-200"
-                aria-label={showBalance ? "Hide balance" : "Show balance"}
-              >
-                {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Balance Display */}
-            <TimeTooltip amount={absoluteBalance}>
-              <div className={`transition-all duration-500 ${balanceChange ? "animate-pulse scale-105" : ""}`}>
-                <div className="text-4xl font-bold mb-1 tracking-tight">
-                  {showBalance ? (
-                    <>
-                      {isPositive ? "" : "-"}
-                      {formatCurrency(absoluteBalance)}
-                    </>
-                  ) : (
-                    "••••••"
-                  )}
-                </div>
-              </div>
-            </TimeTooltip>
-
-            {/* Time Equivalent */}
-            {showBalance && timeEquivalentBreakdown && (
-              <div className="flex items-center gap-2 text-sm bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2 mt-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-                  <Clock className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-white">
-                    {timeEquivalentBreakdown.formatted.userFriendly}
-                  </span>
-                  <span className="text-xs text-amber-100/80">
-                    of work time
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Emergency Fund */}
-            {showBalance && emergencyFund > 0 && (
-              <div className="flex items-center gap-2 text-sm text-white/80 mt-2">
-                <Sparkles className="w-4 h-4" />
-                <span>Emergency Fund: {formatCurrency(emergencyFund)}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+  {mainBalance}
 
       {/* Income & Expenses Row */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">

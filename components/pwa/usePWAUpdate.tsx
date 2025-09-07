@@ -77,7 +77,8 @@ export function usePWAUpdate() {
 
     // reload when the new SW takes control; clear old caches first
     const onControllerChange = async () => {
-      if (reloadingRef.current) return
+      // Reload only for updates we initiated (manual or auto), not for first install.
+      if (!updateInitiatedRef.current || reloadingRef.current) return
       reloadingRef.current = true
       try {
         await clearSWCaches()
@@ -89,7 +90,6 @@ export function usePWAUpdate() {
       window.location.reload()
     }
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
-
   // on online, check for updates (with rate limiting)
     const onOnline = async () => {
       const now = Date.now()

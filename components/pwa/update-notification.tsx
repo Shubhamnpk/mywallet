@@ -28,17 +28,63 @@ export default function UpdateNotification() {
             setIsAvailable(true)
             startCountdown()
           }
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing
-            if (!newWorker) return
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && reg.waiting) {
-                setIsAvailable(true)
-                startCountdown()
-              }
-            })
-          })
+useEffect(() => {
+  if (!('serviceWorker' in navigator)) return
+
+  let mounted = true
+  const listeners: Array<{ target: EventTarget; type: string; handler: EventListener }> = []
+
+  const check = async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration()
+      if (!mounted) return
+      if (reg) {
+        setRegistration(reg)
+        if (reg.waiting) {
+          setIsAvailable(true)
+          startCountdown()
         }
+
+        // replace inline listeners with named handlers and track them
+        const updateFoundHandler = () => {
+          const newWorker = reg.installing
+          if (!newWorker) return
+
+          const stateChangeHandler = () => {
+            if (newWorker.state === 'installed' && reg.waiting) {
+              if (!mounted) return
+              setIsAvailable(true)
+              startCountdown()
+            }
+          }
+
+          newWorker.addEventListener('statechange', stateChangeHandler)
+          listeners.push({ target: newWorker, type: 'statechange', handler: stateChangeHandler })
+        }
+
+        reg.addEventListener('updatefound', updateFoundHandler)
+        listeners.push({ target: reg, type: 'updatefound', handler: updateFoundHandler })
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  check()
+
+  return () => {
+    mounted = false
+    if (timerRef.current) clearInterval(timerRef.current)
+
+    // clean up any registered service-worker listeners
+    listeners.forEach(({ target, type, handler }) => {
+      target.removeEventListener(type, handler)
+    })
+
+    navigator.serviceWorker.removeEventListener('message', onMessage)
+    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+  }
+}, [startCountdown, onMessage, onControllerChange])        }
       } catch (e) {
         // ignore
       }
@@ -57,18 +103,26 @@ export default function UpdateNotification() {
     // when a new worker takes control, clear caches if we initiated the update and reload
     const onControllerChange = async () => {
       if (reloadingRef.current) return
-      reloadingRef.current = true
-      try {
-        if (updateInitiatedRef.current && 'caches' in window) {
+
+      // Snapshot whether we initiated the update to avoid race conditions
+      const updateInitiated = updateInitiatedRef.current
+
+      // If we initiated the update, attempt conservative cache cleanup. Don't block reload on cleanup failures.
+      if (updateInitiated && 'caches' in window) {
+        try {
           const keys = await caches.keys()
           await Promise.all(keys.map(k => caches.delete(k)))
+        } catch (err) {
+          // ignore cleanup errors - we still want to reload
         }
-      } catch (err) {
-        // ignore cleanup errors
       }
+
       try {
         sessionStorage.setItem('sw_update_success', '1')
       } catch (e) {}
+
+      // Mark reloading just before navigating away to prevent duplicate reloads
+      reloadingRef.current = true
       window.location.reload()
     }
 
