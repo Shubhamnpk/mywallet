@@ -6,18 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, History, Copy, ExternalLink, Phone, Mail, Wifi, Flashlight, FlashlightOff } from "lucide-react"
+import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi } from "lucide-react"
 
 // QR Code interfaces
-interface QRCodeData {
-  id: string
-  rawData: string
-  parsedData: any
-  timestamp: number
-  type: 'url' | 'text' | 'contact' | 'email' | 'phone' | 'wifi' | 'unknown'
-  beautifiedData?: any
-}
-
 interface QRScanResult {
   data: string
   timestamp: number
@@ -44,26 +35,22 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   onFlashlightToggle,
   onSwitchCamera
 }) => {
-  const [qrHistory, setQrHistory] = useState<QRCodeData[]>([])
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [qrScanResult, setQrScanResult] = useState<QRScanResult | null>(null)
-  const [videoElementReady, setVideoElementReady] = useState(false)
+  const [isCameraActive, setIsCameraActive] = useState(false)
   const [isInitializingCamera, setIsInitializingCamera] = useState(false)
   const qrVideoRef = useRef<HTMLVideoElement>(null)
   const qrStreamRef = useRef<MediaStream | null>(null)
   const qrFileInputRef = useRef<HTMLInputElement>(null)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
+  const scanAnimRef = useRef<number | null>(null)
+  const lastScannedRef = useRef<string | null>(null)
   const jsQRRef = useRef<any>(null)
-
-  // Load QR history from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('qr-code-history')
-    if (saved) {
-      try {
-        setQrHistory(JSON.parse(saved))
-      } catch (error) {
-        console.error('Failed to load QR history:', error)
-      }
-    }
-  }, [])
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
+  const [torchAvailable, setTorchAvailable] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
 
   // Load jsQR library
   useEffect(() => {
@@ -79,30 +66,32 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     loadJsQR()
   }, [])
 
-  // Check video element readiness
+  // Cleanup camera on unmount
   useEffect(() => {
-    const checkVideoElement = () => {
+    return () => {
+      if (qrStreamRef.current) {
+        qrStreamRef.current.getTracks().forEach(track => track.stop())
+      }
       if (qrVideoRef.current) {
-        console.log('QR Video element is ready for use')
-        setVideoElementReady(true)
-      } else {
-        console.log('QR Video element not yet available')
-        setVideoElementReady(false)
+        qrVideoRef.current.srcObject = null
+      }
+      if (scanAnimRef.current) {
+        cancelAnimationFrame(scanAnimRef.current)
+        scanAnimRef.current = null
       }
     }
-
-    // Check immediately
-    checkVideoElement()
-
-    // Also check after a short delay in case component is still mounting
-    const timeout = setTimeout(checkVideoElement, 500)
-
-    return () => clearTimeout(timeout)
   }, [])
 
-  // Save QR history to localStorage
-  const saveQRHistory = useCallback((history: QRCodeData[]) => {
-    localStorage.setItem('qr-code-history', JSON.stringify(history))
+  // List cameras
+  const listCameras = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const vids = devices.filter(d => d.kind === 'videoinput')
+      setAvailableCameras(vids)
+      return vids
+    } catch (e) {
+      return [] as MediaDeviceInfo[]
+    }
   }, [])
 
   // Beautify QR code data
@@ -182,7 +171,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     }
   }, [])
 
-
   // Copy QR code data to clipboard
   const copyToClipboard = useCallback(async (text: string) => {
     try {
@@ -213,89 +201,34 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     }
   }, [copyToClipboard])
 
-  // Handle QR file upload
-  const handleQRFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file upload
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = async (e) => {
-        const imageData = e.target?.result as string
-        await processQRCodeFromImage(imageData)
+      reader.onload = (e) => {
+        setSelectedImage(e.target?.result as string)
+        setQrScanResult(null)
       }
       reader.readAsDataURL(file)
     }
   }, [])
-
-  // Clear QR result
-  const handleClearQRResult = useCallback(() => {
-    setQrScanResult(null)
-  }, [])
-
-  // Delete QR history item
-  const handleDeleteQRHistory = useCallback((id: string) => {
-    setQrHistory(prev => prev.filter(item => item.id !== id))
-    const updatedHistory = qrHistory.filter(item => item.id !== id)
-    localStorage.setItem('qr-code-history', JSON.stringify(updatedHistory))
-  }, [qrHistory])
 
   // Check if camera is supported
   const isCameraSupported = useCallback(() => {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
   }, [])
 
-  // Check if flashlight/torch is supported
-  const isFlashlightSupported = useCallback(() => {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-  }, [])
-
-  // Toggle flashlight/torch
-  const toggleFlashlight = useCallback(async () => {
-    if (!qrStreamRef.current) {
-      toast.error('No camera stream available')
-      return
-    }
-
-    try {
-      const videoTrack = qrStreamRef.current.getVideoTracks()[0]
-      if (!videoTrack) {
-        toast.error('No video track available')
-        return
-      }
-
-      const capabilities = videoTrack.getCapabilities() as any
-      if (!capabilities.torch) {
-        toast.error('Flashlight not supported on this device')
-        return
-      }
-
-      const newTorchState = !isFlashlightOn
-      await videoTrack.applyConstraints({
-        advanced: [{ torch: newTorchState } as any]
-      })
-
-      onFlashlightToggle()
-      toast.success(newTorchState ? 'Flashlight turned on' : 'Flashlight turned off')
-    } catch (error) {
-      console.error('Flashlight error:', error)
-      toast.error('Failed to toggle flashlight')
-    }
-  }, [isFlashlightOn, onFlashlightToggle])
-
-  // Start QR scan (using camera)
-  const startQRScan = useCallback(async () => {
-    console.log('Starting QR scan...')
-
+  // Start camera
+  const startQRCamera = useCallback(async () => {
     if (!isCameraSupported()) {
       toast.error('Camera is not supported in this browser')
       return
     }
 
-    console.log('Camera is supported, requesting access...')
-    onScanningChange(true)
     setIsInitializingCamera(true)
-
     try {
-      // Stop any existing streams first
+      // Stop any existing stream
       if (qrStreamRef.current) {
         qrStreamRef.current.getTracks().forEach(track => track.stop())
         qrStreamRef.current = null
@@ -310,172 +243,277 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         audio: false
       }
 
-      console.log('Requesting camera access with constraints:', constraints)
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  const stream = await navigator.mediaDevices.getUserMedia(constraints)
       qrStreamRef.current = stream
-
-      console.log('Camera stream obtained:', stream.id)
 
       // Set the stream to video element
       if (qrVideoRef.current) {
         qrVideoRef.current.srcObject = stream
-        console.log('Stream assigned to QR video element')
-      }
-
-      setIsInitializingCamera(false)
-      toast.success('Camera ready for QR scanning')
-
-      // Start continuous scanning with error handling
-      const scanFrame = async () => {
-        if (!qrVideoRef.current || !isScanning) {
-          console.log('Scan frame cancelled - missing elements or scanning stopped')
-          return
-        }
-
+        // try to play and then start scanning loop
         try {
-          const canvas = document.createElement('canvas')
-          const video = qrVideoRef.current
-          const ctx = canvas.getContext('2d')
-
-          if (!ctx) {
-            console.error('Canvas context not available')
-            return
-          }
-
-          // Check if video has valid dimensions
-          if (video.videoWidth === 0 || video.videoHeight === 0) {
-            console.log('Video dimensions not ready, retrying...')
-            if (isScanning) {
-              setTimeout(() => requestAnimationFrame(scanFrame), 100)
-            }
-            return
-          }
-
-          canvas.width = video.videoWidth
-          canvas.height = video.videoHeight
-          ctx.drawImage(video, 0, 0)
-
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-
-          if (!jsQRRef.current) {
-            console.log('jsQR not loaded yet, skipping frame')
-            if (isScanning) {
-              requestAnimationFrame(scanFrame)
-            }
-            return
-          }
-
-          const code = jsQRRef.current(imageData.data, imageData.width, imageData.height)
-
-          if (code) {
-            console.log('QR Code detected:', code.data)
-            const beautified = beautifyQRData(code.data)
-            const result: QRScanResult = {
-              data: code.data,
-              timestamp: Date.now(),
-              type: beautified.type,
-              beautified
-            }
-
-            setQrScanResult(result)
-            onScanResult(result)
-
-            // Save to history
-            const historyItem: QRCodeData = {
-              id: Date.now().toString(),
-              rawData: code.data,
-              parsedData: result,
-              timestamp: Date.now(),
-              type: beautified.type as any,
-              beautifiedData: beautified
-            }
-
-            const newHistory = [historyItem, ...qrHistory.slice(0, 49)]
-            setQrHistory(newHistory)
-            saveQRHistory(newHistory)
-
-            toast.success(`QR Code detected: ${beautified.title}`)
-            stopQRScan()
-            return
-          }
-        } catch (error) {
-          console.error('QR scan frame error:', error)
-        }
-
-        // Continue scanning if no QR found and still scanning
-        if (isScanning) {
-          requestAnimationFrame(scanFrame)
+          await qrVideoRef.current.play()
+        } catch (e) {
+          // ignore play errors; scanning will start when video has data
         }
       }
 
-      // Start scanning after a short delay to ensure video is stable
-      setTimeout(() => {
-        if (isScanning) {
-          console.log('Starting QR scanning loop')
-          requestAnimationFrame(scanFrame)
-        }
-      }, 500)
+  // determine active device id and torch support
+  const track = stream.getVideoTracks()[0]
+  const settings = track.getSettings()
+  const deviceId = (settings as any).deviceId || null
+  setCurrentDeviceId(deviceId)
+  // check torch capability
+  const caps = (track as any).getCapabilities?.()
+  setTorchAvailable(!!(caps && caps.torch))
 
+  setIsCameraActive(true)
+      toast.success('Camera ready - live scanning started')
+      // start live scan loop
+  await listCameras()
+  startLiveScan()
     } catch (error) {
       console.error('Camera error:', error)
-      setIsInitializingCamera(false)
-
       // Provide specific error messages
       let errorMessage = 'Camera access failed'
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          errorMessage = 'Camera access denied. Please allow camera permissions and refresh the page.'
+          errorMessage = 'Camera access denied. Please allow camera permissions.'
         } else if (error.name === 'NotFoundError') {
           errorMessage = 'No camera found on this device.'
         } else if (error.name === 'NotReadableError') {
           errorMessage = 'Camera is already in use by another application.'
-        } else if (error.name === 'AbortError') {
-          errorMessage = 'Camera access was interrupted. Please try again.'
         } else {
           errorMessage = `Camera error: ${error.message}`
         }
       }
-
       toast.error(errorMessage)
-      onScanningChange(false)
+    } finally {
+      setIsInitializingCamera(false)
     }
-  }, [isScanning, onScanResult, onScanningChange, cameraFacingMode, qrHistory, beautifyQRData, saveQRHistory, isCameraSupported])
+  }, [cameraFacingMode, isCameraSupported])
 
-  // Stop QR scan
-  const stopQRScan = useCallback(() => {
-    console.log('Stopping QR scan')
-    onScanningChange(false)
-    setIsInitializingCamera(false)
+  // Toggle torch if supported
+  const toggleTorch = useCallback(async () => {
+    if (!qrStreamRef.current) return
+    const track = qrStreamRef.current.getVideoTracks()[0]
+    if (!track) return
+    try {
+      const newState = !torchOn
+      await (track as any).applyConstraints({ advanced: [{ torch: newState }] })
+      setTorchOn(newState)
+      toast.info(newState ? 'Flashlight enabled' : 'Flashlight disabled')
+      onFlashlightToggle?.()
+    } catch (e) {
+      console.warn('Torch toggle failed', e)
+      toast.error('Flashlight not supported on this device')
+    }
+  }, [torchOn, onFlashlightToggle])
 
-    // Stop QR stream
+  const drawDetectionBox = useCallback((location: any, ctx: CanvasRenderingContext2D) => {
+    try {
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#22c55e'
+      ctx.beginPath()
+      ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y)
+      ctx.lineTo(location.topRightCorner.x, location.topRightCorner.y)
+      ctx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y)
+      ctx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y)
+      ctx.closePath()
+      ctx.stroke()
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+
+  // Live scan loop similar to the jsQR demo
+  const startLiveScan = useCallback(() => {
+    if (!qrVideoRef.current || !qrCanvasRef.current || !jsQRRef.current) return
+    const canvas = qrCanvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const loop = () => {
+      if (!qrVideoRef.current) return
+      if (qrVideoRef.current.readyState === qrVideoRef.current.HAVE_ENOUGH_DATA) {
+        canvas.width = qrVideoRef.current.videoWidth
+        canvas.height = qrVideoRef.current.videoHeight
+        ctx.drawImage(qrVideoRef.current, 0, 0, canvas.width, canvas.height)
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const code = jsQRRef.current(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          if (code) {
+            drawDetectionBox(code.location, ctx)
+            if (code.data && code.data !== lastScannedRef.current) {
+              lastScannedRef.current = code.data
+              const beautified = beautifyQRData(code.data)
+              const result: QRScanResult = {
+                data: code.data,
+                timestamp: Date.now(),
+                type: beautified.type,
+                beautified
+              }
+              setQrScanResult(result)
+              onScanResult(result)
+              toast.success(`QR Code detected: ${beautified.title}`)
+              // Stop scanning after successful detection from image
+              toast.success(`QR Code detected: ${beautified.title}`)
+              // Stop scanning and camera after successful detection
+              stopQRCamera()
+              onScanningChange(false)
+              return            }
+          }
+        } catch (e) {
+          // ignore image processing errors
+        }
+      }
+      scanAnimRef.current = requestAnimationFrame(loop)
+    }
+
+    if (scanAnimRef.current) cancelAnimationFrame(scanAnimRef.current)
+    scanAnimRef.current = requestAnimationFrame(loop)
+  }, [beautifyQRData, drawDetectionBox, onScanResult])
+
+  const stopQRCamera = useCallback(() => {
     if (qrStreamRef.current) {
-      console.log('Stopping QR stream tracks')
-      qrStreamRef.current.getTracks().forEach(track => {
-        track.stop()
-        console.log('Track stopped:', track.kind)
-      })
+      qrStreamRef.current.getTracks().forEach(track => track.stop())
       qrStreamRef.current = null
     }
-
-    // Clean up video element
     if (qrVideoRef.current) {
-      console.log('Cleaning up QR video element')
       qrVideoRef.current.srcObject = null
-      qrVideoRef.current.load()
     }
-  }, [onScanningChange])
+    if (scanAnimRef.current) {
+      cancelAnimationFrame(scanAnimRef.current)
+      scanAnimRef.current = null
+    }
+    setIsCameraActive(false)
+    toast.info('Camera stopped')
+  }, [])
 
-  // Process QR code from image
-  const processQRCodeFromImage = useCallback(async (imageData: string) => {
+  const switchQRCamera = useCallback(() => {
+    onSwitchCamera?.()
+    // if we have multiple cameras, cycle to the next one
+    if (availableCameras.length < 2) {
+      // fallback: restart with facing mode
+      setTimeout(() => startQRCamera(), 100)
+      return
+    }
+    const idx = availableCameras.findIndex(c => c.deviceId === currentDeviceId)
+    const next = availableCameras[(idx + 1) % availableCameras.length]
+    // restart with selected deviceId
+    stopQRCamera()
+    setTimeout(() => startQRCameraWithDevice(next.deviceId), 150)
+  }, [onSwitchCamera, startQRCamera])
+
+  // helper to start camera with specific device id
+  const startQRCameraWithDevice = useCallback(async (deviceId?: string) => {
+    if (!isCameraSupported()) {
+      toast.error('Camera is not supported in this browser')
+      return
+    }
+
+    setIsInitializingCamera(true)
     try {
-      if (!jsQRRef.current) {
-        toast.error('QR scanner not ready. Please try again.')
-        return
+      if (qrStreamRef.current) {
+        qrStreamRef.current.getTracks().forEach(track => track.stop())
+        qrStreamRef.current = null
       }
 
+      const constraints: any = {
+        video: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          facingMode: deviceId ? undefined : cameraFacingMode,
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        },
+        audio: false
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      qrStreamRef.current = stream
+      if (qrVideoRef.current) {
+        qrVideoRef.current.srcObject = stream
+        try {
+          await qrVideoRef.current.play()
+        } catch (e) {
+          console.warn('Video play failed:', e)
+        }      }
+
+      const track = stream.getVideoTracks()[0]
+      const settings = track.getSettings()
+      const devId = (settings as any).deviceId || deviceId || null
+      setCurrentDeviceId(devId)
+      const caps = (track as any).getCapabilities?.()
+      setTorchAvailable(!!(caps && caps.torch))
+
+      setIsCameraActive(true)
+      await listCameras()
+      startLiveScan()
+    } catch (error) {
+      console.error('Camera error:', error)
+      toast.error('Camera access failed')
+    } finally {
+      setIsInitializingCamera(false)
+    }
+  }, [cameraFacingMode, isCameraSupported, listCameras, startLiveScan])
+
+  // Capture image from camera
+  const captureQRImage = useCallback(() => {
+    if (!qrVideoRef.current) {
+      toast.error('Camera not ready. Please try again.')
+      return
+    }
+
+    if (!qrCanvasRef.current) {
+      toast.error('Capture failed. Please try again.')
+      return
+    }
+
+    const canvas = qrCanvasRef.current
+    const video = qrVideoRef.current
+
+    // Check if video has valid dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error('Camera feed not ready. Please wait a moment.')
+      return
+    }
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      toast.error('Capture failed. Please try again.')
+      return
+    }
+
+    try {
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      context.drawImage(video, 0, 0)
+
+      const imageData = canvas.toDataURL('image/png')
+      setSelectedImage(imageData)
+      setQrScanResult(null)
+      stopQRCamera()
+      toast.success('Photo captured! Ready to scan QR code.')
+    } catch (error) {
+      toast.error('Failed to capture photo. Please try again.')
+    }
+  }, [stopQRCamera])
+
+  // Process the selected image
+  const processQRImage = useCallback(async () => {
+    if (!selectedImage) return
+    if (!jsQRRef.current) {
+      toast.error('Scanner not ready yet. Please wait a moment and try again.')
+      return
+    }
+
+    setIsProcessing(true)
+    try {
+      toast.info('Scanning QR code...')
+      // …rest of the scanning logic
       // Create image element
       const img = new Image()
-      img.src = imageData
+      img.src = selectedImage
 
       await new Promise((resolve, reject) => {
         img.onload = resolve
@@ -492,10 +530,10 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       ctx.drawImage(img, 0, 0)
 
       // Get image data
-      const imageDataArray = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
       // Scan for QR code
-      const code = jsQRRef.current(imageDataArray.data, imageDataArray.width, imageDataArray.height)
+      const code = jsQRRef.current(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })
 
       if (code) {
         const beautified = beautifyQRData(code.data)
@@ -508,77 +546,66 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
         setQrScanResult(result)
         onScanResult(result)
-
-        // Save to history
-        const historyItem: QRCodeData = {
-          id: Date.now().toString(),
-          rawData: code.data,
-          parsedData: result,
-          timestamp: Date.now(),
-          type: beautified.type as any,
-          beautifiedData: beautified
-        }
-
-        const newHistory = [historyItem, ...qrHistory.slice(0, 49)]
-        setQrHistory(newHistory)
-        saveQRHistory(newHistory)
-
-        toast.success(`QR Code scanned: ${beautified.title}`)
+        toast.success(`QR Code detected: ${beautified.title}`)
       } else {
         toast.error('No QR code found in the image')
       }
     } catch (error) {
-      console.error('QR code processing error:', error)
-      toast.error('Failed to process QR code')
+      console.error('QR processing error:', error)
+      toast.error('Failed to scan QR code')
+    } finally {
+      setIsProcessing(false)
     }
-  }, [qrHistory, beautifyQRData, saveQRHistory, onScanResult])
+  }, [selectedImage, beautifyQRData, onScanResult])
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (qrStreamRef.current) {
-        qrStreamRef.current.getTracks().forEach(track => track.stop())
-      }
-      if (qrVideoRef.current) {
-        qrVideoRef.current.srcObject = null
-      }
-    }
+  // Clear QR result
+  const clearQRResult = useCallback(() => {
+    setQrScanResult(null)
+  }, [])
+
+  // Reset scanner
+  const resetQRScanner = useCallback(() => {
+    setSelectedImage(null)
+    setQrScanResult(null)
+    setIsCameraActive(false)
+    setIsInitializingCamera(false)
   }, [])
 
   return (
     <div className="space-y-6">
-      {/* QR Code Scanner */}
-      {!qrScanResult && (
+      {/* Image Selection */}
+      {!selectedImage && !isCameraActive && !isInitializingCamera && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <QrCode className="w-5 h-5" />
+            <CardTitle className="text-lg">
               QR Code Scanner
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <Button
-                onClick={() => qrFileInputRef?.current?.click()}
+                onClick={() => qrFileInputRef.current?.click()}
                 variant="outline"
-                className="h-24 flex flex-col gap-2"
+                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
               >
-                <Upload className="w-6 h-6" />
-                Upload QR Image
+                <Upload className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span className="text-xs sm:text-sm">Upload</span>
               </Button>
 
               <Button
-                onClick={startQRScan}
+                onClick={startQRCamera}
                 variant="outline"
-                className="h-24 flex flex-col gap-2"
-                disabled={isScanning}
+                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
+                disabled={isInitializingCamera}
               >
-                {isScanning ? (
-                  <Loader2 className="w-6 h-6 animate-spin" />
+                {isInitializingCamera ? (
+                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
                 ) : (
-                  <QrCode className="w-6 h-6" />
+                  <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
                 )}
-                {isScanning ? 'Scanning...' : 'Scan QR Code'}
+                <span className="text-xs sm:text-sm">
+                  {isInitializingCamera ? 'Starting...' : 'Take Photo'}
+                </span>
               </Button>
             </div>
 
@@ -586,58 +613,73 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               ref={qrFileInputRef}
               type="file"
               accept="image/*"
-              onChange={handleQRFileUpload}
+              onChange={handleFileUpload}
               className="hidden"
             />
-
-            {/* Debug info */}
-            <div className="text-xs text-muted-foreground text-center">
-              Camera: {isCameraSupported() ? 'Supported' : 'Not Supported'} |
-              Video Ready: {videoElementReady ? 'Yes' : 'No'}
-            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Camera View for QR Scanning */}
-      {isScanning && (
+      {/* Camera View */}
+      {(isCameraActive || isInitializingCamera) && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
-                <QrCode className="w-5 h-5" />
-                QR Code Scanner
+                <Camera className="w-5 h-5" />
+                Camera {cameraFacingMode === 'environment' ? 'Back' : 'Front'}
               </CardTitle>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1 sm:gap-2">
                 <Button
-                  onClick={onSwitchCamera}
+                  onClick={switchQRCamera}
                   variant="outline"
                   size="sm"
                   disabled={isInitializingCamera}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
                 >
-                  <RotateCcw className="w-4 h-4 mr-1" />
-                  Switch Camera
+                  <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden sm:inline">Switch Camera</span>
+                  <span className="sm:hidden">Switch</span>
                 </Button>
                 <Button
-                  onClick={onFlashlightToggle}
+                  onClick={stopQRCamera}
                   variant="outline"
                   size="sm"
                   disabled={isInitializingCamera}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
                 >
-                  {isFlashlightOn ? (
-                    <FlashlightOff className="w-4 h-4 mr-1" />
-                  ) : (
-                    <Flashlight className="w-4 h-4 mr-1" />
-                  )}
-                  {isFlashlightOn ? 'Flash Off' : 'Flash On'}
-                </Button>
-                <Button
-                  onClick={stopQRScan}
-                  variant="outline"
-                  size="sm"
-                >
-                  <Square className="w-4 h-4 mr-1" />
+                  <Square className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                   Stop
+                </Button>
+
+                {/* Camera select */}
+                <select
+                  aria-label="Choose camera"
+                  value={currentDeviceId ?? ''}
+                  onChange={async (e) => {
+                    const id = e.target.value || undefined
+                    stopQRCamera()
+                    await startQRCameraWithDevice(id)
+                  }}
+                  className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm rounded-lg border"
+                  disabled={isInitializingCamera || availableCameras.length === 0}
+                >
+                  <option value="">Default</option>
+                  {availableCameras.map(cam => (
+                    <option key={cam.deviceId} value={cam.deviceId}>{cam.label || cam.deviceId}</option>
+                  ))}
+                </select>
+
+                {/* Torch / flashlight toggle */}
+                <Button
+                  onClick={toggleTorch}
+                  variant="outline"
+                  size="sm"
+                  disabled={!torchAvailable || isInitializingCamera}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
+                >
+                  <span className="hidden sm:inline">{torchOn ? 'Flash Off' : 'Flash On'}</span>
+                  <span className="sm:hidden">{torchOn ? 'Off' : 'On'}</span>
                 </Button>
               </div>
             </div>
@@ -650,23 +692,13 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 playsInline
                 muted
                 controls={false}
-                className="w-full h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
-                style={{
-                  transform: cameraFacingMode === 'user' ? 'scaleX(-1)' : 'none',
-                  backgroundColor: '#000'
-                }}
-                onLoadedMetadata={() => {
-                  console.log('QR Video loaded metadata')
-                }}
-                onCanPlay={() => {
-                  console.log('QR Video can play')
-                }}
-                onError={(e: any) => {
-                  console.error('QR Video element error:', e)
+                className={`w-full h-64 sm:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''} bg-black`}
+                onError={(e) => {
                   toast.error('Video display error. Please refresh the page and try again.')
-                  stopQRScan()
+                  stopQRCamera()
                 }}
               />
+              <canvas ref={qrCanvasRef} className="hidden" />
 
               {/* Loading overlay */}
               {isInitializingCamera && (
@@ -680,7 +712,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               )}
 
               {/* Camera overlay with focus guide */}
-              {isScanning && !isInitializingCamera && (
+              {isCameraActive && !isInitializingCamera && (
                 <>
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="w-full h-full border-2 border-white/50 rounded-lg">
@@ -691,15 +723,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   {/* Camera status indicator */}
                   <div className="absolute top-4 left-4">
                     <div className="flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                      Scanning for QR codes...
-                    </div>
-                  </div>
-
-                  {/* Camera controls */}
-                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-                    <div className="text-white text-sm font-medium bg-black/50 px-3 py-1 rounded-full">
-                      Position QR code in the center
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      scanning...
                     </div>
                   </div>
                 </>
@@ -711,19 +736,63 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
                 <div className="text-sm text-blue-700 dark:text-blue-300">
-                  <strong>QR Code Tips:</strong>
+                  <strong>Camera Tips:</strong>
                   <ul className="mt-1 space-y-1 text-xs">
-                    <li>• Ensure the QR code is well-lit and in focus</li>
-                    <li>• Hold camera steady when scanning</li>
-                    <li>• Keep QR code within the viewfinder</li>
-                    <li>• Try different angles if scanning fails</li>
-                    <li>• Supports URLs, contacts, WiFi, emails, and more</li>
-                    <li>• you can use our allternative they are also offline they have more qrcode foused</li>
-                    <li>• <a href="https://yoqr.netlify.app/" className="text-blue-500 underline">yoqr</a></li>
+                    <li>• Position QR code in the center square</li>
+                    <li>• Ensure good lighting for better detection</li>
+                    <li>• Hold camera steady when capturing</li>
+                    <li>• QR code should be clearly visible</li>
                   </ul>
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Selected Image Preview */}
+      {selectedImage && !isCameraActive && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">QR Code Preview</CardTitle>
+              <Button
+                onClick={resetQRScanner}
+                variant="ghost"
+                size="sm"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <img
+                src={selectedImage}
+                alt="QR Code"
+                className="w-full max-h-64 object-contain rounded-lg border"
+              />
+            </div>
+
+            {!qrScanResult && (
+              <Button
+                onClick={processQRImage}
+                disabled={isProcessing}
+                className="w-full"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Scanning QR Code...
+                  </>
+                ) : (
+                  <>
+                    <Scan className="w-4 h-4 mr-2" />
+                    Scan QR Code
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -738,7 +807,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 QR Code Detected
               </CardTitle>
               <Button
-                onClick={handleClearQRResult}
+                onClick={clearQRResult}
                 variant="ghost"
                 size="sm"
               >
@@ -774,10 +843,11 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <Button
                 onClick={() => handleQRAction(qrScanResult.beautified)}
-                className="flex-1"
+                className="flex-1 text-xs sm:text-sm"
+                size="sm"
               >
                 {qrScanResult.beautified?.type === 'url' && 'Open Link'}
                 {qrScanResult.beautified?.type === 'email' && 'Send Email'}
@@ -789,71 +859,13 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               <Button
                 onClick={() => copyToClipboard(qrScanResult.data)}
                 variant="outline"
+                size="sm"
+                className="text-xs sm:text-sm"
               >
-                <Copy className="w-4 h-4 mr-2" />
-                Copy Raw
+                <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Copy Raw</span>
+                <span className="sm:hidden">Copy</span>
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* QR Code History */}
-      {qrHistory && qrHistory.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <History className="w-5 h-5" />
-              Recent QR Codes ({qrHistory.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {qrHistory.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {item.beautifiedData?.type === 'url' && <ExternalLink className="w-3 h-3" />}
-                      {item.beautifiedData?.type === 'email' && <Mail className="w-3 h-3" />}
-                      {item.beautifiedData?.type === 'phone' && <Phone className="w-3 h-3" />}
-                      {item.beautifiedData?.type === 'wifi' && <Wifi className="w-3 h-3" />}
-                      <Badge variant="outline" className="text-xs">
-                        {item.beautifiedData?.title}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {item.beautifiedData?.displayText || item.rawData}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(item.timestamp).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 ml-3">
-                    <Button
-                      onClick={() => handleQRAction(item.beautifiedData)}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      onClick={() => copyToClipboard(item.rawData)}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <Copy className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      onClick={() => handleDeleteQRHistory(item.id)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>

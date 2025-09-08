@@ -5,23 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Upload, Trash2, Database, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
-import { createEncryptedBackup, restoreEncryptedBackup } from "@/lib/backup"
-import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
 
@@ -82,8 +69,6 @@ export function DataSettings() {
     try {
       const text = await importFile.text()
       setBackupFileContent(text)
-
-      // Try to parse as JSON first
       let parsedData
       try {
         parsedData = JSON.parse(text)
@@ -92,19 +77,12 @@ export function DataSettings() {
       }
 
       let dataToImport = parsedData
-
-      // Check if this is an encrypted backup (has version, salt, payload fields)
       if (parsedData.version && parsedData.salt && parsedData.payload) {
-        console.log("[v0] Detected encrypted backup")
-
-        // If PIN is provided, try to decrypt
         if (importPin) {
           try {
             const { restoreEncryptedBackup } = await import("@/lib/backup")
             dataToImport = await restoreEncryptedBackup(text, importPin)
-            console.log("[v0] Backup decrypted successfully")
           } catch (decryptError) {
-            console.error("[v0] Decryption failed:", decryptError)
             toast({
               title: "Decryption Failed",
               description: "Invalid PIN or corrupted backup file.",
@@ -114,7 +92,6 @@ export function DataSettings() {
             return
           }
         } else {
-          // No PIN provided for encrypted backup
           toast({
             title: "PIN Required",
             description: "This is an encrypted backup. Please enter your PIN to decrypt it.",
@@ -132,7 +109,6 @@ export function DataSettings() {
       setShowImportModal(true)
       setIsImporting(false)
     } catch (error) {
-      console.error("[v0] Import error:", error)
       const errorMessage = error instanceof Error ? error.message : "The backup file is invalid or corrupted."
       toast({
         title: "Import Failed",
@@ -148,12 +124,10 @@ export function DataSettings() {
 
     setIsImporting(true)
     try {
-      // Create selective data based on user choices
       const selectiveData: any = {
         exportDate: availableImportData.exportDate || new Date().toISOString(),
         version: availableImportData.version || "1.0",
       }
-
       if (importOptions.userProfile && availableImportData.userProfile) {
         selectiveData.userProfile = availableImportData.userProfile
       }
@@ -178,16 +152,12 @@ export function DataSettings() {
       if (importOptions.emergencyFund && availableImportData.emergencyFund) {
         selectiveData.emergencyFund = availableImportData.emergencyFund
       }
-
-      // Restore scrollbar setting if userProfile is being imported
       if (importOptions.userProfile && availableImportData.settings?.showScrollbars !== undefined) {
         selectiveData.settings = {
           ...selectiveData.settings,
           showScrollbars: availableImportData.settings.showScrollbars
         }
       }
-
-      console.log("[v0] Starting selective data import...")
       const success = await importData(selectiveData)
 
       if (success) {
@@ -200,7 +170,7 @@ export function DataSettings() {
         throw new Error("Import failed - data could not be processed")
       }
     } catch (error) {
-      throw error // Re-throw to let the modal handle the error
+      throw error 
     } finally {
       setIsImporting(false)
     }
@@ -228,7 +198,6 @@ export function DataSettings() {
       dataSize: (dataSize / 1024).toFixed(2) + " KB",
     }
   }
-
   const stats = getDataStats()
 
   return (
@@ -307,13 +276,16 @@ export function DataSettings() {
               <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-muted">
             <div className="flex items-start gap-3">
               <div className="p-1 bg-blue-500/10 rounded">
-                <FileText className="w-4 h-4 text-blue-600" />
+                <FileText className="w-4 h-4 text-primary" />
               </div>
               <div className="flex-1">
                 <h4 className="font-medium text-sm mb-1">Backup Features</h4>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  • Selective data export with encryption • Automatic backup type detection • PIN-protected security • Cross-device compatibility
-                </p>
+                  <ul className="text-xs text-muted-foreground leading-relaxed">
+                    <li>• Selective data export with encryption</li>
+                    <li>• Automatic backup type detection</li>
+                    <li>• PIN-protected security</li>
+                    <li>• Cross-device compatibility</li>
+                  </ul>
               </div>
             </div>
           </div>
@@ -374,9 +346,6 @@ export function DataSettings() {
               </div>
             </div>
           </div>
-
-          {/* Additional Info */}
-          
         </CardContent>
       </Card>
 

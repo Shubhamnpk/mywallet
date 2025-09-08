@@ -41,6 +41,13 @@ interface OnboardingProps {
 
 const steps = [
   {
+    id: 0,
+    title: "Welcome to MyWallet",
+    subtitle: "Your time-aware financial companion",
+    icon: Wallet,
+    description: "Your time-aware financial companion"
+  },
+  {
     id: 1,
     title: "Welcome",
     subtitle: "Let's get started",
@@ -77,7 +84,7 @@ const steps = [
   },
   {
     id: 6,
-    title: "Complete",
+    title: "Perfect! 🎉",
     subtitle: "You're all set!",
     icon: Sparkles,
     description: "Ready to start your journey"
@@ -116,7 +123,7 @@ const features = [
 ];
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -191,7 +198,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     if (step === 6 && !formData.enableSecurity) {
       setStep(4); // Skip PIN setup
     } else {
-      setStep(Math.max(step - 1, 1));
+      setStep(Math.max(step - 1, 0));
     }
   };
 
@@ -303,20 +310,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   return (
     <div className="min-h-screen bg-gradient-primary flex items-center justify-center p-3">
       <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-2xl mb-3 shadow-lg">
-            <Wallet className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold  mb-1">
-            MyWallet
-          </h1>
-          <p className=" text-sm">Your time-aware financial companion</p>
-        </div>
 
         {/* Main Card */}
         <Card className="border-0 shadow-xl glass border-white/20">
           <CardHeader className="text-center pb-3">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <div className="w-16 h-16 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 rounded-xl flex items-center justify-center shadow-lg">
+                <currentStep.icon className="w-8 h-8 text-primary drop-shadow-sm" />
+              </div>
+            </div>
             <CardTitle className="text-xl font-bold">
               {currentStep.title}
             </CardTitle>
@@ -326,6 +328,47 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </CardHeader>
 
           <CardContent className="pt-0">
+            {/* Step 0 - Welcome Screen */}
+            {step === 0 && (
+              <div className="space-y-6 text-center">
+                {/* Hero Section */}
+                    <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-primary/60 rounded-full mx-auto mt-3" />
+                  
+
+                {/* Journey Message */}
+                <div className="space-y-4">
+                  <div className="relative">
+                    <p className="text-base text-white/95 font-medium leading-relaxed">
+                      Let's start your journey to
+                    </p>
+                    <p className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-primary text-transparent bg-clip-text">
+                      financial freedom
+                    </p>
+                  </div>
+
+                  {/* Feature Showcase */}
+                  <div className="grid grid-cols-2 gap-3 mt-6">
+                    {features.map((feature, index) => (
+                      <div key={index} className="group relative p-3 rounded-lg bg-gradient-to-br from-white/15 to-white/5 border border-white/10 backdrop-blur-md hover:from-white/20 hover:to-white/10 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className="relative z-10">
+                          <div className={`inline-flex items-center justify-center w-8 h-8 rounded-md ${feature.bgColor} mb-2 group-hover:scale-110 transition-transform duration-300`}>
+                            <feature.icon className={`w-4 h-4 ${feature.color}`} />
+                          </div>
+                          <h3 className="font-semibold text-xs text-white group-hover:text-white/95 transition-colors">
+                            {feature.title}
+                          </h3>
+                          <p className="text-xs text-white/70 group-hover:text-white/80 transition-colors leading-tight">
+                            {feature.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Step 1 - Welcome */}
             {step === 1 && (
               <div className="space-y-4">
@@ -604,18 +647,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {/* Step 6 - Complete */}
             {step === 6 && (
               <div className="space-y-4">
-                <div className="text-center space-y-3">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl">
-                    <CheckCircle className="w-8 h-8 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-xl">Perfect! 🎉</h3>
-                    <p className="text-muted-foreground text-sm">
-                      Ready to start your financial journey
-                    </p>
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   {features.map((feature, index) => (
                     <div key={index} className="p-3 rounded-lg bg-background-secondary border">
@@ -641,7 +672,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
             {/* Navigation */}
             <div className="flex gap-3 mt-6">
-              {step > 1 && (
+              {step > 0 && (
                 <Button
                   variant="outline"
                   onClick={handleBack}
@@ -683,17 +714,17 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         {/* Step Indicators */}
         <div className="flex justify-center mt-6">
           <div className="flex gap-2">
-            {Array.from({ length: maxStep }).map((_, i) => {
-              const stepNum = i + 1;
+            {Array.from({ length: maxStep + 1 }).map((_, i) => {
+              const stepNum = i;
               const isActive = stepNum === step;
               const isCompleted = stepNum < step;
-              
+
               return (
                 <div
                   key={stepNum}
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                    isActive 
-                      ? 'bg-white scale-125' 
+                    isActive
+                      ? 'bg-white scale-125'
                       : isCompleted
                         ? 'bg-white'
                         : 'bg-white/30'

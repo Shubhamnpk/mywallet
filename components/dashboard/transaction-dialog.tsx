@@ -21,13 +21,20 @@ import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 
 interface FormData {
-  amount: string
-  category: string
-  subcategory: string
-  description: string
-  allocationType: "direct" | "goal"
-  allocationTarget: string
-  receiptImage?: string
+   amount: string
+   category: string
+   subcategory: string
+   description: string
+   allocationType: "direct" | "goal" | "debt" | "credit"
+   allocationTarget: string
+   receiptImage?: string
+ }
+
+interface DebtFormData {
+  name: string
+  minimumPayment: string
+  interestRate: string
+  startDate: string
 }
 
 interface UnifiedTransactionDialogProps {
@@ -55,7 +62,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -79,11 +86,21 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     receiptImage: { touched: !!initialReceiptImage, blurred: false },
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitAttempted, setSubmitAttempted] = useState(false)
-  const [showAddCategory, setShowAddCategory] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState("")
-  const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
-  const amountInputRef = useRef<HTMLInputElement>(null)
+   const [submitAttempted, setSubmitAttempted] = useState(false)
+   const [showAddCategory, setShowAddCategory] = useState(false)
+   const [newCategoryName, setNewCategoryName] = useState("")
+   const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
+   const [showDebtDialog, setShowDebtDialog] = useState(false)
+   const [debtFormData, setDebtFormData] = useState<DebtFormData>({
+     name: "",
+     minimumPayment: "",
+     interestRate: "",
+     startDate: new Date().toISOString().split('T')[0]
+   })
+   const [pendingTransactionResult, setPendingTransactionResult] = useState<any>(null)
+   const [pendingTransaction, setPendingTransaction] = useState<any>(null)
+   const [showDebtMoreOptions, setShowDebtMoreOptions] = useState(false)
+   const amountInputRef = useRef<HTMLInputElement>(null)
 
   const currencySymbol = useMemo(() => {
     return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
@@ -105,12 +122,26 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return settings.customBudgetCategories[formData.category] || []
   }, [formData.category, settings?.customBudgetCategories])
 
+  const availableGoals = useMemo(() => {
+    return goals?.filter((g) => g.currentAmount < g.targetAmount) || []
+  }, [goals])
+
+  const hasAllocationOptions = useMemo(() => {
+    return availableGoals.length > 0 || (debtAccounts?.length || 0) > 0 || (creditAccounts?.length || 0) > 0
+  }, [availableGoals, debtAccounts, creditAccounts])
+
   const allocationTargets = useMemo(() => {
     if (formData.allocationType === "goal") {
-      return goals?.filter((g) => g.currentAmount < g.targetAmount) || []
+      return availableGoals
+    }
+    if (formData.allocationType === "debt") {
+      return debtAccounts || []
+    }
+    if (formData.allocationType === "credit") {
+      return creditAccounts || []
     }
     return []
-  }, [formData.allocationType, goals])
+  }, [formData.allocationType, availableGoals, debtAccounts, creditAccounts])
 
   const availableCategories = useMemo(() => {
     const contextCategories = categories
@@ -165,8 +196,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return Object.keys(errors).length === 0 &&
             formData.amount &&
             numAmount > 0 &&
-            (formData.allocationType === "goal" || formData.category) &&
-            (formData.allocationType === "direct" || formData.allocationTarget)
+            ((formData.allocationType === "direct" && formData.category) ||
+             (formData.allocationType === "goal" && formData.allocationTarget) ||
+             (formData.allocationType === "debt" && formData.allocationTarget) ||
+             (formData.allocationType === "credit" && formData.allocationTarget))
   }, [errors, formData, numAmount])
 
   // Focus management
@@ -265,6 +298,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
     setNewCategoryName("")
     setNewCategoryIcon("📦")
+    setShowDebtMoreOptions(false)
+    setPendingTransactionResult(null)
+    setPendingTransaction(null)
   }, [initialAmount, initialDescription, initialType, initialCategory])
 
   const handleOpenChange = useCallback(
@@ -299,38 +335,114 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       setIsSubmitting(true)
 
       try {
-        const result = await addTransaction({
-          type,
-          amount: numAmount,
-          category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
-          subcategory: formData.subcategory || undefined,
-          description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
-          date: new Date().toISOString(),
-          allocationType: formData.allocationType,
-          allocationTarget: formData.allocationTarget || undefined,
-        })
-
-        if (result.budgetWarnings && result.budgetWarnings.length > 0) {
-          result.budgetWarnings.forEach((warning: any) => {
-            toast.warning(warning.message, {
-              description: warning.details || "Please review your budget allocation."
-            })
-          })
-          // Play budget warning sound
-          playSound("budget-warning")
+        let transactionResult;
+        if (formData.allocationType === "debt") {
+          // Handle debt allocation
+          const debtAccount = debtAccounts.find(d => d.id === formData.allocationTarget);
+          if (debtAccount) {
+            // Add to debt balance
+            await addDebtCharge(debtAccount.id, numAmount, formData.description || "Expense allocation to debt");
+            transactionResult = await addTransaction({
+              type,
+              amount: numAmount,
+              category: "Debt Payment",
+              subcategory: formData.subcategory || undefined,
+              description: formData.description.trim() || `Expense allocated to debt: ${debtAccount.name}`,
+              date: new Date().toISOString(),
+              allocationType: formData.allocationType,
+              allocationTarget: formData.allocationTarget || undefined,
+              total: numAmount,
+              actual: numAmount,
+              debtUsed: numAmount,
+              debtAccountId: debtAccount.id,
+              status: "debt",
+            });
+          }
+        } else if (formData.allocationType === "credit") {
+          // Handle credit allocation
+          const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
+          if (creditAccount) {
+            // Add to credit balance (charge)
+            await updateCreditBalance(creditAccount.id, creditAccount.balance + numAmount);
+            transactionResult = await addTransaction({
+              type,
+              amount: numAmount,
+              category: "Credit Charge",
+              subcategory: formData.subcategory || undefined,
+              description: formData.description.trim() || `Expense charged to credit: ${creditAccount.name}`,
+              date: new Date().toISOString(),
+              allocationType: formData.allocationType,
+              allocationTarget: formData.allocationTarget || undefined,
+              total: numAmount,
+              actual: numAmount,
+              debtUsed: 0,
+              debtAccountId: null,
+              status: "normal",
+            });
+          }
+        } else {
+          // Handle direct or goal allocation
+          transactionResult = await addTransaction({
+            type,
+            amount: numAmount,
+            category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
+            subcategory: formData.subcategory || undefined,
+            description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
+            date: new Date().toISOString(),
+            allocationType: formData.allocationType,
+            allocationTarget: formData.allocationTarget || undefined,
+            total: numAmount,
+            actual: numAmount,
+            debtUsed: 0,
+            debtAccountId: null,
+            status: "normal",
+          });
         }
 
-        toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
-          description: `${currencySymbol}${numAmount} added to ${formData.category}`,
-          duration: 3000,
-        })
+        if (!transactionResult) {
+          setIsSubmitting(false)
+          toast.error("Failed to add transaction", {
+            description: "Transaction result is undefined. Please try again."
+          })
+          playSound("transaction-failed")
+          return
+        }
 
-        playSound("transaction-success")
+        const result = transactionResult;
 
-        setTimeout(() => {
-          resetForm()
-          handleOpenChange(false)
-        }, 1000)
+        if (result.needsDebtCreation) {
+          // Show debt creation dialog
+          setPendingTransactionResult(result)
+          setPendingTransaction(result.pendingTransaction)
+          setShowDebtDialog(true)
+          setIsSubmitting(false)
+          return
+        }
+
+        if (result.budgetWarnings && result.budgetWarnings.length > 0) {
+           result.budgetWarnings.forEach((warning: any) => {
+             toast.warning(warning.message, {
+               description: warning.details || "Please review your budget allocation."
+             })
+           })
+           // Play budget warning sound
+           playSound("budget-warning")
+         }
+
+         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
+           description: formData.allocationType === "goal" ? `${currencySymbol}${numAmount} contributed to goal` :
+                       formData.allocationType === "debt" ? `${currencySymbol}${numAmount} added to debt account` :
+                       formData.allocationType === "credit" ? `${currencySymbol}${numAmount} charged to credit account` :
+                       `${currencySymbol}${numAmount} added to ${formData.category}`,
+           duration: 3000,
+         })
+
+         playSound("transaction-success")
+
+         setTimeout(() => {
+           resetForm()
+           handleOpenChange(false)
+         }, 1000)
       } catch (error) {
         toast.error("Failed to add transaction", {
           description: error instanceof Error ? error.message : "Please try again."
@@ -368,7 +480,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       ...prev,
       category: "",
       subcategory: "",
-      allocationType: "direct",
+      allocationType: t === "income" ? "direct" : "direct", // For income, only direct is allowed
       allocationTarget: ""
     }))
     setFieldStates(prev => ({
@@ -381,13 +493,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
   }, [])
 
-  const handleAllocationTypeChange = useCallback((newAllocationType: "direct" | "goal") => {
+  const handleAllocationTypeChange = useCallback((newAllocationType: "direct" | "goal" | "debt" | "credit") => {
     setFormData((prev) => ({
       ...prev,
       allocationType: newAllocationType,
       allocationTarget: newAllocationType === "direct" ? "" : prev.allocationTarget,
-      category: newAllocationType === "goal" ? "" : prev.category,
-      subcategory: newAllocationType === "goal" ? "" : prev.subcategory,
+      category: (newAllocationType === "goal" || newAllocationType === "debt" || newAllocationType === "credit") ? "" : prev.category,
+      subcategory: (newAllocationType === "goal" || newAllocationType === "debt" || newAllocationType === "credit") ? "" : prev.subcategory,
     }))
     setFieldStates(prev => ({
       ...prev,
@@ -433,6 +545,64 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       description: `${newCategory.name} has been added to your ${type} categories.`
     })
   }, [newCategoryName, addCategory, categories, type])
+
+  const handleCreateDebt = useCallback(async () => {
+    if (!debtFormData.name.trim() || !pendingTransactionResult || !pendingTransaction) return
+
+    try {
+      const debtAmount = pendingTransactionResult.debtAmount
+      const availableBalance = pendingTransactionResult.availableBalance
+      const minimumPayment = debtFormData.minimumPayment ? Number.parseFloat(debtFormData.minimumPayment) : 0
+      const interestRate = debtFormData.interestRate ? Number.parseFloat(debtFormData.interestRate) : 0
+
+      // Create debt account
+      const newDebt = addDebtAccount({
+        name: debtFormData.name.trim(),
+        balance: debtAmount,
+        interestRate: interestRate,
+        minimumPayment: minimumPayment,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      })
+
+      // Complete the transaction with debt
+      await completeTransactionWithDebt(
+        pendingTransaction,
+        debtFormData.name.trim(),
+        newDebt.id,
+        availableBalance,
+        debtAmount
+      )
+
+      toast.success("Transaction completed with debt!", {
+        description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
+        duration: 3000,
+      })
+
+      playSound("transaction-success")
+
+      // Reset forms and close dialogs
+      setShowDebtDialog(false)
+      setPendingTransactionResult(null)
+      setPendingTransaction(null)
+      setDebtFormData({
+        name: "",
+        minimumPayment: "",
+        interestRate: "",
+        startDate: new Date().toISOString().split('T')[0]
+      })
+
+      setTimeout(() => {
+        resetForm()
+        handleOpenChange(false)
+      }, 1000)
+    } catch (error) {
+      toast.error("Failed to create debt account", {
+        description: error instanceof Error ? error.message : "Please try again."
+      })
+      playSound("transaction-failed")
+    }
+  }, [debtFormData, pendingTransactionResult, pendingTransaction, addDebtAccount, completeTransactionWithDebt, currencySymbol, playSound, resetForm, handleOpenChange])
 
   // Smart placeholder text
   const getDescriptionPlaceholder = useCallback(() => {
@@ -562,43 +732,63 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 )}
               </div>
 
-              {/* Allocation Type for Expenses */}
-              {type === "expense" && (
+              {/* Allocation Type for Expenses - Only show if allocation options are available */}
+              {type === "expense" && hasAllocationOptions && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Allocation Method</Label>
                   <RadioGroup
                     value={formData.allocationType}
                     onValueChange={handleAllocationTypeChange}
-                    className="flex gap-4"
+                    className="flex flex-wrap gap-3"
                   >
-                    <div className="flex items-center space-x-2 p-2 rounded-lg border border-border/50 hover:border-border transition-colors flex-1">
+                    <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
                       <RadioGroupItem value="direct" id="direct" />
-                      <div className="flex-1">
-                        <Label htmlFor="direct" className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                          <Wallet className="w-4 h-4 text-blue-500" />
-                          Direct Expense
-                        </Label>
-                      </div>
+                      <Label htmlFor="direct" className="flex items-center gap-1 cursor-pointer text-sm">
+                        <Wallet className="w-3 h-3 text-blue-500" />
+                        Direct
+                      </Label>
                     </div>
 
-                    <div className="flex items-center space-x-2 p-2 rounded-lg border border-border/50 hover:border-border transition-colors flex-1">
-                      <RadioGroupItem value="goal" id="goal" />
-                      <div className="flex-1">
-                        <Label htmlFor="goal" className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                          <Target className="w-4 h-4 text-purple-500" />
-                          Spend for Goal
+                    {availableGoals.length > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="goal" id="goal" />
+                        <Label htmlFor="goal" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <Target className="w-3 h-3 text-purple-500" />
+                          Goal ({availableGoals.length})
                         </Label>
                       </div>
-                    </div>
+                    )}
+
+                    {(debtAccounts?.length || 0) > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="debt" id="debt" />
+                        <Label htmlFor="debt" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <AlertCircle className="w-3 h-3 text-red-500" />
+                          Debt ({debtAccounts?.length || 0})
+                        </Label>
+                      </div>
+                    )}
+
+                    {(creditAccounts?.length || 0) > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="credit" id="credit" />
+                        <Label htmlFor="credit" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <Receipt className="w-3 h-3 text-green-500" />
+                          Credit ({creditAccounts?.length || 0})
+                        </Label>
+                      </div>
+                    )}
                   </RadioGroup>
                 </div>
               )}
 
-              {/* Goal Selection */}
-              {formData.allocationType === "goal" && (
+              {/* Allocation Target Selection */}
+              {(formData.allocationType === "goal" || formData.allocationType === "debt" || formData.allocationType === "credit") && (
                 <div className="space-y-2">
                   <Label htmlFor="allocationTarget" className="text-sm font-medium flex items-center gap-1">
-                    Select Goal
+                    {formData.allocationType === "goal" ? "Select Goal" :
+                     formData.allocationType === "debt" ? "Select Debt Account" :
+                     formData.allocationType === "credit" ? "Select Credit Account" : "Select Target"}
                     <span className="text-orange-500">*</span>
                   </Label>
                   <Select
@@ -609,33 +799,41 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   >
                     <SelectTrigger
                       className={cn(
-                        "transition-all duration-200",
+                        "transition-all duration-200 h-9",
                         errors.allocationTarget ? "border-red-300 focus:border-red-500" : ""
                       )}
                       aria-describedby={errors.allocationTarget ? "allocationTarget-error" : undefined}
                     >
-                      <SelectValue placeholder="Choose a goal to contribute to" />
+                      <SelectValue placeholder={
+                        formData.allocationType === "goal" ? "Choose a goal" :
+                        formData.allocationType === "debt" ? "Choose debt account" :
+                        formData.allocationType === "credit" ? "Choose credit account" : "Choose target"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       {allocationTargets.map((target) => (
                         <SelectItem key={target.id} value={target.id}>
-                          <div className="flex flex-col py-1">
-                            <span className="font-medium">{target.title}</span>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>
-                                {currencySymbol}{target.currentAmount} / {currencySymbol}{target.targetAmount}
-                              </span>
-                              <span>•</span>
-                              <span className="text-primary">
-                                {Math.round((target.currentAmount / target.targetAmount) * 100)}% complete
-                              </span>
-                            </div>
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-medium text-sm">
+                              {(target as any).title || (target as any).name}
+                            </span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {formData.allocationType === "goal" ?
+                                `${Math.round(((target as any).currentAmount / (target as any).targetAmount) * 100)}%` :
+                                formData.allocationType === "debt" ?
+                                `${currencySymbol}${(target as any).balance}` :
+                                formData.allocationType === "credit" ?
+                                `${Math.round(((target as any).balance / (target as any).creditLimit) * 100)}%` :
+                                ""}
+                            </span>
                           </div>
                         </SelectItem>
                       ))}
                       {allocationTargets.length === 0 && (
                         <SelectItem value="none" disabled>
-                          No incomplete goals available
+                          {formData.allocationType === "goal" ? "No goals available" :
+                           formData.allocationType === "debt" ? "No debt accounts" :
+                           formData.allocationType === "credit" ? "No credit accounts" : "No options"}
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -646,20 +844,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       {errors.allocationTarget}
                     </p>
                   )}
-
-                  {formData.allocationTarget && (
-                    <div className="mt-3 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-                      <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4" />
-                        Goal contribution confirmed
-                      </p>
-                      <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                        {currencySymbol}{numAmount} will be added to your goal progress and deducted from your main balance.
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
+
 
               {/* Category Selection - Only show for direct expenses */}
               {formData.allocationType === "direct" && (
@@ -743,8 +930,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                             <div className="flex items-center gap-2">
                               <div
                                 className="w-3 h-3 rounded-full border border-white/20"
-                                style={{ backgroundColor: categoryData?.color || "#3b82f6" }}
-                              />
+                                style={{
+                                  backgroundColor: categoryData?.color || "#3b82f6"
+                                }} />
                               <span>{categoryName}</span>
                               {!categoryData?.isDefault && (
                                 <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
@@ -899,6 +1087,203 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt Creation Dialog */}
+      <Dialog open={showDebtDialog} onOpenChange={setShowDebtDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Debt Account</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+              <p className="text-sm text-orange-700 dark:text-orange-300">
+                Transaction amount: {currencySymbol}{pendingTransaction?.amount?.toFixed(2)}
+                <br />
+                Available balance: {currencySymbol}{pendingTransactionResult?.availableBalance?.toFixed(2)}
+                <br />
+                Amount to record as debt: {currencySymbol}{pendingTransactionResult?.debtAmount?.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm font-medium">Use Existing Debt or Create New</Label>
+                <div className="mt-2 space-y-2">
+                  {debtAccounts.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Select existing debt to attach the owed amount</Label>
+                      <div className="grid gap-2">
+                        {debtAccounts.map((d) => (
+                          <Button
+                            key={d.id}
+                            variant={d.id === debtFormData.name ? 'outline' : 'ghost'}
+                            size="sm"
+                            onClick={() => {
+                              setDebtFormData(prev => ({ ...prev, name: d.id }))
+                            }}
+                          >
+                            {d.name} - {currencySymbol}{d.balance.toFixed(2)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No existing debts. You'll create a new one below.</p>
+                  )}
+
+                  <div className="pt-2">
+                    <Label htmlFor="debt-name" className="text-sm font-medium">
+                      New Debt Name <span className="text-orange-500">*</span>
+                    </Label>
+                    <Input
+                      id="debt-name"
+                      value={typeof debtFormData.name === 'string' && debtFormData.name && debtAccounts.some(d => d.id === debtFormData.name) ? '' : debtFormData.name}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="e.g., Credit Card, Loan, etc."
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDebtMoreOptions(!showDebtMoreOptions)}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {showDebtMoreOptions ? "Hide" : "Show"} Additional Options
+                </Button>
+              </div>
+
+              {showDebtMoreOptions && (
+                <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                  <div>
+                    <Label htmlFor="debt-minimum-payment" className="text-sm font-medium">
+                      Minimum Payment ({currencySymbol})
+                    </Label>
+                    <Input
+                      id="debt-minimum-payment"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={debtFormData.minimumPayment}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, minimumPayment: e.target.value }))}
+                      placeholder="0.00"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="debt-interest-rate" className="text-sm font-medium">
+                      Interest Rate (%)
+                    </Label>
+                    <Input
+                      id="debt-interest-rate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={debtFormData.interestRate}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, interestRate: e.target.value }))}
+                      placeholder="0.00"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="debt-start-date" className="text-sm font-medium">
+                      Start Date
+                    </Label>
+                    <Input
+                      id="debt-start-date"
+                      type="date"
+                      value={debtFormData.startDate}
+                      onChange={(e) => setDebtFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+              <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowDebtDialog(false)
+                  setPendingTransactionResult(null)
+                  setDebtFormData({
+                    name: "",
+                    minimumPayment: "",
+                    interestRate: "",
+                    startDate: new Date().toISOString().split('T')[0]
+                  })
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  // If debtFormData.name matches an existing debt id, attach to that
+                  const debtAmount = pendingTransactionResult?.debtAmount
+                  const availableBalance = pendingTransactionResult?.availableBalance
+                  if (!pendingTransaction || !pendingTransactionResult) return
+
+                  const existingDebt = debtAccounts.find(d => d.id === debtFormData.name)
+                  if (existingDebt) {
+                    // Add charge to existing debt (if API available). Fallback: create a new debt with same name and attach.
+                    if (typeof addDebtToAccount === 'function') {
+                      await addDebtToAccount(existingDebt.id, debtAmount, `Charge from transaction: ${pendingTransaction.description || pendingTransaction.category}`)
+                      await completeTransactionWithDebt(pendingTransaction, existingDebt.name, existingDebt.id, availableBalance, debtAmount)
+                    } else {
+                      // Fallback: create a new debt account with the same name and attach the debtAmount
+                      const newDebt = addDebtAccount({
+                        name: existingDebt.name + " (from transaction)",
+                        balance: debtAmount,
+                        interestRate: existingDebt.interestRate || 0,
+                        minimumPayment: existingDebt.minimumPayment || 0,
+                        dueDate: existingDebt.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                        createdAt: new Date().toISOString(),
+                      })
+                      await completeTransactionWithDebt(pendingTransaction, newDebt.name, newDebt.id, availableBalance, debtAmount)
+                    }
+                  } else {
+                    // Create new debt via existing flow
+                    await handleCreateDebt()
+                    return
+                  }
+
+                  toast.success('Transaction completed with debt!', {
+                    description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
+                    duration: 3000,
+                  })
+
+                  // Reset and close
+                  setShowDebtDialog(false)
+                  setPendingTransactionResult(null)
+                  setPendingTransaction(null)
+                  setDebtFormData({ name: "", minimumPayment: "", interestRate: "", startDate: new Date().toISOString().split('T')[0] })
+
+                  setTimeout(() => {
+                    resetForm()
+                    handleOpenChange(false)
+                  }, 1000)
+                }}
+                disabled={!( (debtAccounts.length > 0 && debtAccounts.some(d=>d.id===debtFormData.name)) || debtFormData.name.trim())}
+                className="flex-1"
+              >
+                Use Selected / Create Debt
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </TooltipProvider>

@@ -1,24 +1,79 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
-import { Clock, Search, TrendingUp, TrendingDown, Calendar, Filter, ArrowUpDown, RefreshCcw, Settings } from "lucide-react"
+import { Clock, Search, TrendingUp, TrendingDown, Calendar as CalendarIcon, Filter, ArrowUpDown, RefreshCcw, Settings } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from "@/components/ui/pagination"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import type { DateRange } from "react-day-picker"
 import { TransactionDetailsModal } from "./transaction-details-modal"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 
+function BadgeRow({ children }: { children: React.ReactNode }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  const isMobileLocal = useIsMobile()
+
+  useEffect(() => {
+    function check() {
+      const el = containerRef.current
+      if (!el) return
+      setOverflowing(el.scrollWidth > el.clientWidth + 1)
+    }
+    if (!isMobileLocal) {
+      check()
+      window.addEventListener("resize", check)
+      return () => window.removeEventListener("resize", check)
+    }
+    return
+  }, [children, isMobileLocal])
+  const childArray = React.Children.toArray(children)
+  if (childArray.length === 0) return null
+  if (isMobileLocal) {
+    return (
+      <div ref={containerRef} className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden">
+        <div className="inline-block align-middle">{childArray[0]}</div>
+        {childArray.length > 1 && (
+          <Badge variant="outline" className="text-[10px]">+{childArray.length - 1}</Badge>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div
+      ref={containerRef}
+      className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden whitespace-nowrap"
+    >
+      {overflowing ? (
+        <>
+          <div className="inline-block align-middle">{childArray[0]}</div>
+          <div className="inline-block align-middle">...</div>
+        </>
+      ) : (
+        childArray.map((c, i) => (
+          <div key={i} className="inline-block align-middle">
+            {c}
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
 interface TransactionsListProps {
   transactions: Transaction[]
   userProfile: UserProfile
   onDeleteTransaction?: (id: string) => void
-  fetchTransactions?: () => Promise<Transaction[]> // for realtime refresh
+  fetchTransactions?: () => Promise<Transaction[]>
 }
 
 export function TransactionsList({
@@ -35,10 +90,12 @@ export function TransactionsList({
   const [sortBy, setSortBy] = useState<"date" | "amount">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(5)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const isMobile = useIsMobile()
   const [showFilters, setShowFilters] = useState(false)
 
-  // Realtime polling (every 20s if fetchTransactions is provided)
   useEffect(() => {
     if (!fetchTransactions) return
     const load = async () => {
@@ -52,10 +109,13 @@ export function TransactionsList({
     return () => clearInterval(interval)
   }, [fetchTransactions])
 
-  // Keep internal transactions in sync when parent updates props (immediate UI update)
   useEffect(() => {
     setTransactions(initialTransactions)
   }, [initialTransactions])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, filter, categoryFilter, sortBy, sortOrder, dateRange])
 
   const refreshManually = async () => {
     if (!fetchTransactions) return
@@ -65,14 +125,23 @@ export function TransactionsList({
     setLoading(false)
   }
 
-  // Apply filters
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-
   const categories = Array.from(new Set(transactions.map((t) => t.category)))
-
   const filteredTransactions = transactions
-    .filter((t) => new Date(t.date) >= sevenDaysAgo)
+    .filter((t) => {
+      const transactionDate = new Date(t.date)
+      if (dateRange?.from && dateRange?.to) {
+        return transactionDate >= dateRange.from && transactionDate <= dateRange.to
+      } else if (dateRange?.from) {
+        return transactionDate >= dateRange.from
+      } else if (dateRange?.to) {
+        return transactionDate <= dateRange.to
+      } else {
+        // Default to last 7 days if no date range selected
+        return transactionDate >= sevenDaysAgo
+      }
+    })
     .filter((transaction) => {
       const matchesSearch =
         transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -91,6 +160,12 @@ export function TransactionsList({
       }
     })
 
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage)
+  const paginatedTransactions = filteredTransactions.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
   const getTimeEquivalentDisplay = (amount: number) => {
     const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
     return breakdown ? breakdown.formatted.userFriendly : ""
@@ -102,21 +177,19 @@ export function TransactionsList({
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
+              <CalendarIcon className="w-5 h-5" />
               Recent Transactions
             </CardTitle>
             <div className="flex items-center gap-2">
-              {isMobile && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  {showFilters ? "Hide Details" : "View Details"}
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4" />
+                {showFilters ? "Hide Details" : "View Details"}
+              </Button>
               {fetchTransactions && (
                 <Button
                   variant="ghost"
@@ -143,7 +216,50 @@ export function TransactionsList({
               />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={`${isMobile ? 'w-full' : 'w-[200px]'} justify-start text-left font-normal`}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                      dateRange?.to ? (
+                        <>
+                          {dateRange.from.toLocaleDateString()} -{" "}
+                          {dateRange.to.toLocaleDateString()}
+                        </>
+                      ) : (
+                        dateRange.from.toLocaleDateString()
+                      )
+                    ) : (
+                      <span>Pick a date range</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className={`${isMobile ? 'w-full max-w-[300px]' : 'w-[300px]'} p-0`} align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={(range) => setDateRange(range)}
+                    numberOfMonths={1}
+                    className="rounded-md border-0 w-full"
+                  />
+                  <div className="p-3 border-t border-border">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDateRange(undefined)}
+                      className="w-full"
+                    >
+                      Clear dates
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Select value={filter} onValueChange={(value: "all" | "income" | "expense") => setFilter(value)}>
                 <SelectTrigger className="w-28">
                   <SelectValue placeholder="Type" />
@@ -190,65 +306,98 @@ export function TransactionsList({
             <div className="text-center py-8 text-muted-foreground">Refreshing...</div>
           ) : filteredTransactions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchTerm || filter !== "all" || categoryFilter !== "all"
+              {searchTerm || filter !== "all" || categoryFilter !== "all" || dateRange?.from || dateRange?.to
                 ? "No transactions match your filters"
                 : "No transactions in the last 7 days. Add your first transaction!"}
             </div>
           ) : (
-            <ul className="space-y-3">
-              {filteredTransactions.map((transaction) => (
-                <li
-                  key={transaction.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedTransaction(transaction)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-2 rounded-full ${
-                        transaction.type === "income"
-                          ? "bg-primary/10 text-primary dark:bg-primary/20"
-                          : "bg-red-100 text-red-600 dark:bg-red-900/20"
-                      }`}
-                    >
-                      {transaction.type === "income" ? (
-                        <TrendingUp className="w-4 h-4" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4" />
-                      )}
-                    </div>
+            <>
+              <ul className="space-y-3">
+                {paginatedTransactions.map((transaction) => (
+                  <li
+                    key={transaction.id}
+                    className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedTransaction(transaction)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-full ${
+                          transaction.type === "income"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20"
+                            : "bg-red-100 text-red-600 dark:bg-red-900/20"
+                        }`}
+                      >
+                        {transaction.type === "income" ? (
+                          <TrendingUp className="w-4 h-4" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4" />
+                        )}
+                      </div>
 
-                    <div>
-                      <p className="font-medium">{transaction.description}</p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Badge variant="secondary" className="text-xs">
-                          {transaction.category}
-                        </Badge>
-                        {!isMobile && <><span>•</span><span>{new Date(transaction.date).toLocaleDateString()}</span></>}
+                      <div className="flex flex-col max-h-20 overflow-hidden">
+                        <p className={`font-medium ${isMobile ? 'text-sm' : ''}`}>{transaction.description}</p>
+                        <BadgeRow>
+                          <Badge variant="secondary" className={isMobile ? "text-[10px]" : "text-xs"}>
+                            {transaction.category}
+                          </Badge>
+                          {transaction.status === "debt" && (
+                            <Badge variant="outline" className={`${isMobile ? "text-[10px]" : "text-xs"} border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400`}>
+                              Debt
+                            </Badge>
+                          )}
+                          {transaction.status === "repayment" && (
+                            <Badge variant="outline" className={`${isMobile ? "text-[10px]" : "text-xs"} border-green-300 text-green-700 dark:border-green-600 dark:text-green-400`}>
+                              Repayment
+                            </Badge>
+                          )}
+                        </BadgeRow>
                       </div>
                     </div>
-                  </div>
 
-                  <div className={`text-right ${isMobile ? 'flex flex-col items-end' : ''}`}>
-                    <p
-                      className={`font-semibold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}
-                    >
-                      {transaction.type === "income" ? "+" : "-"}
-                      {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
-                    </p>
-
-                    {transaction.type === "expense" && (
-                      <TimeTooltip amount={transaction.amount}>
-                        <div className="flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
-                          <Clock className="w-4 h-4" />
-                          <span>{getTimeEquivalentDisplay(transaction.amount)} work</span>
-                        </div>
-                      </TimeTooltip>
-                    )}
-                    {isMobile && <span className="text-sm text-muted-foreground">{new Date(transaction.date).toLocaleDateString()}</span>}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="text-right flex flex-col items-end self-start">
+                      <div className="flex flex-col items-end gap-1">
+                        <p
+                          className={`font-semibold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}
+                        >
+                          {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.total ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}
+                        </p>
+                      </div>
+                      <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground`}>{new Date(transaction.date).toLocaleDateString()}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {totalPages > 1 && (
+                <div className="mt-4 flex justify-center">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page)}
+                            isActive={currentPage === page}
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

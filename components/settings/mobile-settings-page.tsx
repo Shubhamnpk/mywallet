@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import type { TouchEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +14,7 @@ import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
 import { useRouter } from "next/navigation"
 import {
@@ -46,6 +48,66 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const { userProfile } = useWalletData()
   const router = useRouter()
+
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([])
+  useEffect(() => {
+    const dismissed = localStorage.getItem('dismissedSuggestions')
+    if (dismissed) {
+      setDismissedSuggestions(JSON.parse(dismissed))
+    }
+  }, [])
+
+  const dismissSuggestion = (id: string) => {
+    const newDismissed = [...dismissedSuggestions, id]
+    setDismissedSuggestions(newDismissed)
+    localStorage.setItem('dismissedSuggestions', JSON.stringify(newDismissed))
+  }
+
+  const isAppDownloaded = () => {
+    if (typeof window !== 'undefined') {
+      return window.matchMedia('(display-mode: standalone)').matches
+    }
+    return false
+  }
+
+  const isSecurityEnabled = () => {
+    return false
+  }
+  const suggestions: Suggestion[] = [
+    {
+      id: 'download',
+      title: 'Download MyWallet App',
+      description: 'Get the full experience',
+      action: () => {
+        const deferredPrompt = (window as any).__deferredPrompt
+        if (deferredPrompt) {
+          deferredPrompt.prompt()
+          deferredPrompt.userChoice.then(() => {
+            try { delete (window as any).__deferredPrompt } catch {}
+          })
+        } else {
+          alert(
+            'Install is not available right now. Please open browser menu and choose "Install" or visit this site on a supported browser.'
+          );
+        }
+      },
+      condition: !isAppDownloaded()
+    },
+    {
+      id: 'security',
+      title: 'Enable Security',
+      description: 'Protect your data with PIN or biometric',
+      action: () => setCurrentView('security'),
+      condition: !isSecurityEnabled()
+    },
+    {
+      id: 'backup',
+      title: 'Backup Your Data',
+      description: 'Keep your data safe',
+      action: () => setCurrentView('data'),
+      condition: true
+    }
+  ].filter(s => s.condition && !dismissedSuggestions.includes(s.id))
 
   const getInitials = () => {
     return userProfile?.name
@@ -175,11 +237,11 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
           )}
         </div>
         {/* User Profile */}
-        <div className="flex items-center p-4 mb-4 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
+        <div className="flex items-center p-4 mb-1 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
              onClick={() => setCurrentView("profile")}>
           <div className="flex-1">
             <div className="font-medium text-lg text-gray-900 dark:text-white mb-1">
-              {userProfile?.name || "Unnamed User"}
+              {userProfile?.name || "Mr/Ms lovely user"}
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {getCurrentCurrencySymbol()} • myWallet lovelyUser
@@ -193,20 +255,10 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
           </Avatar>
         </div>
 
-        {/* Backup Suggestion */}
-        <div className="p-3 mb-1 bg-card rounded-xl shadow-sm">
-          <div className="flex items-center">
-            <div className="flex-1">
-              <div className="font-small text-gray-900 dark:text-white mb-1">
-                Protect your data with backups
-              </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                1 more suggestion
-              </div>
-            </div>
-            <div className="text-xl ml-4">✨</div>
-          </div>
-        </div>
+        {/* Suggestions */}
+        {suggestions.length > 0 && (
+          <SuggestionsCarousel suggestions={suggestions} onDismiss={dismissSuggestion} />
+        )}
       </div>
 
       {/* Content */}
@@ -306,6 +358,106 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
   return (
     <div className="fixed inset-0 bg-background z-50 overflow-hidden">
       {currentView === "main" ? renderMainView() : renderDetailView()}
+    </div>
+  )
+}
+
+interface Suggestion {
+  id: string
+  title: string
+  description: string
+  action: () => void
+  condition?: boolean
+}
+
+function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggestion[], onDismiss: (id: string) => void }) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Handle scroll to update currentIndex
+  useEffect(() => {
+    const handleScroll = () => {
+      if (scrollRef.current) {
+        const scrollLeft = scrollRef.current.scrollLeft
+        const itemWidth = scrollRef.current.clientWidth
+        const index = Math.round(scrollLeft / itemWidth)
+        setCurrentIndex(index)
+      }
+    }
+    scrollRef.current?.addEventListener('scroll', handleScroll)
+    return () => scrollRef.current?.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Swipe handling
+  const [touchStart, setTouchStart] = useState(0)
+  const [touchEnd, setTouchEnd] = useState(0)
+  const minSwipeDistance = 50
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(0)
+    setTouchStart(e.targetTouches[0].clientX)
+  }
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX)
+  }
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return
+    const distance = touchStart - touchEnd
+    const isLeftSwipe = distance > minSwipeDistance
+    const isRightSwipe = distance < -minSwipeDistance
+    if (isLeftSwipe && currentIndex < suggestions.length - 1) {
+      setCurrentIndex(currentIndex + 1)
+      scrollRef.current?.scrollTo({ left: (currentIndex + 1) * scrollRef.current.clientWidth, behavior: 'smooth' })
+    }
+    if (isRightSwipe && currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1)
+      scrollRef.current?.scrollTo({ left: (currentIndex - 1) * scrollRef.current.clientWidth, behavior: 'smooth' })
+    }
+  }
+
+  return (
+    <div className="mb-1">
+      <div
+        ref={scrollRef}
+        className="flex overflow-x-auto hide-scrollbars snap-x snap-mandatory"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {suggestions.map((suggestion, index) => (
+          <div key={suggestion.id} className="flex-shrink-0 w-full snap-center p-3 bg-card rounded-xl shadow-sm mr-2 last:mr-0">
+            <div className="flex items-center">
+              <div className="flex-1 cursor-pointer" onClick={suggestion.action}>
+                <div className="font-small text-gray-900 dark:text-white mb-1">
+                  {suggestion.title}
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {suggestion.description}
+                </div>
+              </div>
+              <button
+              type="button"
+                aria-label={`Dismiss ${suggestion.title}`}
+                title="Dismiss"
+                onClick={() => onDismiss(suggestion.id)}
+                className="ml-2 text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-center mt-2">
+        {suggestions.map((_, index) => (
+          <div
+            key={index}
+            className={`w-2 h-2 rounded-full mx-1 ${index === currentIndex ? 'bg-primary' : 'bg-gray-300'}`}
+          />
+        ))}
+      </div>
     </div>
   )
 }

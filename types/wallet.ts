@@ -6,23 +6,21 @@ export interface UserProfile {
   workingHoursPerDay: number
   workingDaysPerMonth: number
   pin?: string
-  pinSalt?: string // Added for secure PIN hashing
+  pinSalt?: string 
   securityEnabled: boolean
   createdAt: string
-  // Optional custom currency details when user selects CUSTOM
   customCurrency?: {
     code: string
     symbol: string
     name: string
   }
-  // Profile avatar/image
-  avatar?: string // Base64 encoded image or URL
+  avatar?: string 
 }
 
 export interface Transaction {
   id: string
   type: "income" | "expense"
-  amount: number
+  amount: number 
   description: string
   category: string
   date: string
@@ -32,9 +30,15 @@ export interface Transaction {
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
   // New allocation fields
-  allocationType?: "direct" | "goal" | "budget"
-  allocationTarget?: string // ID of goal or budget
-  subcategory?: string // For budget subcategories
+  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit"
+  allocationTarget?: string
+  subcategory?: string 
+  // Enhanced debt transaction fields
+  total: number 
+  actual: number 
+  debtUsed: number 
+  debtAccountId?: string | null 
+  status: "normal" | "debt" | "repayment" 
 }
 
 export interface Budget {
@@ -77,7 +81,6 @@ export interface Goal {
   autoContribute: boolean
   contributionAmount?: number
   contributionFrequency?: "daily" | "weekly" | "monthly"
-  // Optional human-readable description
   description?: string
 }
 
@@ -88,7 +91,6 @@ export interface WalletSettings {
   backupEnabled: boolean
   categories: string[]
   securityPin?: string
-  // Custom budget categories
   customBudgetCategories: Record<string, string[]>
   customCategories: {
     income: string[]
@@ -141,7 +143,7 @@ export interface DebtCreditTransaction {
   id: string
   accountId: string
   accountType: "debt" | "credit"
-  type: "payment" | "charge" | "interest"
+  type: "payment" | "charge" | "interest" | "closed"
   amount: number
   description: string
   date: string

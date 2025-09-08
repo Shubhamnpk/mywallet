@@ -1,5 +1,6 @@
 import type { UserProfile, Category, Transaction } from "@/types/wallet"
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, getCategoryColor, getCategoryIcon } from "./categories"
+import { getCurrencySymbol } from "./currency"
 
 export function generateId(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -162,7 +163,7 @@ export function getTimeEquivalentTooltip(amount: number, profile: UserProfile): 
   if (!breakdown) return ""
 
   const hourlyRate = profile.monthlyEarning / (profile.workingDaysPerMonth * profile.workingHoursPerDay)
-  const currencySymbol = profile.currency === "USD" ? "$" : profile.currency === "EUR" ? "€" : profile.currency === "GBP" ? "£" : profile.currency === "JPY" ? "¥" : profile.currency === "CAD" ? "C$" : profile.currency === "AUD" ? "A$" : profile.currency === "INR" ? "₹" : "$"
+  const currencySymbol = getCurrencySymbol(profile.currency || "USD", (profile as any)?.customCurrency)
 
   return `
 Time Equivalent Breakdown:

@@ -1,6 +1,6 @@
 # MyWallet App
 
-![MyWallet Logo](public/mywallet.png)
++<img src="public/image.png" alt="MyWallet Logo" width="120" />
 
 A comprehensive, secure, and user-friendly personal finance management application built with modern web technologies. Take control of your financial future with intuitive budgeting, goal tracking, and insightful analytics.
 
@@ -54,7 +54,7 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+ and npm/pnpm
++ Node.js 20+ (LTS) and npm/pnpm
 - Git
 
 ### Installation
