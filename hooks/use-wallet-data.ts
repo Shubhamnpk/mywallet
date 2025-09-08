@@ -72,6 +72,14 @@ export function useWalletData() {
 
   const loadDataWithIntegrityCheck = async () => {
     try {
+      // Skip localStorage access during SSR
+      if (typeof window === 'undefined') {
+        setShowOnboarding(true)
+        setIsAuthenticated(true)
+        setIsLoaded(true)
+        return
+      }
+
       const savedProfile = localStorage.getItem("userProfile")
       const savedTransactions = localStorage.getItem("transactions")
       const savedBudgets = localStorage.getItem("budgets")
@@ -674,20 +682,22 @@ export function useWalletData() {
     SessionManager.clearSession()
 
     // Clear ALL localStorage data for the site
-    localStorage.clear()
+    if (typeof window !== 'undefined') {
+      localStorage.clear()
 
-    // Also clear sessionStorage if it exists
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.clear()
-    }
+      // Also clear sessionStorage if it exists
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear()
+      }
 
-    // Clear all cookies for this domain
-    if (typeof document !== 'undefined') {
-      const cookies = document.cookie.split(";")
-      for (let cookie of cookies) {
-        const eqPos = cookie.indexOf("=")
-        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
-        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+      // Clear all cookies for this domain
+      if (typeof document !== 'undefined') {
+        const cookies = document.cookie.split(";")
+        for (let cookie of cookies) {
+          const eqPos = cookie.indexOf("=")
+          const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
+          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+        }
       }
     }
 
@@ -709,6 +719,8 @@ export function useWalletData() {
   }
 
   const exportData = () => {
+    if (typeof window === 'undefined') return
+
     const data = {
       userProfile,
       transactions,
@@ -813,7 +825,7 @@ export function useWalletData() {
       }
 
       // Import scrollbar setting
-      if (data.settings?.showScrollbars !== undefined) {
+      if (data.settings?.showScrollbars !== undefined && typeof window !== 'undefined') {
         console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
@@ -828,6 +840,8 @@ export function useWalletData() {
 
   const refreshData = () => {
     try {
+      if (typeof window === 'undefined') return
+
       const savedBudgets = localStorage.getItem("budgets")
       const savedGoals = localStorage.getItem("goals")
       const savedTransactions = localStorage.getItem("transactions")

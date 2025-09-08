@@ -399,6 +399,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           });
         }
 
+        if (!transactionResult) {
+          setIsSubmitting(false)
+          toast.error("Failed to add transaction", {
+            description: "Transaction result is undefined. Please try again."
+          })
+          playSound("transaction-failed")
+          return
+        }
+
         const result = transactionResult;
 
         if (result.needsDebtCreation) {

@@ -3,6 +3,8 @@ import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
 
 export async function loadFromLocalStorage(keys: string[]) {
+  if (typeof window === 'undefined') return {}
+
   const result: Record<string, any> = {}
   for (const key of keys) {
     const value = localStorage.getItem(key)
@@ -27,6 +29,8 @@ export async function loadFromLocalStorage(keys: string[]) {
 }
 
 export async function saveToLocalStorage(key: string, data: any, encrypt: boolean = false) {
+  if (typeof window === 'undefined') return
+
   try {
     if (encrypt && SecureKeyManager.hasMasterKey()) {
       // Encrypt sensitive data

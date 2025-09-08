@@ -7,8 +7,9 @@ import { Separator } from "@/components/ui/separator"
 import { RefreshCw, ExternalLink, Github, User, Heart, Star, Building, Info } from "lucide-react"
 import { useState, useRef } from "react"
 import { toast } from 'sonner'
-import usePWAUpdate from '@/components/pwa/usePWAUpdate'
+import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
+import packageJson from '../../package.json'
 
 export function AboutSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -67,6 +68,11 @@ export function AboutSettings() {
   const handlePrivacyPolicy = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/PRIVACY.md')
   const handleTermsOfService = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/TERMS.md')
 
+  const handleOSSCard = () => openExternal('https://github.com/Shubhamnpk/mywallet')
+  const handleBitNepalCard = () => openExternal('https://bit-nepal.com')
+  const handleYoguruCard = () => openExternal('https://yoguru.odoo.com')
+
+
   // Helper to clear caches and unregister service workers
   async function clearAllCachesAndData() {
     // Only delete caches that are app/service-worker related to avoid removing user data
@@ -115,19 +121,20 @@ export function AboutSettings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Version</span>
-            <Badge variant="secondary">v2.0.0</Badge>
+            <Badge variant="secondary">v{process.env.NEXT_PUBLIC_APP_VERSION || packageJson.version}</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Build</span>
             <span
-              className="text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 px-1 rounded transition-colors"
+              className="text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 px-1 rounded transition-colors font-mono"
               onClick={handleBuildTap}
               onTouchEnd={(e) => {
                 e.preventDefault()
                 handleBuildTap()
               }}
+              title="Development build - click for easter egg!"
             >
-              2025.9.06
+              {process.env.NEXT_PUBLIC_BUILD_NUMBER || `${packageJson.version}.${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -151,7 +158,9 @@ export function AboutSettings() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Current Version</p>
-                <p className="text-sm text-muted-foreground">You're running the latest version</p>
+                 <p className="text-sm text-muted-foreground">
+                 {isUpdateAvailable ? 'An update is available' : "You're running the latest version"}
+               </p>
               </div>
               <div className="flex flex-col items-end">
                 <Badge variant={isUpdateAvailable ? 'destructive' : 'outline'} className={isUpdateAvailable ? 'text-red-600 border-red-600' : 'text-green-600 border-green-600'}>
@@ -295,15 +304,24 @@ export function AboutSettings() {
         <CardContent>
           <div className="space-y-4">
             <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
-              <div className="text-center p-3 border rounded-lg">
+              <div
+                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={handleOSSCard}
+              >
                 <div className="font-medium text-sm">OSS</div>
                 <div className="text-xs text-muted-foreground mt-1">Open Source Software</div>
               </div>
-              <div className="text-center p-3 border rounded-lg">
+              <div
+                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={handleBitNepalCard}
+              >
                 <div className="font-medium text-sm">BitNepal</div>
                 <div className="text-xs text-muted-foreground mt-1">Technology Partner</div>
               </div>
-              <div className="text-center p-3 border rounded-lg">
+              <div
+                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={handleYoguruCard}
+              >
                 <div className="font-medium text-sm">Yoguru</div>
                 <div className="text-xs text-muted-foreground mt-1">Community Partner</div>
               </div>

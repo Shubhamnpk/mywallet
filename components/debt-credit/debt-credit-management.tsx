@@ -104,7 +104,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
   const handlePayment = async () => {
     const amount = Number.parseFloat(paymentAmount)
-    if (amount <= 0 || amount > balance) return
+    if (!Number.isFinite(amount) || amount <= 0 || amount > balance) return
 
     if (paymentDialog.accountType === "debt") {
       const result = await makeDebtPayment(paymentDialog.accountId, amount)
