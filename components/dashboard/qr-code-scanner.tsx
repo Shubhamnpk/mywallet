@@ -502,11 +502,15 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   // Process the selected image
   const processQRImage = useCallback(async () => {
     if (!selectedImage) return
+    if (!jsQRRef.current) {
+      toast.error('Scanner not ready yet. Please wait a moment and try again.')
+      return
+    }
 
     setIsProcessing(true)
     try {
       toast.info('Scanning QR code...')
-
+      // …rest of the scanning logic
       // Create image element
       const img = new Image()
       img.src = selectedImage
