@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { RefreshCw, ExternalLink, Github, User, Heart, Star, Building, Info } from "lucide-react"
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { toast } from 'sonner'
 import usePWAUpdate from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 export function AboutSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [clearingCache, setClearingCache] = useState(false)
+  const tapTriggered = useRef(false)
   const {
     isSupported,
     isUpdateAvailable,
@@ -36,6 +37,16 @@ export function AboutSettings() {
       setCheckingUpdate(false)
     }
   }
+
+  const handleBuildTap = () => {
+    if (tapTriggered.current) return
+    tapTriggered.current = true
+    toast.success("🎉 Easter Egg! You've unlocked the secret: Infinite wallet wisdom! (But seriously, keep managing your finances wisely 😄)")
+    setTimeout(() => {
+      tapTriggered.current = false
+    }, 3000) // reset after 3 seconds
+  }
+
   const openExternal = (url: string) => {
     try {
       const newWindow = window.open(url, '_blank', 'noopener,noreferrer')
@@ -104,11 +115,20 @@ export function AboutSettings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Version</span>
-            <Badge variant="secondary">v1.0.0</Badge>
+            <Badge variant="secondary">v2.0.0</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Build</span>
-            <span className="text-sm text-muted-foreground">2025.9.06</span>
+            <span
+              className="text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 px-1 rounded transition-colors"
+              onClick={handleBuildTap}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                handleBuildTap()
+              }}
+            >
+              2025.9.06
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Platform</span>

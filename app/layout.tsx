@@ -12,6 +12,7 @@ import RegisterSW from '@/components/pwa/register-sw'
 import InstallButton from '@/components/pwa/install-button'
 import UpdateNotification from '@/components/pwa/update-notification'
 import UpdateSuccess from '@/components/pwa/update-success'
+import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -42,12 +43,13 @@ export default function RootLayout({
   <UpdateNotification />
   <UpdateSuccess />
   <ThemeProviderWrapper>
-          <PrivacyModeProvider>
-            <WalletDataProvider>
-              <SessionGuard>{children}</SessionGuard>
-            </WalletDataProvider>
-          </PrivacyModeProvider>
-        </ThemeProviderWrapper>
+    <PrivacyModeProvider>
+      <WalletDataProvider>
+        <SessionGuard>{children}</SessionGuard>
+      </WalletDataProvider>
+    </PrivacyModeProvider>
+    <Toaster />
+  </ThemeProviderWrapper>
       </body>
     </html>
   )

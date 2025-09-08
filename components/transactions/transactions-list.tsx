@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,57 @@ import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
+
+function BadgeRow({ children }: { children: React.ReactNode }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  const isMobileLocal = useIsMobile()
+
+  useEffect(() => {
+    function check() {
+      const el = containerRef.current
+      if (!el) return
+      setOverflowing(el.scrollWidth > el.clientWidth + 1)
+    }
+    if (!isMobileLocal) {
+      check()
+      window.addEventListener("resize", check)
+      return () => window.removeEventListener("resize", check)
+    }
+    return
+  }, [children, isMobileLocal])
+  const childArray = React.Children.toArray(children)
+  if (childArray.length === 0) return null
+  if (isMobileLocal) {
+    return (
+      <div ref={containerRef} className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden">
+        <div className="inline-block align-middle">{childArray[0]}</div>
+        {childArray.length > 1 && (
+          <Badge variant="outline" className="text-[10px]">+{childArray.length - 1}</Badge>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div
+      ref={containerRef}
+      className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden whitespace-nowrap"
+    >
+      {overflowing ? (
+        <>
+          <div className="inline-block align-middle">{childArray[0]}</div>
+          <div className="inline-block align-middle">...</div>
+        </>
+      ) : (
+        childArray.map((c, i) => (
+          <div key={i} className="inline-block align-middle">
+            {c}
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
 
 interface TransactionsListProps {
   transactions: Transaction[]
@@ -285,7 +336,7 @@ export function TransactionsList({
 
                       <div className="flex flex-col max-h-20 overflow-hidden">
                         <p className={`font-medium ${isMobile ? 'text-sm' : ''}`}>{transaction.description}</p>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                        <BadgeRow>
                           <Badge variant="secondary" className={isMobile ? "text-[10px]" : "text-xs"}>
                             {transaction.category}
                           </Badge>
@@ -299,7 +350,7 @@ export function TransactionsList({
                               Repayment
                             </Badge>
                           )}
-                        </div>
+                        </BadgeRow>
                       </div>
                     </div>
 
@@ -310,12 +361,6 @@ export function TransactionsList({
                         >
                           {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.total ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}
                         </p>
-                        {!isMobile && (transaction.status === "debt" || transaction.debtUsed > 0 || transaction.debtAccountId) && (
-                          <div className="text-xs text-muted-foreground">
-                            <div>Cash: {formatCurrency(transaction.actual ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}</div>
-                            <div className="text-orange-600">Debt: {formatCurrency(transaction.debtUsed ?? 0, userProfile.currency, userProfile.customCurrency)}</div>
-                          </div>
-                        )}
                       </div>
                       <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground`}>{new Date(transaction.date).toLocaleDateString()}</span>
                     </div>

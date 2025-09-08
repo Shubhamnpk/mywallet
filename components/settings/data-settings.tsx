@@ -158,8 +158,6 @@ export function DataSettings() {
           showScrollbars: availableImportData.settings.showScrollbars
         }
       }
-
-      console.log("[v0] Starting selective data import...")
       const success = await importData(selectiveData)
 
       if (success) {

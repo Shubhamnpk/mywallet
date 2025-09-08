@@ -21,14 +21,14 @@ import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 
 interface FormData {
-  amount: string
-  category: string
-  subcategory: string
-  description: string
-  allocationType: "direct" | "goal"
-  allocationTarget: string
-  receiptImage?: string
-}
+   amount: string
+   category: string
+   subcategory: string
+   description: string
+   allocationType: "direct" | "goal" | "debt" | "credit"
+   allocationTarget: string
+   receiptImage?: string
+ }
 
 interface DebtFormData {
   name: string
@@ -62,7 +62,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, balance, completeTransactionWithDebt } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -122,12 +122,26 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return settings.customBudgetCategories[formData.category] || []
   }, [formData.category, settings?.customBudgetCategories])
 
+  const availableGoals = useMemo(() => {
+    return goals?.filter((g) => g.currentAmount < g.targetAmount) || []
+  }, [goals])
+
+  const hasAllocationOptions = useMemo(() => {
+    return availableGoals.length > 0 || (debtAccounts?.length || 0) > 0 || (creditAccounts?.length || 0) > 0
+  }, [availableGoals, debtAccounts, creditAccounts])
+
   const allocationTargets = useMemo(() => {
     if (formData.allocationType === "goal") {
-      return goals?.filter((g) => g.currentAmount < g.targetAmount) || []
+      return availableGoals
+    }
+    if (formData.allocationType === "debt") {
+      return debtAccounts || []
+    }
+    if (formData.allocationType === "credit") {
+      return creditAccounts || []
     }
     return []
-  }, [formData.allocationType, goals])
+  }, [formData.allocationType, availableGoals, debtAccounts, creditAccounts])
 
   const availableCategories = useMemo(() => {
     const contextCategories = categories
@@ -182,8 +196,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return Object.keys(errors).length === 0 &&
             formData.amount &&
             numAmount > 0 &&
-            (formData.allocationType === "goal" || formData.category) &&
-            (formData.allocationType === "direct" || formData.allocationTarget)
+            ((formData.allocationType === "direct" && formData.category) ||
+             (formData.allocationType === "goal" && formData.allocationTarget) ||
+             (formData.allocationType === "debt" && formData.allocationTarget) ||
+             (formData.allocationType === "credit" && formData.allocationTarget))
   }, [errors, formData, numAmount])
 
   // Focus management
@@ -319,21 +335,71 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       setIsSubmitting(true)
 
       try {
-        const result = await addTransaction({
-          type,
-          amount: numAmount,
-          category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
-          subcategory: formData.subcategory || undefined,
-          description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
-          date: new Date().toISOString(),
-          allocationType: formData.allocationType,
-          allocationTarget: formData.allocationTarget || undefined,
-          total: numAmount,
-          actual: numAmount,
-          debtUsed: 0,
-          debtAccountId: null,
-          status: "normal",
-        })
+        let transactionResult;
+        if (formData.allocationType === "debt") {
+          // Handle debt allocation
+          const debtAccount = debtAccounts.find(d => d.id === formData.allocationTarget);
+          if (debtAccount) {
+            // Add to debt balance
+            await addDebtCharge(debtAccount.id, numAmount, formData.description || "Expense allocation to debt");
+            transactionResult = await addTransaction({
+              type,
+              amount: numAmount,
+              category: "Debt Payment",
+              subcategory: formData.subcategory || undefined,
+              description: formData.description.trim() || `Expense allocated to debt: ${debtAccount.name}`,
+              date: new Date().toISOString(),
+              allocationType: formData.allocationType,
+              allocationTarget: formData.allocationTarget || undefined,
+              total: numAmount,
+              actual: numAmount,
+              debtUsed: numAmount,
+              debtAccountId: debtAccount.id,
+              status: "debt",
+            });
+          }
+        } else if (formData.allocationType === "credit") {
+          // Handle credit allocation
+          const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
+          if (creditAccount) {
+            // Add to credit balance (charge)
+            await updateCreditBalance(creditAccount.id, creditAccount.balance + numAmount);
+            transactionResult = await addTransaction({
+              type,
+              amount: numAmount,
+              category: "Credit Charge",
+              subcategory: formData.subcategory || undefined,
+              description: formData.description.trim() || `Expense charged to credit: ${creditAccount.name}`,
+              date: new Date().toISOString(),
+              allocationType: formData.allocationType,
+              allocationTarget: formData.allocationTarget || undefined,
+              total: numAmount,
+              actual: numAmount,
+              debtUsed: 0,
+              debtAccountId: null,
+              status: "normal",
+            });
+          }
+        } else {
+          // Handle direct or goal allocation
+          transactionResult = await addTransaction({
+            type,
+            amount: numAmount,
+            category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
+            subcategory: formData.subcategory || undefined,
+            description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
+            date: new Date().toISOString(),
+            allocationType: formData.allocationType,
+            allocationTarget: formData.allocationTarget || undefined,
+            total: numAmount,
+            actual: numAmount,
+            debtUsed: 0,
+            debtAccountId: null,
+            status: "normal",
+          });
+        }
+
+        const result = transactionResult;
 
         if (result.needsDebtCreation) {
           // Show debt creation dialog
@@ -355,7 +421,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
          }
 
          toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
-           description: `${currencySymbol}${numAmount} added to ${formData.category}`,
+           description: formData.allocationType === "goal" ? `${currencySymbol}${numAmount} contributed to goal` :
+                       formData.allocationType === "debt" ? `${currencySymbol}${numAmount} added to debt account` :
+                       formData.allocationType === "credit" ? `${currencySymbol}${numAmount} charged to credit account` :
+                       `${currencySymbol}${numAmount} added to ${formData.category}`,
            duration: 3000,
          })
 
@@ -402,7 +471,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       ...prev,
       category: "",
       subcategory: "",
-      allocationType: "direct",
+      allocationType: t === "income" ? "direct" : "direct", // For income, only direct is allowed
       allocationTarget: ""
     }))
     setFieldStates(prev => ({
@@ -415,13 +484,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
   }, [])
 
-  const handleAllocationTypeChange = useCallback((newAllocationType: "direct" | "goal") => {
+  const handleAllocationTypeChange = useCallback((newAllocationType: "direct" | "goal" | "debt" | "credit") => {
     setFormData((prev) => ({
       ...prev,
       allocationType: newAllocationType,
       allocationTarget: newAllocationType === "direct" ? "" : prev.allocationTarget,
-      category: newAllocationType === "goal" ? "" : prev.category,
-      subcategory: newAllocationType === "goal" ? "" : prev.subcategory,
+      category: (newAllocationType === "goal" || newAllocationType === "debt" || newAllocationType === "credit") ? "" : prev.category,
+      subcategory: (newAllocationType === "goal" || newAllocationType === "debt" || newAllocationType === "credit") ? "" : prev.subcategory,
     }))
     setFieldStates(prev => ({
       ...prev,
@@ -654,43 +723,63 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 )}
               </div>
 
-              {/* Allocation Type for Expenses */}
-              {type === "expense" && (
+              {/* Allocation Type for Expenses - Only show if allocation options are available */}
+              {type === "expense" && hasAllocationOptions && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Allocation Method</Label>
                   <RadioGroup
                     value={formData.allocationType}
                     onValueChange={handleAllocationTypeChange}
-                    className="flex gap-4"
+                    className="flex flex-wrap gap-3"
                   >
-                    <div className="flex items-center space-x-2 p-2 rounded-lg border border-border/50 hover:border-border transition-colors flex-1">
+                    <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
                       <RadioGroupItem value="direct" id="direct" />
-                      <div className="flex-1">
-                        <Label htmlFor="direct" className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                          <Wallet className="w-4 h-4 text-blue-500" />
-                          Direct Expense
-                        </Label>
-                      </div>
+                      <Label htmlFor="direct" className="flex items-center gap-1 cursor-pointer text-sm">
+                        <Wallet className="w-3 h-3 text-blue-500" />
+                        Direct
+                      </Label>
                     </div>
 
-                    <div className="flex items-center space-x-2 p-2 rounded-lg border border-border/50 hover:border-border transition-colors flex-1">
-                      <RadioGroupItem value="goal" id="goal" />
-                      <div className="flex-1">
-                        <Label htmlFor="goal" className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                          <Target className="w-4 h-4 text-purple-500" />
-                          Spend for Goal
+                    {availableGoals.length > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="goal" id="goal" />
+                        <Label htmlFor="goal" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <Target className="w-3 h-3 text-purple-500" />
+                          Goal ({availableGoals.length})
                         </Label>
                       </div>
-                    </div>
+                    )}
+
+                    {(debtAccounts?.length || 0) > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="debt" id="debt" />
+                        <Label htmlFor="debt" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <AlertCircle className="w-3 h-3 text-red-500" />
+                          Debt ({debtAccounts?.length || 0})
+                        </Label>
+                      </div>
+                    )}
+
+                    {(creditAccounts?.length || 0) > 0 && (
+                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                        <RadioGroupItem value="credit" id="credit" />
+                        <Label htmlFor="credit" className="flex items-center gap-1 cursor-pointer text-sm">
+                          <Receipt className="w-3 h-3 text-green-500" />
+                          Credit ({creditAccounts?.length || 0})
+                        </Label>
+                      </div>
+                    )}
                   </RadioGroup>
                 </div>
               )}
 
-              {/* Goal Selection */}
-              {formData.allocationType === "goal" && (
+              {/* Allocation Target Selection */}
+              {(formData.allocationType === "goal" || formData.allocationType === "debt" || formData.allocationType === "credit") && (
                 <div className="space-y-2">
                   <Label htmlFor="allocationTarget" className="text-sm font-medium flex items-center gap-1">
-                    Select Goal
+                    {formData.allocationType === "goal" ? "Select Goal" :
+                     formData.allocationType === "debt" ? "Select Debt Account" :
+                     formData.allocationType === "credit" ? "Select Credit Account" : "Select Target"}
                     <span className="text-orange-500">*</span>
                   </Label>
                   <Select
@@ -701,33 +790,41 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   >
                     <SelectTrigger
                       className={cn(
-                        "transition-all duration-200",
+                        "transition-all duration-200 h-9",
                         errors.allocationTarget ? "border-red-300 focus:border-red-500" : ""
                       )}
                       aria-describedby={errors.allocationTarget ? "allocationTarget-error" : undefined}
                     >
-                      <SelectValue placeholder="Choose a goal to contribute to" />
+                      <SelectValue placeholder={
+                        formData.allocationType === "goal" ? "Choose a goal" :
+                        formData.allocationType === "debt" ? "Choose debt account" :
+                        formData.allocationType === "credit" ? "Choose credit account" : "Choose target"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       {allocationTargets.map((target) => (
                         <SelectItem key={target.id} value={target.id}>
-                          <div className="flex flex-col py-1">
-                            <span className="font-medium">{target.title}</span>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>
-                                {currencySymbol}{target.currentAmount} / {currencySymbol}{target.targetAmount}
-                              </span>
-                              <span>•</span>
-                              <span className="text-primary">
-                                {Math.round((target.currentAmount / target.targetAmount) * 100)}% complete
-                              </span>
-                            </div>
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-medium text-sm">
+                              {(target as any).title || (target as any).name}
+                            </span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {formData.allocationType === "goal" ?
+                                `${Math.round(((target as any).currentAmount / (target as any).targetAmount) * 100)}%` :
+                                formData.allocationType === "debt" ?
+                                `${currencySymbol}${(target as any).balance}` :
+                                formData.allocationType === "credit" ?
+                                `${Math.round(((target as any).balance / (target as any).creditLimit) * 100)}%` :
+                                ""}
+                            </span>
                           </div>
                         </SelectItem>
                       ))}
                       {allocationTargets.length === 0 && (
                         <SelectItem value="none" disabled>
-                          No incomplete goals available
+                          {formData.allocationType === "goal" ? "No goals available" :
+                           formData.allocationType === "debt" ? "No debt accounts" :
+                           formData.allocationType === "credit" ? "No credit accounts" : "No options"}
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -738,20 +835,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       {errors.allocationTarget}
                     </p>
                   )}
-
-                  {formData.allocationTarget && (
-                    <div className="mt-3 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-                      <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4" />
-                        Goal contribution confirmed
-                      </p>
-                      <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                        {currencySymbol}{numAmount} will be added to your goal progress and deducted from your main balance.
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
+
 
               {/* Category Selection - Only show for direct expenses */}
               {formData.allocationType === "direct" && (

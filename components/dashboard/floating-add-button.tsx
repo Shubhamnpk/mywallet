@@ -67,14 +67,25 @@ export function FloatingAddButton({
 
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const vibrateTap = useCallback(() => {
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  }, [])
+
+  const vibrateHold = useCallback(() => {
+    if (navigator.vibrate) {
+      navigator.vibrate(60);
+    }
+  }, [])
 
   const handleMainAction = useCallback(() => {
-    if (isMobile && isAuthenticated) {
-      setIsExpanded(!isExpanded)
-    } else {
-      onAddTransaction?.() ?? setIsDialogOpen(true)
-    }
-  }, [isMobile, isAuthenticated, isExpanded, onAddTransaction])
+    if (isExpanded) return;
+    vibrateTap();
+    onAddTransaction?.() ?? setIsDialogOpen(true)
+  }, [isExpanded, onAddTransaction, vibrateTap])
 
   const handleActionClick = useCallback(
     (actionId: string) => {
@@ -103,7 +114,12 @@ export function FloatingAddButton({
   const handleCalculatorButton = useCallback((value: string) => {
     if (value === "=") {
       try {
-        const result = eval(calculatorExpression.replace(/×/g, "*").replace(/÷/g, "/"))
+        // Replace calculator symbols and handle percentage
+        const processedExpression = calculatorExpression
+          .replace(/×/g, "*")
+          .replace(/÷/g, "/")
+          .replace(/%/g, "*0.01")
+        const result = eval(processedExpression)
         setCalculatorDisplay(result.toString())
         setCalculatorExpression(result.toString())
       } catch {
@@ -204,7 +220,6 @@ export function FloatingAddButton({
 
       for (const [synonym, category] of Object.entries(categorySynonyms)) {
         if (lowerTranscript.includes(synonym)) {
-          // Check if this category exists for the transaction type
           const categoryExists = availableCategories.some(cat => cat.name === category)
           if (categoryExists) {
             detectedCategory = category
@@ -359,6 +374,22 @@ export function FloatingAddButton({
       {/* Main FAB */}
       <Button
         onClick={handleMainAction}
+        onMouseEnter={vibrateHold}
+        onTouchStart={() => {
+          if (isMobile) {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => {
+              setIsExpanded(true);
+              vibrateHold();
+            }, 500);
+          }
+        }}
+        onTouchEnd={() => {
+          if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+          }
+        }}
         size="icon"
         className={cn(
           "fixed right-6 h-14 w-14 rounded-full z-50 flex items-center justify-center",
@@ -426,55 +457,69 @@ export function FloatingAddButton({
 
       {/* Calculator Dialog */}
       <Dialog open={isCalculatorOpen} onOpenChange={handleCalculatorClose}>
-        <DialogContent className="sm:max-w-sm md:max-w-md">
+        <DialogContent className="sm:max-w-sm md:max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
           <DialogHeader>
             <DialogTitle>Quick Calculator</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {/* Display */}
-            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-hidden">
               <div
-                className="text-right text-2xl font-mono overflow-hidden"
+                className="text-right text-2xl font-mono transition-all duration-200 ease-out transform"
                 aria-label="Calculator display"
+                style={{
+                  minHeight: '2.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end'
+                }}
               >
                 {calculatorDisplay}
               </div>
             </div>
 
             {/* Button Grid */}
-<div className="grid grid-cols-5 gap-2">
-  {[
-    "7", "8", "9", "÷", "⌫",
-    "4", "5", "6", "×", "C",
-    "1", "2", "3", "-","%",
-    "0", ".", "+","=",
-  ].map((btn) => (
-    <Button
-      key={btn}
-      variant={btn === "=" ? "default" : "outline"}
-      size="lg"
-      onClick={() => handleCalculatorButton(btn)}
-      className={cn(
-        "h-12 text-lg font-semibold",
-        btn === "0" && "col-span-2",
-        (btn === "C" || btn === "⌫") && "text-red-600 hover:text-red-700",
-        btn === "=" && "bg-blue-600 text-white hover:bg-blue-700"
-      )}
-      aria-label={`Calculator button ${btn}`}
-    >
-      {btn}
-    </Button>
-  ))}
-</div>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                "7", "8", "9", "÷", "⌫",
+                "4", "5", "6", "×", "C",
+                "1", "2", "3", "+", "%",
+                "0", ".", "-", "=",
+              ].map((btn, index) => (
+                <Button
+                  key={btn}
+                  variant={btn === "=" ? "default" : "outline"}
+                  size="lg"
+                  onClick={() => handleCalculatorButton(btn)}
+                  className={cn(
+                    "h-12 text-lg font-semibold transition-all duration-150 ease-out",
+                    "hover:scale-105 hover:shadow-md active:scale-95 active:shadow-sm",
+                    "focus:ring-2 focus:ring-primary/20 focus:outline-none",
+                    btn === "0" && "col-span-2",
+                    (btn === "C" || btn === "⌫") && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
+                    btn === "=" && "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg active:bg-blue-800",
+                    "animate-in slide-in-from-bottom-1 fade-in-0"
+                  )}
+                  style={{ animationDelay: `${index * 20}ms` }}
+                  aria-label={`Calculator button ${btn}`}
+                >
+                  {btn}
+                </Button>
+              ))}
+            </div>
 
-{/* Use Result Button */}
-<Button
-  onClick={handleUseResult}
-  className="w-full mt-2"
-  disabled={calculatorDisplay === "0" || calculatorDisplay === "Error"}
->
-  Use Result in Transaction
-</Button>
+            {/* Use Result Button */}
+            <Button
+              onClick={handleUseResult}
+              className={cn(
+                "w-full mt-2 transition-all duration-200 ease-out",
+                "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]",
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              )}
+              disabled={calculatorDisplay === "0" || calculatorDisplay === "Error"}
+            >
+              Use Result in Transaction
+            </Button>
 
           </div>
         </DialogContent>

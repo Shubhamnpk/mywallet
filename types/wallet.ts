@@ -30,8 +30,8 @@ export interface Transaction {
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
   // New allocation fields
-  allocationType?: "direct" | "goal" | "budget"
-  allocationTarget?: string 
+  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit"
+  allocationTarget?: string
   subcategory?: string 
   // Enhanced debt transaction fields
   total: number 

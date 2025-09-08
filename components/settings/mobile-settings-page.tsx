@@ -393,12 +393,12 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
   const [touchEnd, setTouchEnd] = useState(0)
   const minSwipeDistance = 50
 
-  const onTouchStart = (e: TouchEvent) => {
+  const onTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(0)
     setTouchStart(e.targetTouches[0].clientX)
   }
 
-  const onTouchMove = (e: TouchEvent) => {
+  const onTouchMove = (e: React.TouchEvent) => {
     setTouchEnd(e.targetTouches[0].clientX)
   }
 
