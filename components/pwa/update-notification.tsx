@@ -4,19 +4,20 @@ import { useEffect, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { RefreshCw, X } from 'lucide-react'
+import { usePWAUpdate } from './usePWAUpdate'
 
 export default function UpdateNotification() {
+  const { autoUpdate } = usePWAUpdate()
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const [isAvailable, setIsAvailable] = useState(false)
-  const [countdown, setCountdown] = useState(8)
   const updateInitiatedRef = useRef(false)
   const reloadingRef = useRef(false)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
 
     let mounted = true
+    const listeners: Array<{ target: EventTarget; type: string; handler: EventListener }> = []
 
     const check = async () => {
       try {
@@ -24,67 +25,33 @@ export default function UpdateNotification() {
         if (!mounted) return
         if (reg) {
           setRegistration(reg)
-          if (reg.waiting) {
+          if (reg.waiting && !autoUpdate) {
             setIsAvailable(true)
             startCountdown()
           }
-useEffect(() => {
-  if (!('serviceWorker' in navigator)) return
 
-  let mounted = true
-  const listeners: Array<{ target: EventTarget; type: string; handler: EventListener }> = []
+          // replace inline listeners with named handlers and track them
+          const updateFoundHandler = () => {
+            const newWorker = reg.installing
+            if (!newWorker) return
 
-  const check = async () => {
-    try {
-      const reg = await navigator.serviceWorker.getRegistration()
-      if (!mounted) return
-      if (reg) {
-        setRegistration(reg)
-        if (reg.waiting) {
-          setIsAvailable(true)
-          startCountdown()
-        }
-
-        // replace inline listeners with named handlers and track them
-        const updateFoundHandler = () => {
-          const newWorker = reg.installing
-          if (!newWorker) return
-
-          const stateChangeHandler = () => {
-            if (newWorker.state === 'installed' && reg.waiting) {
-              if (!mounted) return
-              setIsAvailable(true)
-              startCountdown()
+            const stateChangeHandler = () => {
+              if (newWorker.state === 'installed' && reg.waiting) {
+                if (!mounted) return
+                if (!autoUpdate) {
+                  setIsAvailable(true)
+                  startCountdown()
+                }
+              }
             }
+
+            newWorker.addEventListener('statechange', stateChangeHandler)
+            listeners.push({ target: newWorker, type: 'statechange', handler: stateChangeHandler })
           }
 
-          newWorker.addEventListener('statechange', stateChangeHandler)
-          listeners.push({ target: newWorker, type: 'statechange', handler: stateChangeHandler })
+          reg.addEventListener('updatefound', updateFoundHandler)
+          listeners.push({ target: reg, type: 'updatefound', handler: updateFoundHandler })
         }
-
-        reg.addEventListener('updatefound', updateFoundHandler)
-        listeners.push({ target: reg, type: 'updatefound', handler: updateFoundHandler })
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  check()
-
-  return () => {
-    mounted = false
-    if (timerRef.current) clearInterval(timerRef.current)
-
-    // clean up any registered service-worker listeners
-    listeners.forEach(({ target, type, handler }) => {
-      target.removeEventListener(type, handler)
-    })
-
-    navigator.serviceWorker.removeEventListener('message', onMessage)
-    navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
-  }
-}, [startCountdown, onMessage, onControllerChange])        }
       } catch (e) {
         // ignore
       }
@@ -93,7 +60,7 @@ useEffect(() => {
     check()
 
     const onMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === 'UPDATE_READY') {
+      if (e.data && e.data.type === 'UPDATE_READY' && !autoUpdate) {
         setIsAvailable(true)
         startCountdown()
       }
@@ -130,32 +97,22 @@ useEffect(() => {
 
     return () => {
       mounted = false
-      if (timerRef.current) clearInterval(timerRef.current)
+
+      // clean up any registered service-worker listeners
+      listeners.forEach(({ target, type, handler }) => {
+        target.removeEventListener(type, handler)
+      })
+
       navigator.serviceWorker.removeEventListener('message', onMessage)
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
     }
-  }, [])
+  }, [autoUpdate])
 
   const startCountdown = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    setCountdown(8)
-    timerRef.current = setInterval(() => {
-      setCountdown(prev => {
-        // Apply update on the final tick (last second) before reaching zero
-        if (prev <= 1) {
-          console.log('Countdown reached final tick, applying update')
-          if (timerRef.current) clearInterval(timerRef.current)
-          setIsAvailable(false) // Close the dialog
-          applyUpdate()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    // Immediately apply update without countdown
+    applyUpdate()
   }
+
   const applyUpdate = async () => {
     console.log('applyUpdate called')
     try {
@@ -176,8 +133,8 @@ useEffect(() => {
 
       console.log('No waiting worker, clearing caches and reloading')
       // No waiting worker: clear caches and reload now to fetch latest assets from network
-  try { sessionStorage.setItem('sw_update_success', '1') } catch (e) {}
-  await clearCachesAndReload()
+      try { sessionStorage.setItem('sw_update_success', '1') } catch (e) {}
+      await clearCachesAndReload()
     } catch (e) {
       console.log('Error in applyUpdate:', e)
       // ignore
@@ -200,7 +157,6 @@ useEffect(() => {
 
   const handleCancel = () => {
     setIsAvailable(false)
-    if (timerRef.current) clearInterval(timerRef.current)
   }
 
   return (
@@ -212,15 +168,9 @@ useEffect(() => {
             Update Available
           </DialogTitle>
           <DialogDescription>
-            A new version is ready. We'll update automatically, or you can update now.
+            A new version is ready.  you can update now.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center justify-center py-4">
-          <div className="text-center">
-            <div className="text-lg font-medium text-muted-foreground">{countdown}</div>
-            <p className="text-sm text-muted-foreground">Updating soon...</p>
-          </div>
-        </div>
         <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={handleCancel}>
             <X className="w-4 h-4 mr-2" />

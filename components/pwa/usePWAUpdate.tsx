@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { toast } from 'sonner'
 
 export function usePWAUpdate() {
   const [isSupported, setIsSupported] = useState<boolean>(false)
@@ -46,10 +47,13 @@ export function usePWAUpdate() {
                if (reg.waiting) {
                  setWaitingWorker(reg.waiting)
                  setIsUpdateAvailable(true)
-                 // Always auto-apply update
-                 reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-                 updateInitiatedRef.current = true
-                 try { localStorage.setItem('sw:update:requested', Date.now().toString()) } catch (e) {}
+                 // Only auto-apply update if autoUpdate is enabled
+                 if (autoUpdate) {
+                   toast.info('Update detected, auto updating...')
+                   reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+                   updateInitiatedRef.current = true
+                   try { localStorage.setItem('sw:update:requested', Date.now().toString()) } catch (e) {}
+                 }
                }
              }
            })
