@@ -572,38 +572,38 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   }, [])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Image Selection */}
       {!selectedImage && !isCameraActive && !isInitializingCamera && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">
+        <Card className="border-0 sm:border">
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">
               QR Code Scanner
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <Button
                 onClick={() => qrFileInputRef.current?.click()}
                 variant="outline"
-                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
+                className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
               >
-                <Upload className="w-5 h-5 sm:w-6 sm:h-6" />
-                <span className="text-xs sm:text-sm">Upload</span>
+                <Upload className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
+                <span className="text-sm sm:text-base md:text-sm font-medium">Upload</span>
               </Button>
 
               <Button
                 onClick={startQRCamera}
                 variant="outline"
-                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
+                className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
                 disabled={isInitializingCamera}
               >
                 {isInitializingCamera ? (
-                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
+                  <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6 animate-spin" />
                 ) : (
-                  <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
                 )}
-                <span className="text-xs sm:text-sm">
+                <span className="text-sm sm:text-base md:text-sm font-medium">
                   {isInitializingCamera ? 'Starting...' : 'Take Photo'}
                 </span>
               </Button>
@@ -622,22 +622,22 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
       {/* Camera View */}
       {(isCameraActive || isInitializingCamera) && (
-        <Card>
-          <CardHeader>
+        <Card className="border-0 sm:border">
+          <CardHeader className="pb-3 sm:pb-6">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Camera className="w-5 h-5" />
+              <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
                 Camera {cameraFacingMode === 'environment' ? 'Back' : 'Front'}
               </CardTitle>
-              <div className="flex flex-wrap gap-1 sm:gap-2">
+              <div className="flex flex-wrap gap-2 sm:gap-2">
                 <Button
                   onClick={switchQRCamera}
                   variant="outline"
                   size="sm"
                   disabled={isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
+                  className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                 >
-                  <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <RotateCcw className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                   <span className="hidden sm:inline">Switch Camera</span>
                   <span className="sm:hidden">Switch</span>
                 </Button>
@@ -646,9 +646,9 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   variant="outline"
                   size="sm"
                   disabled={isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
+                  className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                 >
-                  <Square className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <Square className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                   Stop
                 </Button>
 
@@ -661,7 +661,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                     stopQRCamera()
                     await startQRCameraWithDevice(id)
                   }}
-                  className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm rounded-lg border"
+                  className="px-3 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm rounded-lg border h-9 sm:h-8"
                   disabled={isInitializingCamera || availableCameras.length === 0}
                 >
                   <option value="">Default</option>
@@ -676,7 +676,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   variant="outline"
                   size="sm"
                   disabled={!torchAvailable || isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
+                  className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                 >
                   <span className="hidden sm:inline">{torchOn ? 'Flash Off' : 'Flash On'}</span>
                   <span className="sm:hidden">{torchOn ? 'Off' : 'On'}</span>
@@ -684,7 +684,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="relative">
               <video
                 ref={qrVideoRef}
@@ -692,7 +692,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 playsInline
                 muted
                 controls={false}
-                className={`w-full h-64 sm:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''} bg-black`}
+                className={`w-full h-72 sm:h-80 md:h-96 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''} bg-black`}
                 onError={(e) => {
                   toast.error('Video display error. Please refresh the page and try again.')
                   stopQRCamera()
@@ -723,8 +723,21 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   {/* Camera status indicator */}
                   <div className="absolute top-4 left-4">
                     <div className="flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      scanning...
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                      Scanning...
+                    </div>
+                  </div>
+
+                  {/* Camera controls */}
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                    <div className="flex flex-col items-center gap-3">
+                      <Button
+                        onClick={captureQRImage}
+                        size="lg"
+                        className="rounded-full w-20 h-20 sm:w-16 sm:h-16 bg-white hover:bg-gray-100 text-black border-4 border-white shadow-lg"
+                      >
+                        <Camera className="w-8 h-8 sm:w-6 sm:h-6" />
+                      </Button>
                     </div>
                   </div>
                 </>
@@ -732,12 +745,12 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
             </div>
 
             {/* Camera tips */}
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
-                <div className="text-sm text-blue-700 dark:text-blue-300">
-                  <strong>Camera Tips:</strong>
-                  <ul className="mt-1 space-y-1 text-xs">
+            <div className="mt-4 p-4 sm:p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-start gap-3 sm:gap-2">
+                <AlertCircle className="w-5 h-5 sm:w-4 sm:h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div className="text-sm sm:text-sm text-blue-700 dark:text-blue-300">
+                  <strong className="text-base sm:text-sm">Camera Tips:</strong>
+                  <ul className="mt-2 sm:mt-1 space-y-2 sm:space-y-1 text-sm sm:text-xs">
                     <li>• Position QR code in the center square</li>
                     <li>• Ensure good lighting for better detection</li>
                     <li>• Hold camera steady when capturing</li>
@@ -752,25 +765,26 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
       {/* Selected Image Preview */}
       {selectedImage && !isCameraActive && (
-        <Card>
-          <CardHeader>
+        <Card className="border-0 sm:border">
+          <CardHeader className="pb-3 sm:pb-6">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">QR Code Preview</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">QR Code Preview</CardTitle>
               <Button
                 onClick={resetQRScanner}
                 variant="ghost"
                 size="sm"
+                className="h-10 w-10 sm:h-8 sm:w-8 p-0"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5 sm:w-4 sm:h-4" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
             <div className="relative">
               <img
                 src={selectedImage}
                 alt="QR Code"
-                className="w-full max-h-64 object-contain rounded-lg border"
+                className="w-full max-h-64 sm:max-h-80 object-contain rounded-lg border"
               />
             </div>
 
@@ -778,16 +792,16 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               <Button
                 onClick={processQRImage}
                 disabled={isProcessing}
-                className="w-full"
+                className="w-full h-12 sm:h-10 text-base sm:text-sm"
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-5 h-5 sm:w-4 sm:h-4 mr-2 animate-spin" />
                     Scanning QR Code...
                   </>
                 ) : (
                   <>
-                    <Scan className="w-4 h-4 mr-2" />
+                    <Scan className="w-5 h-5 sm:w-4 sm:h-4 mr-2" />
                     Scan QR Code
                   </>
                 )}
@@ -799,54 +813,55 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
       {/* QR Scan Result */}
       {qrScanResult && (
-        <Card>
-          <CardHeader>
+        <Card className="border-0 sm:border">
+          <CardHeader className="pb-3 sm:pb-6">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
+              <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                 QR Code Detected
               </CardTitle>
               <Button
                 onClick={clearQRResult}
                 variant="ghost"
                 size="sm"
+                className="h-10 w-10 sm:h-8 sm:w-8 p-0"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5 sm:w-4 sm:h-4" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                {qrScanResult.beautified?.type === 'url' && <ExternalLink className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'email' && <Mail className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'phone' && <Phone className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'wifi' && <Wifi className="w-4 h-4" />}
-                <Badge variant="secondary">{qrScanResult.beautified?.title}</Badge>
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+            <div className="p-4 sm:p-4 bg-muted rounded-lg">
+              <div className="flex items-center gap-2 mb-3 sm:mb-2">
+                {qrScanResult.beautified?.type === 'url' && <ExternalLink className="w-5 h-5 sm:w-4 sm:h-4" />}
+                {qrScanResult.beautified?.type === 'email' && <Mail className="w-5 h-5 sm:w-4 sm:h-4" />}
+                {qrScanResult.beautified?.type === 'phone' && <Phone className="w-5 h-5 sm:w-4 sm:h-4" />}
+                {qrScanResult.beautified?.type === 'wifi' && <Wifi className="w-5 h-5 sm:w-4 sm:h-4" />}
+                <Badge variant="secondary" className="text-sm sm:text-sm px-3 py-1">{qrScanResult.beautified?.title}</Badge>
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Content:</p>
-                <p className="text-sm text-muted-foreground break-all">
+                <p className="text-base sm:text-sm font-medium">Content:</p>
+                <p className="text-base sm:text-sm text-muted-foreground break-all">
                   {qrScanResult.beautified?.displayText || qrScanResult.data}
                 </p>
               </div>
 
               {qrScanResult.beautified?.type === 'wifi' && (
-                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded border">
-                  <p className="text-sm font-medium">Network Details:</p>
-                  <p className="text-xs">SSID: {qrScanResult.beautified.ssid}</p>
+                <div className="mt-4 sm:mt-3 p-3 sm:p-3 bg-blue-50 dark:bg-blue-950/20 rounded border">
+                  <p className="text-base sm:text-sm font-medium">Network Details:</p>
+                  <p className="text-sm sm:text-xs">SSID: {qrScanResult.beautified.ssid}</p>
                   {qrScanResult.beautified.password && (
-                    <p className="text-xs">Password: {qrScanResult.beautified.password}</p>
+                    <p className="text-sm sm:text-xs">Password: {qrScanResult.beautified.password}</p>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="flex gap-2 sm:gap-3">
+            <div className="flex gap-3 sm:gap-3 pt-2">
               <Button
                 onClick={() => handleQRAction(qrScanResult.beautified)}
-                className="flex-1 text-xs sm:text-sm"
+                className="flex-1 h-12 sm:h-10 text-base sm:text-sm"
                 size="sm"
               >
                 {qrScanResult.beautified?.type === 'url' && 'Open Link'}
@@ -860,9 +875,9 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 onClick={() => copyToClipboard(qrScanResult.data)}
                 variant="outline"
                 size="sm"
-                className="text-xs sm:text-sm"
+                className="h-12 sm:h-10 px-6 sm:px-4 text-base sm:text-sm"
               >
-                <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <Copy className="w-4 h-4 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
                 <span className="hidden sm:inline">Copy Raw</span>
                 <span className="sm:hidden">Copy</span>
               </Button>

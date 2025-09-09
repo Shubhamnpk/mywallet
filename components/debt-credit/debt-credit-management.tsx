@@ -303,11 +303,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-muted-foreground font-medium">Total Debt</p>
                 <p className="text-lg font-bold text-destructive truncate">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
-                {totalAccruedInterest > 0 && (
-                  <p className="text-xs text-destructive truncate">
-                    +{formatCurrency(totalAccruedInterest, userProfile.currency, userProfile.customCurrency)} interest
-                  </p>
-                )}
               </div>
             </div>
           </CardContent>
@@ -434,7 +429,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                 {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
                               </Badge>
                               {accruedInterest > 0 && (
-                                <Badge variant="secondary" className="text-xs px-2 py-1 bg-chart-5/10 text-chart-5 border-chart-5/20">
+                                <Badge className="text-xs px-2 py-1 bg-card text-destructive border-destructive-5/20">
                                   +{formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)} interest
                                 </Badge>
                               )}
@@ -479,7 +474,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           <div className="space-y-2">
                             {/* Payment Reminder */}
                             {(debt as any).dueDate && (
-                              <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/20 p-2 rounded">
+                              <div className="text-xs text-muted-foreground bg-primary/5 border border-primary/20 p-2 rounded">
                                 <p className="font-medium">Due: {(debt as any).dueDate}</p>
                                 <p>Min Payment: {formatCurrency((debt as any).minimumPayment || calculateMinimumPayment(debt.balance, (debt as any).interestRate || 0), userProfile.currency, userProfile.customCurrency)}</p>
                               </div>

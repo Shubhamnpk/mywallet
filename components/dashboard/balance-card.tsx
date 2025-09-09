@@ -1,24 +1,15 @@
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import {
-  Wallet,
   TrendingUp,
   TrendingDown,
-  Clock,
-  Sparkles,
-  AlertTriangle,
-  CreditCard,
-  PiggyBank,
-  Eye,
-  EyeOff
-} from "lucide-react"
+  PiggyBank} from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import BalanceCard from "@/components/dashboard/balance-card-component"
-import { useMemo, useState } from "react"
-import { getTimeEquivalentBreakdown, formatTimeEquivalent } from "@/lib/wallet-utils"
+import { useMemo, useState, useRef, useEffect } from "react"
+import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { useIsMobile } from "@/hooks/use-mobile"
 
@@ -27,7 +18,20 @@ export function CombinedBalanceCard() {
     useWalletData()
 
   const [showBalance, setShowBalance] = useState(true)
+  const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const isMobile = useIsMobile()
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Handle scroll to update current card index
+  const handleScroll = () => {
+    if (scrollContainerRef.current) {
+      const scrollLeft = scrollContainerRef.current.scrollLeft
+      const cardWidth = 320 + 16 // w-80 (320px) + gap-4 (16px)
+      const newIndex = Math.round(scrollLeft / cardWidth)
+      const clampedIndex = Math.min(Math.max(newIndex, 0), 1)
+      setCurrentCardIndex(clampedIndex)
+    }
+  }
 
   // Optimize calculations with useMemo and better logic
   const { totalIncome, totalExpenses } = useMemo(() => {
@@ -126,51 +130,93 @@ export function CombinedBalanceCard() {
   }
 
   const netWorthEnabled = totalDebt > 0 || totalCreditUsed > 0
+  console.log('netWorthEnabled:', netWorthEnabled, { totalDebt, totalCreditUsed })
+
+  // Log when ref changes
+  useEffect(() => {
+  }, [scrollContainerRef.current])
+
+  // Set up scroll listener
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (container && isMobile && netWorthEnabled) {
+      container.addEventListener('scroll', handleScroll)
+      return () => {
+        container.removeEventListener('scroll', handleScroll)
+      }
+    }
+  }, [isMobile, netWorthEnabled])
 
   const mainBalance = isMobile && netWorthEnabled ? (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex gap-4 min-w-max">
-        <div className="w-80 flex-shrink-0">
-          <BalanceCard
-            balanceChange={balanceChange}
-            balance={balance}
-            showBalance={showBalance}
-            setShowBalance={setShowBalance}
-            absoluteBalance={absoluteBalance}
-            isPositive={isPositive}
-            timeEquivalentBreakdown={timeEquivalentBreakdown}
-            emergencyFund={emergencyFund}
-            formatCurrency={formatCurrency}
-            getThemeBasedBackground={getThemeBasedBackground}
-          />
-        </div>
+    <div>
+      <div ref={scrollContainerRef} className="overflow-x-auto pb-2 hide-scrollbars">
+        <div className="flex gap-4 min-w-max">
+          <div className="w-80 flex-shrink-0 h-48">
+            <BalanceCard
+              balanceChange={balanceChange}
+              balance={balance}
+              showBalance={showBalance}
+              setShowBalance={setShowBalance}
+              absoluteBalance={absoluteBalance}
+              isPositive={isPositive}
+              timeEquivalentBreakdown={timeEquivalentBreakdown}
+              emergencyFund={emergencyFund}
+              formatCurrency={formatCurrency}
+              getThemeBasedBackground={getThemeBasedBackground}
+            />
+          </div>
 
-        {/* Net Worth Card */}
-        <div className="w-80 flex-shrink-0">
-          <Card className={`border-2 transition-all duration-200 ${
-            netWorth >= 0
-              ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
-              : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-          }`}>
-            <CardContent className="p-6 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
-              </div>
-              <p className={`text-3xl font-bold mb-2 ${
-                netWorth >= 0
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
-              }`}>
-                {netWorth < 0 && "-"}
-                {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
-              </p>
-              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                Balance + Available Credit - Total Debt
-              </p>
-            </CardContent>
-          </Card>
+          {/* Net Worth Card */}
+          <div className="w-80 flex-shrink-0 h-48">
+            <Card className={`border-2 transition-all duration-200 ${
+              netWorth >= 0
+                ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
+                : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
+            }`}>
+              <CardContent className="p-6 text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
+                </div>
+                <p className={`text-3xl font-bold mb-2 ${
+                  netWorth >= 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}>
+                  {netWorth < 0 && "-"}
+                  {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
+                </p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Balance + Available Credit - Total Debt
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
+      </div>
+
+      {/* Scroll Indicators */}
+      <div className="flex justify-center gap-2 mt-2">
+        {[0, 1].map((index) => (
+          <button
+            key={index}
+            onClick={() => {
+              if (scrollContainerRef.current) {
+                const cardWidth = 320 + 16 // w-80 (320px) + gap-4 (16px)
+                scrollContainerRef.current.scrollTo({
+                  left: index * cardWidth,
+                  behavior: 'smooth'
+                })
+              }
+            }}
+            className={`w-2 h-2 rounded-full transition-all duration-200 ${
+              currentCardIndex === index
+                ? 'bg-primary scale-125'
+                : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
+            }`}
+            aria-label={`Go to ${index === 0 ? 'balance' : 'net worth'} card`}
+          />
+        ))}
       </div>
     </div>
   ) : (
