@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
+import { CloudSync } from "./cloud-sync"
 
 export function DataSettings() {
    const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, clearAllData, importData } = useWalletData()
@@ -381,6 +382,9 @@ export function DataSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Cloud Sync */}
+      <CloudSync />
 
       {/* Backup Modal Component */}
       <BackupModal
