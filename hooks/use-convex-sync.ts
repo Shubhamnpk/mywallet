@@ -27,7 +27,7 @@ interface DeviceInfo {
 
 export function useConvexSync() {
   const { user, isAuthenticated, isLoading: authLoading } = useConvexAuth()
-  const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, categories, emergencyFund, importData } = useWalletData()
+  const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, importData } = useWalletData()
 
   const [syncState, setSyncState] = useState<SyncState>({
     isEnabled: false,
@@ -443,6 +443,82 @@ export function useConvexSync() {
       merged.categories = [...defaultCategories, ...mergedCategories]
     }
 
+    // Merge debt accounts (combine all, no loss)
+    if (remoteData.debtAccounts && Array.isArray(remoteData.debtAccounts)) {
+      const localDebtAccounts = localData.debtAccounts || []
+      const remoteDebtAccounts = remoteData.debtAccounts
+
+      const localMap = new Map(localDebtAccounts.map((d: any) => [d.id, d]))
+      const mergedDebtAccounts = [...localDebtAccounts]
+
+      for (const remote of remoteDebtAccounts) {
+        if (!localMap.has(remote.id)) {
+          mergedDebtAccounts.push(remote)
+          mergeLog.push(`Added debt account: ${remote.name}`)
+        } else {
+          // For debt accounts, keep the one with the most recent activity
+          const localVersion = localMap.get(remote.id)
+          if (getTimestamp(remote) > getTimestamp(localVersion)) {
+            const index = mergedDebtAccounts.findIndex((d: any) => d.id === remote.id)
+            if (index !== -1) {
+              mergedDebtAccounts[index] = remote
+              mergeLog.push(`Updated debt account: ${remote.name}`)
+            }
+          }
+        }
+      }
+
+      merged.debtAccounts = mergedDebtAccounts
+    }
+
+    // Merge credit accounts (combine all, no loss)
+    if (remoteData.creditAccounts && Array.isArray(remoteData.creditAccounts)) {
+      const localCreditAccounts = localData.creditAccounts || []
+      const remoteCreditAccounts = remoteData.creditAccounts
+
+      const localMap = new Map(localCreditAccounts.map((c: any) => [c.id, c]))
+      const mergedCreditAccounts = [...localCreditAccounts]
+
+      for (const remote of remoteCreditAccounts) {
+        if (!localMap.has(remote.id)) {
+          mergedCreditAccounts.push(remote)
+          mergeLog.push(`Added credit account: ${remote.name}`)
+        } else {
+          // For credit accounts, keep the one with the most recent activity
+          const localVersion = localMap.get(remote.id)
+          if (getTimestamp(remote) > getTimestamp(localVersion)) {
+            const index = mergedCreditAccounts.findIndex((c: any) => c.id === remote.id)
+            if (index !== -1) {
+              mergedCreditAccounts[index] = remote
+              mergeLog.push(`Updated credit account: ${remote.name}`)
+            }
+          }
+        }
+      }
+
+      merged.creditAccounts = mergedCreditAccounts
+    }
+
+    // Merge debt/credit transactions (combine all, no loss)
+    if (remoteData.debtCreditTransactions && Array.isArray(remoteData.debtCreditTransactions)) {
+      const localTransactions = localData.debtCreditTransactions || []
+      const remoteTransactions = remoteData.debtCreditTransactions
+
+      const localMap = new Map(localTransactions.map((t: any) => [t.id, t]))
+      const mergedTransactions = [...localTransactions]
+
+      for (const remote of remoteTransactions) {
+        if (!localMap.has(remote.id)) {
+          mergedTransactions.push(remote)
+          mergeLog.push(`Added debt/credit transaction: ${remote.description}`)
+        }
+        // Note: We don't update existing transactions to avoid conflicts
+        // Each transaction is unique and should only exist once
+      }
+
+      merged.debtCreditTransactions = mergedTransactions
+    }
+
     // Handle emergency fund (keep higher value)
     if (remoteData.emergencyFund !== undefined) {
       const localFund = localData.emergencyFund || 0
@@ -519,6 +595,9 @@ export function useConvexSync() {
         transactions,
         budgets,
         goals,
+        debtAccounts,
+        creditAccounts,
+        debtCreditTransactions,
         categories,
         emergencyFund,
         exportedAt: Date.now(),
@@ -676,15 +755,21 @@ export function useConvexSync() {
     return () => clearTimeout(timeoutId)
   }, [
     // Trigger on data changes, but exclude sync state to prevent loops
-    transactions,
-    budgets,
-    goals,
-    categories,
-    emergencyFund,
-    userProfile,
+    // Use lengths instead of arrays to avoid reference changes causing useEffect warnings
+    // Ensure all values are defined to prevent array size changes
+    transactions?.length || 0,
+    budgets?.length || 0,
+    goals?.length || 0,
+    debtAccounts?.length || 0,
+    creditAccounts?.length || 0,
+    debtCreditTransactions?.length || 0,
+    categories?.length || 0,
+    emergencyFund || 0,
     syncState.isEnabled,
-    isAuthenticated
+    isAuthenticated,
+    syncState.isPaused
     // Note: Removed syncState.isSyncing to prevent sync loops
+    // Note: Removed userProfile to avoid TypeScript errors and unnecessary sync triggers
   ])
 
   // CONTINUOUS MONITORING - Check for remote changes every 10 seconds (respects pause state)

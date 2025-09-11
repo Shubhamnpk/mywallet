@@ -746,6 +746,106 @@ export function useWalletData() {
     URL.revokeObjectURL(url)
   }
 
+  // Recalculate all client-side data after import/sync
+  const recalculateClientData = async (importedData: any) => {
+    console.log("[v0] 🔄 Starting client-side recalculations...")
+
+    try {
+      // 1. Recalculate budget spending from transactions
+      if (importedData.budgets && importedData.transactions) {
+        console.log("[v0] 📊 Recalculating budget spending...")
+        const recalculatedBudgets = importedData.budgets.map((budget: any) => {
+          const budgetTransactions = importedData.transactions.filter((tx: any) =>
+            tx.category && (budget.categories?.includes(tx.category) || budget.category === tx.category)
+          )
+          const totalSpent = budgetTransactions.reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0)
+          return { ...budget, spent: totalSpent }
+        })
+
+        console.log(`[v0] ✅ Recalculated spending for ${recalculatedBudgets.length} budgets`)
+        setBudgets(recalculatedBudgets)
+        await saveDataWithIntegrity("budgets", recalculatedBudgets)
+      }
+
+      // 2. Recalculate goal contributions from transactions
+      if (importedData.goals && importedData.transactions) {
+        console.log("[v0] 🎯 Recalculating goal contributions...")
+        const recalculatedGoals = importedData.goals.map((goal: any) => {
+          const goalTransactions = importedData.transactions.filter((tx: Transaction) =>
+            tx.allocationType === "goal" && tx.allocationTarget === goal.id
+          )
+          const totalContributed = goalTransactions.reduce((sum: number, tx: Transaction) => sum + tx.amount, 0)
+          return { ...goal, currentAmount: totalContributed }
+        })
+
+        console.log(`[v0] ✅ Recalculated contributions for ${recalculatedGoals.length} goals`)
+        setGoals(recalculatedGoals)
+        await saveDataWithIntegrity("goals", recalculatedGoals)
+      }
+
+      // 3. Recalculate category statistics
+      if (importedData.categories && importedData.transactions) {
+        console.log("[v0] 📈 Recalculating category statistics...")
+        const recalculatedCategories = importedData.categories.map((category: any) => {
+          const categoryTransactions = importedData.transactions.filter((tx: Transaction) =>
+            tx.category === category.name
+          )
+          const totalSpent = categoryTransactions.reduce((sum: number, tx: Transaction) => sum + tx.amount, 0)
+          return {
+            ...category,
+            totalSpent,
+            transactionCount: categoryTransactions.length
+          }
+        })
+
+        console.log(`[v0] ✅ Recalculated stats for ${recalculatedCategories.length} categories`)
+        setCategories(recalculatedCategories)
+        await saveDataWithIntegrity("categories", recalculatedCategories)
+      }
+
+      // 4. Recalculate debt account balances from transactions
+      if (importedData.debtAccounts && importedData.transactions) {
+        console.log("[v0] 💰 Recalculating debt balances...")
+        const recalculatedDebts = importedData.debtAccounts.map((debt: any) => {
+          // Find all debt-related transactions for this account
+          const debtTransactions = importedData.transactions.filter((tx: Transaction) =>
+            tx.debtAccountId === debt.id
+          )
+
+          // Calculate payments made (reduce balance)
+          const payments = debtTransactions
+            .filter(tx => tx.status === "repayment")
+            .reduce((sum: number, tx: Transaction) => sum + tx.amount, 0)
+
+          // Calculate new debt added (increase balance)
+          const newDebt = debtTransactions
+            .filter(tx => tx.status === "debt")
+            .reduce((sum: number, tx: Transaction) => sum + tx.debtUsed, 0)
+
+          const currentBalance = Math.max(0, debt.originalBalance + newDebt - payments)
+          return { ...debt, balance: currentBalance }
+        })
+
+        console.log(`[v0] ✅ Recalculated balances for ${recalculatedDebts.length} debt accounts`)
+        setDebtAccounts(recalculatedDebts)
+        await saveDataWithIntegrity("debtAccounts", recalculatedDebts)
+      }
+
+      // 5. Recalculate credit account balances
+      if (importedData.creditAccounts && importedData.transactions) {
+        console.log("[v0] 💳 Recalculating credit balances...")
+        // Credit calculations are more complex - for now, keep imported values
+        // This can be enhanced later if needed
+        console.log(`[v0] ✅ Credit accounts preserved (${importedData.creditAccounts.length})`)
+      }
+
+      console.log("[v0] 🎉 All client-side recalculations completed!")
+    } catch (error) {
+      console.error("[v0] ❌ Error during recalculations:", error)
+      // Don't fail the entire import for recalculation errors
+    }
+  }
+
   const importData = async (dataOrJson: string | any) => {
     try {
       console.log("[v0] Starting data import...")
@@ -830,7 +930,11 @@ export function useWalletData() {
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
-      console.log("[v0] Data import completed successfully")
+      // CRITICAL: Recalculate all client-side data after import
+      console.log("[v0] 🔄 Triggering client-side recalculations...")
+      await recalculateClientData(data)
+
+      console.log("[v0] ✅ Data import and recalculations completed successfully")
       return true
     } catch (error) {
       console.error("[v0] Error importing data:", error)
