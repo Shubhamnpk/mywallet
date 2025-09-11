@@ -159,6 +159,7 @@ export const updateSyncMetadata = mutation({
   args: {
     userId: v.id("users"),
     deviceId: v.string(),
+    deviceName: v.optional(v.string()),
     syncVersion: v.string(),
   },
   handler: async (ctx, args) => {
@@ -171,18 +172,23 @@ export const updateSyncMetadata = mutation({
       .first()
 
     const now = Date.now()
+    const deviceName = args.deviceName || `Device ${args.deviceId.slice(0, 8)}`
 
     if (existingMetadata) {
       await ctx.db.patch(existingMetadata._id, {
+        deviceName,
         lastSyncAt: now,
         syncVersion: args.syncVersion,
+        isActive: true, // Mark as active when syncing
       })
     } else {
       await ctx.db.insert("syncMetadata", {
         userId: args.userId,
         deviceId: args.deviceId,
+        deviceName,
         lastSyncAt: now,
         syncVersion: args.syncVersion,
+        isActive: true,
       })
     }
 
@@ -201,9 +207,64 @@ export const getSyncMetadata = query({
 
     return metadata.map(meta => ({
       deviceId: meta.deviceId,
+      deviceName: meta.deviceName,
       lastSyncAt: meta.lastSyncAt,
       syncVersion: meta.syncVersion,
+      isActive: meta.isActive,
     }))
+  },
+})
+
+// Get all connected devices for a user
+export const getConnectedDevices = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    try {
+      const devices = await ctx.db
+        .query("syncMetadata")
+        .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+        .collect()
+
+      return devices.map(device => ({
+        deviceId: device.deviceId,
+        deviceName: device.deviceName || `Device ${device.deviceId.slice(0, 8)}`,
+        lastSyncAt: device.lastSyncAt,
+        syncVersion: device.syncVersion,
+        isActive: device.isActive !== undefined ? device.isActive : true,
+        isCurrentDevice: false, // Will be set by frontend
+      })).sort((a, b) => b.lastSyncAt - a.lastSyncAt) // Sort by most recent sync first
+    } catch (error) {
+      console.error("Failed to get connected devices:", error)
+      // Return empty array on error to prevent crashes
+      return []
+    }
+  },
+})
+
+// Update device active status (pause/resume sync)
+export const updateDeviceStatus = mutation({
+  args: {
+    userId: v.id("users"),
+    deviceId: v.string(),
+    isActive: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const device = await ctx.db
+      .query("syncMetadata")
+      .withIndex("by_user_device", (q) =>
+        q.eq("userId", args.userId).eq("deviceId", args.deviceId)
+      )
+      .first()
+
+    if (device) {
+      await ctx.db.patch(device._id, {
+        isActive: args.isActive,
+        lastSyncAt: Date.now(), // Update last activity
+      })
+      return { success: true }
+    }
+
+    return { success: false, error: "Device not found" }
   },
 })
 

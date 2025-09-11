@@ -10,9 +10,19 @@ import { toast } from "@/hooks/use-toast"
 
 interface SyncState {
   isEnabled: boolean
+  isPaused: boolean
   isSyncing: boolean
   lastSyncTime: number | null
   error: string | null
+}
+
+interface DeviceInfo {
+  deviceId: string
+  deviceName: string
+  lastSyncAt: number
+  syncVersion: string
+  isActive: boolean
+  isCurrentDevice: boolean
 }
 
 export function useConvexSync() {
@@ -21,6 +31,7 @@ export function useConvexSync() {
 
   const [syncState, setSyncState] = useState<SyncState>({
     isEnabled: false,
+    isPaused: false,
     isSyncing: false,
     lastSyncTime: null,
     error: null,
@@ -38,13 +49,11 @@ export function useConvexSync() {
     }))
   }, [])
 
-  // Auto-enable sync when user signs in
+  // Auto-enable sync when user signs in (DEFAULT BEHAVIOR)
   useEffect(() => {
-    const autoEnable = localStorage.getItem("convex_sync_auto_enabled")
-    if (isAuthenticated && autoEnable === "true" && !syncState.isEnabled && !syncState.isSyncing) {
-      console.log('[useConvexSync] Auto-enabling sync for authenticated user')
-      localStorage.removeItem("convex_sync_auto_enabled") // Clear the flag
-      enableSync() // This will be called automatically
+    if (isAuthenticated && !syncState.isEnabled && !syncState.isSyncing) {
+      console.log('[useConvexSync] Auto-enabling sync for authenticated user (default behavior)')
+      enableSync() // Always enable sync by default for authenticated users
     }
   }, [isAuthenticated, syncState.isEnabled, syncState.isSyncing])
 
@@ -56,11 +65,11 @@ export function useConvexSync() {
   const storeWalletDataMutation = useMutation(api.walletData.storeWalletData)
   const getLatestWalletData = useQuery(
     api.walletData.getLatestWalletData,
-    isAuthenticated && user?.id && syncState.isEnabled ? { userId: user.id as any } : "skip"
+    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
   )
   const getWalletData = useQuery(
     api.walletData.getWalletData,
-    isAuthenticated && user?.id && syncState.isEnabled ? { userId: user.id as any } : "skip"
+    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
   )
   const updateSyncMetadataMutation = useMutation(api.walletData.updateSyncMetadata)
 
@@ -78,14 +87,40 @@ export function useConvexSync() {
     }
   }, [isAuthenticated, syncState.isEnabled, syncState.isSyncing, getLatestWalletData])
 
-  // Generate device ID
-  const getDeviceId = () => {
+  // Generate user-friendly device name
+  const getDeviceInfo = () => {
     let deviceId = localStorage.getItem("convex_device_id")
+    let deviceName = localStorage.getItem("convex_device_name")
+
     if (!deviceId) {
       deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       localStorage.setItem("convex_device_id", deviceId)
     }
-    return deviceId
+
+    if (!deviceName) {
+      // Generate user-friendly device name
+      const userAgent = navigator.userAgent
+      let browser = "Browser"
+      let os = "Device"
+
+      // Detect browser
+      if (userAgent.includes("Chrome")) browser = "Chrome"
+      else if (userAgent.includes("Firefox")) browser = "Firefox"
+      else if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) browser = "Safari"
+      else if (userAgent.includes("Edge")) browser = "Edge"
+
+      // Detect OS
+      if (userAgent.includes("Windows")) os = "Windows"
+      else if (userAgent.includes("Mac")) os = "macOS"
+      else if (userAgent.includes("Linux")) os = "Linux"
+      else if (userAgent.includes("Android")) os = "Android"
+      else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) os = "iOS"
+
+      deviceName = `${browser} on ${os}`
+      localStorage.setItem("convex_device_name", deviceName)
+    }
+
+    return { deviceId, deviceName }
   }
 
   // Generate consistent salt from user data
@@ -129,23 +164,19 @@ export function useConvexSync() {
 
   // Enable Convex sync (automatically when user signs in)
   const enableSync = async () => {
-    // Wait for auth to be fully loaded
-    if (authLoading) {
-      await new Promise(resolve => {
-        const checkAuth = () => {
-          if (!authLoading) {
-            resolve(void 0)
-          } else {
-            setTimeout(checkAuth, 100)
-          }
-        }
-        checkAuth()
-      })
+    // Wait for auth to be fully loaded with timeout
+    let attempts = 0
+    const maxAttempts = 50 // 5 seconds max wait
+
+    while (authLoading && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      attempts++
     }
 
     if (!isAuthenticated || !user) {
-      console.error('[enableSync] Auth check failed:', { isAuthenticated, user, authLoading })
-      throw new Error("User not authenticated")
+      console.error('[enableSync] Auth check failed after waiting:', { isAuthenticated, user, authLoading })
+      // Don't throw error, just return success false to allow retry
+      return { success: false, error: "User not authenticated" }
     }
 
     try {
@@ -154,8 +185,13 @@ export function useConvexSync() {
       // Generate consistent password from user data for encryption
       const syncPassword = `convex_sync_${user.id}_${user.email}`
 
-      // Perform initial sync
-      await syncToConvex(syncPassword)
+      // Perform initial sync - don't fail if this fails
+      try {
+        await syncToConvex(syncPassword)
+      } catch (syncError) {
+        console.warn('[enableSync] Initial sync failed, but continuing:', syncError)
+        // Don't fail the entire enable process for sync issues
+      }
 
       // Update settings
       localStorage.setItem("convex_sync_enabled", "true")
@@ -165,24 +201,15 @@ export function useConvexSync() {
         isSyncing: false,
       }))
 
-      toast({
-        title: "Convex Sync Enabled",
-        description: "Your wallet data will now sync automatically across devices.",
-      })
-
+      console.log('[enableSync] Sync enabled successfully')
       return { success: true }
     } catch (error: any) {
+      console.error('[enableSync] Failed to enable sync:', error)
       setSyncState(prev => ({
         ...prev,
         isSyncing: false,
         error: error.message || "Failed to enable sync",
       }))
-
-      toast({
-        title: "Sync Setup Failed",
-        description: error.message || "Failed to enable Convex sync",
-        variant: "destructive",
-      })
 
       return { success: false, error: error.message }
     }
@@ -198,6 +225,7 @@ export function useConvexSync() {
 
       setSyncState({
         isEnabled: false,
+        isPaused: false,
         isSyncing: false,
         lastSyncTime: null,
         error: null,
@@ -232,7 +260,9 @@ export function useConvexSync() {
     try {
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
 
-      // Prepare wallet data
+      // Prepare wallet data - EXCLUDE default categories
+      const userCreatedCategories = categories.filter(cat => !cat.isDefault)
+
       const walletData = {
         userProfile,
         transactions,
@@ -240,7 +270,7 @@ export function useConvexSync() {
         goals,
         debtAccounts,
         creditAccounts,
-        categories,
+        categories: userCreatedCategories, // Only sync user-created categories
         emergencyFund,
         exportedAt: Date.now(),
       }
@@ -249,7 +279,7 @@ export function useConvexSync() {
       const { encrypted, hash } = await encryptWalletData(walletData, syncPassword)
 
       // Store in Convex
-      const deviceId = getDeviceId()
+      const { deviceId, deviceName } = getDeviceInfo()
       await storeWalletDataMutation({
         userId: user.id as any,
         deviceId,
@@ -262,6 +292,7 @@ export function useConvexSync() {
       await updateSyncMetadataMutation({
         userId: user.id as any,
         deviceId,
+        deviceName,
         syncVersion: "1.0",
       })
 
@@ -382,28 +413,34 @@ export function useConvexSync() {
       merged.goals = mergedGoals
     }
 
-    // Merge categories (combine all)
+    // Merge categories (ONLY user-created, exclude defaults)
     if (remoteData.categories && Array.isArray(remoteData.categories)) {
       const localCategories = localData.categories || []
       const remoteCategories = remoteData.categories
 
-      const localMap = new Map(localCategories.map((c: any) => [c.id, c]))
-      const mergedCategories = [...localCategories]
+      // Filter out default categories from both local and remote
+      const localUserCategories = localCategories.filter((c: any) => !c.isDefault)
+      const remoteUserCategories = remoteCategories.filter((c: any) => !c.isDefault)
 
-      for (const remote of remoteCategories) {
+      const localMap = new Map(localUserCategories.map((c: any) => [c.id, c]))
+      const mergedCategories = [...localUserCategories]
+
+      for (const remote of remoteUserCategories) {
         if (!localMap.has(remote.id)) {
           mergedCategories.push(remote)
-          mergeLog.push(`Added category: ${remote.name}`)
+          mergeLog.push(`Added user category: ${remote.name}`)
         } else if (getTimestamp(remote) > getTimestamp(localMap.get(remote.id))) {
           const index = mergedCategories.findIndex((c: any) => c.id === remote.id)
           if (index !== -1) {
             mergedCategories[index] = remote
-            mergeLog.push(`Updated category: ${remote.name}`)
+            mergeLog.push(`Updated user category: ${remote.name}`)
           }
         }
       }
 
-      merged.categories = mergedCategories
+      // Combine with default categories (which are not synced)
+      const defaultCategories = localCategories.filter((c: any) => c.isDefault)
+      merged.categories = [...defaultCategories, ...mergedCategories]
     }
 
     // Handle emergency fund (keep higher value)
@@ -438,9 +475,20 @@ export function useConvexSync() {
 
   // Sync data from Convex with smart conflict resolution
   const syncFromConvex = async (password?: string) => {
-    if (!isAuthenticated || !user || !syncState.isEnabled) {
-      console.log('[syncFromConvex] Skipping - not authenticated or sync disabled')
-      return { success: false, error: "Sync not enabled or user not authenticated" }
+    if (!isAuthenticated || !user) {
+      console.log('[syncFromConvex] Skipping - not authenticated')
+      return { success: false, error: "User not authenticated" }
+    }
+
+    // If sync is not enabled, try to enable it first
+    if (!syncState.isEnabled) {
+      console.log('[syncFromConvex] Sync not enabled, attempting to enable...')
+      const enableResult = await enableSync()
+      if (!enableResult.success) {
+        console.log('[syncFromConvex] Failed to enable sync:', enableResult.error)
+        return { success: false, error: "Failed to enable sync" }
+      }
+      console.log('[syncFromConvex] Sync enabled successfully')
     }
 
     // Use provided password or generate one from user ID for consistency
@@ -562,8 +610,8 @@ export function useConvexSync() {
 
   // SMART SYNC - PREVENTS DATA LOSS WITH INTELLIGENT MERGING
   useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing) {
-      console.log('[SYNC] Skipping - not enabled/authenticated or already syncing')
+    if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing || syncState.isPaused) {
+      console.log('[SYNC] Skipping - not enabled/authenticated/syncing/paused')
       return
     }
 
@@ -639,11 +687,11 @@ export function useConvexSync() {
     // Note: Removed syncState.isSyncing to prevent sync loops
   ])
 
-  // CONTINUOUS MONITORING - Check for remote changes every 10 seconds
+  // CONTINUOUS MONITORING - Check for remote changes every 10 seconds (respects pause state)
   useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated) return
-
-    console.log('[SYNC] 🔄 Starting continuous monitoring...')
+    if (!syncState.isEnabled || !isAuthenticated || syncState.isPaused) {
+      return
+    }
 
     const monitoringInterval = setInterval(async () => {
       try {
@@ -675,12 +723,64 @@ export function useConvexSync() {
       console.log('[SYNC] 🛑 Stopping continuous monitoring')
       clearInterval(monitoringInterval)
     }
-  }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing, getLatestWalletData])
+  }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing, syncState.isPaused])
+
+  // Pause auto sync
+  const pauseSync = async () => {
+    try {
+      setSyncState(prev => ({ ...prev, isPaused: true }))
+      localStorage.setItem("convex_sync_paused", "true")
+
+      toast({
+        title: "Auto Sync Paused",
+        description: "Automatic sync is paused. You can still sync manually.",
+      })
+
+      return { success: true }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to pause sync",
+        variant: "destructive",
+      })
+      return { success: false, error: error.message }
+    }
+  }
+
+  // Resume auto sync
+  const resumeSync = async () => {
+    try {
+      setSyncState(prev => ({ ...prev, isPaused: false }))
+      localStorage.removeItem("convex_sync_paused")
+
+      toast({
+        title: "Auto Sync Resumed",
+        description: "Automatic sync is now active again.",
+      })
+
+      return { success: true }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to resume sync",
+        variant: "destructive",
+      })
+      return { success: false, error: error.message }
+    }
+  }
+
+  // Load pause state from localStorage
+  useEffect(() => {
+    const isPaused = localStorage.getItem("convex_sync_paused") === "true"
+    setSyncState(prev => ({ ...prev, isPaused }))
+  }, [])
 
   return {
     ...syncState,
     enableSync,
     disableSync,
+    pauseSync,
+    resumeSync,
     syncToConvex,
     syncFromConvex,
     user,

@@ -26,8 +26,10 @@ export default defineSchema({
   syncMetadata: defineTable({
     userId: v.id("users"),
     deviceId: v.string(),
+    deviceName: v.optional(v.string()), // Device name (e.g., "Chrome on Windows", "Safari on iPhone")
     lastSyncAt: v.number(),
     syncVersion: v.string(),
+    isActive: v.optional(v.boolean()), // Whether this device is actively syncing
   })
     .index("by_user_id", ["userId"])
     .index("by_user_device", ["userId", "deviceId"]),

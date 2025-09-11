@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
   Wallet,
@@ -27,13 +28,17 @@ import {
   Sparkles,
   Camera,
   ImageIcon,
-  X
+  X,
+  Cloud,
+  Database
 } from 'lucide-react';
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { useConvexAuth } from '@/hooks/use-convex-auth';
+import { useConvexSync } from '@/hooks/use-convex-sync';
 
 interface OnboardingProps {
   onComplete: (userProfile: UserProfile) => void;
@@ -123,8 +128,20 @@ const features = [
 ];
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
+  const { user, isAuthenticated, signUp, signIn, isLoading: authLoading } = useConvexAuth()
+  const { syncFromConvex } = useConvexSync()
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showConvexLogin, setShowConvexLogin] = useState(false);
+  const [convexAuthMode, setConvexAuthMode] = useState<"signin" | "signup">("signin");
+  const [isRestoringData, setIsRestoringData] = useState(false);
+  const [dataRestored, setDataRestored] = useState(false);
+  const [convexFormData, setConvexFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+  });
+
   const [formData, setFormData] = useState({
     name: '',
     avatar: null as string | null,
@@ -142,6 +159,29 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const currentStep = steps.find(s => s.id === step) || steps[0];
   const maxStep = formData.enableSecurity ? 6 : 5;
+
+  // Skip onboarding for authenticated Convex users - let normal sync handle data restoration
+  React.useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('[Onboarding] User authenticated with Convex, skipping onboarding')
+      toast.success('Welcome back! Your data will sync automatically.')
+
+      // Skip onboarding and go directly to dashboard
+      setTimeout(() => {
+        onComplete({
+          name: user.name || 'User',
+          monthlyEarning: 0, // Will be loaded from sync
+          currency: 'NPR',
+          workingHoursPerDay: 8,
+          workingDaysPerMonth: 20,
+          createdAt: new Date().toISOString(),
+          hourlyRate: 0,
+          securityEnabled: false,
+          avatar: undefined,
+        })
+      }, 500)
+    }
+  }, [isAuthenticated, user, onComplete])
 
   const validateStep = () => {
     switch (step) {
@@ -364,6 +404,38 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Convex Login Option */}
+                  <div className="mt-6 pt-4 border-t border-white/20">
+                    <p className="text-xs text-white/80 mb-3 text-center">
+                      Already have a Convex account?
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowConvexLogin(true)}
+                      className="w-full bg-white/10 border-white/30 text-white hover:bg-white/20 hover:border-white/50 transition-all duration-300"
+                      disabled={authLoading || isRestoringData}
+                    >
+                      <Cloud className="w-4 h-4 mr-2" />
+                      {authLoading ? 'Connecting...' : isRestoringData ? 'Restoring Data...' : 'Sign in with Convex'}
+                    </Button>
+                    {isAuthenticated && !isRestoringData && (
+                      <p className="text-xs text-green-300 mt-2 text-center">
+                        ✅ Connected as {user?.email}
+                      </p>
+                    )}
+                    {isRestoringData && (
+                      <div className="mt-3 p-3 bg-blue-500/20 border border-blue-400/30 rounded-lg">
+                        <div className="flex items-center justify-center gap-2 text-blue-200">
+                          <div className="w-4 h-4 border-2 border-blue-200/30 border-t-blue-200 rounded-full animate-spin" />
+                          <span className="text-sm font-medium">Restoring your wallet data...</span>
+                        </div>
+                        <p className="text-xs text-blue-300/80 mt-1 text-center">
+                          This may take a few seconds
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -734,6 +806,147 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             })}
           </div>
         </div>
+
+        {/* Convex Login Dialog */}
+        <Dialog open={showConvexLogin} onOpenChange={setShowConvexLogin}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Cloud className="w-5 h-5" />
+                {convexAuthMode === "signup" ? "Create Convex Account" : "Sign in to Convex"}
+              </DialogTitle>
+              <DialogDescription>
+                {convexAuthMode === "signup"
+                  ? "Create a new account to sync your wallet data securely across devices."
+                  : "Sign in to access your existing synced wallet data."
+                }
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Auth Mode Toggle */}
+              <div className="flex gap-2">
+                <Button
+                  variant={convexAuthMode === "signin" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setConvexAuthMode("signin")}
+                  className="flex-1"
+                >
+                  Sign In
+                </Button>
+                <Button
+                  variant={convexAuthMode === "signup" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setConvexAuthMode("signup")}
+                  className="flex-1"
+                >
+                  Sign Up
+                </Button>
+              </div>
+
+              {/* Name Field (Sign Up Only) */}
+              {convexAuthMode === "signup" && (
+                <div className="space-y-2">
+                  <Label htmlFor="convex-name">Name (Optional)</Label>
+                  <Input
+                    id="convex-name"
+                    type="text"
+                    placeholder="Your name"
+                    value={convexFormData.name}
+                    onChange={(e) => setConvexFormData({ ...convexFormData, name: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {/* Email Field */}
+              <div className="space-y-2">
+                <Label htmlFor="convex-email">Email</Label>
+                <Input
+                  id="convex-email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={convexFormData.email}
+                  onChange={(e) => setConvexFormData({ ...convexFormData, email: e.target.value })}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="convex-password">Password</Label>
+                <Input
+                  id="convex-password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={convexFormData.password}
+                  onChange={(e) => setConvexFormData({ ...convexFormData, password: e.target.value })}
+                />
+              </div>
+
+              {/* Benefits */}
+              <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+                <div className="flex items-center gap-2 text-primary mb-2">
+                  <Database className="w-4 h-4" />
+                  <span className="font-medium text-sm">Sync Benefits</span>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>• 🔄 Automatic cross-device sync</li>
+                  <li>• 🔐 End-to-end encryption</li>
+                  <li>• 📱 Access data anywhere</li>
+                  <li>• 💾 Never lose your data</li>
+                </ul>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowConvexLogin(false)
+                    setConvexFormData({ email: '', password: '', name: '' })
+                  }}
+                  className="flex-1"
+                >
+                  Skip for Now
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!convexFormData.email || !convexFormData.password) {
+                      toast.error('Please enter both email and password')
+                      return
+                    }
+
+                    try {
+                      let result
+                      if (convexAuthMode === "signup") {
+                        result = await signUp(convexFormData.email, convexFormData.password, convexFormData.name)
+                      } else {
+                        result = await signIn(convexFormData.email, convexFormData.password)
+                      }
+
+                      if (result.success) {
+                        setShowConvexLogin(false)
+                        setConvexFormData({ email: '', password: '', name: '' })
+                        toast.success(
+                          convexAuthMode === "signup"
+                            ? "Account created! Sync is now active."
+                            : "Signed in! Your data will sync automatically."
+                        )
+                      } else {
+                        toast.error(result.error || "Authentication failed")
+                      }
+                    } catch (error: any) {
+                      toast.error(error.message || "Authentication failed")
+                    }
+                  }}
+                  disabled={authLoading}
+                  className="flex-1"
+                >
+                  {authLoading ? "Connecting..." : (convexAuthMode === "signup" ? "Create Account" : "Sign In")}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

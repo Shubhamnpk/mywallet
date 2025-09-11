@@ -13,20 +13,32 @@ import { useConvexAuth } from "@/hooks/use-convex-auth"
 import { useConvexSync } from "@/hooks/use-convex-sync"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "@/hooks/use-toast"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
 export function ConvexSync() {
   const { user, isAuthenticated, signUp, signIn, signOut, isLoading: authLoading } = useConvexAuth()
   const {
     isEnabled,
+    isPaused,
     isSyncing,
     lastSyncTime,
     error,
     enableSync,
     disableSync,
+    pauseSync,
+    resumeSync,
     syncToConvex,
     syncFromConvex,
   } = useConvexSync()
   const { transactions, budgets, goals, categories, emergencyFund } = useWalletData()
+
+  // Device management
+  const connectedDevices = useQuery(
+    api.walletData.getConnectedDevices,
+    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
+  )
+  const updateDeviceStatusMutation = useMutation(api.walletData.updateDeviceStatus)
 
   // Debug logging
   console.log('[ConvexSync] Component state:', {
@@ -318,21 +330,55 @@ export function ConvexSync() {
                     <div className={`w-3 h-3 rounded-full ${
                       isSyncing ? 'bg-yellow-500 animate-pulse' :
                       error ? 'bg-red-500' :
+                      isPaused ? 'bg-orange-500' :
                       'bg-green-500'
                     }`} />
                     <div className="flex-1">
                       <p className="text-sm font-medium">
                         {isSyncing ? '🔄 Syncing...' :
                          error ? '❌ Sync Error' :
+                         isPaused ? '⏸️ Auto-Sync Paused' :
                          '✅ Auto-Sync Active'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {isSyncing ? 'Uploading changes to cloud...' :
                          error ? `Last sync: ${formatLastSyncTime(lastSyncTime)}` :
+                         isPaused ? 'Automatic sync is paused - manual sync available' :
                          `Last synced: ${formatLastSyncTime(lastSyncTime)}`}
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      {!isPaused ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            const result = await pauseSync()
+                            if (result.success) {
+                              console.log('[PAUSE] Auto sync paused')
+                            }
+                          }}
+                          disabled={isSyncing}
+                          className="text-xs"
+                        >
+                          ⏸️ Pause
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            const result = await resumeSync()
+                            if (result.success) {
+                              console.log('[RESUME] Auto sync resumed')
+                            }
+                          }}
+                          disabled={isSyncing}
+                          className="text-xs"
+                        >
+                          ▶️ Resume
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -362,24 +408,6 @@ export function ConvexSync() {
                         className="text-xs"
                       >
                         🔄 Sync Now
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          console.log('[DEBUG] Checking Convex data...')
-                          // This will help debug what's in Convex
-                          const latestData = await syncFromConvex()
-                          console.log('[DEBUG] Latest Convex data:', latestData)
-                          toast({
-                            title: "Debug Check Complete",
-                            description: "Check browser console for Convex data details.",
-                          })
-                        }}
-                        disabled={isSyncing}
-                        className="text-xs"
-                      >
-                        🔍 Debug
                       </Button>
                       {error && (
                         <Button
@@ -418,17 +446,109 @@ export function ConvexSync() {
                       <p className="mt-1 text-green-700 dark:text-green-300">
                         All changes are automatically synced across your devices in real-time.
                       </p>
-                      <div className="mt-2 text-xs text-green-600 dark:text-green-400">
-                        <p>• Uploads first, then downloads (prevents data loss)</p>
-                        <p>• Smart 1-second delay prevents excessive syncs</p>
-                        <p>• Only downloads newer remote data</p>
-                        <p>• Intelligent merge preserves all changes</p>
-                      </div>
                     </div>
                   )}
                 </div>
               )}
             </div>
+
+            {/* Connected Devices Section */}
+            {isEnabled && connectedDevices && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Wifi className="w-4 h-4" />
+                      Connected Devices ({connectedDevices.length})
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Manage devices connected to your Convex sync account
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {connectedDevices.map((device) => {
+                    const isCurrentDevice = device.deviceId === localStorage.getItem("convex_device_id")
+                    return (
+                      <div
+                        key={device.deviceId}
+                        className={`flex items-center justify-between p-3 border rounded-lg ${
+                          isCurrentDevice
+                            ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
+                            : 'bg-muted/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            device.isActive
+                              ? 'bg-green-100 dark:bg-green-900/20'
+                              : 'bg-gray-100 dark:bg-gray-800'
+                          }`}>
+                            {device.isActive ? (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <WifiOff className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">
+                              {device.deviceName}
+                              {isCurrentDevice && (
+                                <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                  This Device
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Last sync: {new Date(device.lastSyncAt).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {!isCurrentDevice && (
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={device.isActive}
+                              onCheckedChange={async (active) => {
+                                try {
+                                  await updateDeviceStatusMutation({
+                                    userId: user!.id as any,
+                                    deviceId: device.deviceId,
+                                    isActive: active,
+                                  })
+                                  toast({
+                                    title: active ? "Device Enabled" : "Device Paused",
+                                    description: `${device.deviceName} ${active ? 'will now sync' : 'sync paused'}.`,
+                                  })
+                                } catch (error) {
+                                  toast({
+                                    title: "Error",
+                                    description: "Failed to update device status.",
+                                    variant: "destructive",
+                                  })
+                                }
+                              }}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {device.isActive ? 'Active' : 'Paused'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {connectedDevices.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <WifiOff className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No devices connected yet</p>
+                    <p className="text-xs">Devices will appear here once they sync</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Setup Dialog */}
             <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
@@ -519,57 +639,6 @@ export function ConvexSync() {
             </Dialog>
           </>
         )}
-
-        {/* Debug Info - Show current data counts */}
-        {isEnabled && (
-          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="w-3 h-3 text-blue-600" />
-              <p className="font-medium text-blue-800 dark:text-blue-200">Current Data Status</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-blue-700 dark:text-blue-300 mb-2">
-              <div>📊 Transactions: <strong>{transactions.length}</strong></div>
-              <div>💰 Budgets: <strong>{budgets.length}</strong></div>
-              <div>🎯 Goals: <strong>{goals.length}</strong></div>
-              <div>🏷️ Categories: <strong>{categories.length}</strong></div>
-              <div>💵 Emergency Fund: <strong>${emergencyFund}</strong></div>
-              <div>🔄 Last Sync: <strong>{formatLastSyncTime(lastSyncTime)}</strong></div>
-            </div>
-            <div className="text-xs text-blue-600 dark:text-blue-400 border-t border-blue-200 dark:border-blue-700 pt-2">
-              <p className="font-medium mb-1">🔍 Sync Verification:</p>
-              <p>• User ID: <strong>{user?.id || 'Not available'}</strong></p>
-              <p>• Email: <strong>{user?.email || 'Not available'}</strong></p>
-              <p>• Device ID: <strong>{localStorage.getItem("convex_device_id")?.slice(0, 8) + "..." || 'Not set'}</strong></p>
-              <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                <p className="font-medium text-yellow-800 dark:text-yellow-200">⚠️ Critical Check:</p>
-                <p className="text-yellow-700 dark:text-yellow-300">
-                  Both devices MUST show the <strong>same User ID and Email</strong> for sync to work!
-                </p>
-                <p className="text-yellow-600 dark:text-yellow-400 mt-1">
-                  If they differ, sign out and sign in with the same Convex account on both devices.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Features Info */}
-        <div className="text-xs text-muted-foreground bg-primary/5 p-3 rounded-lg border border-primary/20">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="w-4 h-4 text-primary" />
-            <p className="font-medium text-primary">Automatic Sync Features</p>
-          </div>
-          <ul className="space-y-1">
-            <li>• ⚡ Real-time sync - changes appear instantly</li>
-            <li>• 🔄 Smart debouncing - prevents excessive syncs</li>
-            <li>• 📱 Cross-device sync - works on all your devices</li>
-            <li>• 🔐 End-to-end encryption - AES-256-GCM</li>
-            <li>• 📶 Offline support - queues changes when offline</li>
-            <li>• 🔁 Auto-retry - handles network issues</li>
-            <li>• 🤝 Zero conflicts - intelligent data merging</li>
-            <li>• 🚀 No manual action needed - completely automatic</li>
-          </ul>
-        </div>
       </CardContent>
     </Card>
   )

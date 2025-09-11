@@ -11,7 +11,6 @@ import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
-import { CloudSync } from "./cloud-sync"
 import { ConvexSync } from "./convex-sync"
 
 export function DataSettings() {
@@ -383,9 +382,6 @@ export function DataSettings() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Cloud Sync */}
-      <CloudSync />
 
       {/* Convex Sync */}
       <ConvexSync />
