@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Cloud, CloudOff, RefreshCw, CheckCircle, AlertCircle, User, Key, Database } from "lucide-react"
+import { Cloud, CloudOff, RefreshCw, CheckCircle, AlertCircle, User, Key, Database, Wifi, WifiOff } from "lucide-react"
 import { useConvexAuth } from "@/hooks/use-convex-auth"
 import { useConvexSync } from "@/hooks/use-convex-sync"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "@/hooks/use-toast"
 
 export function ConvexSync() {
@@ -25,6 +26,7 @@ export function ConvexSync() {
     syncToConvex,
     syncFromConvex,
   } = useConvexSync()
+  const { transactions, budgets, goals, categories, emergencyFund } = useWalletData()
 
   // Debug logging
   console.log('[ConvexSync] Component state:', {
@@ -313,29 +315,65 @@ export function ConvexSync() {
               {isEnabled && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 p-3 bg-muted/50 border border-border rounded-lg">
-                    <Cloud className="w-4 h-4 text-primary" />
+                    <div className={`w-3 h-3 rounded-full ${
+                      isSyncing ? 'bg-yellow-500 animate-pulse' :
+                      error ? 'bg-red-500' :
+                      'bg-green-500'
+                    }`} />
                     <div className="flex-1">
-                      <p className="text-sm text-primary">Sync Active</p>
+                      <p className="text-sm font-medium">
+                        {isSyncing ? '🔄 Syncing...' :
+                         error ? '❌ Sync Error' :
+                         '✅ Auto-Sync Active'}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        Last synced: {formatLastSyncTime(lastSyncTime)}
+                        {isSyncing ? 'Uploading changes to cloud...' :
+                         error ? `Last sync: ${formatLastSyncTime(lastSyncTime)}` :
+                         `Last synced: ${formatLastSyncTime(lastSyncTime)}`}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => syncToConvex()}
-                      disabled={isSyncing}
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                      {isSyncing ? 'Syncing...' : 'Sync Now'}
-                    </Button>
+                    {error && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.location.reload()}
+                        className="text-xs"
+                      >
+                        🔄 Retry
+                      </Button>
+                    )}
                   </div>
 
                   {error && (
                     <Alert variant="destructive">
                       <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{error}</AlertDescription>
+                      <AlertDescription className="text-sm">
+                        {error}
+                        <br />
+                        <span className="text-xs opacity-75">
+                          Changes will sync automatically when connection is restored.
+                        </span>
+                      </AlertDescription>
                     </Alert>
+                  )}
+
+                  {!error && !isSyncing && (
+                    <div className="text-xs text-muted-foreground bg-green-50 dark:bg-green-950/20 p-2 rounded border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-3 h-3 text-green-600" />
+                        <span className="font-medium text-green-800 dark:text-green-200">
+                          Automatic Sync Active
+                        </span>
+                      </div>
+                      <p className="mt-1 text-green-700 dark:text-green-300">
+                        All changes are automatically synced across your devices in real-time.
+                      </p>
+                      <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                        <p>• Syncs every 300ms when data changes</p>
+                        <p>• Checks for new data every 10 seconds</p>
+                        <p>• Smart merge prevents data loss</p>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -431,19 +469,42 @@ export function ConvexSync() {
           </>
         )}
 
+        {/* Debug Info - Show current data counts */}
+        {isEnabled && (
+          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="w-3 h-3 text-blue-600" />
+              <p className="font-medium text-blue-800 dark:text-blue-200">Current Data Status</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-blue-700 dark:text-blue-300">
+              <div>📊 Transactions: <strong>{transactions.length}</strong></div>
+              <div>💰 Budgets: <strong>{budgets.length}</strong></div>
+              <div>🎯 Goals: <strong>{goals.length}</strong></div>
+              <div>🏷️ Categories: <strong>{categories.length}</strong></div>
+              <div>💵 Emergency Fund: <strong>${emergencyFund}</strong></div>
+              <div>🔄 Last Sync: <strong>{formatLastSyncTime(lastSyncTime)}</strong></div>
+            </div>
+            <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+              Use this to verify sync is working - counts should match across devices
+            </p>
+          </div>
+        )}
+
         {/* Features Info */}
         <div className="text-xs text-muted-foreground bg-primary/5 p-3 rounded-lg border border-primary/20">
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle className="w-4 h-4 text-primary" />
-            <p className="font-medium text-primary">Convex Sync Features</p>
+            <p className="font-medium text-primary">Automatic Sync Features</p>
           </div>
           <ul className="space-y-1">
-            <li>• Single password - uses your Convex account password</li>
-            <li>• Automatic sync across all your devices</li>
-            <li>• End-to-end encryption (AES-256-GCM)</li>
-            <li>• Separate from cloud storage sync</li>
-            <li>• Real-time data synchronization</li>
-            <li>• Secure account-based access control</li>
+            <li>• ⚡ Real-time sync - changes appear instantly</li>
+            <li>• 🔄 Smart debouncing - prevents excessive syncs</li>
+            <li>• 📱 Cross-device sync - works on all your devices</li>
+            <li>• 🔐 End-to-end encryption - AES-256-GCM</li>
+            <li>• 📶 Offline support - queues changes when offline</li>
+            <li>• 🔁 Auto-retry - handles network issues</li>
+            <li>• 🤝 Zero conflicts - intelligent data merging</li>
+            <li>• 🚀 No manual action needed - completely automatic</li>
           </ul>
         </div>
       </CardContent>

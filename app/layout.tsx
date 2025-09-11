@@ -14,6 +14,7 @@ import UpdateNotification from '@/components/pwa/update-notification'
 import UpdateSuccess from '@/components/pwa/update-success'
 import { Toaster } from "@/components/ui/sonner"
 import { ConvexProviderWrapper } from "@/components/convex-provider-wrapper"
+import { ConvexSyncProvider } from "@/components/convex-sync-provider"
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -47,7 +48,9 @@ export default function RootLayout({
     <ThemeProviderWrapper>
       <PrivacyModeProvider>
         <WalletDataProvider>
-          <SessionGuard>{children}</SessionGuard>
+          <ConvexSyncProvider>
+            <SessionGuard>{children}</SessionGuard>
+          </ConvexSyncProvider>
         </WalletDataProvider>
       </PrivacyModeProvider>
       <Toaster />
