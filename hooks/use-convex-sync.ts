@@ -560,136 +560,122 @@ export function useConvexSync() {
     }
   }
 
-  // OPTIMIZED SYNC SYSTEM - API EFFICIENT & RELIABLE
+  // SMART SYNC - PREVENTS DATA LOSS WITH INTELLIGENT MERGING
   useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing) return
+    if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing) {
+      console.log('[SYNC] Skipping - not enabled/authenticated or already syncing')
+      return
+    }
 
-    const performOptimizedSync = async () => {
+    console.log('[SYNC] 🚀 Data change detected, starting smart sync...')
+
+    const performSmartSync = async () => {
       try {
-        console.log('[OPTIMIZED-SYNC] Starting efficient sync process...')
+        console.log('[SYNC] Starting smart sync cycle...')
 
-        // Step 1: Upload current data (only if we have changes)
-        const hasLocalChanges = checkForLocalChanges()
-        if (hasLocalChanges) {
-          console.log('[OPTIMIZED-SYNC] Step 1: Uploading local changes...')
-          const uploadResult = await syncToConvex()
-          if (!uploadResult.success) {
-            console.warn('[OPTIMIZED-SYNC] Upload failed, will retry later')
+        // Step 1: UPLOAD FIRST - Always upload current local data
+        console.log('[SYNC] 📤 Step 1: Uploading current data to Convex...')
+        const uploadResult = await syncToConvex()
+        if (uploadResult.success) {
+          console.log('[SYNC] ✅ Upload successful - local data saved to cloud')
+        } else {
+          console.error('[SYNC] ❌ Upload failed:', uploadResult.error)
+          return // Don't download if upload failed
+        }
+
+        // Step 2: WAIT - Give Convex time to process the upload
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Step 3: DOWNLOAD WITH SMART CHECKS
+        console.log('[SYNC] 📥 Step 2: Checking for remote updates...')
+
+        // Only download if remote data is actually newer
+        if (getLatestWalletData) {
+          const lastSyncTime = localStorage.getItem("convex_last_sync_time")
+          const remoteTime = getLatestWalletData.lastModified
+
+          if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
+            console.log('[SYNC] 📡 Remote data is newer, downloading...')
+            const downloadResult = await syncFromConvex()
+            if (downloadResult.success) {
+              console.log('[SYNC] ✅ Download successful - data merged intelligently')
+            } else if (downloadResult.message) {
+              console.log('[SYNC] ℹ️', downloadResult.message)
+            } else {
+              console.error('[SYNC] ❌ Download failed:', downloadResult.error)
+            }
+          } else {
+            console.log('[SYNC] ✅ Local data is up to date - no download needed')
           }
+        } else {
+          console.log('[SYNC] No remote data available yet')
         }
 
-        // Step 2: Download latest data (always check for remote changes)
-        console.log('[OPTIMIZED-SYNC] Step 2: Checking for remote updates...')
-        const downloadResult = await syncFromConvex()
-        if (!downloadResult.success && !downloadResult.message) {
-          console.warn('[OPTIMIZED-SYNC] Download failed, will retry later')
-        }
-
-        console.log('[OPTIMIZED-SYNC] ✅ Sync cycle completed efficiently!')
+        console.log('[SYNC] 🎉 Smart sync cycle completed successfully!')
 
       } catch (error) {
-        console.error("[OPTIMIZED-SYNC] ❌ Sync failed:", error)
+        console.error("[SYNC] 💥 Critical sync error:", error)
         setSyncState(prev => ({
           ...prev,
-          error: error instanceof Error ? error.message : "Sync failed"
+          error: error instanceof Error ? error.message : "Critical sync error"
         }))
       }
     }
 
-    // Smart debouncing: 500ms for normal changes, 2s for bulk operations
-    const hasBulkOperation = checkBulkOperation()
-    const debounceDelay = hasBulkOperation ? 2000 : 500
-    const timeoutId = setTimeout(performOptimizedSync, debounceDelay)
+    // Execute with smart delay to prevent excessive calls
+    const timeoutId = setTimeout(performSmartSync, 1000) // 1 second delay
 
     return () => clearTimeout(timeoutId)
   }, [
-    // Trigger on data changes (optimized to reduce API calls)
-    transactions.length,
-    budgets.length,
-    goals.length,
-    categories.length,
+    // Trigger on data changes, but exclude sync state to prevent loops
+    transactions,
+    budgets,
+    goals,
+    categories,
     emergencyFund,
+    userProfile,
     syncState.isEnabled,
-    isAuthenticated,
-    syncState.isSyncing
+    isAuthenticated
+    // Note: Removed syncState.isSyncing to prevent sync loops
   ])
 
-  // Check if we have local changes that need syncing
-  const checkForLocalChanges = () => {
-    const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-    if (!lastSyncTime) return true // First sync
-
-    const lastSyncTimestamp = parseInt(lastSyncTime)
-    const now = Date.now()
-
-    // If it's been more than 10 seconds since last sync, we likely have changes
-    return (now - lastSyncTimestamp) > 10000
-  }
-
-  // Check if this is a bulk operation (multiple rapid changes)
-  const checkBulkOperation = () => {
-    const recentChanges = localStorage.getItem("recent_data_changes")
-    if (!recentChanges) return false
-
-    try {
-      const changes = JSON.parse(recentChanges)
-      const now = Date.now()
-      const recentThreshold = 2000 // 2 seconds
-
-      return changes.filter((change: any) => (now - change.timestamp) < recentThreshold).length > 3
-    } catch {
-      return false
-    }
-  }
-
-  // EFFICIENT POLLING - Smart interval based on activity
+  // CONTINUOUS MONITORING - Check for remote changes every 10 seconds
   useEffect(() => {
     if (!syncState.isEnabled || !isAuthenticated) return
 
-    const smartPollingInterval = setInterval(async () => {
-      try {
-        if (syncState.isSyncing) return // Don't interrupt ongoing sync
+    console.log('[SYNC] 🔄 Starting continuous monitoring...')
 
-        // Check if there's newer data available
+    const monitoringInterval = setInterval(async () => {
+      try {
+        if (syncState.isSyncing) {
+          console.log('[SYNC] Skipping monitor - sync in progress')
+          return
+        }
+
+        // Check if remote data is newer
         if (getLatestWalletData) {
           const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-          const convexDataTime = getLatestWalletData.lastModified
+          const remoteTime = getLatestWalletData.lastModified
 
-          if (!lastSyncTime || (convexDataTime && convexDataTime > parseInt(lastSyncTime))) {
-            console.log('[SMART-POLL] New remote data detected, syncing...')
+          if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
+            console.log('[SYNC] 📡 Remote data is newer, downloading...')
             await syncFromConvex()
+          } else {
+            console.log('[SYNC] ✅ Local data is up to date')
           }
+        } else {
+          console.log('[SYNC] No remote data available yet')
         }
       } catch (error) {
-        console.error("[SMART-POLL] Sync check failed:", error)
+        console.error("[SYNC] Monitoring error:", error)
       }
-    }, 15000) // Check every 15 seconds (less frequent, more efficient)
+    }, 10000) // Check every 10 seconds
 
-    return () => clearInterval(smartPollingInterval)
+    return () => {
+      console.log('[SYNC] 🛑 Stopping continuous monitoring')
+      clearInterval(monitoringInterval)
+    }
   }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing, getLatestWalletData])
-
-  // BACKUP SYNC - Only when needed, every 2 minutes
-  useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated) return
-
-    const backupSyncInterval = setInterval(async () => {
-      try {
-        if (!syncState.isSyncing) {
-          // Only backup sync if we haven't synced in the last 90 seconds
-          const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-          if (lastSyncTime) {
-            const timeSinceLastSync = Date.now() - parseInt(lastSyncTime)
-            if (timeSinceLastSync > 90000) { // 90 seconds
-              await syncFromConvex()
-            }
-          }
-        }
-      } catch (error) {
-      }
-    }, 120000) // Every 2 minutes (much less frequent)
-
-    return () => clearInterval(backupSyncInterval)
-  }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing])
 
   return {
     ...syncState,

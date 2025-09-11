@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import { Doc, Id } from "./_generated/dataModel"
 
 // Store encrypted wallet data
 export const storeWalletData = mutation({
@@ -11,36 +12,41 @@ export const storeWalletData = mutation({
     version: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if data already exists for this user and device
-    const existingData = await ctx.db
-      .query("walletData")
-      .withIndex("by_user_device", (q) =>
-        q.eq("userId", args.userId).eq("deviceId", args.deviceId)
-      )
-      .first()
+    try {
+      // Check if data already exists for this user and device
+      const existingData = await ctx.db
+        .query("walletData")
+        .withIndex("by_user_device", (q) =>
+          q.eq("userId", args.userId).eq("deviceId", args.deviceId)
+        )
+        .first()
 
-    const now = Date.now()
+      const now = Date.now()
 
-    if (existingData) {
-      // Update existing data
-      await ctx.db.patch(existingData._id, {
-        encryptedData: args.encryptedData,
-        dataHash: args.dataHash,
-        lastModified: now,
-        version: args.version,
-      })
-      return { success: true, action: "updated" }
-    } else {
-      // Create new data entry
-      await ctx.db.insert("walletData", {
-        userId: args.userId,
-        deviceId: args.deviceId,
-        encryptedData: args.encryptedData,
-        dataHash: args.dataHash,
-        lastModified: now,
-        version: args.version,
-      })
-      return { success: true, action: "created" }
+      if (existingData) {
+        // Update existing data
+        await ctx.db.patch(existingData._id, {
+          encryptedData: args.encryptedData,
+          dataHash: args.dataHash,
+          lastModified: now,
+          version: args.version,
+        })
+        return { success: true, action: "updated", timestamp: now }
+      } else {
+        // Create new data entry
+        const newId = await ctx.db.insert("walletData", {
+          userId: args.userId,
+          deviceId: args.deviceId,
+          encryptedData: args.encryptedData,
+          dataHash: args.dataHash,
+          lastModified: now,
+          version: args.version,
+        })
+        return { success: true, action: "created", id: newId, timestamp: now }
+      }
+    } catch (error) {
+      console.error("Failed to store wallet data:", error)
+      return { success: false, error: "Failed to store data" }
     }
   },
 })
@@ -57,7 +63,7 @@ export const getWalletData = query({
       const data = await ctx.db
         .query("walletData")
         .withIndex("by_user_device", (q) =>
-          q.eq("userId", args.userId).eq("deviceId", args.deviceId)
+          q.eq("userId", args.userId).eq("deviceId", args.deviceId!)
         )
         .first()
 
@@ -92,25 +98,35 @@ export const getWalletData = query({
 export const getLatestWalletData = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
-    const allData = await ctx.db
-      .query("walletData")
-      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
-      .collect()
+    try {
+      const allData = await ctx.db
+        .query("walletData")
+        .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+        .collect()
 
-    if (allData.length === 0) return null
+      if (allData.length === 0) {
+        console.log(`No wallet data found for user ${args.userId}`)
+        return null
+      }
 
-    // Find the most recently modified data
-    const latestData = allData.reduce((latest, current) =>
-      current.lastModified > latest.lastModified ? current : latest
-    )
+      // Find the most recently modified data
+      const latestData = allData.reduce((latest, current) =>
+        current.lastModified > latest.lastModified ? current : latest
+      )
 
-    return {
-      id: latestData._id,
-      encryptedData: latestData.encryptedData,
-      dataHash: latestData.dataHash,
-      lastModified: latestData.lastModified,
-      version: latestData.version,
-      deviceId: latestData.deviceId,
+      console.log(`Found latest wallet data for user ${args.userId}, last modified: ${new Date(latestData.lastModified).toISOString()}`)
+
+      return {
+        id: latestData._id,
+        encryptedData: latestData.encryptedData,
+        dataHash: latestData.dataHash,
+        lastModified: latestData.lastModified,
+        version: latestData.version,
+        deviceId: latestData.deviceId,
+      }
+    } catch (error) {
+      console.error(`Failed to get latest wallet data for user ${args.userId}:`, error)
+      return null
     }
   },
 })

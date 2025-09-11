@@ -332,16 +332,66 @@ export function ConvexSync() {
                          `Last synced: ${formatLastSyncTime(lastSyncTime)}`}
                       </p>
                     </div>
-                    {error && (
+                    <div className="flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => window.location.reload()}
+                        onClick={async () => {
+                          console.log('[MANUAL] Force sync triggered')
+                          toast({
+                            title: "Manual Sync Started",
+                            description: "Forcing upload and download...",
+                          })
+                          const uploadResult = await syncToConvex()
+                          const downloadResult = await syncFromConvex()
+
+                          if (uploadResult.success && downloadResult.success) {
+                            toast({
+                              title: "Manual Sync Complete",
+                              description: "Data synchronized successfully!",
+                            })
+                          } else {
+                            toast({
+                              title: "Manual Sync Failed",
+                              description: "Check console for details.",
+                              variant: "destructive",
+                            })
+                          }
+                        }}
+                        disabled={isSyncing}
                         className="text-xs"
                       >
-                        🔄 Retry
+                        🔄 Sync Now
                       </Button>
-                    )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          console.log('[DEBUG] Checking Convex data...')
+                          // This will help debug what's in Convex
+                          const latestData = await syncFromConvex()
+                          console.log('[DEBUG] Latest Convex data:', latestData)
+                          toast({
+                            title: "Debug Check Complete",
+                            description: "Check browser console for Convex data details.",
+                          })
+                        }}
+                        disabled={isSyncing}
+                        className="text-xs"
+                      >
+                        🔍 Debug
+                      </Button>
+                      {error && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.location.reload()}
+                          className="text-xs"
+                        >
+                          🔄 Retry
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   {error && (
@@ -369,9 +419,10 @@ export function ConvexSync() {
                         All changes are automatically synced across your devices in real-time.
                       </p>
                       <div className="mt-2 text-xs text-green-600 dark:text-green-400">
-                        <p>• Syncs every 300ms when data changes</p>
-                        <p>• Checks for new data every 10 seconds</p>
-                        <p>• Smart merge prevents data loss</p>
+                        <p>• Uploads first, then downloads (prevents data loss)</p>
+                        <p>• Smart 1-second delay prevents excessive syncs</p>
+                        <p>• Only downloads newer remote data</p>
+                        <p>• Intelligent merge preserves all changes</p>
                       </div>
                     </div>
                   )}
@@ -476,7 +527,7 @@ export function ConvexSync() {
               <Database className="w-3 h-3 text-blue-600" />
               <p className="font-medium text-blue-800 dark:text-blue-200">Current Data Status</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-blue-700 dark:text-blue-300">
+            <div className="grid grid-cols-2 gap-2 text-blue-700 dark:text-blue-300 mb-2">
               <div>📊 Transactions: <strong>{transactions.length}</strong></div>
               <div>💰 Budgets: <strong>{budgets.length}</strong></div>
               <div>🎯 Goals: <strong>{goals.length}</strong></div>
@@ -484,9 +535,21 @@ export function ConvexSync() {
               <div>💵 Emergency Fund: <strong>${emergencyFund}</strong></div>
               <div>🔄 Last Sync: <strong>{formatLastSyncTime(lastSyncTime)}</strong></div>
             </div>
-            <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-              Use this to verify sync is working - counts should match across devices
-            </p>
+            <div className="text-xs text-blue-600 dark:text-blue-400 border-t border-blue-200 dark:border-blue-700 pt-2">
+              <p className="font-medium mb-1">🔍 Sync Verification:</p>
+              <p>• User ID: <strong>{user?.id || 'Not available'}</strong></p>
+              <p>• Email: <strong>{user?.email || 'Not available'}</strong></p>
+              <p>• Device ID: <strong>{localStorage.getItem("convex_device_id")?.slice(0, 8) + "..." || 'Not set'}</strong></p>
+              <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                <p className="font-medium text-yellow-800 dark:text-yellow-200">⚠️ Critical Check:</p>
+                <p className="text-yellow-700 dark:text-yellow-300">
+                  Both devices MUST show the <strong>same User ID and Email</strong> for sync to work!
+                </p>
+                <p className="text-yellow-600 dark:text-yellow-400 mt-1">
+                  If they differ, sign out and sign in with the same Convex account on both devices.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
