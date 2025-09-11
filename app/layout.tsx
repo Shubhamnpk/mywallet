@@ -13,6 +13,7 @@ import InstallButton from '@/components/pwa/install-button'
 import UpdateNotification from '@/components/pwa/update-notification'
 import UpdateSuccess from '@/components/pwa/update-success'
 import { Toaster } from "@/components/ui/sonner"
+import { ConvexProviderWrapper } from "@/components/convex-provider-wrapper"
 
 export const metadata: Metadata = {
   title: "MyWallet - Smart Financial Tracking",
@@ -39,17 +40,19 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#000000" />
       </head>
   <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-  <RegisterSW />
-  <UpdateNotification />
-  <UpdateSuccess />
-  <ThemeProviderWrapper>
-    <PrivacyModeProvider>
-      <WalletDataProvider>
-        <SessionGuard>{children}</SessionGuard>
-      </WalletDataProvider>
-    </PrivacyModeProvider>
-    <Toaster />
-  </ThemeProviderWrapper>
+  <ConvexProviderWrapper>
+    <RegisterSW />
+    <UpdateNotification />
+    <UpdateSuccess />
+    <ThemeProviderWrapper>
+      <PrivacyModeProvider>
+        <WalletDataProvider>
+          <SessionGuard>{children}</SessionGuard>
+        </WalletDataProvider>
+      </PrivacyModeProvider>
+      <Toaster />
+    </ThemeProviderWrapper>
+  </ConvexProviderWrapper>
       </body>
     </html>
   )

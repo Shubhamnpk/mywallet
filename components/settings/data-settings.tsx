@@ -12,6 +12,7 @@ import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
 import { CloudSync } from "./cloud-sync"
+import { ConvexSync } from "./convex-sync"
 
 export function DataSettings() {
    const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, clearAllData, importData } = useWalletData()
@@ -385,6 +386,9 @@ export function DataSettings() {
 
       {/* Cloud Sync */}
       <CloudSync />
+
+      {/* Convex Sync */}
+      <ConvexSync />
 
       {/* Backup Modal Component */}
       <BackupModal
