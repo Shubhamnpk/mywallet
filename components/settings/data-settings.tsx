@@ -6,15 +6,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useConvexAuth } from "@/hooks/use-convex-auth"
 import { Download, Upload, Trash2, Database, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
 import { ConvexSync } from "./convex-sync"
+import { RecycleBin } from "./recycle-bin"
+
+// Helper function to get device info
+const getDeviceInfo = () => {
+  let deviceId = localStorage.getItem("convex_device_id")
+
+  if (!deviceId) {
+    deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    localStorage.setItem("convex_device_id", deviceId)
+  }
+
+  return deviceId
+}
 
 export function DataSettings() {
-   const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, clearAllData, importData } = useWalletData()
+   const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, clearAllData, importData, refreshData } = useWalletData()
+   const { user } = useConvexAuth()
    const [importFile, setImportFile] = useState<File | null>(null)
    const [importPin, setImportPin] = useState("")
    const [isImporting, setIsImporting] = useState(false)
@@ -289,7 +304,7 @@ export function DataSettings() {
                   </ul>
               </div>
             </div>
-          </div>
+           </div>
             </div>
 
             {/* Import Section */}
@@ -385,6 +400,13 @@ export function DataSettings() {
 
       {/* Convex Sync */}
       <ConvexSync />
+
+      {/* Recycle Bin */}
+      <RecycleBin
+        userId={user?.id || ''}
+        currentDeviceId={getDeviceInfo()}
+        onDataRefresh={refreshData}
+      />
 
       {/* Backup Modal Component */}
       <BackupModal

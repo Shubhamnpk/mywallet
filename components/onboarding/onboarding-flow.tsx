@@ -39,6 +39,7 @@ import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useConvexAuth } from '@/hooks/use-convex-auth';
 import { useConvexSync } from '@/hooks/use-convex-sync';
+import { ConvexAuthModal } from '@/components/auth/convex-auth-modal';
 
 interface OnboardingProps {
   onComplete: (userProfile: UserProfile) => void;
@@ -133,14 +134,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [showConvexLogin, setShowConvexLogin] = useState(false);
-  const [convexAuthMode, setConvexAuthMode] = useState<"signin" | "signup">("signin");
   const [isRestoringData, setIsRestoringData] = useState(false);
   const [dataRestored, setDataRestored] = useState(false);
-  const [convexFormData, setConvexFormData] = useState({
-    email: '',
-    password: '',
-    name: '',
-  });
 
   const [formData, setFormData] = useState({
     name: '',
@@ -807,146 +802,17 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         </div>
 
-        {/* Convex Login Dialog */}
-        <Dialog open={showConvexLogin} onOpenChange={setShowConvexLogin}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Cloud className="w-5 h-5" />
-                {convexAuthMode === "signup" ? "Create Convex Account" : "Sign in to Convex"}
-              </DialogTitle>
-              <DialogDescription>
-                {convexAuthMode === "signup"
-                  ? "Create a new account to sync your wallet data securely across devices."
-                  : "Sign in to access your existing synced wallet data."
-                }
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              {/* Auth Mode Toggle */}
-              <div className="flex gap-2">
-                <Button
-                  variant={convexAuthMode === "signin" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setConvexAuthMode("signin")}
-                  className="flex-1"
-                >
-                  Sign In
-                </Button>
-                <Button
-                  variant={convexAuthMode === "signup" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setConvexAuthMode("signup")}
-                  className="flex-1"
-                >
-                  Sign Up
-                </Button>
-              </div>
-
-              {/* Name Field (Sign Up Only) */}
-              {convexAuthMode === "signup" && (
-                <div className="space-y-2">
-                  <Label htmlFor="convex-name">Name (Optional)</Label>
-                  <Input
-                    id="convex-name"
-                    type="text"
-                    placeholder="Your name"
-                    value={convexFormData.name}
-                    onChange={(e) => setConvexFormData({ ...convexFormData, name: e.target.value })}
-                  />
-                </div>
-              )}
-
-              {/* Email Field */}
-              <div className="space-y-2">
-                <Label htmlFor="convex-email">Email</Label>
-                <Input
-                  id="convex-email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={convexFormData.email}
-                  onChange={(e) => setConvexFormData({ ...convexFormData, email: e.target.value })}
-                />
-              </div>
-
-              {/* Password Field */}
-              <div className="space-y-2">
-                <Label htmlFor="convex-password">Password</Label>
-                <Input
-                  id="convex-password"
-                  type="password"
-                  placeholder="Enter password"
-                  value={convexFormData.password}
-                  onChange={(e) => setConvexFormData({ ...convexFormData, password: e.target.value })}
-                />
-              </div>
-
-              {/* Benefits */}
-              <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-                <div className="flex items-center gap-2 text-primary mb-2">
-                  <Database className="w-4 h-4" />
-                  <span className="font-medium text-sm">Sync Benefits</span>
-                </div>
-                <ul className="text-xs text-muted-foreground space-y-1">
-                  <li>• 🔄 Automatic cross-device sync</li>
-                  <li>• 🔐 End-to-end encryption</li>
-                  <li>• 📱 Access data anywhere</li>
-                  <li>• 💾 Never lose your data</li>
-                </ul>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowConvexLogin(false)
-                    setConvexFormData({ email: '', password: '', name: '' })
-                  }}
-                  className="flex-1"
-                >
-                  Skip for Now
-                </Button>
-                <Button
-                  onClick={async () => {
-                    if (!convexFormData.email || !convexFormData.password) {
-                      toast.error('Please enter both email and password')
-                      return
-                    }
-
-                    try {
-                      let result
-                      if (convexAuthMode === "signup") {
-                        result = await signUp(convexFormData.email, convexFormData.password, convexFormData.name)
-                      } else {
-                        result = await signIn(convexFormData.email, convexFormData.password)
-                      }
-
-                      if (result.success) {
-                        setShowConvexLogin(false)
-                        setConvexFormData({ email: '', password: '', name: '' })
-                        toast.success(
-                          convexAuthMode === "signup"
-                            ? "Account created! Sync is now active."
-                            : "Signed in! Your data will sync automatically."
-                        )
-                      } else {
-                        toast.error(result.error || "Authentication failed")
-                      }
-                    } catch (error: any) {
-                      toast.error(error.message || "Authentication failed")
-                    }
-                  }}
-                  disabled={authLoading}
-                  className="flex-1"
-                >
-                  {authLoading ? "Connecting..." : (convexAuthMode === "signup" ? "Create Account" : "Sign In")}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Convex Auth Modal */}
+        <ConvexAuthModal
+          open={showConvexLogin}
+          onOpenChange={setShowConvexLogin}
+          signUp={signUp}
+          signIn={signIn}
+          isLoading={authLoading}
+          title="Welcome Back to MyWallet"
+          description="Sign in to sync your wallet data across all your devices"
+          initialMode="signin"
+        />
       </div>
     </div>
   );

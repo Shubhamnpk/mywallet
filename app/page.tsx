@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import OnboardingFlow from "@/components/onboarding/onboarding-flow"
 import { WalletDashboard } from "@/components/dashboard/wallet-dashboard"
 import { useWalletData } from "@/contexts/wallet-data-context"

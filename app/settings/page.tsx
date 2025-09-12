@@ -1,20 +1,25 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
+import dynamicImport from 'next/dynamic'
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { UserProfileSettings } from "@/components/settings/user-settings"
-import { SecuritySettings } from "@/components/settings/security-settings"
-import { ThemeSettings } from "@/components/settings/theme-settings"
-import { DataSettings } from "@/components/settings/data-settings"
-import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
-import { AboutSettings } from "@/components/settings/about-settings"
-import { MobileSettingsPage } from "@/components/settings/mobile-settings-page"
 import { useRouter } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useIsMobile } from "@/hooks/use-mobile"
+
+// Dynamically import components to avoid SSR issues
+const UserProfileSettings = dynamicImport(() => import("@/components/settings/user-settings").then(mod => mod.UserProfileSettings), { ssr: false })
+const SecuritySettings = dynamicImport(() => import("@/components/settings/security-settings").then(mod => mod.SecuritySettings), { ssr: false })
+const ThemeSettings = dynamicImport(() => import("@/components/settings/theme-settings").then(mod => mod.ThemeSettings), { ssr: false })
+const DataSettings = dynamicImport(() => import("@/components/settings/data-settings").then(mod => mod.DataSettings), { ssr: false })
+const AccessibilitySettings = dynamicImport(() => import("@/components/settings/accessibility-settings").then(mod => mod.AccessibilitySettings), { ssr: false })
+const AboutSettings = dynamicImport(() => import("@/components/settings/about-settings").then(mod => mod.AboutSettings), { ssr: false })
+const MobileSettingsPage = dynamicImport(() => import("@/components/settings/mobile-settings-page").then(mod => mod.MobileSettingsPage), { ssr: false })
 
 export default function SettingsPage() {
   const router = useRouter()

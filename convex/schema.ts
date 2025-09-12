@@ -33,4 +33,56 @@ export default defineSchema({
   })
     .index("by_user_id", ["userId"])
     .index("by_user_device", ["userId", "deviceId"]),
+
+  // Comprehensive versioned data management system
+  dataVersions: defineTable({
+    id: v.string(), // itemId_version (e.g., "txn_123_v2")
+    itemId: v.string(), // The actual data item ID
+    version: v.number(), // Incremental version number (0, 1, 2...)
+    operation: v.string(), // 'CREATE', 'UPDATE', 'DELETE', 'RESTORE'
+    deviceId: v.string(), // Device that made the change
+    timestamp: v.number(),
+    encryptedData: v.optional(v.string()), // Encrypted data payload
+    dataHash: v.optional(v.string()), // Hash for integrity verification
+    userId: v.id("users"),
+    itemType: v.string(), // 'transaction', 'budget', 'goal', 'category'
+    status: v.string(), // 'active', 'soft_deleted', 'permanently_deleted'
+    syncStatus: v.string(), // 'local', 'syncing', 'synced', 'conflict'
+  })
+    .index("by_user_item", ["userId", "itemId"])
+    .index("by_user_version", ["userId", "version"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_status", ["status"])
+    .index("by_sync_status", ["syncStatus"]),
+
+  // Recycle bin for soft-deleted items
+  recycleBin: defineTable({
+    id: v.string(), // Same as itemId
+    userId: v.id("users"),
+    itemType: v.string(),
+    deletedAt: v.number(),
+    deletedBy: v.string(),
+    expiresAt: v.number(), // 7 days from deletion
+    recoverable: v.boolean(),
+    latestVersion: v.number(), // Reference to latest version
+    displayName: v.optional(v.string()), // For UI display (e.g., transaction description, budget name)
+    displayAmount: v.optional(v.number()), // For UI display (e.g., transaction amount)
+    originalData: v.optional(v.string()), // Encrypted original data for restoration
+  })
+    .index("by_user_id", ["userId"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  // Current state view (derived from versions)
+  currentDataState: defineTable({
+    id: v.string(), // itemId
+    userId: v.id("users"),
+    itemType: v.string(),
+    latestVersion: v.number(),
+    status: v.string(), // 'active', 'soft_deleted', 'permanently_deleted'
+    lastModified: v.number(),
+    encryptedData: v.optional(v.string()), // Encrypted data payload
+    dataHash: v.optional(v.string()), // Hash for integrity verification
+  })
+    .index("by_user_id", ["userId"])
+    .index("by_status", ["status"]),
 })

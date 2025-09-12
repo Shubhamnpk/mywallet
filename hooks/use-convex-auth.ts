@@ -34,6 +34,19 @@ export function useConvexAuth() {
     if (storedUser && storedUserId) {
       try {
         const user = JSON.parse(storedUser)
+
+        // Validate that the stored user ID is actually a user ID (not a budget or other table ID)
+        // User IDs should start with a specific pattern or we can check the format
+        const isValidUserId = storedUserId.startsWith('u') || storedUserId.length === 32
+
+        if (!isValidUserId) {
+          console.warn("Invalid user ID detected, clearing stored auth data:", storedUserId)
+          localStorage.removeItem("convex_user")
+          localStorage.removeItem("convex_user_id")
+          setAuthState(prev => ({ ...prev, isLoading: false }))
+          return
+        }
+
         setAuthState({
           user,
           isLoading: false,
@@ -50,8 +63,16 @@ export function useConvexAuth() {
     }
   }, [])
 
+  // Helper function to validate user ID format
+  const isValidUserId = (userId: string): boolean => {
+    // Convex user IDs are typically 32-character strings
+    // They don't contain special characters that would indicate other table IDs
+    return Boolean(userId && typeof userId === 'string' && userId.length >= 20 && !userId.includes('_') && !userId.includes('-'))
+  }
+
   const signUpMutation = useMutation(api.auth.signUp)
   const signInMutation = useMutation(api.auth.signIn)
+  // Re-enable getCurrentUser query - Convex handles ID validation internally
   const getCurrentUser = useQuery(
     api.auth.getCurrentUser,
     authState.isAuthenticated && authState.user?.id ? { userId: authState.user.id as any } : "skip"
@@ -62,6 +83,11 @@ export function useConvexAuth() {
       setAuthState(prev => ({ ...prev, isLoading: true }))
 
       const result = await signUpMutation({ email, password, name })
+
+      // Validate that we got a proper user ID
+      if (!result.userId || typeof result.userId !== 'string') {
+        throw new Error("Invalid user ID received from server")
+      }
 
       const user: ConvexUser = {
         id: result.userId,
@@ -110,6 +136,11 @@ export function useConvexAuth() {
       setAuthState(prev => ({ ...prev, isLoading: true }))
 
       const result = await signInMutation({ email, password })
+
+      // Validate that we got a proper user ID
+      if (!result.userId || typeof result.userId !== 'string') {
+        throw new Error("Invalid user ID received from server")
+      }
 
       const user: ConvexUser = {
         id: result.userId,

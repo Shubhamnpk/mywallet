@@ -51,7 +51,8 @@ const pwa = withPWA({
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  images: { unoptimized: true }
+  images: { unoptimized: true },
+  serverExternalPackages: ['@prisma/client', 'bcryptjs']
 }
 
 export default pwa(nextConfig)

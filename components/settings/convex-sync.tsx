@@ -1,20 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Cloud, CloudOff, RefreshCw, CheckCircle, AlertCircle, User, Key, Database, Wifi, WifiOff } from "lucide-react"
+import { CheckCircle, AlertCircle, User, Database } from "lucide-react"
 import { useConvexAuth } from "@/hooks/use-convex-auth"
 import { useConvexSync } from "@/hooks/use-convex-sync"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "@/hooks/use-toast"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { ConvexAuthModal } from "@/components/auth/convex-auth-modal"
+import { DeviceManagement } from "./device-management"
 
 export function ConvexSync() {
   const { user, isAuthenticated, signUp, signIn, signOut, isLoading: authLoading } = useConvexAuth()
@@ -31,7 +30,7 @@ export function ConvexSync() {
     syncToConvex,
     syncFromConvex,
   } = useConvexSync()
-  const { transactions, budgets, goals, categories, emergencyFund } = useWalletData()
+  const { transactions, budgets, goals, categories, emergencyFund, debtAccounts, creditAccounts, debtCreditTransactions, userProfile } = useWalletData()
 
   // Device management
   const connectedDevices = useQuery(
@@ -40,71 +39,13 @@ export function ConvexSync() {
   )
   const updateDeviceStatusMutation = useMutation(api.walletData.updateDeviceStatus)
 
-  // Debug logging
-  console.log('[ConvexSync] Component state:', {
-    user,
-    isAuthenticated,
-    authLoading,
-    isEnabled,
-    isSyncing
-  })
-
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [name, setName] = useState("")
   const [syncPassword, setSyncPassword] = useState("")
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [showSetupDialog, setShowSetupDialog] = useState(false)
   const [showUnlockDialog, setShowUnlockDialog] = useState(false)
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [hasExistingData, setHasExistingData] = useState(false)
 
-  const handleAuth = async () => {
-    if (!email || !password) {
-      toast({
-        title: "Missing Information",
-        description: "Please enter both email and password.",
-        variant: "destructive",
-      })
-      return
-    }
 
-    setIsAuthenticating(true)
-    try {
-      let result
-      if (authMode === "signup") {
-        result = await signUp(email, password, name)
-      } else {
-        result = await signIn(email, password)
-      }
-
-      if (result.success) {
-        setShowAuthDialog(false)
-        setEmail("")
-        setPassword("")
-        setName("")
-        toast({
-          title: authMode === "signup" ? "Account Created" : "Signed In",
-          description: `Welcome${user?.name ? ` ${user.name}` : ""}!`,
-        })
-      } else {
-        toast({
-          title: "Authentication Failed",
-          description: result.error || "Please try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Authentication failed.",
-          variant: "destructive",
-      })
-    } finally {
-      setIsAuthenticating(false)
-    }
-  }
 
   const handleSetupSync = async () => {
     // No password needed - using Convex account password
@@ -125,9 +66,6 @@ export function ConvexSync() {
         })
         return
       }
-
-      // In simplified approach, just show setup dialog
-      // Sync will be enabled automatically using account credentials
       setShowSetupDialog(true)
     } else {
       await disableSync()
@@ -148,18 +86,14 @@ export function ConvexSync() {
       // Try to sync from Convex with the provided password
       const result = await syncFromConvex(syncPassword)
       if (result.success) {
-        // Store the sync password securely for future use
-        const salt = new Uint8Array(32) // In practice, you'd generate this properly
+        const salt = new Uint8Array(32)
         const key = await import("@/lib/security").then(m => m.SecureWallet.deriveKeyFromPin("convex_sync_key", salt))
         const encryptedPassword = await import("@/lib/security").then(m => m.SecureWallet.encryptData(syncPassword, key))
 
         localStorage.setItem("convex_sync_password", encryptedPassword)
         localStorage.setItem("convex_sync_salt", btoa(String.fromCharCode(...salt)))
         localStorage.setItem("convex_sync_enabled", "true")
-
-        // Force a re-render by updating localStorage and letting the hook handle the state
         window.location.reload()
-
         toast({
           title: "Sync Unlocked",
           description: "Successfully connected to your existing sync data.",
@@ -217,89 +151,9 @@ export function ConvexSync() {
               Sign Out
             </Button>
           ) : (
-            <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  Sign In
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {authMode === "signup" ? "Create Convex Account" : "Sign In to Convex"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {authMode === "signup"
-                      ? "Create a new account to sync your wallet data securely."
-                      : "Sign in to your existing account to access synced data."
-                    }
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Button
-                      variant={authMode === "signin" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setAuthMode("signin")}
-                      className="flex-1"
-                    >
-                      Sign In
-                    </Button>
-                    <Button
-                      variant={authMode === "signup" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setAuthMode("signup")}
-                      className="flex-1"
-                    >
-                      Sign Up
-                    </Button>
-                  </div>
-
-                  {authMode === "signup" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name (Optional)</Label>
-                      <Input
-                        id="name"
-                        type="text"
-                        placeholder="Your name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="Enter password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </div>
-
-                  <Button
-                    onClick={handleAuth}
-                    disabled={isAuthenticating}
-                    className="w-full"
-                  >
-                    {isAuthenticating ? "Processing..." : (authMode === "signup" ? "Create Account" : "Sign In")}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button size="sm" onClick={() => setShowAuthDialog(true)}>
+              Sign In
+            </Button>
           )}
         </div>
 
@@ -409,6 +263,120 @@ export function ConvexSync() {
                       >
                         🔄 Sync Now
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          console.log('[FORCE PULL] Force data pull triggered')
+                          toast({
+                            title: "Pulling Your Data",
+                            description: "Retrieving all your existing data...",
+                          })
+
+                          try {
+                            // Force sync from Convex using the user-wide approach
+                            const syncPassword = `convex_sync_${user!.id}_${user!.email}`
+                            const result = await syncFromConvex(syncPassword)
+
+                            if (result.success) {
+                              toast({
+                                title: "Data Pulled Successfully! 🎉",
+                                description: "All your existing data is now on this device.",
+                              })
+                            } else {
+                              toast({
+                                title: "Pull Failed",
+                                description: "Could not retrieve your data. Check console for details.",
+                                variant: "destructive",
+                              })
+                            }
+                          } catch (error) {
+                            console.error('[FORCE PULL] Error:', error)
+                            toast({
+                              title: "Pull Failed",
+                              description: "Failed to pull existing data.",
+                              variant: "destructive",
+                            })
+                          }
+                        }}
+                        disabled={isSyncing || !isAuthenticated}
+                        className="text-xs"
+                      >
+                        📥 Pull My Data
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          console.log('[DEVICE RECOVERY] Manual device recovery triggered')
+                          toast({
+                            title: "Device Recovery",
+                            description: "Checking for existing account data...",
+                          })
+
+                          try {
+                            // Check if we have cloud data but no local data
+                            const hasLocalData =
+                              transactions.length > 0 ||
+                              budgets.length > 0 ||
+                              goals.length > 0 ||
+                              debtAccounts.length > 0 ||
+                              creditAccounts.length > 0 ||
+                              debtCreditTransactions.length > 0 ||
+                              categories.length > 0 ||
+                              emergencyFund > 0 ||
+                              userProfile !== null
+
+                            console.log('[DEVICE RECOVERY] Local data check:', {
+                              hasLocalData,
+                              transactions: transactions.length,
+                              budgets: budgets.length,
+                              goals: goals.length,
+                              debtAccounts: debtAccounts.length,
+                              creditAccounts: creditAccounts.length,
+                              categories: categories.length,
+                              emergencyFund,
+                              userProfile: !!userProfile,
+                            })
+
+                            if (!hasLocalData) {
+                              // Force sync from Convex
+                              const syncPassword = `convex_sync_${user!.id}_${user!.email}`
+                              const result = await syncFromConvex(syncPassword)
+
+                              if (result.success) {
+                                toast({
+                                  title: "Recovery Successful! 🎉",
+                                  description: "Your existing account data has been restored.",
+                                })
+                              } else {
+                                toast({
+                                  title: "No Data Found",
+                                  description: "No existing data found for this account.",
+                                  variant: "default",
+                                })
+                              }
+                            } else {
+                              toast({
+                                title: "Data Already Exists",
+                                description: "This device already has data. Recovery not needed.",
+                                variant: "default",
+                              })
+                            }
+                          } catch (error) {
+                            console.error('[DEVICE RECOVERY] Error:', error)
+                            toast({
+                              title: "Recovery Failed",
+                              description: "Failed to recover account data.",
+                              variant: "destructive",
+                            })
+                          }
+                        }}
+                        disabled={isSyncing || !isAuthenticated}
+                        className="text-xs"
+                      >
+                        🔄 Recover Account
+                      </Button>
                       {error && (
                         <Button
                           size="sm"
@@ -452,193 +420,28 @@ export function ConvexSync() {
               )}
             </div>
 
-            {/* Connected Devices Section */}
+            {/* Enhanced Connected Devices Section */}
             {isEnabled && connectedDevices && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium flex items-center gap-2">
-                      <Wifi className="w-4 h-4" />
-                      Connected Devices ({connectedDevices.length})
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Manage devices connected to your Convex sync account
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {connectedDevices.map((device) => {
-                    const isCurrentDevice = device.deviceId === localStorage.getItem("convex_device_id")
-                    return (
-                      <div
-                        key={device.deviceId}
-                        className={`flex items-center justify-between p-3 border rounded-lg ${
-                          isCurrentDevice
-                            ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
-                            : 'bg-muted/30'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            device.isActive
-                              ? 'bg-green-100 dark:bg-green-900/20'
-                              : 'bg-gray-100 dark:bg-gray-800'
-                          }`}>
-                            {device.isActive ? (
-                              <CheckCircle className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <WifiOff className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">
-                              {device.deviceName}
-                              {isCurrentDevice && (
-                                <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-                                  This Device
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Last sync: {new Date(device.lastSyncAt).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-
-                        {!isCurrentDevice && (
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={device.isActive}
-                              onCheckedChange={async (active) => {
-                                try {
-                                  await updateDeviceStatusMutation({
-                                    userId: user!.id as any,
-                                    deviceId: device.deviceId,
-                                    isActive: active,
-                                  })
-                                  toast({
-                                    title: active ? "Device Enabled" : "Device Paused",
-                                    description: `${device.deviceName} ${active ? 'will now sync' : 'sync paused'}.`,
-                                  })
-                                } catch (error) {
-                                  toast({
-                                    title: "Error",
-                                    description: "Failed to update device status.",
-                                    variant: "destructive",
-                                  })
-                                }
-                              }}
-                            />
-                            <span className="text-xs text-muted-foreground">
-                              {device.isActive ? 'Active' : 'Paused'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {connectedDevices.length === 0 && (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <WifiOff className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No devices connected yet</p>
-                    <p className="text-xs">Devices will appear here once they sync</p>
-                  </div>
-                )}
-              </div>
+              <DeviceManagement
+                devices={connectedDevices}
+                userId={user!.id}
+                currentDeviceId={localStorage.getItem("convex_device_id")}
+              />
             )}
-
-            {/* Setup Dialog */}
-            <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Database className="w-5 h-5" />
-                    Enable Convex Sync
-                  </DialogTitle>
-                  <DialogDescription>
-                    Enable automatic sync for your wallet data across all your devices. Your data will be encrypted using your Convex account password.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <Alert>
-                    <CheckCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Secure & Automatic:</strong> Your wallet data will be encrypted and synced automatically using your Convex account credentials.
-                    </AlertDescription>
-                  </Alert>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowSetupDialog(false)}
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleSetupSync}
-                      className="flex-1"
-                      disabled={isSyncing}
-                    >
-                      {isSyncing ? "Enabling..." : "Enable Sync"}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {/* Unlock Dialog */}
-            <Dialog open={showUnlockDialog} onOpenChange={(open) => {
-              setShowUnlockDialog(open)
-              if (!open) setSyncPassword("") // Clear password when dialog closes
-            }}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5" />
-                    Unlock Convex Sync
-                  </DialogTitle>
-                  <DialogDescription>
-                    Enter your sync password to access your existing encrypted wallet data from other devices.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="unlock-password">Sync Password</Label>
-                    <Input
-                      id="unlock-password"
-                      type="password"
-                      placeholder="Enter your sync password"
-                      value={syncPassword}
-                      onChange={(e) => setSyncPassword(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This is the password you created when setting up sync on another device.
-                    </p>
-                  </div>
-
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Make sure you're entering the correct sync password from your other device.
-                    </AlertDescription>
-                  </Alert>
-
-                  <Button
-                    onClick={handleUnlockSync}
-                    className="w-full"
-                    disabled={!syncPassword}
-                  >
-                    Unlock Sync
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </>
         )}
+
+        {/* Convex Auth Modal */}
+        <ConvexAuthModal
+          open={showAuthDialog}
+          onOpenChange={setShowAuthDialog}
+          signUp={signUp}
+          signIn={signIn}
+          isLoading={authLoading}
+          title="Sign in to Convex Sync"
+          description="Sign in to your Convex account to enable cross-device synchronization of your wallet data."
+          initialMode="signin"
+        />
       </CardContent>
     </Card>
   )

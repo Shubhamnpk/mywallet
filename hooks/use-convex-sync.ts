@@ -71,7 +71,101 @@ export function useConvexSync() {
     api.walletData.getWalletData,
     isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
   )
+  const getAllUserData = useQuery(
+    api.walletData.getAllUserData,
+    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
+  )
+  const hasExistingWalletData = useQuery(
+    api.walletData.hasExistingWalletData,
+    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
+  )
   const updateSyncMetadataMutation = useMutation(api.walletData.updateSyncMetadata)
+  const cleanupExpiredMutation = useMutation(api.walletData.cleanupExpiredRecycleBin)
+
+  // SMART DEVICE RECOVERY - Automatically pull user data on new devices
+  useEffect(() => {
+    if (isAuthenticated && user && hasExistingWalletData && getAllUserData && !syncState.isSyncing) {
+      const performDeviceRecovery = async () => {
+        // Check ALL data types to determine if device has local data
+        const hasLocalData =
+          transactions.length > 0 ||
+          budgets.length > 0 ||
+          goals.length > 0 ||
+          debtAccounts.length > 0 ||
+          creditAccounts.length > 0 ||
+          debtCreditTransactions.length > 0 ||
+          categories.length > 0 ||
+          emergencyFund > 0 ||
+          userProfile !== null
+
+        const hasCloudData = hasExistingWalletData?.hasData
+
+        console.log('[RECOVERY] Device recovery check:', {
+          hasLocalData,
+          hasCloudData,
+          transactions: transactions.length,
+          budgets: budgets.length,
+          goals: goals.length,
+          debtAccounts: debtAccounts.length,
+          creditAccounts: creditAccounts.length,
+          categories: categories.length,
+          emergencyFund,
+          userProfile: !!userProfile,
+          isAuthenticated,
+          userId: user?.id,
+          hasExistingWalletData: !!hasExistingWalletData,
+          getAllUserData: !!getAllUserData,
+          isSyncing: syncState.isSyncing,
+        })
+
+        // If user has cloud data but this device doesn't, recover it
+        if (!hasLocalData && hasCloudData) {
+          console.log('[RECOVERY] No local data but cloud data exists - performing device recovery...')
+
+          try {
+            const userData = getAllUserData
+            if (userData) {
+              console.log('[RECOVERY] Cloud data found, attempting sync...')
+              const syncPassword = `convex_sync_${user.id}_${user.email}`
+              const result = await syncFromConvex(syncPassword)
+
+              if (result.success) {
+                toast({
+                  title: "Data Recovered! 🎉",
+                  description: "Your existing wallet data has been synced to this device.",
+                })
+                console.log('[RECOVERY] Device recovery successful')
+              } else {
+                console.log('[RECOVERY] Device recovery failed:', result.error)
+                toast({
+                  title: "Recovery Failed",
+                  description: "Could not recover your existing data. Try the manual recovery button.",
+                  variant: "destructive",
+                })
+              }
+            } else {
+              console.log('[RECOVERY] No cloud data available for recovery')
+            }
+          } catch (error) {
+            console.error('[RECOVERY] Device recovery error:', error)
+            toast({
+              title: "Recovery Error",
+              description: "An error occurred during data recovery.",
+              variant: "destructive",
+            })
+          }
+        } else if (hasLocalData) {
+          console.log('[RECOVERY] Device already has local data - skipping recovery')
+        } else if (!hasCloudData) {
+          console.log('[RECOVERY] No cloud data available - skipping recovery')
+        }
+      }
+
+      // Delay recovery to allow other sync operations to complete first
+      const recoveryTimeout = setTimeout(performDeviceRecovery, 2000)
+      return () => clearTimeout(recoveryTimeout)
+    }
+  }, [isAuthenticated, user, hasExistingWalletData, getAllUserData, transactions.length, budgets.length, goals.length, debtAccounts.length, creditAccounts.length, debtCreditTransactions.length, categories.length, emergencyFund, userProfile, syncState.isSyncing])
 
   // Auto-sync from Convex when component mounts and sync is enabled
   useEffect(() => {
@@ -574,8 +668,15 @@ export function useConvexSync() {
       console.log('[syncFromConvex] Starting download...')
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
 
-      // Get latest data from Convex
-      const latestData = getLatestWalletData
+      // Try to get latest data from Convex - use device-agnostic approach if device-specific fails
+      let latestData = getLatestWalletData
+
+      // If no device-specific data, try user-wide query
+      if (!latestData && getAllUserData) {
+        console.log('[syncFromConvex] No device-specific data, trying user-wide query...')
+        latestData = getAllUserData
+      }
+
       if (!latestData) {
         console.log('[syncFromConvex] No data in Convex yet - this is normal for first sync')
         setSyncState(prev => ({ ...prev, isSyncing: false }))
@@ -686,6 +787,57 @@ export function useConvexSync() {
       return null
     }
   }
+
+  // AUTOMATIC RECYCLE BIN CLEANUP - Clean expired items every sync
+  useEffect(() => {
+    if (!syncState.isEnabled || !isAuthenticated || !user) {
+      return
+    }
+
+    const performRecycleBinCleanup = async () => {
+      try {
+        console.log('[CLEANUP] 🔄 Checking for expired recycle bin items...')
+
+        const result = await cleanupExpiredMutation({
+          userId: user.id as any
+        })
+
+        if (result.success && result.deletedCount > 0) {
+          console.log(`[CLEANUP] ✅ Cleaned up ${result.deletedCount} expired items`)
+
+          // Clean up localStorage as well
+          if (result.expiredItemIds && result.expiredItemIds.length > 0) {
+            const { saveToLocalStorage } = await import("@/lib/storage")
+
+            // Clean up from different localStorage arrays
+            const storageKeys = ['transactions', 'budgets', 'goals', 'categories', 'debtAccounts', 'creditAccounts']
+
+            for (const key of storageKeys) {
+              const existingData = JSON.parse(localStorage.getItem(key) || '[]')
+              const filteredData = existingData.filter((item: any) => !result.expiredItemIds.includes(item.id))
+
+              if (filteredData.length !== existingData.length) {
+                await saveToLocalStorage(key, filteredData)
+                console.log(`[CLEANUP] ✅ Cleaned up ${existingData.length - filteredData.length} items from ${key}`)
+              }
+            }
+          }
+        } else if (result.success) {
+          console.log('[CLEANUP] ✅ No expired items to clean up')
+        }
+      } catch (error) {
+        console.error('[CLEANUP] ❌ Error during recycle bin cleanup:', error)
+      }
+    }
+
+    // Run cleanup every 6 hours (21600000 ms)
+    const cleanupInterval = setInterval(performRecycleBinCleanup, 21600000)
+
+    // Also run cleanup immediately when sync is enabled
+    performRecycleBinCleanup()
+
+    return () => clearInterval(cleanupInterval)
+  }, [syncState.isEnabled, isAuthenticated, user])
 
   // SMART SYNC - PREVENTS DATA LOSS WITH INTELLIGENT MERGING
   useEffect(() => {
