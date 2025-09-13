@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useConvexAuth } from "@/hooks/use-convex-auth"
@@ -22,6 +22,88 @@ import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
 import { WalletDataEncryption } from "@/lib/encryption"
+
+// Security and validation utilities
+const SECURITY_CONSTANTS = {
+  MAX_TRANSACTION_AMOUNT: 999999999.99,
+  MAX_DESCRIPTION_LENGTH: 500,
+  MAX_CATEGORY_NAME_LENGTH: 100,
+  MIN_TRANSACTION_AMOUNT: 0.01,
+  MAX_ARRAY_SIZE: 10000,
+} as const
+
+// Input validation helpers
+const validateTransactionAmount = (amount: number): boolean => {
+  return typeof amount === 'number' &&
+         !isNaN(amount) &&
+         isFinite(amount) &&
+         amount >= SECURITY_CONSTANTS.MIN_TRANSACTION_AMOUNT &&
+         amount <= SECURITY_CONSTANTS.MAX_TRANSACTION_AMOUNT
+}
+
+const validateDescription = (description: string): boolean => {
+  return typeof description === 'string' &&
+         description.length <= SECURITY_CONSTANTS.MAX_DESCRIPTION_LENGTH &&
+         !/<script/i.test(description) // Basic XSS prevention
+}
+
+const validateCategoryName = (name: string): boolean => {
+  return typeof name === 'string' &&
+         name.length > 0 &&
+         name.length <= SECURITY_CONSTANTS.MAX_CATEGORY_NAME_LENGTH &&
+         !/<script/i.test(name)
+}
+
+const validateArraySize = (arr: any[]): boolean => {
+  return Array.isArray(arr) && arr.length <= SECURITY_CONSTANTS.MAX_ARRAY_SIZE
+}
+
+const sanitizeString = (str: string): string => {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[<>'"&]/g, '').trim()
+}
+
+// Secure random ID generation with fallback
+const generateSecureId = (prefix: string): string => {
+  try {
+    const array = new Uint8Array(16)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(array)
+    } else {
+      // Fallback for environments without crypto API
+      for (let i = 0; i < array.length; i++) {
+        array[i] = Math.floor(Math.random() * 256)
+      }
+    }
+    const hex = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+    return `${prefix}_${Date.now()}_${hex}`
+  } catch (error) {
+    // Ultimate fallback
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  }
+}
+
+// Memoized calculation functions for performance
+const useMemoizedCalculations = () => {
+  const calculateBalanceMemo = useMemo(() =>
+    (transactions: Transaction[]): number => {
+      if (!validateArraySize(transactions)) return 0
+
+      return transactions.reduce((sum: number, tx: Transaction) => {
+        if (!tx || typeof tx.amount !== 'number') return sum
+
+        const amount = tx.actual ?? tx.amount
+        if (tx.type === "income") {
+          return sum + amount
+        } else {
+          return sum - amount
+        }
+      }, 0)
+    }, []
+  )
+
+  return { calculateBalanceMemo }
+}
 
 export function useWalletData() {
   const { user } = useConvexAuth()
@@ -116,15 +198,6 @@ export function useWalletData() {
         return
       }
 
-      // Initialize encryption if not already done
-      if (!WalletDataEncryption.isInitialized()) {
-        const initialized = await WalletDataEncryption.initializeWithStoredKey()
-        if (!initialized) {
-          // Generate new key if none exists
-          await WalletDataEncryption.generateNewKey()
-        }
-      }
-
       const savedProfile = localStorage.getItem("userProfile")
       const savedTransactions = localStorage.getItem("transactions")
       const savedBudgets = localStorage.getItem("budgets")
@@ -135,31 +208,79 @@ export function useWalletData() {
       const savedDebtCreditTransactions = localStorage.getItem("debtCreditTransactions")
       const savedCategories = localStorage.getItem("categories")
 
+      // Initialize encryption if not already done
+      if (!WalletDataEncryption.isInitialized()) {
+        const hasEncryptedData = !!(savedProfile || savedTransactions || savedBudgets || savedGoals ||
+                                   savedDebtAccounts || savedCreditAccounts || savedCategories)
+
+        if (hasEncryptedData) {
+          // Try to initialize with stored key for existing encrypted data
+          const initialized = await WalletDataEncryption.initializeWithStoredKey()
+          if (!initialized) {
+            console.warn('Encrypted data exists but no decryption key found - data may be corrupted or from another device')
+            console.log('Starting fresh with new encryption key')
+            // Clear potentially corrupted data and start fresh
+            localStorage.removeItem('userProfile')
+            localStorage.removeItem('transactions')
+            localStorage.removeItem('budgets')
+            localStorage.removeItem('goals')
+            localStorage.removeItem('debtAccounts')
+            localStorage.removeItem('creditAccounts')
+            localStorage.removeItem('categories')
+            localStorage.removeItem('emergencyFund')
+            localStorage.removeItem('debtCreditTransactions')
+            // Generate new key for fresh start
+            await WalletDataEncryption.generateNewKey()
+          }
+        } else {
+          // No existing data, generate new key
+          await WalletDataEncryption.generateNewKey()
+        }
+      }
+
       // Decrypt data if it exists
-      const decryptData = async (encryptedData: string | null) => {
+      const decryptData = async (encryptedData: string | null, key: string) => {
         if (!encryptedData) return null
+
+        // First, try to parse as plain JSON (for backward compatibility)
+        try {
+          const parsed = JSON.parse(encryptedData)
+          console.log(`Successfully parsed ${key} as plain JSON`)
+          return parsed
+        } catch (parseError) {
+          // Not plain JSON, try decryption
+          console.log(`${key} is not plain JSON, attempting decryption`)
+        }
+
+        // Try decryption
         try {
           return await WalletDataEncryption.decryptData(encryptedData)
         } catch (error) {
-          console.error('Failed to decrypt data:', error)
-          // Try to parse as plain JSON if decryption fails
-          try {
-            return JSON.parse(encryptedData)
-          } catch {
-            return null
+          console.error(`Failed to decrypt ${key}:`, error)
+
+          // If decryption fails, check if it might be corrupted data
+          if (encryptedData.length > 100 && /^[A-Za-z0-9+/=]*={0,2}$/.test(encryptedData)) {
+            console.warn(`Data appears to be encrypted but decryption failed for ${key} - clearing corrupted data`)
+            // Clear the corrupted data
+            localStorage.removeItem(key)
+          } else {
+            console.warn(`Clearing potentially corrupted data for ${key}`)
+            localStorage.removeItem(key)
           }
+
+          return null
         }
       }
 
       const parsedData = {
-        userProfile: savedProfile ? await decryptData(savedProfile) : null,
-        transactions: savedTransactions ? await decryptData(savedTransactions) : [],
-        budgets: savedBudgets ? await decryptData(savedBudgets) : [],
-        goals: savedGoals ? await decryptData(savedGoals) : [],
-        debtAccounts: savedDebtAccounts ? await decryptData(savedDebtAccounts) : [],
-        creditAccounts: savedCreditAccounts ? await decryptData(savedCreditAccounts) : [],
-        debtCreditTransactions: savedDebtCreditTransactions ? await decryptData(savedDebtCreditTransactions) : [],
-        categories: savedCategories ? await decryptData(savedCategories) : [],
+        userProfile: savedProfile ? await decryptData(savedProfile, "userProfile") : null,
+        transactions: savedTransactions ? await decryptData(savedTransactions, "transactions") : [],
+        budgets: savedBudgets ? await decryptData(savedBudgets, "budgets") : [],
+        goals: savedGoals ? await decryptData(savedGoals, "goals") : [],
+        debtAccounts: savedDebtAccounts ? await decryptData(savedDebtAccounts, "debtAccounts") : [],
+        creditAccounts: savedCreditAccounts ? await decryptData(savedCreditAccounts, "creditAccounts") : [],
+        debtCreditTransactions: savedDebtCreditTransactions ? await decryptData(savedDebtCreditTransactions, "debtCreditTransactions") : [],
+        categories: savedCategories ? await decryptData(savedCategories, "categories") : [],
         emergencyFund: savedEmergencyFund ? Number.parseFloat(savedEmergencyFund) : 0,
       }
 
@@ -172,15 +293,16 @@ export function useWalletData() {
       }
 
       if (parsedData.userProfile) {
+        console.log('[useWalletData] User profile found, setting up dashboard mode')
         setUserProfile(parsedData.userProfile)
         setIsFirstTime(false)
+        setShowOnboarding(false) // Ensure onboarding is not shown when profile exists
 
-        if (parsedData.userProfile.securityEnabled && parsedData.userProfile.pin) {
-          setIsAuthenticated(true)
-        } else {
-          setIsAuthenticated(true)
-        }
+        // Always allow access when user profile exists - authentication is handled separately
+        setIsAuthenticated(true)
+        console.log('[useWalletData] User authenticated - profile exists')
       } else {
+        console.log('[useWalletData] No user profile found, showing onboarding')
         setShowOnboarding(true)
         setIsAuthenticated(true)
       }
@@ -210,7 +332,8 @@ export function useWalletData() {
       } else {
         // Only create default categories if this is NOT a fresh start after clearing
         const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
-         parsedData.budgets.length > 0 || parsedData.goals.length > 0
+         parsedData.budgets.length > 0 || parsedData.goals.length > 0 ||
+         parsedData.debtAccounts.length > 0 || parsedData.creditAccounts.length > 0
         if (hasAnyData) {
           const defaultCategories = initializeDefaultCategories()
           setCategories(defaultCategories)
@@ -231,6 +354,12 @@ export function useWalletData() {
 
   // saveDataWithIntegrity is declared above as a hoisted function
   const handleOnboardingComplete = (profileData: UserProfile) => {
+    console.log('[useWalletData] Onboarding completion called with:', {
+      name: profileData.name,
+      securityEnabled: profileData.securityEnabled,
+      hasPin: !!profileData.pin
+    })
+
     const completeProfile = {
       ...profileData,
       securityEnabled: profileData.securityEnabled,
@@ -241,85 +370,173 @@ export function useWalletData() {
     saveDataWithIntegrity("userProfile", completeProfile)
     setShowOnboarding(false)
     setIsFirstTime(false)
-    setIsAuthenticated(true)
-  }
 
-  const addTransaction = async (transaction: Omit<Transaction, "id" | "timeEquivalent">) => {
-    if (transaction.type === "income") {
-      const newTransaction: Transaction = {
-        ...transaction,
-        id: generateId('tx'),
-        timeEquivalent: userProfile ? calculateTimeEquivalent(transaction.amount, userProfile) : undefined,
-        total: transaction.amount,
-        actual: transaction.amount,
-        debtUsed: 0,
-        debtAccountId: null,
-        status: "normal",
-      }
+    console.log('[useWalletData] Onboarding completed - showOnboarding set to false')
 
-      const updatedTransactions = [...transactions, newTransaction]
-      setTransactions(updatedTransactions)
-      setBalance(balance + transaction.amount)
-      await saveDataWithIntegrity("transactions", updatedTransactions)
-
-      return {
-        transaction: newTransaction,
-        budgetWarnings: [],
-        needsDebtCreation: false,
-        debtAmount: 0
-      }
-    }
-
-    // Handle expense transactions
-    const transactionAmount = transaction.amount
-
-    // Check if balance is sufficient
-    if (balance >= transactionAmount) {
-      const newTransaction: Transaction = {
-        ...transaction,
-        id: generateId('tx'),
-        timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
-        total: transactionAmount,
-        actual: transactionAmount,
-        debtUsed: 0,
-        debtAccountId: null,
-        status: "normal",
-      }
-
-      const updatedTransactions = [...transactions, newTransaction]
-      setTransactions(updatedTransactions)
-      setBalance(balance - transactionAmount)
-      await saveDataWithIntegrity("transactions", updatedTransactions)
-
-      // Handle budget spending
-      if (newTransaction.category) {
-        const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
-      }
-
-      if (newTransaction.allocationType === "goal" && newTransaction.allocationTarget) {
-        updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
-      }
-
-      return {
-        transaction: newTransaction,
-        budgetWarnings: [],
-        needsDebtCreation: false,
-        debtAmount: 0
-      }
+    // Set authentication state based on security settings
+    if (profileData.securityEnabled) {
+      // If security is enabled, authentication will be handled by PIN validation
+      setIsAuthenticated(false)
+      console.log('[useWalletData] Security enabled - authentication set to false (PIN required)')
     } else {
-      const availableBalance = balance
-      const debtNeeded = transactionAmount - availableBalance
-
-      return {
-        transaction: null,
-        budgetWarnings: [],
-        needsDebtCreation: true,
-        debtAmount: debtNeeded,
-        availableBalance,
-        pendingTransaction: transaction
-      }
+      // If security is disabled, allow immediate access
+      setIsAuthenticated(true)
+      console.log('[useWalletData] Security disabled - authentication set to true (direct access)')
     }
+
+    // Dispatch event to notify other components of onboarding completion
+    window.dispatchEvent(new CustomEvent('wallet-onboarding-complete'))
   }
+
+  // Optimized and secure transaction addition with comprehensive validation
+  const addTransaction = useCallback(async (transaction: Omit<Transaction, "id" | "timeEquivalent">) => {
+    try {
+      // Comprehensive input validation
+      if (!transaction || typeof transaction !== 'object') {
+        throw new Error('Invalid transaction data provided')
+      }
+
+      if (!['income', 'expense'].includes(transaction.type)) {
+        throw new Error('Invalid transaction type')
+      }
+
+      if (!validateTransactionAmount(transaction.amount)) {
+        throw new Error(`Invalid transaction amount: ${transaction.amount}`)
+      }
+
+      if (!validateDescription(transaction.description)) {
+        throw new Error('Invalid transaction description')
+      }
+
+      if (transaction.category && !validateCategoryName(transaction.category)) {
+        throw new Error('Invalid transaction category')
+      }
+
+      // Check array size limits
+      if (!validateArraySize(transactions)) {
+        throw new Error('Transaction limit exceeded')
+      }
+
+      const transactionAmount = transaction.amount
+      const sanitizedDescription = sanitizeString(transaction.description)
+      const sanitizedCategory = transaction.category ? sanitizeString(transaction.category) : ""
+
+      if (transaction.type === "income") {
+        const newTransaction: Transaction = {
+          ...transaction,
+          id: generateSecureId('tx'),
+          description: sanitizedDescription,
+          category: sanitizedCategory,
+          timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
+          total: transactionAmount,
+          actual: transactionAmount,
+          debtUsed: 0,
+          debtAccountId: null,
+          status: "normal",
+        }
+
+        const updatedTransactions = [...transactions, newTransaction]
+        setTransactions(updatedTransactions)
+        setBalance(prevBalance => prevBalance + transactionAmount)
+
+        try {
+          await saveDataWithIntegrity("transactions", updatedTransactions)
+        } catch (saveError) {
+          // Rollback on save failure
+          setTransactions(transactions)
+          setBalance(prevBalance => prevBalance - transactionAmount)
+          throw new Error('Failed to save transaction securely')
+        }
+
+        return {
+          transaction: newTransaction,
+          budgetWarnings: [],
+          needsDebtCreation: false,
+          debtAmount: 0
+        }
+      }
+
+      // Handle expense transactions with enhanced validation
+      const currentBalance = balance
+
+      // Check if balance is sufficient
+      if (currentBalance >= transactionAmount) {
+        const newTransaction: Transaction = {
+          ...transaction,
+          id: generateSecureId('tx'),
+          description: sanitizedDescription,
+          category: sanitizedCategory,
+          timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
+          total: transactionAmount,
+          actual: transactionAmount,
+          debtUsed: 0,
+          debtAccountId: null,
+          status: "normal",
+        }
+
+        const updatedTransactions = [...transactions, newTransaction]
+        setTransactions(updatedTransactions)
+        setBalance(prevBalance => prevBalance - transactionAmount)
+
+        try {
+          await saveDataWithIntegrity("transactions", updatedTransactions)
+
+          // Handle budget spending with error handling
+          if (newTransaction.category) {
+            try {
+              const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
+              // Could return budget warnings here if needed
+            } catch (budgetError) {
+              console.warn('Budget update failed:', budgetError)
+              // Don't fail the transaction for budget errors
+            }
+          }
+
+          // Handle goal contributions with error handling
+          if (newTransaction.allocationType === "goal" && newTransaction.allocationTarget) {
+            try {
+              updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
+            } catch (goalError) {
+              console.warn('Goal contribution update failed:', goalError)
+              // Don't fail the transaction for goal errors
+            }
+          }
+
+          return {
+            transaction: newTransaction,
+            budgetWarnings: [],
+            needsDebtCreation: false,
+            debtAmount: 0
+          }
+        } catch (saveError) {
+          // Rollback on save failure
+          setTransactions(transactions)
+          setBalance(currentBalance)
+          throw new Error('Failed to save expense transaction securely')
+        }
+      } else {
+        const availableBalance = currentBalance
+        const debtNeeded = transactionAmount - availableBalance
+
+        // Validate debt amount
+        if (!validateTransactionAmount(debtNeeded)) {
+          throw new Error('Calculated debt amount is invalid')
+        }
+
+        return {
+          transaction: null,
+          budgetWarnings: [],
+          needsDebtCreation: true,
+          debtAmount: debtNeeded,
+          availableBalance,
+          pendingTransaction: { ...transaction, description: sanitizedDescription, category: sanitizedCategory }
+        }
+      }
+    } catch (error) {
+      console.error('Transaction addition failed:', error)
+      throw error // Re-throw to allow caller to handle
+    }
+  }, [transactions, balance, userProfile, saveDataWithIntegrity])
 
   const updateBudgetSpending = (category: string, amount: number) => {
     const { updatedBudgets, warnings } = updateBudgetSpendingHelper(budgets, category, amount, userProfile?.currency)
@@ -915,57 +1132,141 @@ export function useWalletData() {
   }
 
   const clearAllData = async () => {
-    // Clear data integrity records
-    DataIntegrityManager.clearIntegrityRecords()
+    console.log('[CLEAR] Starting comprehensive data clearing...')
 
-    // Clear all encryption keys
-    SecureKeyManager.clearAllKeys()
+    try {
+      // Clear data integrity records
+      DataIntegrityManager.clearIntegrityRecords()
+      console.log('[CLEAR] Data integrity records cleared')
 
-    // Clear wallet encryption keys
-    WalletDataEncryption.clear()
+      // Clear all encryption keys
+      SecureKeyManager.clearAllKeys()
+      console.log('[CLEAR] Encryption keys cleared')
 
-    // Clear all PIN and security data comprehensively
-    const { SecurePinManager } = await import("@/lib/secure-pin-manager")
-    SecurePinManager.clearAllSecurityData()
+      // Clear wallet encryption keys
+      WalletDataEncryption.clear()
+      console.log('[CLEAR] Wallet encryption cleared')
 
-    // Clear current session
-    SessionManager.clearSession()
+      // Clear all PIN and security data comprehensively
+      const { SecurePinManager } = await import("@/lib/secure-pin-manager")
+      SecurePinManager.clearAllSecurityData()
+      console.log('[CLEAR] PIN and security data cleared')
 
-    // Clear ALL localStorage data for the site
-    if (typeof window !== 'undefined') {
-      localStorage.clear()
+      // Clear current session
+      SessionManager.clearSession()
+      console.log('[CLEAR] Session cleared')
 
-      // Also clear sessionStorage if it exists
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.clear()
-      }
+      // Clear ALL localStorage data for the site - multiple passes for thoroughness
+      if (typeof window !== 'undefined') {
+        // First pass: clear all localStorage
+        localStorage.clear()
+        console.log('[CLEAR] localStorage cleared (pass 1)')
 
-      // Clear all cookies for this domain
-      if (typeof document !== 'undefined') {
-        const cookies = document.cookie.split(";")
-        for (let cookie of cookies) {
-          const eqPos = cookie.indexOf("=")
-          const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
-          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+        // Second pass: verify and clear any remaining keys
+        const remainingKeys = Object.keys(localStorage)
+        if (remainingKeys.length > 0) {
+          console.log('[CLEAR] Found remaining localStorage keys:', remainingKeys)
+          remainingKeys.forEach(key => {
+            try {
+              localStorage.removeItem(key)
+            } catch (e) {
+              console.warn(`[CLEAR] Failed to remove localStorage key: ${key}`, e)
+            }
+          })
         }
+
+        // Also clear sessionStorage if it exists
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.clear()
+          console.log('[CLEAR] sessionStorage cleared')
+        }
+
+        // Clear all cookies for this domain - comprehensive approach
+        if (typeof document !== 'undefined') {
+          const cookies = document.cookie.split(";")
+          for (let cookie of cookies) {
+            const eqPos = cookie.indexOf("=")
+            const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim()
+            // Clear cookie with all possible path and domain variations
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=." + window.location.hostname
+          }
+          console.log('[CLEAR] Cookies cleared')
+        }
+
+        // Clear IndexedDB databases if they exist
+        if (typeof indexedDB !== 'undefined') {
+          try {
+            // List all databases and delete them
+            const databases = await indexedDB.databases()
+            for (const db of databases) {
+              if (db.name) {
+                indexedDB.deleteDatabase(db.name)
+                console.log(`[CLEAR] IndexedDB database deleted: ${db.name}`)
+              }
+            }
+          } catch (e) {
+            console.warn('[CLEAR] Error clearing IndexedDB:', e)
+          }
+        }
+
+        // Clear Cache Storage (Service Worker caches)
+        if (typeof caches !== 'undefined') {
+          try {
+            const cacheNames = await caches.keys()
+            for (const cacheName of cacheNames) {
+              await caches.delete(cacheName)
+              console.log(`[CLEAR] Cache deleted: ${cacheName}`)
+            }
+          } catch (e) {
+            console.warn('[CLEAR] Error clearing caches:', e)
+          }
+        }
+
+        // Force reload to clear any in-memory state
+        console.log('[CLEAR] Forcing page reload to ensure complete cleanup...')
+        setTimeout(() => {
+          window.location.reload()
+        }, 100)
       }
+
+      // Reset all state to completely empty (no default data)
+      setUserProfile(null)
+      setTransactions([])
+      setBudgets([])
+      setGoals([])
+      setDebtAccounts([])
+      setCreditAccounts([])
+      setDebtCreditTransactions([])
+      setCategories([]) // Empty categories, no defaults
+      setEmergencyFund(0)
+      setBalance(0)
+      setIsAuthenticated(false)
+      setShowOnboarding(true)
+      setIsFirstTime(true)
+
+      console.log('[CLEAR] State reset to empty')
+      console.log('[CLEAR] Comprehensive data clearing completed successfully')
+
+    } catch (error) {
+      console.error('[CLEAR] Error during data clearing:', error)
+      // Even if clearing fails, reset state
+      setUserProfile(null)
+      setTransactions([])
+      setBudgets([])
+      setGoals([])
+      setDebtAccounts([])
+      setCreditAccounts([])
+      setDebtCreditTransactions([])
+      setCategories([])
+      setEmergencyFund(0)
+      setBalance(0)
+      setIsAuthenticated(false)
+      setShowOnboarding(true)
+      setIsFirstTime(true)
+      throw error
     }
-
-    // Reset all state to completely empty (no default data)
-    setUserProfile(null)
-    setTransactions([])
-    setBudgets([])
-    setGoals([])
-    setDebtAccounts([])
-    setCreditAccounts([])
-    setDebtCreditTransactions([])
-    setCategories([]) // Empty categories, no defaults
-    setEmergencyFund(0)
-    setBalance(0)
-    setIsAuthenticated(false)
-    setShowOnboarding(true)
-    setIsFirstTime(true)
-
   }
 
   const exportData = () => {

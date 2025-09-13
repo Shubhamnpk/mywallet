@@ -365,6 +365,17 @@ export function DataSettings() {
         </CardContent>
       </Card>
 
+      
+
+      {/* Convex Sync */}
+      <ConvexSync />
+
+      {/* Recycle Bin */}
+      <RecycleBin
+        userId={user?.id || ''}
+        currentDeviceId={getDeviceInfo()}
+        onDataRefresh={refreshData}
+      />
       {/* Data Management */}
       <Card className="border-destructive">
         <CardHeader>
@@ -398,15 +409,6 @@ export function DataSettings() {
         </CardContent>
       </Card>
 
-      {/* Convex Sync */}
-      <ConvexSync />
-
-      {/* Recycle Bin */}
-      <RecycleBin
-        userId={user?.id || ''}
-        currentDeviceId={getDeviceInfo()}
-        onDataRefresh={refreshData}
-      />
 
       {/* Backup Modal Component */}
       <BackupModal

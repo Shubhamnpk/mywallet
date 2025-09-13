@@ -95,10 +95,31 @@ export class WalletEncryption {
     try {
       const crypto = this.getCrypto()
 
-      // Convert from base64
-      const combined = new Uint8Array(
-        atob(encryptedData).split('').map(char => char.charCodeAt(0))
-      )
+      // Validate input
+      if (!encryptedData || typeof encryptedData !== 'string') {
+        throw new Error('Invalid encrypted data format')
+      }
+
+      // Check if data looks like valid base64 (more lenient validation)
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encryptedData) || encryptedData.length % 4 !== 0) {
+        throw new Error('Data does not appear to be valid base64')
+      }
+
+      // Convert from base64 with additional error handling
+      let combined: Uint8Array
+      try {
+        combined = new Uint8Array(
+          atob(encryptedData).split('').map(char => char.charCodeAt(0))
+        )
+      } catch (base64Error) {
+        console.error('Base64 decoding failed:', base64Error)
+        throw new Error('Invalid base64 data format')
+      }
+
+      // Validate data length (encrypted data should be at least IV + 1 byte)
+      if (combined.length < this.IV_LENGTH + 1) {
+        throw new Error('Encrypted data too short')
+      }
 
       // Extract IV and encrypted data
       const iv = combined.slice(0, this.IV_LENGTH)
@@ -117,7 +138,7 @@ export class WalletEncryption {
       return decoder.decode(decrypted)
     } catch (error) {
       console.error('Decryption failed:', error)
-      throw new Error('Failed to decrypt data')
+      throw new Error(`Failed to decrypt data: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

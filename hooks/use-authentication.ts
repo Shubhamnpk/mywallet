@@ -101,7 +101,6 @@ export function useAuthentication(): AuthState & AuthActions {
     const initializeAuth = async () => {
       try {
         const status = SecurePinManager.getAuthStatus()
-        const hasMasterKey = SecureKeyManager.hasMasterKey()
 
         setAuthState({
           isAuthenticated: false, // Always start unauthenticated for security
@@ -117,29 +116,9 @@ export function useAuthentication(): AuthState & AuthActions {
         if (!status.hasPin) {
           setAuthState(prev => ({ ...prev, isAuthenticated: true }))
         } else {
-          // If PIN is set up, check if we have a valid session
-          const sessionStatus = SessionManager.getSessionStatus()
-
-          if (sessionStatus && sessionStatus.isValid && hasMasterKey) {
-            // We have a valid session and master key, authenticate automatically
-            try {
-              const masterKey = await SecureKeyManager.getMasterKey("")
-              if (masterKey) {
-                setAuthState(prev => ({
-                  ...prev,
-                  isAuthenticated: true,
-                  masterKey: masterKey,
-                }))
-                console.log('[useAuthentication] Auto-authentication successful')
-                return
-              }
-            } catch (error) {
-              console.log('[useAuthentication] Auto-authentication failed:', error)
-            }
-          }
-
-          // No valid session or auto-auth failed, stay unauthenticated
-          console.log('[useAuthentication] No valid session, staying unauthenticated')
+          // If PIN is set up, ALWAYS require PIN authentication
+          // Sessions are only used for extending authenticated sessions, not bypassing PIN
+          console.log('[useAuthentication] PIN is set up, requiring authentication')
           setAuthState(prev => ({
             ...prev,
             isAuthenticated: false,
@@ -160,12 +139,20 @@ export function useAuthentication(): AuthState & AuthActions {
       }))
     }
 
+    // Listen for onboarding completion events to re-initialize auth state
+    const handleOnboardingComplete = () => {
+      console.log('[useAuthentication] Onboarding completed, re-initializing auth state')
+      initializeAuth()
+    }
+
     window.addEventListener('wallet-session-expired', handleSessionExpiry)
+    window.addEventListener('wallet-onboarding-complete', handleOnboardingComplete)
 
     initializeAuth()
 
     return () => {
       window.removeEventListener('wallet-session-expired', handleSessionExpiry)
+      window.removeEventListener('wallet-onboarding-complete', handleOnboardingComplete)
     }
   }, [])
 

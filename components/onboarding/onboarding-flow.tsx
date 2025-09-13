@@ -1,7 +1,7 @@
-
 "use client"
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
   Wallet,
@@ -30,7 +29,7 @@ import {
   ImageIcon,
   X,
   Cloud,
-  Database
+  Loader2
 } from 'lucide-react';
 import type { UserProfile } from '@/types/wallet';
 import { ONBOARDING_CURRENCIES } from '@/lib/currency';
@@ -41,8 +40,71 @@ import { useConvexAuth } from '@/hooks/use-convex-auth';
 import { useConvexSync } from '@/hooks/use-convex-sync';
 import { ConvexAuthModal } from '@/components/auth/convex-auth-modal';
 
-interface OnboardingProps {
-  onComplete: (userProfile: UserProfile) => void;
+// Security and validation constants
+const SECURITY_CONSTANTS = {
+  MAX_NAME_LENGTH: 50,
+  MAX_MONTHLY_EARNING: 999999999.99,
+  MIN_MONTHLY_EARNING: 0.01,
+  MAX_WORKING_HOURS: 24,
+  MIN_WORKING_HOURS: 0.5,
+  MAX_WORKING_DAYS: 31,
+  MIN_WORKING_DAYS: 1,
+  PIN_LENGTH: 6,
+  MAX_AVATAR_SIZE: 5 * 1024 * 1024, // 5MB
+} as const
+
+// Input validation helpers
+const validateName = (name: string): boolean => {
+  return typeof name === 'string' &&
+         name.trim().length > 0 &&
+         name.trim().length <= SECURITY_CONSTANTS.MAX_NAME_LENGTH &&
+         !/<script/i.test(name) // Basic XSS prevention
+}
+
+const validateMonthlyEarning = (earning: string | number): boolean => {
+  const num = typeof earning === 'string' ? parseFloat(earning) : earning
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_MONTHLY_EARNING &&
+         num <= SECURITY_CONSTANTS.MAX_MONTHLY_EARNING
+}
+
+const validateWorkingHours = (hours: string | number): boolean => {
+  const num = typeof hours === 'string' ? parseFloat(hours) : hours
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_WORKING_HOURS &&
+         num <= SECURITY_CONSTANTS.MAX_WORKING_HOURS
+}
+
+const validateWorkingDays = (days: string | number): boolean => {
+  const num = typeof days === 'string' ? parseFloat(days) : days
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_WORKING_DAYS &&
+         num <= SECURITY_CONSTANTS.MAX_WORKING_DAYS
+}
+
+const validatePin = (pin: string): boolean => {
+  return typeof pin === 'string' &&
+         pin.length === SECURITY_CONSTANTS.PIN_LENGTH &&
+         /^\d{6}$/.test(pin)
+}
+
+const validateAvatarFile = (file: File): boolean => {
+  return file.type.startsWith('image/') &&
+         file.size <= SECURITY_CONSTANTS.MAX_AVATAR_SIZE
+}
+
+const sanitizeString = (str: string): string => {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[<>'"&]/g, '').trim()
+}
+
+// Safe calculation helpers
+const safeParseFloat = (value: any, fallback: number = 0): number => {
+  const parsed = parseFloat(value)
+  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed
 }
 
 const steps = [
@@ -128,7 +190,8 @@ const features = [
   },
 ];
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
+export default function OnboardingPage() {
+  const router = useRouter();
   const { user, isAuthenticated, signUp, signIn, isLoading: authLoading } = useConvexAuth()
   const { syncFromConvex } = useConvexSync()
   const [step, setStep] = useState(0);
@@ -136,6 +199,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [showConvexLogin, setShowConvexLogin] = useState(false);
   const [isRestoringData, setIsRestoringData] = useState(false);
   const [dataRestored, setDataRestored] = useState(false);
+
+  // Ref to prevent multiple Convex sync attempts
+  const skipConvexSkipRef = useRef(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -152,72 +218,80 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const currentStep = steps.find(s => s.id === step) || steps[0];
-  const maxStep = formData.enableSecurity ? 6 : 5;
+  // Memoized calculations for performance
+  const currentStep = useMemo(() => steps.find(s => s.id === step) || steps[0], [step])
+  const maxStep = useMemo(() => formData.enableSecurity ? 6 : 5, [formData.enableSecurity])
+  const hourlyRate = useMemo(() => {
+    if (!formData.monthlyEarning || !formData.workingHoursPerDay || !formData.workingDaysPerMonth) {
+      return '0.00'
+    }
+    const rate = safeParseFloat(formData.monthlyEarning) /
+                (safeParseFloat(formData.workingHoursPerDay) * safeParseFloat(formData.workingDaysPerMonth))
+    return rate.toFixed(2)
+  }, [formData.monthlyEarning, formData.workingHoursPerDay, formData.workingDaysPerMonth])
 
-  // Skip onboarding for authenticated Convex users - let normal sync handle data restoration
+  // Handle Convex authentication - don't sync or redirect during onboarding
   React.useEffect(() => {
-    if (isAuthenticated && user) {
-      console.log('[Onboarding] User authenticated with Convex, skipping onboarding')
-      toast.success('Welcome back! Your data will sync automatically.')
+    if (!isAuthenticated || !user || skipConvexSkipRef.current) return;
 
-      // Skip onboarding and go directly to dashboard
-      setTimeout(() => {
-        onComplete({
-          name: user.name || 'User',
-          monthlyEarning: 0, // Will be loaded from sync
-          currency: 'NPR',
-          workingHoursPerDay: 8,
-          workingDaysPerMonth: 20,
-          createdAt: new Date().toISOString(),
-          hourlyRate: 0,
-          securityEnabled: false,
-          avatar: undefined,
-        })
-      }, 500)
-    }
-  }, [isAuthenticated, user, onComplete])
+    // Always prevent sync and redirect during onboarding phase
+    // User should complete onboarding first before any sync operations
+    console.log('[Onboarding] User authenticated with Convex - allowing onboarding completion first');
+    skipConvexSkipRef.current = true;
 
-  const validateStep = () => {
-    switch (step) {
-      case 1:
-        if (!formData.name.trim()) {
-          toast.error('Please enter your name');
-          return false;
-        }
-        break;
-      case 2:
-        // Profile picture step - no validation required
-        break;
-      case 3:
-        if (!formData.monthlyEarning || parseFloat(formData.monthlyEarning) <= 0) {
-          toast.error('Please enter a valid monthly earning');
-          return false;
-        }
-        break;
-      case 4:
-        const hours = parseFloat(formData.workingHoursPerDay);
-        const days = parseFloat(formData.workingDaysPerMonth);
-        if (hours <= 0 || hours > 24 || days <= 0 || days > 31) {
-          toast.error('Please enter valid working hours and days');
-          return false;
-        }
-        break;
-      case 5:
-        if (formData.enableSecurity) {
-          if (formData.pin.length !== 6) {
-            toast.error('Please enter a 6-digit PIN');
+    // Don't perform any sync operations during onboarding
+    // The user will be able to sync after completing onboarding
+  }, [isAuthenticated, user])
+
+  // Enhanced validation with proper error handling
+  const validateStep = useCallback(() => {
+    try {
+      switch (step) {
+        case 1:
+          if (!validateName(formData.name)) {
+            toast.error('Please enter a valid name (1-50 characters)');
             return false;
           }
-          if (formData.pin !== formData.confirmPin) {
-            toast.error('PINs do not match');
+          break;
+        case 2:
+          // Profile picture step - no validation required
+          break;
+        case 3:
+          if (!validateMonthlyEarning(formData.monthlyEarning)) {
+            toast.error(`Please enter a valid monthly earning (${SECURITY_CONSTANTS.MIN_MONTHLY_EARNING.toFixed(2)} - ${SECURITY_CONSTANTS.MAX_MONTHLY_EARNING.toFixed(2)})`);
             return false;
           }
-        }
-        break;
+          break;
+        case 4:
+          if (!validateWorkingHours(formData.workingHoursPerDay)) {
+            toast.error(`Please enter valid working hours per day (${SECURITY_CONSTANTS.MIN_WORKING_HOURS} - ${SECURITY_CONSTANTS.MAX_WORKING_HOURS})`);
+            return false;
+          }
+          if (!validateWorkingDays(formData.workingDaysPerMonth)) {
+            toast.error(`Please enter valid working days per month (${SECURITY_CONSTANTS.MIN_WORKING_DAYS} - ${SECURITY_CONSTANTS.MAX_WORKING_DAYS})`);
+            return false;
+          }
+          break;
+        case 5:
+          if (formData.enableSecurity) {
+            if (!validatePin(formData.pin)) {
+              toast.error(`Please enter a valid 6-digit PIN`);
+              return false;
+            }
+            if (formData.pin !== formData.confirmPin) {
+              toast.error('PINs do not match');
+              return false;
+            }
+          }
+          break;
+      }
+      return true;
+    } catch (error) {
+      console.error('Validation error:', error);
+      toast.error('Validation failed. Please check your input.');
+      return false;
     }
-    return true;
-  };
+  }, [step, formData]);
 
   const handleNext = () => {
     if (!validateStep()) return;
@@ -237,29 +311,33 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   };
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select a valid image file.')
-        return
-      }
+    if (!file) return
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('Please select an image smaller than 5MB.')
+    try {
+      // Validate file using our helper
+      if (!validateAvatarFile(file)) {
+        toast.error(`Please select a valid image file smaller than ${(SECURITY_CONSTANTS.MAX_AVATAR_SIZE / (1024 * 1024)).toFixed(0)}MB.`)
         return
       }
 
       const reader = new FileReader()
       reader.onload = (e) => {
         const result = e.target?.result as string
-        setFormData({ ...formData, avatar: result })
+        if (result) {
+          setFormData(prev => ({ ...prev, avatar: result }))
+        }
+      }
+      reader.onerror = () => {
+        toast.error('Failed to read image file. Please try again.')
       }
       reader.readAsDataURL(file)
+    } catch (error) {
+      console.error('Image selection error:', error)
+      toast.error('Failed to process image. Please try again.')
     }
-  }
+  }, [])
 
   const handleFileUpload = () => {
     if (fileInputRef.current) fileInputRef.current.click()
@@ -288,8 +366,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setIsLoading(true);
 
     try {
-      // Set up PIN if security is enabled
+      // Handle security setup based on user choice
       if (formData.enableSecurity && formData.pin) {
+        // Set up PIN if security is enabled
         const pinSetupSuccess = await SecurePinManager.setupPin(formData.pin);
         if (!pinSetupSuccess) {
           toast.error('Failed to set up PIN. Please try again.');
@@ -298,6 +377,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         // Create initial session after PIN setup for consistent behavior
         SessionManager.createSession();
+      } else if (!formData.enableSecurity) {
+        // If security is disabled, ensure no PIN data exists and clear any previous security data
+        SecurePinManager.clearAllSecurityData();
+        console.log('[Onboarding] Security disabled - cleared all security data');
       }
 
       // Get PIN data from localStorage if security is enabled
@@ -320,14 +403,22 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         workingHoursPerDay: parseFloat(formData.workingHoursPerDay),
         workingDaysPerMonth: parseFloat(formData.workingDaysPerMonth),
         createdAt: new Date().toISOString(),
-        hourlyRate: 0,
+        hourlyRate: parseFloat(hourlyRate), // Use the calculated hourly rate
         securityEnabled: formData.enableSecurity,
         avatar: formData.avatar || undefined,
         ...pinData
       };
 
-      onComplete(userProfile);
+      // Save to localStorage
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      localStorage.setItem('isFirstTime', 'false');
+
       toast.success(`Welcome, ${userProfile.name}! Your financial journey begins now.`);
+
+      // Small delay to show success message, then redirect
+      setTimeout(() => {
+        router.push('/');
+      }, 1500);
     } catch (error) {
       console.error('Onboarding completion error:', error);
       toast.error('Setup failed. Please try again.');
@@ -335,10 +426,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       setIsLoading(false);
     }
   };
-
-  const hourlyRate = formData.monthlyEarning && formData.workingHoursPerDay && formData.workingDaysPerMonth
-    ? (parseFloat(formData.monthlyEarning) / (parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth))).toFixed(2)
-    : '0.00';
 
   const progress = (step / maxStep) * 100;
 
@@ -368,7 +455,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               <div className="space-y-6 text-center">
                 {/* Hero Section */}
                     <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-primary/60 rounded-full mx-auto mt-3" />
-                  
+
 
                 {/* Journey Message */}
                 <div className="space-y-4">
@@ -590,7 +677,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       />
                     </div>
                   </div>
-                  
+
                   {formData.monthlyEarning && (
                     <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
                       <div className="flex items-center gap-2 text-primary">
@@ -630,7 +717,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     />
                   </div>
                 </div>
-                
+
                 <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
                   <div className="text-center">
                     <div className="text-lg font-bold text-primary">
@@ -750,7 +837,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   Back
                 </Button>
               )}
-              
+
               {step < maxStep ? (
                 <Button
                   onClick={handleNext}
@@ -806,6 +893,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         <ConvexAuthModal
           open={showConvexLogin}
           onOpenChange={setShowConvexLogin}
+          onAuthSuccess={() => {
+            // Redirect to dashboard immediately when authentication succeeds
+            router.push('/')
+          }}
           signUp={signUp}
           signIn={signIn}
           isLoading={authLoading}

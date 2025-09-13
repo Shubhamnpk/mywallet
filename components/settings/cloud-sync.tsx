@@ -90,12 +90,20 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
     }
 
     // Handle OAuth redirects
+    // Handle OAuth redirects
     const urlParams = new URLSearchParams(window.location.hash.substring(1))
     const accessToken = urlParams.get('access_token')
+    const state = urlParams.get('state')
 
     if (accessToken) {
+      // Validate state parameter
+      const expectedStates = ['dropbox', 'google']
+      if (!state || !expectedStates.includes(state)) {
+        console.error('Invalid OAuth state parameter')
+        return
+      }
+      
       // Determine which service
-      const state = urlParams.get('state')
       if (state === 'dropbox') {
         localStorage.setItem('dropbox_token', accessToken)
         setDropboxToken(accessToken)
@@ -117,12 +125,11 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
       }
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname)
-    }
-  }, [])
+    }  }, [])
 
   const connectDropbox = async () => {
     try {
-      const auth = new DropboxAuth({ clientId: process.env.NEXT_PUBLIC_DROPBOX_CLIENT_ID || 'your-dropbox-client-id' })
+      const auth = new DropboxAuth({ clientId: process.env.NEXT_PUBLIC_DROPBOX_CLIENT_ID})
       const authUrl = await auth.getAuthenticationUrl(window.location.origin + '/settings')
       window.location.href = (authUrl as string) + '&state=dropbox'
     } catch (error) {
@@ -147,7 +154,7 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
 
   const connectGoogleDrive = async () => {
     try {
-      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'your-google-client-id'
+      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
       const redirectUri = window.location.origin + '/settings'
       const scope = 'https://www.googleapis.com/auth/drive.file'
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=token&include_granted_scopes=true&state=google`

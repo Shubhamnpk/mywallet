@@ -188,8 +188,22 @@ export function useConvexAuth() {
   }
 
   const signOut = () => {
-    localStorage.removeItem("convex_user")
-    localStorage.removeItem("convex_user_id")
+    // Clear all Convex-related data from localStorage
+    const convexKeysToRemove = [
+      "convex_user",
+      "convex_user_id",
+      "convex_device_id",
+      "convex_device_name",
+      "convex_sync_password",
+      "convex_sync_salt",
+      "convex_sync_enabled",
+      "convex_last_sync_time",
+      "convex_sync_paused",
+      "convex_sync_auto_enabled",
+      "sync_manually_disabled"
+    ]
+
+    convexKeysToRemove.forEach(key => localStorage.removeItem(key))
 
     setAuthState({
       user: null,
@@ -199,7 +213,7 @@ export function useConvexAuth() {
 
     toast({
       title: "Signed Out",
-      description: "You have been signed out of your Convex sync account.",
+      description: "You have been signed out of your Convex sync account. All Convex-related data has been cleared from local storage.",
     })
   }
 

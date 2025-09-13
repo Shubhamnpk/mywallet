@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -10,10 +10,64 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Loader2 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+
+// Security and validation constants
+const SECURITY_CONSTANTS = {
+  MAX_ACCOUNT_NAME_LENGTH: 100,
+  MAX_DESCRIPTION_LENGTH: 500,
+  MAX_AMOUNT: 999999999.99,
+  MIN_AMOUNT: 0.01,
+  MAX_INTEREST_RATE: 100,
+  MIN_INTEREST_RATE: 0,
+  MAX_ARRAY_SIZE: 1000,
+} as const
+
+// Input validation helpers
+const validateAccountName = (name: string): boolean => {
+  return typeof name === 'string' &&
+         name.length > 0 &&
+         name.length <= SECURITY_CONSTANTS.MAX_ACCOUNT_NAME_LENGTH &&
+         !/<script/i.test(name) // Basic XSS prevention
+}
+
+const validateAmount = (amount: number | string): boolean => {
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_AMOUNT &&
+         num <= SECURITY_CONSTANTS.MAX_AMOUNT
+}
+
+const validateInterestRate = (rate: number | string): boolean => {
+  const num = typeof rate === 'string' ? parseFloat(rate) : rate
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_INTEREST_RATE &&
+         num <= SECURITY_CONSTANTS.MAX_INTEREST_RATE
+}
+
+const sanitizeString = (str: string): string => {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[<>'"&]/g, '').trim().substring(0, SECURITY_CONSTANTS.MAX_DESCRIPTION_LENGTH)
+}
+
+const validateArraySize = (arr: any[]): boolean => {
+  return Array.isArray(arr) && arr.length <= SECURITY_CONSTANTS.MAX_ARRAY_SIZE
+}
+
+// Safe calculation helpers with boundary checks
+const safeDivision = (numerator: number, denominator: number, fallback: number = 0): number => {
+  return denominator !== 0 && isFinite(denominator) ? numerator / denominator : fallback
+}
+
+const safeParseFloat = (value: any, fallback: number = 0): number => {
+  const parsed = parseFloat(value)
+  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed
+}
 
 interface DebtCreditManagementProps {
   userProfile: UserProfile
@@ -23,6 +77,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   const wallet = useWalletData()
   const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
+
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -44,13 +102,15 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   const [insightsExpanded, setInsightsExpanded] = useState(false)
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
 
-  const toggleExpanded = (accountId: string) => {
-    const newExpanded = new Set(expandedAccounts)
-    newExpanded.has(accountId) ? newExpanded.delete(accountId) : newExpanded.add(accountId)
-    setExpandedAccounts(newExpanded)
-  }
+  const toggleExpanded = useCallback((accountId: string) => {
+    setExpandedAccounts(prev => {
+      const newExpanded = new Set(prev)
+      newExpanded.has(accountId) ? newExpanded.delete(accountId) : newExpanded.add(accountId)
+      return newExpanded
+    })
+  }, [])
 
-  // Form states
+  // Form states with validation
   const [debtForm, setDebtForm] = useState({
     name: "",
     balance: "",
@@ -71,6 +131,51 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     minimumPayment: "",
     dueDate: "",
   })
+
+  // Form validation helpers
+  const validateDebtForm = useCallback(() => {
+    if (!validateAccountName(debtForm.name)) {
+      setError("Invalid account name")
+      return false
+    }
+    if (!validateAmount(debtForm.balance)) {
+      setError("Invalid balance amount")
+      return false
+    }
+    if (!validateInterestRate(debtForm.interestRate)) {
+      setError("Invalid interest rate")
+      return false
+    }
+    if (debtForm.minimumPayment && !validateAmount(debtForm.minimumPayment)) {
+      setError("Invalid minimum payment")
+      return false
+    }
+    return true
+  }, [debtForm])
+
+  const validateCreditForm = useCallback(() => {
+    if (!validateAccountName(creditForm.name)) {
+      setError("Invalid account name")
+      return false
+    }
+    if (!validateAmount(creditForm.balance)) {
+      setError("Invalid balance amount")
+      return false
+    }
+    if (!validateAmount(creditForm.creditLimit)) {
+      setError("Invalid credit limit")
+      return false
+    }
+    if (!validateInterestRate(creditForm.interestRate)) {
+      setError("Invalid interest rate")
+      return false
+    }
+    if (creditForm.minimumPayment && !validateAmount(creditForm.minimumPayment)) {
+      setError("Invalid minimum payment")
+      return false
+    }
+    return true
+  }, [creditForm])
 
   const handleAddDebt = () => {
     if (!debtForm.name || !debtForm.balance || !debtForm.interestRate) return
@@ -550,13 +655,13 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                               <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                                  <span>Rate: {debt.interestRate}%</span>
+                                    <span>Rate: {(debt as any).interestRate || 0}%</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                    <span>Min Pay: {formatCurrency((debt as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                                  <span>Min Pay: {formatCurrency(debt.minimumPayment, userProfile.currency, userProfile.customCurrency)}</span>
-                                </div>
-                              </div>
                             </CardContent>
                           </CollapsibleContent>
                         </Collapsible>
@@ -591,6 +696,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       .filter((t: any) => t.accountId === credit.id)
                       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .slice(0, 3)
+                  
 
                     return (
                       <Card key={credit.id} className="transition border">
@@ -759,10 +865,11 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                 <div className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4 text-muted-foreground" />
                                   <span>Rate: {credit.interestRate}%</span>
+                                  <span>Rate: {(credit as any).interestRate || 0}%</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                                  <span>Min Pay: {formatCurrency(credit.minimumPayment, userProfile.currency, userProfile.customCurrency)}</span>
+                                  <span>Min Pay: {formatCurrency((credit as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
                                 </div>
                               </div>
                             </CardContent>

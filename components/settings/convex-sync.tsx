@@ -29,6 +29,7 @@ export function ConvexSync() {
     resumeSync,
     syncToConvex,
     syncFromConvex,
+    refreshSyncState,
   } = useConvexSync()
   const { transactions, budgets, goals, categories, emergencyFund, debtAccounts, creditAccounts, debtCreditTransactions, userProfile } = useWalletData()
 
@@ -45,6 +46,74 @@ export function ConvexSync() {
   const [showUnlockDialog, setShowUnlockDialog] = useState(false)
   const [hasExistingData, setHasExistingData] = useState(false)
 
+  // Generate or retrieve secure sync password
+  const getSecureSyncPassword = async (): Promise<string> => {
+    try {
+      const storedEncryptedPassword = localStorage.getItem("convex_sync_password")
+      const saltString = localStorage.getItem("convex_sync_salt")
+
+      if (storedEncryptedPassword && saltString) {
+        const salt = new Uint8Array(atob(saltString).split("").map(char => char.charCodeAt(0)))
+        const key = await import("@/lib/security").then(m => m.SecureWallet.deriveKeyFromPin("convex_sync_key", salt))
+        return await import("@/lib/security").then(m => m.SecureWallet.decryptData(storedEncryptedPassword, key))
+      }
+
+      // Generate cryptographically secure random password
+      const randomBytes = crypto.getRandomValues(new Uint8Array(32))
+      const securePassword = btoa(String.fromCharCode(...randomBytes))
+
+      // Store it securely
+      const salt = crypto.getRandomValues(new Uint8Array(32))
+      const key = await import("@/lib/security").then(m => m.SecureWallet.deriveKeyFromPin("convex_sync_key", salt))
+      const newEncryptedPassword = await import("@/lib/security").then(m => m.SecureWallet.encryptData(securePassword, key))
+
+      localStorage.setItem("convex_sync_password", newEncryptedPassword)
+      localStorage.setItem("convex_sync_salt", btoa(String.fromCharCode(...salt)))
+
+      return securePassword
+    } catch (error) {
+      console.error("Failed to get/generate secure sync password:", error)
+      throw new Error("Failed to generate secure sync password")
+    }
+  }
+
+  // Helper function to check if device has local data
+  const hasLocalData = () =>
+    transactions.length > 0 ||
+    budgets.length > 0 ||
+    goals.length > 0 ||
+    debtAccounts.length > 0 ||
+    creditAccounts.length > 0 ||
+    debtCreditTransactions.length > 0 ||
+    categories.length > 0 ||
+    emergencyFund > 0 ||
+    userProfile !== null
+
+  // Helper function for sync operations with error handling
+  const performSyncOperation = async (operation: () => Promise<any>, successMessage: string, errorMessage: string) => {
+    try {
+      const result = await operation()
+      if (result.success) {
+        toast({ title: successMessage, description: "Operation completed successfully!" })
+      } else {
+        toast({ title: "Operation Failed", description: errorMessage, variant: "destructive" })
+      }
+      return result
+    } catch (error) {
+      console.error(errorMessage, error)
+      toast({ title: "Operation Failed", description: errorMessage, variant: "destructive" })
+      return { success: false }
+    }
+  }
+
+  // Get sync status display info
+  const getSyncStatus = () => {
+    if (isSyncing) return { icon: '🔄 Syncing...', text: 'Uploading changes to cloud...', color: 'bg-yellow-500 animate-pulse' }
+    if (error) return { icon: '❌ Sync Error', text: `Last sync: ${formatLastSyncTime(lastSyncTime)}`, color: 'bg-red-500' }
+    if (isPaused) return { icon: '⏸️ Auto-Sync Paused', text: 'Automatic sync is paused - manual sync available', color: 'bg-orange-500' }
+    return { icon: '✅ Auto-Sync Active', text: `Last synced: ${formatLastSyncTime(lastSyncTime)}`, color: 'bg-green-500' }
+  }
+
 
 
   const handleSetupSync = async () => {
@@ -58,6 +127,14 @@ export function ConvexSync() {
 
   const handleToggleSync = async (enabled: boolean) => {
     if (enabled) {
+      if (isSyncing) {
+        toast({
+          title: "Cannot Enable Sync",
+          description: "Please wait for current sync operation to complete.",
+          variant: "destructive",
+        })
+        return
+      }
       if (!isAuthenticated) {
         toast({
           title: "Authentication Required",
@@ -66,8 +143,19 @@ export function ConvexSync() {
         })
         return
       }
-      setShowSetupDialog(true)
+      // Clear the manually disabled flag when user enables sync
+      localStorage.removeItem("sync_manually_disabled")
+
+      // Directly enable sync (no setup dialog needed)
+      const result = await enableSync()
+      if (result.success) {
+        toast({
+          title: "Sync Enabled",
+          description: "Automatic sync is now active.",
+        })
+      }
     } else {
+      // Allow disabling even during sync
       await disableSync()
     }
   }
@@ -86,14 +174,13 @@ export function ConvexSync() {
       // Try to sync from Convex with the provided password
       const result = await syncFromConvex(syncPassword)
       if (result.success) {
-        const salt = new Uint8Array(32)
+        const salt = crypto.getRandomValues(new Uint8Array(32))
         const key = await import("@/lib/security").then(m => m.SecureWallet.deriveKeyFromPin("convex_sync_key", salt))
         const encryptedPassword = await import("@/lib/security").then(m => m.SecureWallet.encryptData(syncPassword, key))
-
         localStorage.setItem("convex_sync_password", encryptedPassword)
         localStorage.setItem("convex_sync_salt", btoa(String.fromCharCode(...salt)))
         localStorage.setItem("convex_sync_enabled", "true")
-        window.location.reload()
+        refreshSyncState()
         toast({
           title: "Sync Unlocked",
           description: "Successfully connected to your existing sync data.",
@@ -161,59 +248,77 @@ export function ConvexSync() {
         {isAuthenticated && (
           <>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="space-y-1 flex-1">
                   <p className="text-sm font-medium">Enable Convex Sync</p>
                   <p className="text-xs text-muted-foreground">
                     Automatically sync encrypted wallet data across your devices
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
 
-                  <Switch
-                    checked={isEnabled}
-                    onCheckedChange={handleToggleSync}
-                    disabled={isSyncing || authLoading}
-                  />
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={handleToggleSync}
+                      disabled={authLoading}
+                    />
+                    {isEnabled && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={async () => {
+                          // Force disable by clearing ALL sync-related localStorage keys
+                          const keysToRemove = [
+                            "convex_sync_enabled",
+                            "convex_sync_password",
+                            "convex_sync_salt",
+                            "convex_last_sync_time",
+                            "convex_sync_paused",
+                            "convex_sync_auto_enabled", // Clear any auto-enable flags
+                            "sync_manually_disabled" // Clear first, then set
+                          ]
+
+                          keysToRemove.forEach(key => localStorage.removeItem(key))
+
+                          // Mark as manually disabled to prevent auto-re-enable
+                          localStorage.setItem("sync_manually_disabled", "true")
+
+                          // Force state update
+                          refreshSyncState()
+
+                          toast({
+                            title: "Sync Force Disabled",
+                            description: "Sync has been disabled. Any ongoing operations were cancelled.",
+                          })
+                        }}
+                        className="text-xs flex-1 sm:flex-none"
+                      >
+                        Force Disable
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {isEnabled && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 bg-muted/50 border border-border rounded-lg">
-                    <div className={`w-3 h-3 rounded-full ${
-                      isSyncing ? 'bg-yellow-500 animate-pulse' :
-                      error ? 'bg-red-500' :
-                      isPaused ? 'bg-orange-500' :
-                      'bg-green-500'
-                    }`} />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">
-                        {isSyncing ? '🔄 Syncing...' :
-                         error ? '❌ Sync Error' :
-                         isPaused ? '⏸️ Auto-Sync Paused' :
-                         '✅ Auto-Sync Active'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {isSyncing ? 'Uploading changes to cloud...' :
-                         error ? `Last sync: ${formatLastSyncTime(lastSyncTime)}` :
-                         isPaused ? 'Automatic sync is paused - manual sync available' :
-                         `Last synced: ${formatLastSyncTime(lastSyncTime)}`}
-                      </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-muted/50 border border-border rounded-lg">
+                    <div className={`w-3 h-3 rounded-full ${getSyncStatus().color} flex-shrink-0`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{getSyncStatus().icon}</p>
+                      <p className="text-xs text-muted-foreground">{getSyncStatus().text}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {!isPaused ? (
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={async () => {
-                            const result = await pauseSync()
-                            if (result.success) {
-                              console.log('[PAUSE] Auto sync paused')
-                            }
+                            await pauseSync()
                           }}
                           disabled={isSyncing}
-                          className="text-xs"
+                          className="text-xs flex-1 sm:flex-none min-w-[80px]"
                         >
                           ⏸️ Pause
                         </Button>
@@ -222,13 +327,10 @@ export function ConvexSync() {
                           size="sm"
                           variant="outline"
                           onClick={async () => {
-                            const result = await resumeSync()
-                            if (result.success) {
-                              console.log('[RESUME] Auto sync resumed')
-                            }
+                            await resumeSync()
                           }}
                           disabled={isSyncing}
-                          className="text-xs"
+                          className="text-xs flex-1 sm:flex-none min-w-[80px]"
                         >
                           ▶️ Resume
                         </Button>
@@ -236,153 +338,26 @@ export function ConvexSync() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={async () => {
-                          console.log('[MANUAL] Force sync triggered')
-                          toast({
-                            title: "Manual Sync Started",
-                            description: "Forcing upload and download...",
-                          })
-                          const uploadResult = await syncToConvex()
-                          const downloadResult = await syncFromConvex()
-
-                          if (uploadResult.success && downloadResult.success) {
-                            toast({
-                              title: "Manual Sync Complete",
-                              description: "Data synchronized successfully!",
-                            })
-                          } else {
-                            toast({
-                              title: "Manual Sync Failed",
-                              description: "Check console for details.",
-                              variant: "destructive",
-                            })
-                          }
-                        }}
+                        onClick={() => performSyncOperation(
+                          async () => {
+                            const uploadResult = await syncToConvex()
+                            const downloadResult = await syncFromConvex()
+                            return uploadResult.success && downloadResult.success ? { success: true } : { success: false }
+                          },
+                          "Manual Sync Complete",
+                          "Manual sync failed"
+                        )}
                         disabled={isSyncing}
-                        className="text-xs"
+                        className="text-xs flex-1 sm:flex-none min-w-[80px]"
                       >
                         🔄 Sync Now
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          console.log('[FORCE PULL] Force data pull triggered')
-                          toast({
-                            title: "Pulling Your Data",
-                            description: "Retrieving all your existing data...",
-                          })
-
-                          try {
-                            // Force sync from Convex using the user-wide approach
-                            const syncPassword = `convex_sync_${user!.id}_${user!.email}`
-                            const result = await syncFromConvex(syncPassword)
-
-                            if (result.success) {
-                              toast({
-                                title: "Data Pulled Successfully! 🎉",
-                                description: "All your existing data is now on this device.",
-                              })
-                            } else {
-                              toast({
-                                title: "Pull Failed",
-                                description: "Could not retrieve your data. Check console for details.",
-                                variant: "destructive",
-                              })
-                            }
-                          } catch (error) {
-                            console.error('[FORCE PULL] Error:', error)
-                            toast({
-                              title: "Pull Failed",
-                              description: "Failed to pull existing data.",
-                              variant: "destructive",
-                            })
-                          }
-                        }}
-                        disabled={isSyncing || !isAuthenticated}
-                        className="text-xs"
-                      >
-                        📥 Pull My Data
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          console.log('[DEVICE RECOVERY] Manual device recovery triggered')
-                          toast({
-                            title: "Device Recovery",
-                            description: "Checking for existing account data...",
-                          })
-
-                          try {
-                            // Check if we have cloud data but no local data
-                            const hasLocalData =
-                              transactions.length > 0 ||
-                              budgets.length > 0 ||
-                              goals.length > 0 ||
-                              debtAccounts.length > 0 ||
-                              creditAccounts.length > 0 ||
-                              debtCreditTransactions.length > 0 ||
-                              categories.length > 0 ||
-                              emergencyFund > 0 ||
-                              userProfile !== null
-
-                            console.log('[DEVICE RECOVERY] Local data check:', {
-                              hasLocalData,
-                              transactions: transactions.length,
-                              budgets: budgets.length,
-                              goals: goals.length,
-                              debtAccounts: debtAccounts.length,
-                              creditAccounts: creditAccounts.length,
-                              categories: categories.length,
-                              emergencyFund,
-                              userProfile: !!userProfile,
-                            })
-
-                            if (!hasLocalData) {
-                              // Force sync from Convex
-                              const syncPassword = `convex_sync_${user!.id}_${user!.email}`
-                              const result = await syncFromConvex(syncPassword)
-
-                              if (result.success) {
-                                toast({
-                                  title: "Recovery Successful! 🎉",
-                                  description: "Your existing account data has been restored.",
-                                })
-                              } else {
-                                toast({
-                                  title: "No Data Found",
-                                  description: "No existing data found for this account.",
-                                  variant: "default",
-                                })
-                              }
-                            } else {
-                              toast({
-                                title: "Data Already Exists",
-                                description: "This device already has data. Recovery not needed.",
-                                variant: "default",
-                              })
-                            }
-                          } catch (error) {
-                            console.error('[DEVICE RECOVERY] Error:', error)
-                            toast({
-                              title: "Recovery Failed",
-                              description: "Failed to recover account data.",
-                              variant: "destructive",
-                            })
-                          }
-                        }}
-                        disabled={isSyncing || !isAuthenticated}
-                        className="text-xs"
-                      >
-                        🔄 Recover Account
                       </Button>
                       {error && (
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => window.location.reload()}
-                          className="text-xs"
+                          className="text-xs flex-1 sm:flex-none min-w-[80px]"
                         >
                           🔄 Retry
                         </Button>
@@ -416,6 +391,80 @@ export function ConvexSync() {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Manual Sync Options - Only show when auto-sync is disabled */}
+              {!isEnabled && (
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-muted/30 border border-border rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Manual Sync Options</p>
+                      <p className="text-xs text-muted-foreground">
+                        Manual operations available when auto-sync is disabled
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => performSyncOperation(
+                          async () => await syncToConvex(await getSecureSyncPassword()),
+                          "Data Pushed Successfully! 📤",
+                          "Failed to push data to cloud"
+                        )}
+                        disabled={isSyncing || !isAuthenticated}
+                        className="text-xs flex-1 sm:flex-none min-w-[100px]"
+                      >
+                        📤 Push My Data
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => performSyncOperation(
+                          async () => await syncFromConvex(await getSecureSyncPassword()),
+                          "Data Pulled Successfully! 🎉",
+                          "Failed to pull existing data"
+                        )}
+                        disabled={isSyncing || !isAuthenticated}
+                        className="text-xs flex-1 sm:flex-none min-w-[100px]"
+                      >
+                        📥 Pull My Data
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (hasLocalData()) {
+                            toast({
+                              title: "Data Already Exists",
+                              description: "This device already has data. Recovery not needed.",
+                              variant: "default",
+                            })
+                            return
+                          }
+
+                          const result = await performSyncOperation(
+                            async () => await syncFromConvex(await getSecureSyncPassword()),
+                            "Recovery Successful! 🎉",
+                            "Failed to recover account data"
+                          )
+
+                          if (!result.success) {
+                            toast({
+                              title: "No Data Found",
+                              description: "No existing data found for this account.",
+                              variant: "default",
+                            })
+                          }
+                        }}
+                        disabled={isSyncing || !isAuthenticated}
+                        className="text-xs flex-1 sm:flex-none min-w-[120px]"
+                      >
+                        🔄 Recover Account
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

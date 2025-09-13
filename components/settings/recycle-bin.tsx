@@ -81,18 +81,6 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
     return null
   }
 
-  const formatTimeRemaining = (expiresAt: number) => {
-    const now = Date.now()
-    const remaining = expiresAt - now
-    if (remaining <= 0) return "Expired"
-    const days = Math.floor(remaining / (1000 * 60 * 60 * 24))
-    const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    if (days > 0) return `${days}d ${hours}h left`
-    if (hours > 0) return `${hours}h left`
-    const minutes = Math.floor(remaining / (1000 * 60))
-    return `${minutes}m left`
-  }
-
   const formatDeletedTime = (deletedAt: number) => {
     const now = Date.now()
     const diff = now - deletedAt
@@ -101,6 +89,20 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
     if (days === 0) return "Today"
     if (days === 1) return "Yesterday"
     return `${days} days ago`
+  }
+
+  const formatTimeRemaining = (expiresAt: number) => {
+    const now = Date.now()
+    const diff = expiresAt - now
+    if (diff <= 0) return "Expired"
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (days > 0) return `${days}d ${hours}h`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
   }
 
   // Event handlers
@@ -178,19 +180,36 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
       const item = softDeletedItems?.find(i => i.id === itemId)
       if (!item?.originalData) return false
 
+      // Parse the original data
+      let recoveredItem
+      try {
+        recoveredItem = JSON.parse(item.originalData)
+      } catch (e) {
+        return false // Invalid original data
+      }
+
       // Initialize encryption
       const { WalletDataEncryption } = await import("@/lib/encryption")
       if (!WalletDataEncryption.isInitialized()) {
         const initialized = await WalletDataEncryption.initializeWithStoredKey()
-        if (!initialized) await WalletDataEncryption.generateNewKey()
+        if (!initialized) {
+          return false
+        }
       }
 
-      const data = await WalletDataEncryption.decryptData(item.originalData)
-      const storageKey = itemType + 's'
+      const storageKeyMap: Record<string, string> = {
+        transaction: 'transactions',
+        budget: 'budgets',
+        goal: 'goals',
+        category: 'categories',
+        debtAccount: 'debtAccounts',
+        creditAccount: 'creditAccounts',
+      }
+      const storageKey = storageKeyMap[itemType] ?? `${itemType}s`
       const { saveToLocalStorage } = await import("@/lib/storage")
 
       // Parse existing data safely
-      let existing = []
+      let existing: any[] = []
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         try {
@@ -210,20 +229,21 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
         }
       }
 
-      // Add if not exists
-      if (!existing.find((i: any) => i.id === itemId)) {
-        existing.push(data)
+      // Add the recovered item if it doesn't already exist
+      const exists = existing.some((i: any) => i.id === recoveredItem.id)
+      if (!exists) {
+        existing.push(recoveredItem)
         await saveToLocalStorage(storageKey, existing)
-        return true
       }
 
       return true
     } catch (error) {
+      // Failed to recover item
       return false
     }
   }
 
-  const handlePermanentDelete = async () => {
+const handlePermanentDelete = async () => {
     if (!selectedItem) return
 
     try {
@@ -276,13 +296,46 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
     } catch (error) {
       toast({
         title: "Cleanup Failed",
-        description: "Failed to clean up expired items.",
+        description: "Failed to cleanup expired items.",
         variant: "destructive",
       })
     }
   }
 
-  // Helper function to clean up expired items from local storage
+  const handleRecoverAll = async () => {
+    const candidates = (softDeletedItems ?? []).filter(i => i.recoverable && Date.now() <= i.expiresAt)
+    if (candidates.length === 0) return
+
+    toast({
+      title: "Bulk Recovery",
+      description: `Recovering ${candidates.length} items...`,
+    })
+
+    for (const i of candidates) {
+      try {
+        const result = await recoverItemMutation({
+          userId: userId as any,
+          itemId: i.id,
+          deviceId: currentDeviceId || 'unknown',
+        })
+        if (result.success) {
+          await recoverToStorage(i.id, i.itemType)
+        }
+      } catch (error) {
+        // continue on error
+      }
+      // Small delay for throttling
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    onDataRefresh?.()
+
+    toast({
+      title: "Bulk Recovery Complete",
+      description: `Successfully recovered ${candidates.length} items.`,
+    })
+  }
+
   const cleanupExpiredItemsFromLocalStorage = async (expiredItemIds: string[]) => {
     try {
       const { saveToLocalStorage } = await import("@/lib/storage")
@@ -291,11 +344,24 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
       const storageKeys = ['transactions', 'budgets', 'goals', 'categories', 'debtAccounts', 'creditAccounts']
 
       for (const key of storageKeys) {
-        const existingData = JSON.parse(localStorage.getItem(key) || '[]')
-        const filteredData = existingData.filter((item: any) => !expiredItemIds.includes(item.id))
-
-        if (filteredData.length !== existingData.length) {
-          await saveToLocalStorage(key, filteredData)
+        const raw = localStorage.getItem(key)
+        let arr: any[] = []
+        if (raw) {
+          try {
+            if (raw.startsWith('encrypted:')) {
+              const { SecureKeyManager } = await import("@/lib/key-manager")
+              const { SecureWallet } = await import("@/lib/security")
+              const keyMaterial = await SecureKeyManager.getMasterKey(/* userId? */ "")
+              const decrypted = keyMaterial ? await SecureWallet.decryptData(raw.substring(10), keyMaterial) : '[]'
+              arr = JSON.parse(decrypted)
+            } else {
+              arr = JSON.parse(raw)
+            }
+          } catch { /* ignore and treat as empty */ }
+        }
+        const filtered = arr.filter((it: any) => !expiredItemIds.includes(it.id))
+        if (filtered.length !== arr.length) {
+          await saveToLocalStorage(key, filtered)
         }
       }
     } catch (error) {
@@ -452,18 +518,7 @@ export function RecycleBin({ userId, currentDeviceId, onDataRefresh }: RecycleBi
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  // Recover all recoverable items
-                  const recoverableItems = softDeletedItems.filter(
-                    item => item.recoverable && Date.now() <= item.expiresAt
-                  )
-                  if (recoverableItems.length > 0) {
-                    toast({
-                      title: "Bulk Recovery",
-                      description: `Recovering ${recoverableItems.length} items...`,
-                    })
-                  }
-                }}
+                onClick={handleRecoverAll}
                 className="text-xs"
               >
                 <RotateCcw className="w-3 h-3 mr-1" />

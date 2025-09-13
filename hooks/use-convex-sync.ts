@@ -50,17 +50,15 @@ export function useConvexSync() {
   }, [])
 
   // Auto-enable sync when user signs in (DEFAULT BEHAVIOR)
+  // Only auto-enable if user hasn't manually disabled sync
   useEffect(() => {
-    if (isAuthenticated && !syncState.isEnabled && !syncState.isSyncing) {
-      console.log('[useConvexSync] Auto-enabling sync for authenticated user (default behavior)')
+    const manuallyDisabled = localStorage.getItem("sync_manually_disabled") === "true"
+    if (isAuthenticated && !syncState.isEnabled && !syncState.isSyncing && !manuallyDisabled) {
       enableSync() // Always enable sync by default for authenticated users
     }
   }, [isAuthenticated, syncState.isEnabled, syncState.isSyncing])
 
-  // Debug logging
-  useEffect(() => {
-    console.log('[useConvexSync] Auth state:', { user, isAuthenticated, authLoading })
-  }, [user, isAuthenticated, authLoading])
+
 
   const storeWalletDataMutation = useMutation(api.walletData.storeWalletData)
   const getLatestWalletData = useQuery(
@@ -170,7 +168,6 @@ export function useConvexSync() {
   // Auto-sync from Convex when component mounts and sync is enabled
   useEffect(() => {
     if (isAuthenticated && syncState.isEnabled && !syncState.isSyncing && getLatestWalletData) {
-      console.log('[useConvexSync] Auto-syncing from Convex on mount')
       // Only sync from Convex if we have data there and it's newer than our last sync
       const lastSyncTime = localStorage.getItem("convex_last_sync_time")
       const convexDataTime = getLatestWalletData.lastModified
@@ -631,7 +628,6 @@ export function useConvexSync() {
       merged.userProfile = {
         ...localData.userProfile,
         ...remoteData.userProfile,
-        // Keep the newer lastModified
         lastModified: Math.max(
           localData.userProfile?.lastModified || 0,
           remoteData.userProfile.lastModified || 0
@@ -646,26 +642,21 @@ export function useConvexSync() {
   // Sync data from Convex with smart conflict resolution
   const syncFromConvex = async (password?: string) => {
     if (!isAuthenticated || !user) {
-      console.log('[syncFromConvex] Skipping - not authenticated')
       return { success: false, error: "User not authenticated" }
     }
 
     // If sync is not enabled, try to enable it first
     if (!syncState.isEnabled) {
-      console.log('[syncFromConvex] Sync not enabled, attempting to enable...')
       const enableResult = await enableSync()
       if (!enableResult.success) {
-        console.log('[syncFromConvex] Failed to enable sync:', enableResult.error)
         return { success: false, error: "Failed to enable sync" }
       }
-      console.log('[syncFromConvex] Sync enabled successfully')
     }
 
     // Use provided password or generate one from user ID for consistency
     const syncPassword = password || `convex_sync_${user.id}_${user.email}`
 
     try {
-      console.log('[syncFromConvex] Starting download...')
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
 
       // Try to get latest data from Convex - use device-agnostic approach if device-specific fails
@@ -673,22 +664,16 @@ export function useConvexSync() {
 
       // If no device-specific data, try user-wide query
       if (!latestData && getAllUserData) {
-        console.log('[syncFromConvex] No device-specific data, trying user-wide query...')
         latestData = getAllUserData
       }
 
       if (!latestData) {
-        console.log('[syncFromConvex] No data in Convex yet - this is normal for first sync')
         setSyncState(prev => ({ ...prev, isSyncing: false }))
         return { success: true, message: "No remote data to sync" }
       }
 
-      console.log('[syncFromConvex] Found remote data, decrypting...')
-
       // Decrypt data
       const remoteData = await decryptWalletData(latestData.encryptedData, syncPassword)
-
-      console.log("Decrypted Convex data:", remoteData)
 
       // Prepare local data for comparison
       const localData = {
@@ -842,23 +827,15 @@ export function useConvexSync() {
   // SMART SYNC - PREVENTS DATA LOSS WITH INTELLIGENT MERGING
   useEffect(() => {
     if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing || syncState.isPaused) {
-      console.log('[SYNC] Skipping - not enabled/authenticated/syncing/paused')
       return
     }
 
-    console.log('[SYNC] 🚀 Data change detected, starting smart sync...')
-
     const performSmartSync = async () => {
       try {
-        console.log('[SYNC] Starting smart sync cycle...')
-
         // Step 1: UPLOAD FIRST - Always upload current local data
-        console.log('[SYNC] 📤 Step 1: Uploading current data to Convex...')
         const uploadResult = await syncToConvex()
-        if (uploadResult.success) {
-          console.log('[SYNC] ✅ Upload successful - local data saved to cloud')
-        } else {
-          console.error('[SYNC] ❌ Upload failed:', uploadResult.error)
+        if (!uploadResult.success) {
+          console.error('Upload failed:', uploadResult.error)
           return // Don't download if upload failed
         }
 
@@ -866,34 +843,21 @@ export function useConvexSync() {
         await new Promise(resolve => setTimeout(resolve, 500))
 
         // Step 3: DOWNLOAD WITH SMART CHECKS
-        console.log('[SYNC] 📥 Step 2: Checking for remote updates...')
-
         // Only download if remote data is actually newer
         if (getLatestWalletData) {
           const lastSyncTime = localStorage.getItem("convex_last_sync_time")
           const remoteTime = getLatestWalletData.lastModified
 
           if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
-            console.log('[SYNC] 📡 Remote data is newer, downloading...')
             const downloadResult = await syncFromConvex()
-            if (downloadResult.success) {
-              console.log('[SYNC] ✅ Download successful - data merged intelligently')
-            } else if (downloadResult.message) {
-              console.log('[SYNC] ℹ️', downloadResult.message)
-            } else {
-              console.error('[SYNC] ❌ Download failed:', downloadResult.error)
+            if (!downloadResult.success && !downloadResult.message) {
+              console.error('Download failed:', downloadResult.error)
             }
-          } else {
-            console.log('[SYNC] ✅ Local data is up to date - no download needed')
           }
-        } else {
-          console.log('[SYNC] No remote data available yet')
         }
 
-        console.log('[SYNC] 🎉 Smart sync cycle completed successfully!')
-
       } catch (error) {
-        console.error("[SYNC] 💥 Critical sync error:", error)
+        console.error("Critical sync error:", error)
         setSyncState(prev => ({
           ...prev,
           error: error instanceof Error ? error.message : "Critical sync error"
@@ -933,7 +897,6 @@ export function useConvexSync() {
     const monitoringInterval = setInterval(async () => {
       try {
         if (syncState.isSyncing) {
-          console.log('[SYNC] Skipping monitor - sync in progress')
           return
         }
 
@@ -943,23 +906,15 @@ export function useConvexSync() {
           const remoteTime = getLatestWalletData.lastModified
 
           if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
-            console.log('[SYNC] 📡 Remote data is newer, downloading...')
             await syncFromConvex()
-          } else {
-            console.log('[SYNC] ✅ Local data is up to date')
           }
-        } else {
-          console.log('[SYNC] No remote data available yet')
         }
       } catch (error) {
-        console.error("[SYNC] Monitoring error:", error)
+        console.error("Monitoring error:", error)
       }
     }, 10000) // Check every 10 seconds
 
-    return () => {
-      console.log('[SYNC] 🛑 Stopping continuous monitoring')
-      clearInterval(monitoringInterval)
-    }
+    return () => clearInterval(monitoringInterval)
   }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing, syncState.isPaused])
 
   // Pause auto sync
@@ -1012,6 +967,20 @@ export function useConvexSync() {
     setSyncState(prev => ({ ...prev, isPaused }))
   }, [])
 
+  // Refresh sync state from localStorage
+  const refreshSyncState = () => {
+    const isEnabled = localStorage.getItem("convex_sync_enabled") === "true"
+    const isPaused = localStorage.getItem("convex_sync_paused") === "true"
+    const lastSyncTime = localStorage.getItem("convex_last_sync_time")
+
+    setSyncState(prev => ({
+      ...prev,
+      isEnabled,
+      isPaused,
+      lastSyncTime: lastSyncTime ? parseInt(lastSyncTime) : null,
+    }))
+  }
+
   return {
     ...syncState,
     enableSync,
@@ -1020,6 +989,7 @@ export function useConvexSync() {
     resumeSync,
     syncToConvex,
     syncFromConvex,
+    refreshSyncState,
     user,
     isAuthenticated,
   }
