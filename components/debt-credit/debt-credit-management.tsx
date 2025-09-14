@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -10,10 +10,64 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Loader2 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+
+// Security and validation constants
+const SECURITY_CONSTANTS = {
+  MAX_ACCOUNT_NAME_LENGTH: 100,
+  MAX_DESCRIPTION_LENGTH: 500,
+  MAX_AMOUNT: 999999999.99,
+  MIN_AMOUNT: 0.01,
+  MAX_INTEREST_RATE: 100,
+  MIN_INTEREST_RATE: 0,
+  MAX_ARRAY_SIZE: 1000,
+} as const
+
+// Input validation helpers
+const validateAccountName = (name: string): boolean => {
+  return typeof name === 'string' &&
+         name.length > 0 &&
+         name.length <= SECURITY_CONSTANTS.MAX_ACCOUNT_NAME_LENGTH &&
+         !/<script/i.test(name) // Basic XSS prevention
+}
+
+const validateAmount = (amount: number | string): boolean => {
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_AMOUNT &&
+         num <= SECURITY_CONSTANTS.MAX_AMOUNT
+}
+
+const validateInterestRate = (rate: number | string): boolean => {
+  const num = typeof rate === 'string' ? parseFloat(rate) : rate
+  return !isNaN(num) &&
+         isFinite(num) &&
+         num >= SECURITY_CONSTANTS.MIN_INTEREST_RATE &&
+         num <= SECURITY_CONSTANTS.MAX_INTEREST_RATE
+}
+
+const sanitizeString = (str: string): string => {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[<>'"&]/g, '').trim().substring(0, SECURITY_CONSTANTS.MAX_DESCRIPTION_LENGTH)
+}
+
+const validateArraySize = (arr: any[]): boolean => {
+  return Array.isArray(arr) && arr.length <= SECURITY_CONSTANTS.MAX_ARRAY_SIZE
+}
+
+// Safe calculation helpers with boundary checks
+const safeDivision = (numerator: number, denominator: number, fallback: number = 0): number => {
+  return denominator !== 0 && isFinite(denominator) ? numerator / denominator : fallback
+}
+
+const safeParseFloat = (value: any, fallback: number = 0): number => {
+  const parsed = parseFloat(value)
+  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed
+}
 
 interface DebtCreditManagementProps {
   userProfile: UserProfile
@@ -23,6 +77,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   const wallet = useWalletData()
   const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
+
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -42,8 +100,17 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   const [creditDetailsDialog, setCreditDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
   const [summaryExpanded, setSummaryExpanded] = useState(false)
   const [insightsExpanded, setInsightsExpanded] = useState(false)
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
 
-  // Form states
+  const toggleExpanded = useCallback((accountId: string) => {
+    setExpandedAccounts(prev => {
+      const newExpanded = new Set(prev)
+      newExpanded.has(accountId) ? newExpanded.delete(accountId) : newExpanded.add(accountId)
+      return newExpanded
+    })
+  }, [])
+
+  // Form states with validation
   const [debtForm, setDebtForm] = useState({
     name: "",
     balance: "",
@@ -64,6 +131,51 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     minimumPayment: "",
     dueDate: "",
   })
+
+  // Form validation helpers
+  const validateDebtForm = useCallback(() => {
+    if (!validateAccountName(debtForm.name)) {
+      setError("Invalid account name")
+      return false
+    }
+    if (!validateAmount(debtForm.balance)) {
+      setError("Invalid balance amount")
+      return false
+    }
+    if (!validateInterestRate(debtForm.interestRate)) {
+      setError("Invalid interest rate")
+      return false
+    }
+    if (debtForm.minimumPayment && !validateAmount(debtForm.minimumPayment)) {
+      setError("Invalid minimum payment")
+      return false
+    }
+    return true
+  }, [debtForm])
+
+  const validateCreditForm = useCallback(() => {
+    if (!validateAccountName(creditForm.name)) {
+      setError("Invalid account name")
+      return false
+    }
+    if (!validateAmount(creditForm.balance)) {
+      setError("Invalid balance amount")
+      return false
+    }
+    if (!validateAmount(creditForm.creditLimit)) {
+      setError("Invalid credit limit")
+      return false
+    }
+    if (!validateInterestRate(creditForm.interestRate)) {
+      setError("Invalid interest rate")
+      return false
+    }
+    if (creditForm.minimumPayment && !validateAmount(creditForm.minimumPayment)) {
+      setError("Invalid minimum payment")
+      return false
+    }
+    return true
+  }, [creditForm])
 
   const handleAddDebt = () => {
     if (!debtForm.name || !debtForm.balance || !debtForm.interestRate) return
@@ -276,18 +388,22 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-xl font-bold flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+      {/* Enhanced Header with Theme Colors */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20">
             <CreditCard className="w-5 h-5 text-primary" />
           </div>
-          Debt & Credit Management
-          <Badge variant="secondary" className="ml-2">
-            {debtAccounts.length + creditAccounts.length} accounts
-          </Badge>
-        </h3>
-        <Button onClick={() => setShowAddDialog(true)} size="lg" className="flex items-center gap-2 w-full sm:w-auto">
-          <Plus className="w-4 h-4" />
+          <div>
+            <h3 className="text-xl font-bold text-foreground">Debt & Credit Management</h3>
+            <p className="text-sm text-muted-foreground">{debtAccounts.length + creditAccounts.length} accounts</p>
+          </div>
+        </div>
+        <Button
+          onClick={() => setShowAddDialog(true)}
+          className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-200"
+        >
+          <Plus className="w-4 h-4 mr-2" />
           Add Account
         </Button>
       </div>
@@ -303,11 +419,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-muted-foreground font-medium">Total Debt</p>
                 <p className="text-lg font-bold text-destructive truncate">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
-                {totalAccruedInterest > 0 && (
-                  <p className="text-xs text-destructive truncate">
-                    +{formatCurrency(totalAccruedInterest, userProfile.currency, userProfile.customCurrency)} interest
-                  </p>
-                )}
               </div>
             </div>
           </CardContent>
@@ -354,13 +465,14 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                   </Button>
                 </div>
               ) : (
-                <div className={`grid gap-4 ${debtAccounts.length === 1 ? 'grid-cols-1' : debtAccounts.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                <div className="grid gap-4">
                   {debtAccounts.map((debt) => {
-                    // Calculate debt reduction progress (assuming we track original balance)
-                    const originalBalance = debt.balance + (debtCreditTransactions
+                    // Calculate debt reduction progress
+                    const totalPaid = debtCreditTransactions
                       .filter((t: any) => t.accountId === debt.id && t.type === 'payment')
-                      .reduce((sum: number, t: any) => sum + t.amount, 0) || 0)
-                    const progress = originalBalance > 0 ? ((originalBalance - debt.balance) / originalBalance) * 100 : 0
+                      .reduce((sum: number, t: any) => sum + t.amount, 0) || 0
+                    const originalBalance = debt.balance + totalPaid
+                    const progress = originalBalance > 0 ? (totalPaid / originalBalance) * 100 : 0
 
                     const timeElapsed = getTimeSinceCreation(debt.createdAt || new Date().toISOString())
                     const accruedInterest = calculateInterest(
@@ -382,127 +494,177 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       (debt as any).interestType || 'simple'
                     )
 
+                    const isExpanded = expandedAccounts.has(debt.id)
+                    const recentTransactions = debtCreditTransactions
+                      .filter((t: any) => t.accountId === debt.id)
+                      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .slice(0, 3)
+
                     return (
-                      <Card key={debt.id} className="border-destructive/20 hover:border-destructive/30 transition-colors">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 bg-destructive/10 rounded-full flex items-center justify-center">
-                                <TrendingDown className="w-4 h-4 text-destructive" />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-semibold text-sm truncate">{debt.name}</h4>
-                                <p className="text-xs text-muted-foreground">Debt Account</p>
+                      <Card key={debt.id} className="transition border">
+                        <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(debt.id)}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <CollapsibleTrigger asChild>
+                                <div className="flex items-center gap-2 cursor-pointer flex-1">
+                                  <TrendingDown className="w-5 h-5 text-primary" />
+                                  <CardTitle className="text-lg">{debt.name}</CardTitle>
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                              </CollapsibleTrigger>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="destructive" className="flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Debt
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteDebtAccount(debt.id)}
+                                  className="text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
-                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                                title="View Details"
-                              >
-                                <CreditCard className="w-3 h-3" />
-                              </Button>
-                              {accruedInterest > 0 && (
+
+                            <div className="space-y-2 mt-3">
+                              <div className="flex justify-between text-sm">
+                                <span className="flex items-center gap-1">
+                                  <span className="font-medium">{getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}</span>
+                                  Balance: {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
+                                </span>
+                                <span>Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</span>
+                              </div>
+                              <Progress value={progress} className="h-2 rounded-full" />
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>{progress.toFixed(1)}% paid off</span>
+                                <span>
+                                  {totalPaid > 0
+                                    ? `${formatCurrency(totalPaid, userProfile.currency, userProfile.customCurrency)} paid`
+                                    : 'No payments yet'}
+                                </span>
+                              </div>
+                            </div>
+                          </CardHeader>
+
+                          <CollapsibleContent>
+                            <CardContent className="space-y-4 pt-0">
+                              {/* Quick Actions */}
+                              <div className="flex items-center gap-2">
                                 <Button
                                   size="sm"
-                                  variant="ghost"
-                                  onClick={() => applyInterestToDebt(debt.id)}
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-orange-600"
-                                  title="Apply Interest"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setPaymentDialog({
+                                      open: true,
+                                      accountId: debt.id,
+                                      accountName: debt.name,
+                                      accountType: "debt",
+                                    })
+                                  }
+                                  disabled={balance <= 0}
+                                  className="flex-1"
                                 >
-                                  <TrendingDown className="w-3 h-3" />
+                                  <Minus className="w-3 h-3 mr-1" />
+                                  Make Payment
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
+                                  className="flex-1"
+                                >
+                                  📊 History ({recentTransactions.length})
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => applyInterestToDebt(debt.id)}
+                                  disabled={accruedInterest <= 0}
+                                  className="flex-1"
+                                >
+                                  💰 Interest
+                                </Button>
+                              </div>
+
+                              {/* Recent Transactions */}
+                              {recentTransactions.length > 0 && (
+                                <div className="space-y-2">
+                                  <h5 className="font-medium text-sm flex items-center gap-2">
+                                    📊 Recent Transactions
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
+                                      className="text-xs h-6 px-2"
+                                    >
+                                      View All
+                                    </Button>
+                                  </h5>
+                                  <div className="space-y-1">
+                                    {recentTransactions.map((tx: any) => (
+                                      <div key={tx.id} className="flex justify-between items-center p-2 bg-muted/30 rounded text-sm">
+                                        <div>
+                                          <p className="font-medium">
+                                            {tx.type === 'payment' ? '💰 Payment' : tx.type === 'charge' ? '➕ Charge' : '📝 Other'}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {new Date(tx.date).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className={`font-semibold ${tx.type === 'payment' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {tx.type === 'payment' ? '-' : '+'}{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            After: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => deleteDebtAccount(debt.id)}
-                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                title="Delete Account"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
 
-                          <div className="mb-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="destructive" className="text-xs px-2 py-1">
-                                {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
-                              </Badge>
-                              {accruedInterest > 0 && (
-                                <Badge variant="secondary" className="text-xs px-2 py-1 bg-chart-5/10 text-chart-5 border-chart-5/20">
-                                  +{formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)} interest
-                                </Badge>
+                              {/* Payoff Projection */}
+                              {payoffProjection.months > 0 && (
+                                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-3">
+                                  <h5 className="font-medium text-sm mb-2 text-blue-800 dark:text-blue-200">🎯 Payoff Projection</h5>
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                      <p className="text-muted-foreground">Time to Pay Off</p>
+                                      <p className="font-bold text-blue-800 dark:text-blue-200">
+                                        {payoffProjection.months} months
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        ({Math.floor(payoffProjection.months / 12)}y {payoffProjection.months % 12}m)
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Total Interest</p>
+                                      <p className="font-bold text-blue-800 dark:text-blue-200">
+                                        {formatCurrency(payoffProjection.totalInterest, userProfile.currency, userProfile.customCurrency)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
                               )}
-                            </div>
-                            {accruedInterest > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                Total: {formatCurrency(totalWithInterest, userProfile.currency, userProfile.customCurrency)}
-                              </div>
-                            )}
-                          </div>
 
-                          {progress > 0 && (
-                            <div className="mb-3">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-muted-foreground">Progress</span>
-                                <span className="font-medium text-green-600">{progress.toFixed(1)}%</span>
-                              </div>
-                              <Progress value={progress} className="h-1.5" />
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                            <div className="bg-muted/50 rounded p-2">
-                              <p className="text-muted-foreground text-xs">Rate</p>
-                              <p className="font-semibold">{debt.interestRate}%</p>
-                            </div>
-                            <div className="bg-muted/50 rounded p-2">
-                              <p className="text-muted-foreground text-xs">Min Pay</p>
-                              <p className="font-semibold">{formatCurrency(debt.minimumPayment, userProfile.currency, userProfile.customCurrency)}</p>
-                            </div>
-                          </div>
-
-                          {payoffProjection.months > 0 && (
-                            <div className="text-xs text-muted-foreground mb-3 p-2 bg-chart-1/10 border border-chart-1/20 rounded">
-                              <p className="font-medium text-chart-1">Payoff Projection</p>
-                              <p>{payoffProjection.months} months ({Math.floor(payoffProjection.months / 12)}y {payoffProjection.months % 12}m)</p>
-                              <p>Total interest: {formatCurrency(payoffProjection.totalInterest, userProfile.currency, userProfile.customCurrency)}</p>
-                              <p>Total paid: {formatCurrency(payoffProjection.totalPaid, userProfile.currency, userProfile.customCurrency)}</p>
-                            </div>
-                          )}
-
-                          <div className="space-y-2">
-                            {/* Payment Reminder */}
-                            {(debt as any).dueDate && (
-                              <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/20 p-2 rounded">
-                                <p className="font-medium">Due: {(debt as any).dueDate}</p>
-                                <p>Min Payment: {formatCurrency((debt as any).minimumPayment || calculateMinimumPayment(debt.balance, (debt as any).interestRate || 0), userProfile.currency, userProfile.customCurrency)}</p>
-                              </div>
-                            )}
-
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                setPaymentDialog({
-                                  open: true,
-                                  accountId: debt.id,
-                                  accountName: debt.name,
-                                  accountType: "debt",
-                                })
-                              }
-                              disabled={balance <= 0}
-                              className="w-full bg-destructive hover:bg-destructive/90 text-xs h-8"
-                            >
-                              <Minus className="w-3 h-3 mr-1" />
-                              Make Payment
-                            </Button>
-                          </div>
-                        </CardContent>
+                              {/* Account Details */}
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                    <span>Rate: {(debt as any).interestRate || 0}%</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                    <span>Min Pay: {formatCurrency((debt as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
+                                  </div>
+                                </div>
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Collapsible>
                       </Card>
                     )
                   })}
@@ -510,7 +672,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               )}
             </TabsContent>
             
-            <TabsContent value="credit" className="space-y-4 mt-2">
+            <TabsContent value="credit" className="space-y-4">
               {creditAccounts.length === 0 ? (
                 <div className="text-center py-8 px-4">
                   <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -524,98 +686,195 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                   </Button>
                 </div>
               ) : (
-                <div className={`grid gap-4 ${creditAccounts.length === 1 ? 'grid-cols-1' : creditAccounts.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                <div className="grid gap-4">
                   {creditAccounts.map((credit) => {
                     const utilization = (credit.balance / credit.creditLimit) * 100
                     const available = credit.creditLimit - credit.balance
 
+                    const isExpanded = expandedAccounts.has(credit.id)
+                    const recentTransactions = debtCreditTransactions
+                      .filter((t: any) => t.accountId === credit.id)
+                      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .slice(0, 3)
+                  
+
                     return (
-                      <Card key={credit.id} className="border-primary/20 hover:border-primary/30 transition-colors">
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                                <CreditCard className="w-4 h-4 text-primary" />
+                      <Card key={credit.id} className="transition border">
+                        <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(credit.id)}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <CollapsibleTrigger asChild>
+                                <div className="flex items-center gap-2 cursor-pointer flex-1">
+                                  <CreditCard className="w-5 h-5 text-primary" />
+                                  <CardTitle className="text-lg">{credit.name}</CardTitle>
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                              </CollapsibleTrigger>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant={utilization > 70 ? "destructive" : utilization > 30 ? "secondary" : "default"}
+                                  className="flex items-center gap-1"
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  Credit
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCreditAccount(credit.id)}
+                                  className="text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </div>
-                              <div className="min-w-0">
-                                <h4 className="font-semibold text-sm truncate">{credit.name}</h4>
-                                <p className="text-xs text-muted-foreground">Credit Account</p>
+                            </div>
+
+                            <div className="space-y-2 mt-3">
+                              <div className="flex justify-between text-sm">
+                                <span className="flex items-center gap-1">
+                                  <span className="font-medium">{getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}</span>
+                                  Balance: {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)}
+                                </span>
+                                <span>Available: {formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</span>
+                              </div>
+                              <Progress value={utilization} className="h-2 rounded-full" />
+                              <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>{utilization.toFixed(1)}% utilized</span>
+                                <span>Limit: {formatCurrency(credit.creditLimit, userProfile.currency, userProfile.customCurrency)}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
-                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                                title="View Transactions"
-                              >
-                                <CreditCard className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => deleteCreditAccount(credit.id)}
-                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                title="Delete Account"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
+                          </CardHeader>
 
-                          <div className="mb-3">
-                            <Badge
-                              variant={utilization > 70 ? "destructive" : utilization > 30 ? "secondary" : "default"}
-                              className="text-xs px-2 py-1"
-                            >
-                              {utilization.toFixed(1)}% used
-                            </Badge>
-                          </div>
+                          <CollapsibleContent>
+                            <CardContent className="space-y-4 pt-0">
+                              {/* Quick Actions */}
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setPaymentDialog({
+                                      open: true,
+                                      accountId: credit.id,
+                                      accountName: credit.name,
+                                      accountType: "credit",
+                                    })
+                                  }
+                                  disabled={balance <= 0 || !hasMakeCreditPayment}
+                                  className="flex-1"
+                                >
+                                  <Minus className="w-3 h-3 mr-1" />
+                                  Make Payment
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
+                                  className="flex-1"
+                                >
+                                  📊 History ({recentTransactions.length})
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
+                                  className="flex-1"
+                                >
+                                  💳 Details
+                                </Button>
+                              </div>
 
-                          <div className="mb-3">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-muted-foreground">Utilization</span>
-                              <span className="font-medium">
-                                {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)} / {formatCurrency(credit.creditLimit, userProfile.currency, userProfile.customCurrency)}
-                              </span>
-                            </div>
-                            <Progress value={utilization} className="h-1.5" />
-                          </div>
+                              {/* Recent Transactions */}
+                              {recentTransactions.length > 0 && (
+                                <div className="space-y-2">
+                                  <h5 className="font-medium text-sm flex items-center gap-2">
+                                    📊 Recent Transactions
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
+                                      className="text-xs h-6 px-2"
+                                    >
+                                      View All
+                                    </Button>
+                                  </h5>
+                                  <div className="space-y-1">
+                                    {recentTransactions.map((tx: any) => (
+                                      <div key={tx.id} className="flex justify-between items-center p-2 bg-muted/30 rounded text-sm">
+                                        <div>
+                                          <p className="font-medium">
+                                            {tx.type === 'payment' ? '💰 Payment' : tx.type === 'charge' ? '💳 Charge' : '📝 Other'}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {new Date(tx.date).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className={`font-semibold ${tx.type === 'payment' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {tx.type === 'payment' ? '-' : '+'}{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            After: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
-                          <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                            <div className="bg-muted/50 rounded p-2">
-                              <p className="text-muted-foreground text-xs">Available</p>
-                              <p className="font-semibold text-chart-3">{formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</p>
-                            </div>
-                            <div className="bg-muted/50 rounded p-2">
-                              <p className="text-muted-foreground text-xs">Monthly</p>
-                              <p className="font-semibold">{formatCurrency(credit.minimumPayment, userProfile.currency, userProfile.customCurrency)}</p>
-                            </div>
-                          </div>
+                              {/* Credit Health Status */}
+                              <div className={`p-3 rounded-lg border ${utilization <= 10 ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800/30' :
+                                utilization <= 30 ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800/30' :
+                                utilization <= 50 ? 'bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/20 dark:to-amber-950/20 border-yellow-200 dark:border-yellow-800/30' :
+                                utilization <= 70 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800/30' :
+                                'bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/20 dark:to-rose-950/20 border-red-200 dark:border-red-800/30'}`}>
+                                <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+                                  💳 Credit Health Status
+                                  <Badge variant="outline" className="text-xs">
+                                    {utilization <= 10 ? 'Excellent' :
+                                     utilization <= 30 ? 'Good' :
+                                     utilization <= 50 ? 'Fair' :
+                                     utilization <= 70 ? 'Poor' : 'Critical'}
+                                  </Badge>
+                                </h5>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground">Utilization</p>
+                                    <p className="font-bold">{utilization.toFixed(1)}%</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Available Credit</p>
+                                    <p className="font-bold text-green-600">{formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</p>
+                                  </div>
+                                </div>
+                                <div className="mt-3 p-3 bg-white/60 dark:bg-black/20 rounded-lg border">
+                                  <p className="font-medium text-sm mb-1">💡 Recommendation:</p>
+                                  <p className="text-sm">
+                                    {utilization <= 10 ? '🎉 Excellent! Keep your utilization low for the best credit scores.' :
+                                     utilization <= 30 ? '👍 Good job! Your utilization is in the ideal range.' :
+                                     utilization <= 50 ? '⚠️ Consider paying down your balance to improve your credit health.' :
+                                     utilization <= 70 ? '🚨 High utilization! Pay down immediately to avoid credit damage.' :
+                                     '🚨 Critical! Reduce utilization urgently to protect your credit score.'}
+                                  </p>
+                                </div>
+                              </div>
 
-                          <div className="text-xs text-muted-foreground mb-3">
-                            <span>Yearly Payment: </span>
-                            <span className="font-medium text-chart-3">{formatCurrency(credit.minimumPayment * 12, userProfile.currency, userProfile.customCurrency)}</span>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setPaymentDialog({
-                                open: true,
-                                accountId: credit.id,
-                                accountName: credit.name,
-                                accountType: "credit",
-                              })
-                            }
-                            disabled={balance <= 0 || !hasMakeCreditPayment}
-                            className="w-full bg-primary hover:bg-primary/90 text-xs h-8"
-                          >
-                            <Minus className="w-3 h-3 mr-1" />
-                            Make Payment
-                          </Button>
-                        </CardContent>
+                              {/* Account Details */}
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                  <span>Rate: {credit.interestRate}%</span>
+                                  <span>Rate: {(credit as any).interestRate || 0}%</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                  <span>Min Pay: {formatCurrency((credit as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Collapsible>
                       </Card>
                     )
                   })}

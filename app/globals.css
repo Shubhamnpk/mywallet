@@ -369,3 +369,42 @@ h6 {
 .show-scrollbars::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Compact mode styles */
+.compact-mode {
+  --base-font-size: 14px;
+}
+
+.compact-mode .text-sm {
+  font-size: calc(14px * 0.875);
+}
+
+.compact-mode .text-xs {
+  font-size: calc(14px * 0.75);
+}
+
+.compact-mode .text-lg {
+  font-size: calc(14px * 1.125);
+}
+
+.compact-mode .text-xl {
+  font-size: calc(14px * 1.25);
+}
+
+.compact-mode .text-2xl {
+  font-size: calc(14px * 1.5);
+}
+
+.compact-mode h1,
+.compact-mode h2,
+.compact-mode h3,
+.compact-mode h4,
+.compact-mode h5,
+.compact-mode h6 {
+  font-size: calc(14px * var(--heading-scale, 1.5));
+}
+
+/* Custom background support */
+body {
+  background-color: var(--custom-bg, var(--background));
+}
