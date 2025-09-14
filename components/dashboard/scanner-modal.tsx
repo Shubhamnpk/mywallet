@@ -267,69 +267,69 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   }, [])
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full h-full max-w-none max-h-none overflow-y-auto p-4 sm:p-6 sm:max-w-2xl sm:max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Scan className="w-5 h-5" />
+      <DialogContent className="w-full h-full max-w-none max-h-none overflow-y-auto p-3 sm:p-4 md:p-6 sm:max-w-2xl sm:max-h-[90vh] md:max-w-4xl">
+        <DialogHeader className="pb-2 sm:pb-4">
+          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Scan className="w-5 h-5 sm:w-6 sm:h-6" />
             Multi-Scanner
           </DialogTitle>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-9 sm:h-10">
-            <TabsTrigger value="receipt" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
-              <Scan className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">Receipt</span>
-              <span className="xs:hidden">Scan</span>
+          <TabsList className="grid w-full grid-cols-3 h-12 sm:h-10 md:h-11">
+            <TabsTrigger value="receipt" className="flex items-center gap-2 text-sm sm:text-sm px-3 sm:px-3 py-2 sm:py-1">
+              <Scan className="w-4 h-4 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Receipt</span>
+              <span className="sm:hidden">Scan</span>
             </TabsTrigger>
-            <TabsTrigger value="qr" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
-              <QrCode className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">QR Code</span>
-              <span className="xs:hidden">QR</span>
+            <TabsTrigger value="qr" className="flex items-center gap-2 text-sm sm:text-sm px-3 sm:px-3 py-2 sm:py-1">
+              <QrCode className="w-4 h-4 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">QR Code</span>
+              <span className="sm:hidden">QR</span>
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
-              <History className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">History</span>
-              <span className="xs:hidden">Hist</span>
+            <TabsTrigger value="history" className="flex items-center gap-2 text-sm sm:text-sm px-3 sm:px-3 py-2 sm:py-1">
+              <History className="w-4 h-4 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">History</span>
+              <span className="sm:hidden">Hist</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="receipt" className="space-y-6">
-          {/* Image Selection */}
-          {!selectedImage && !isCameraActive && !isInitializingCamera && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">
-                  Receipt Scanner
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <Button
-                    onClick={() => fileInputRef.current?.click()}
-                    variant="outline"
-                    className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
-                  >
-                    <Upload className="w-5 h-5 sm:w-6 sm:h-6" />
-                    <span className="text-xs sm:text-sm">Upload</span>
-                  </Button>
+          <TabsContent value="receipt" className="space-y-4 sm:space-y-6">
+           {/* Image Selection */}
+           {!selectedImage && !isCameraActive && !isInitializingCamera && (
+             <Card className="border-0 sm:border">
+               <CardHeader className="pb-3 sm:pb-6">
+                 <CardTitle className="text-lg sm:text-xl">
+                   Receipt Scanner
+                 </CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                   <Button
+                     onClick={() => fileInputRef.current?.click()}
+                     variant="outline"
+                     className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
+                   >
+                     <Upload className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
+                     <span className="text-sm sm:text-base md:text-sm font-medium">Upload</span>
+                   </Button>
 
-                  <Button
-                    onClick={onStartCamera}
-                    variant="outline"
-                    className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
-                    disabled={isInitializingCamera}
-                  >
-                    {isInitializingCamera ? (
-                      <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
-                    ) : (
-                      <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
-                    )}
-                    <span className="text-xs sm:text-sm">
-                      {isInitializingCamera ? 'Starting...' : 'Take Photo'}
-                    </span>
-                  </Button>
-                </div>
+                   <Button
+                     onClick={onStartCamera}
+                     variant="outline"
+                     className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
+                     disabled={isInitializingCamera}
+                   >
+                     {isInitializingCamera ? (
+                       <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6 animate-spin" />
+                     ) : (
+                       <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
+                     )}
+                     <span className="text-sm sm:text-base md:text-sm font-medium">
+                       {isInitializingCamera ? 'Starting...' : 'Take Photo'}
+                     </span>
+                   </Button>
+                 </div>
 
                 <Input
                   ref={fileInputRef}
@@ -344,22 +344,22 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
           {/* Camera View */}
           {(isCameraActive || isInitializingCamera) && (
-            <Card>
-              <CardHeader>
+            <Card className="border-0 sm:border">
+              <CardHeader className="pb-3 sm:pb-6">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Camera className="w-5 h-5" />
+                  <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                    <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
                     Camera {cameraFacingMode === 'environment' ? 'Back' : 'Front'}
                   </CardTitle>
-                  <div className="flex flex-wrap gap-1 sm:gap-2">
+                  <div className="flex flex-wrap gap-2 sm:gap-2">
                     <Button
                       onClick={onSwitchCamera}
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
-                      className="text-xs sm:text-sm px-2 sm:px-3"
+                      className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                     >
-                      <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <RotateCcw className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                       <span className="hidden sm:inline">Switch Camera</span>
                       <span className="sm:hidden">Switch</span>
                     </Button>
@@ -368,12 +368,12 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
-                      className="text-xs sm:text-sm px-2 sm:px-3"
+                      className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                     >
                       {isFlashlightOn ? (
-                        <FlashlightOff className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <FlashlightOff className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                       ) : (
-                        <Flashlight className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <Flashlight className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                       )}
                       <span className="hidden sm:inline">{isFlashlightOn ? 'Flash Off' : 'Flash On'}</span>
                       <span className="sm:hidden">{isFlashlightOn ? 'Off' : 'On'}</span>
@@ -383,15 +383,15 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={isInitializingCamera}
-                      className="text-xs sm:text-sm px-2 sm:px-3"
+                      className="text-sm px-3 py-2 sm:text-xs sm:px-2"
                     >
-                      <Square className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <Square className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                       Stop
                     </Button>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="relative">
                   <video
                     ref={videoRef}
@@ -399,7 +399,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                     playsInline
                     muted
                     controls={false}
-                    className="w-full h-64 sm:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
+                    className="w-full h-72 sm:h-80 md:h-96 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
                     style={{
                       transform: cameraFacingMode === 'user' ? 'scaleX(-1)' : 'none',
                       backgroundColor: '#000'
@@ -488,14 +488,14 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       </div>
 
                       {/* Camera controls */}
-                      <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2">
+                      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
                         <div className="flex flex-col items-center gap-3">
                           <Button
                             onClick={onCaptureImage}
                             size="lg"
-                            className="rounded-full w-16 h-16 bg-white hover:bg-gray-100 text-black border-4 border-white shadow-lg"
+                            className="rounded-full w-20 h-20 sm:w-16 sm:h-16 bg-white hover:bg-gray-100 text-black border-4 border-white shadow-lg"
                           >
-                            <Camera className="w-6 h-6" />
+                            <Camera className="w-8 h-8 sm:w-6 sm:h-6" />
                           </Button>
                         </div>
                       </div>
@@ -504,12 +504,12 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                 </div>
 
                 {/* Camera tips */}
-                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
-                    <div className="text-sm text-blue-700 dark:text-blue-300">
-                      <strong>Camera Tips:</strong>
-                      <ul className="mt-1 space-y-1 text-xs">
+                <div className="mt-4 p-4 sm:p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="flex items-start gap-3 sm:gap-2">
+                    <AlertCircle className="w-5 h-5 sm:w-4 sm:h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm sm:text-sm text-blue-700 dark:text-blue-300">
+                      <strong className="text-base sm:text-sm">Camera Tips:</strong>
+                      <ul className="mt-2 sm:mt-1 space-y-2 sm:space-y-1 text-sm sm:text-xs">
                         <li>• Ensure good lighting for better text recognition</li>
                         <li>• Hold camera steady and keep receipt flat</li>
                         <li>• Center the receipt in the viewfinder</li>
@@ -582,39 +582,39 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
           {/* Extracted Data Display */}
           {extractedData && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
+            <Card className="border-0 sm:border">
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
                   Extracted Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Amount</Label>
-                    <div className="text-lg font-semibold">
+              <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+                <div className="grid grid-cols-2 gap-4 sm:gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-sm sm:text-sm font-medium">Amount</Label>
+                    <div className="text-xl sm:text-lg font-semibold">
                       ${extractedData.amount || 'Not detected'}
                     </div>
                   </div>
 
-                  <div>
-                    <Label className="text-sm font-medium">Merchant</Label>
-                    <div className="text-lg font-semibold">
+                  <div className="space-y-1">
+                    <Label className="text-sm sm:text-sm font-medium">Merchant</Label>
+                    <div className="text-xl sm:text-lg font-semibold">
                       {extractedData.merchant}
                     </div>
                   </div>
 
-                  <div>
-                    <Label className="text-sm font-medium">Date</Label>
-                    <div className="text-sm text-muted-foreground">
+                  <div className="space-y-1">
+                    <Label className="text-sm sm:text-sm font-medium">Date</Label>
+                    <div className="text-base sm:text-sm text-muted-foreground">
                       {extractedData.date}
                     </div>
                   </div>
 
-                  <div>
-                    <Label className="text-sm font-medium">Category</Label>
-                    <Badge variant="secondary">
+                  <div className="space-y-1">
+                    <Label className="text-sm sm:text-sm font-medium">Category</Label>
+                    <Badge variant="secondary" className="text-sm sm:text-sm px-3 py-1">
                       {determineTransactionDetails(extractedData).category}
                     </Badge>
                   </div>
@@ -650,13 +650,13 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 sm:gap-3 pt-2">
                   <Button
                     onClick={() => {
                       saveReceiptToHistory(extractedData)
                       onConfirmTransaction()
                     }}
-                    className="flex-1"
+                    className="flex-1 h-12 sm:h-10 text-base sm:text-sm"
                     disabled={!extractedData.amount}
                   >
                     Use This Data
@@ -664,6 +664,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                   <Button
                     onClick={onScanAgain}
                     variant="outline"
+                    className="h-12 sm:h-10 px-6 sm:px-4 text-base sm:text-sm"
                   >
                     Scan Again
                   </Button>

@@ -35,6 +35,7 @@ export interface BalanceCardProps {
   emergencyFund: number
   formatCurrency: (amount: number) => string
   getThemeBasedBackground: () => string
+  isMobile?: boolean
 }
 
 export default function BalanceCard({
@@ -47,14 +48,25 @@ export default function BalanceCard({
   timeEquivalentBreakdown,
   emergencyFund,
   formatCurrency,
-  getThemeBasedBackground
+  getThemeBasedBackground,
+  isMobile = false
 }: BalanceCardProps) {
+  const compactClass = isMobile ? "p-4" : "p-6"
+  const headerMargin = isMobile ? "mb-3" : "mb-4"
+  const balanceSize = isMobile ? "text-3xl" : "text-4xl"
+  const timeEquivalentSize = isMobile ? "text-xs" : "text-sm"
+  const timeEquivalentPadding = isMobile ? "px-2 py-1" : "px-3 py-2"
+  const timeEquivalentGap = isMobile ? "gap-1" : "gap-2"
+  const timeEquivalentIconSize = isMobile ? "w-6 h-6" : "w-8 h-8"
+  const timeEquivalentClockSize = isMobile ? "w-3 h-3" : "w-4 h-4"
+  const emergencyMargin = isMobile ? "mt-1" : "mt-2"
+
   return (
     <Card className="relative overflow-hidden border-0 shadow-lg">
       <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
       <div className="absolute inset-0 bg-black/10" />
 
-      <CardContent className="relative p-6 text-white">
+      <CardContent className={`relative ${compactClass} text-white`}>
         {/* Balance Change Animation */}
         {balanceChange && (
           <div className="absolute top-4 right-4 animate-bounce">
@@ -70,7 +82,7 @@ export default function BalanceCard({
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className={`flex items-center justify-between ${headerMargin}`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <Wallet className="w-5 h-5 text-white" />
@@ -104,7 +116,7 @@ export default function BalanceCard({
               aria-live="polite"
               aria-atomic="true"
             >
-              <div className="text-4xl font-bold mb-1 tracking-tight">
+              <div className={`${balanceSize} font-bold mb-1 tracking-tight`}>
                 {isPositive ? "" : "-"}
                 {formatCurrency(absoluteBalance)}
               </div>
@@ -112,13 +124,15 @@ export default function BalanceCard({
           </TimeTooltip>
         ) : (
           <div className="transition-all duration-500">
-            <div className="text-4xl font-bold mb-1 tracking-tight">••••••</div>
+            <div className={`${balanceSize} font-bold mb-1 tracking-tight`}>••••••</div>
           </div>
-        )}        {/* Time Equivalent */}
+        )}
+
+        {/* Time Equivalent */}
         {showBalance && timeEquivalentBreakdown && (
-          <div className="flex items-center gap-2 text-sm bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2 mt-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-              <Clock className="w-4 h-4 text-white" />
+          <div className={`flex items-center ${timeEquivalentGap} ${timeEquivalentSize} bg-white/10 backdrop-blur-sm rounded-lg ${timeEquivalentPadding} mt-3`}>
+            <div className={`${timeEquivalentIconSize} rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg`}>
+              <Clock className={`${timeEquivalentClockSize} text-white`} />
             </div>
             <div className="flex flex-col">
               <span className="font-semibold text-white">
@@ -131,13 +145,6 @@ export default function BalanceCard({
           </div>
         )}
 
-        {/* Emergency Fund */}
-        {showBalance && emergencyFund > 0 && (
-          <div className="flex items-center gap-2 text-sm text-white/80 mt-2">
-            <Sparkles className="w-4 h-4" />
-            <span>Emergency Fund: {formatCurrency(emergencyFund)}</span>
-          </div>
-        )}
       </CardContent>
     </Card>
   )

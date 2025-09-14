@@ -82,11 +82,13 @@ export function FloatingAddButton({
   }, [])
 
   const handleMainAction = useCallback(() => {
-    if (isExpanded) return;
+    if (isExpanded) {
+      setIsExpanded(false);
+      return;
+    }
     vibrateTap();
-    onAddTransaction?.() ?? setIsDialogOpen(true)
+    (onAddTransaction ? onAddTransaction() : setIsDialogOpen(true))
   }, [isExpanded, onAddTransaction, vibrateTap])
-
   const handleActionClick = useCallback(
     (actionId: string) => {
       setIsExpanded(false)
