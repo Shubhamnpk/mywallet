@@ -13,8 +13,7 @@ export default function PWAClientLoader() {
         if (mounted) setComp(() => m.default)
       })
       .catch((err) => {
-        // Keep silent in production, but log in dev
-        if (process.env.NODE_ENV === 'development') console.error('Failed to load PWA client', err)
+        // Keep silent in production
       })
 
     return () => {

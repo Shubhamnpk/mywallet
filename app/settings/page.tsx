@@ -34,8 +34,8 @@ export default function SettingsPage() {
       return
     }
 
-    // Validate session on page load
-    if (!SessionManager.isSessionValid()) {
+    // Validate and extend session on page load
+    if (!SessionManager.validateAndExtendSession()) {
       console.log('[SettingsPage] Session invalid on page load, dispatching expiry event')
       const event = new CustomEvent('wallet-session-expired')
       window.dispatchEvent(event)

@@ -13,7 +13,6 @@ import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
 import { ConvexSync } from "./convex-sync"
-import { RecycleBin } from "./recycle-bin"
 
 // Helper function to get device info
 const getDeviceInfo = () => {
@@ -67,7 +66,6 @@ export function DataSettings() {
         description: "Your selected wallet data has been encrypted and downloaded successfully.",
       })
     } catch (error) {
-      console.error("Backup creation failed:", error)
       toast({
         title: "Backup Failed",
         description: "Failed to create encrypted backup. Please try again.",
@@ -117,7 +115,7 @@ export function DataSettings() {
           return
         }
       } else {
-        console.log("[v0] Detected plain JSON backup")
+        // Detected plain JSON backup
       }
 
       // Store the data (decrypted or plain) for the modal
@@ -369,13 +367,6 @@ export function DataSettings() {
 
       {/* Convex Sync */}
       <ConvexSync />
-
-      {/* Recycle Bin */}
-      <RecycleBin
-        userId={user?.id || ''}
-        currentDeviceId={getDeviceInfo()}
-        onDataRefresh={refreshData}
-      />
       {/* Data Management */}
       <Card className="border-destructive">
         <CardHeader>
@@ -390,7 +381,7 @@ export function DataSettings() {
             <div>
               <p className="font-medium text-destructive">Clear All Data</p>
               <p className="text-sm text-muted-foreground">
-                Permanently delete all transactions, budgets, goals, and settings
+                Permanently delete all data
               </p>
             </div>
             <DeleteDataDialog
@@ -401,14 +392,13 @@ export function DataSettings() {
                 </Button>
               }
               title="Clear All Data"
-              description="This will permanently delete all your wallet data including transactions, budgets, goals, and settings. Your PIN and security data will also be completely removed."
+              description=""
               onConfirm={handleClearAllData}
               type="data"
             />
           </div>
         </CardContent>
       </Card>
-
 
       {/* Backup Modal Component */}
       <BackupModal

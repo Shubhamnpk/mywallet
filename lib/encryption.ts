@@ -316,6 +316,18 @@ export class WalletDataEncryption {
   }
 
   /**
+   * Initialize encryption with existing CryptoKey
+   */
+  static async initializeWithKey(key: CryptoKey): Promise<void> {
+    try {
+      this.encryptionKey = key
+    } catch (error) {
+      console.error('Failed to initialize encryption with key:', error)
+      throw new Error('Failed to initialize data encryption with key')
+    }
+  }
+
+  /**
    * Initialize with stored key
    */
   static async initializeWithStoredKey(): Promise<boolean> {

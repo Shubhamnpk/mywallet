@@ -6,6 +6,8 @@ import dynamic from 'next/dynamic'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useConvexAuth } from '@/hooks/use-convex-auth'
+import { decryptData } from '@/lib/storage'
 
 // Dynamically import the OnboardingFlow component for better performance
 const OnboardingFlow = dynamic(() => import('@/components/onboarding/onboarding-flow'), {
@@ -144,25 +146,71 @@ export default function OnboardingPage() {
   const [isClient, setIsClient] = useState(false)
   const [shouldRedirect, setShouldRedirect] = useState(false)
   const router = useRouter()
+  const { isAuthenticated, user } = useConvexAuth()
 
   // Ensure we're on the client side before rendering
   useEffect(() => {
     setIsClient(true)
   }, [])
 
-  // Check localStorage immediately for redirect conditions
+  // Check localStorage and Convex authentication for redirect conditions
   useEffect(() => {
-    if (isClient) {
-      const userProfile = localStorage.getItem('userProfile')
-      const isFirstTime = localStorage.getItem('isFirstTime')
+    const checkRedirectConditions = async () => {
+      if (isClient) {
+        const userProfile = localStorage.getItem('userProfile')
+        const isFirstTime = localStorage.getItem('isFirstTime')
 
-      // Redirect if userProfile exists OR isFirstTime is 'false'
-      if (userProfile || isFirstTime === 'false') {
-        setShouldRedirect(true)
-        router.push('/')
+        // Only redirect if user has completed onboarding (has profile and isFirstTime is false)
+        // Don't redirect just because they're authenticated with Convex
+        if (userProfile && isFirstTime === 'false') {
+          // Handle encrypted userProfile data for logging
+          let userProfileKeys = null
+          if (userProfile) {
+            try {
+              if (userProfile.startsWith("encrypted:")) {
+                const encryptedData = userProfile.substring(10) // Remove "encrypted:" prefix
+                const decryptedData = await decryptData(encryptedData)
+                userProfileKeys = Object.keys(JSON.parse(decryptedData))
+              } else {
+                userProfileKeys = Object.keys(JSON.parse(userProfile))
+              }
+            } catch (error) {
+              console.warn('[Onboarding] Failed to parse userProfile for logging:', error)
+              userProfileKeys = 'encrypted_data_unavailable'
+            }
+          }
+
+          console.log('[Onboarding] User has completed onboarding, redirecting to home:', {
+            hasUserProfile: !!userProfile,
+            isFirstTimeFalse: isFirstTime === 'false',
+            isConvexAuthenticated: isAuthenticated,
+            userProfileKeys,
+            timestamp: new Date().toISOString()
+          })
+          setShouldRedirect(true)
+          router.push('/')
+        } else if (isAuthenticated && !userProfile) {
+          // Convex user is authenticated but hasn't completed onboarding yet
+          // Let them stay on onboarding to complete the process
+          console.log('[Onboarding] Convex user authenticated but no profile - staying on onboarding', {
+            isAuthenticated,
+            hasUserProfile: !!userProfile,
+            isFirstTime,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.log('[Onboarding] No redirect conditions met', {
+            hasUserProfile: !!userProfile,
+            isFirstTime,
+            isAuthenticated,
+            timestamp: new Date().toISOString()
+          })
+        }
       }
     }
-  }, [isClient, router])
+
+    checkRedirectConditions()
+  }, [isClient, router, isAuthenticated])
 
   // Show loading state during hydration
   if (!isClient) {

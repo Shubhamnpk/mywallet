@@ -255,15 +255,16 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
 
   const downloadFromGoogleDrive = async (): Promise<string | null> => {
     if (!googleToken) return null
-    // This is simplified; in reality, you'd need to find the file ID first
-    const response = await fetch('https://www.googleapis.com/drive/v3/files?q=name=\'mywallet-backup.json\'', {
+    // Search for files with proper app-specific filtering
+    const query = encodeURIComponent("name='mywallet-backup.json' and trashed=false")
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime desc&pageSize=1`, {
       headers: {
         Authorization: `Bearer ${googleToken}`
       }
     })
     const result = await response.json()
-    if (result.files.length === 0) return null
-    const fileId = result.files[0].id
+    if (!result.files || result.files.length === 0) return null
+    const fileId = result.files[0].id   
     const downloadResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {
         Authorization: `Bearer ${googleToken}`
@@ -523,6 +524,8 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
 
   // Track local changes and trigger auto-sync
   useEffect(() => {
+    let syncTimer: NodeJS.Timeout | null = null
+
     const handleDataChange = () => {
       const now = new Date().toISOString()
       localStorage.setItem('wallet_last_modified', now)
@@ -531,14 +534,12 @@ export function CloudSync({ onSyncComplete }: CloudSyncProps) {
       if (isOnline && isAutoSyncEnabled && isPasswordVerified && (dropboxConnected || googleDriveConnected)) {
         console.log('📝 Local changes detected, auto-syncing...')
         // Debounce the sync to avoid too many calls
-        const syncTimer = setTimeout(() => {
+        if (syncTimer) clearTimeout(syncTimer)
+        syncTimer = setTimeout(() => {
           syncData(true)
         }, 1000) // Wait 1 second after change before syncing
-
-        return () => clearTimeout(syncTimer)
       }
     }
-
     // Listen for data changes - you can enhance this by listening to specific context changes
     const interval = setInterval(() => {
       // Check if data has changed (simple implementation)

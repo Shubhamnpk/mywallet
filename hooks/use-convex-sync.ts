@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useConvexAuth } from "./use-convex-auth"
@@ -10,28 +10,17 @@ import { toast } from "@/hooks/use-toast"
 
 interface SyncState {
   isEnabled: boolean
-  isPaused: boolean
   isSyncing: boolean
   lastSyncTime: number | null
   error: string | null
 }
 
-interface DeviceInfo {
-  deviceId: string
-  deviceName: string
-  lastSyncAt: number
-  syncVersion: string
-  isActive: boolean
-  isCurrentDevice: boolean
-}
-
 export function useConvexSync() {
-  const { user, isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const { user, isAuthenticated } = useConvexAuth()
   const { userProfile, transactions, budgets, goals, debtAccounts, creditAccounts, debtCreditTransactions, categories, emergencyFund, importData } = useWalletData()
 
   const [syncState, setSyncState] = useState<SyncState>({
     isEnabled: false,
-    isPaused: false,
     isSyncing: false,
     lastSyncTime: null,
     error: null,
@@ -49,134 +38,20 @@ export function useConvexSync() {
     }))
   }, [])
 
-  // Auto-enable sync when user signs in (DEFAULT BEHAVIOR)
-  // Only auto-enable if user hasn't manually disabled sync
-  useEffect(() => {
-    const manuallyDisabled = localStorage.getItem("sync_manually_disabled") === "true"
-    if (isAuthenticated && !syncState.isEnabled && !syncState.isSyncing && !manuallyDisabled) {
-      enableSync() // Always enable sync by default for authenticated users
-    }
-  }, [isAuthenticated, syncState.isEnabled, syncState.isSyncing])
-
 
 
   const storeWalletDataMutation = useMutation(api.walletData.storeWalletData)
-  const getLatestWalletData = useQuery(
-    api.walletData.getLatestWalletData,
-    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
-  )
   const getWalletData = useQuery(
     api.walletData.getWalletData,
     isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
   )
-  const getAllUserData = useQuery(
-    api.walletData.getAllUserData,
+  const registerDeviceMutation = useMutation(api.walletData.registerDevice)
+  const getUserDevices = useQuery(
+    api.walletData.getUserDevices,
     isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
   )
-  const hasExistingWalletData = useQuery(
-    api.walletData.hasExistingWalletData,
-    isAuthenticated && user?.id ? { userId: user.id as any } : "skip"
-  )
-  const updateSyncMetadataMutation = useMutation(api.walletData.updateSyncMetadata)
-  const cleanupExpiredMutation = useMutation(api.walletData.cleanupExpiredRecycleBin)
+  const removeDeviceMutation = useMutation(api.walletData.removeDevice)
 
-  // SMART DEVICE RECOVERY - Automatically pull user data on new devices
-  useEffect(() => {
-    if (isAuthenticated && user && hasExistingWalletData && getAllUserData && !syncState.isSyncing) {
-      const performDeviceRecovery = async () => {
-        // Check ALL data types to determine if device has local data
-        const hasLocalData =
-          transactions.length > 0 ||
-          budgets.length > 0 ||
-          goals.length > 0 ||
-          debtAccounts.length > 0 ||
-          creditAccounts.length > 0 ||
-          debtCreditTransactions.length > 0 ||
-          categories.length > 0 ||
-          emergencyFund > 0 ||
-          userProfile !== null
-
-        const hasCloudData = hasExistingWalletData?.hasData
-
-        console.log('[RECOVERY] Device recovery check:', {
-          hasLocalData,
-          hasCloudData,
-          transactions: transactions.length,
-          budgets: budgets.length,
-          goals: goals.length,
-          debtAccounts: debtAccounts.length,
-          creditAccounts: creditAccounts.length,
-          categories: categories.length,
-          emergencyFund,
-          userProfile: !!userProfile,
-          isAuthenticated,
-          userId: user?.id,
-          hasExistingWalletData: !!hasExistingWalletData,
-          getAllUserData: !!getAllUserData,
-          isSyncing: syncState.isSyncing,
-        })
-
-        // If user has cloud data but this device doesn't, recover it
-        if (!hasLocalData && hasCloudData) {
-          console.log('[RECOVERY] No local data but cloud data exists - performing device recovery...')
-
-          try {
-            const userData = getAllUserData
-            if (userData) {
-              console.log('[RECOVERY] Cloud data found, attempting sync...')
-              const syncPassword = `convex_sync_${user.id}_${user.email}`
-              const result = await syncFromConvex(syncPassword)
-
-              if (result.success) {
-                toast({
-                  title: "Data Recovered! 🎉",
-                  description: "Your existing wallet data has been synced to this device.",
-                })
-                console.log('[RECOVERY] Device recovery successful')
-              } else {
-                console.log('[RECOVERY] Device recovery failed:', result.error)
-                toast({
-                  title: "Recovery Failed",
-                  description: "Could not recover your existing data. Try the manual recovery button.",
-                  variant: "destructive",
-                })
-              }
-            } else {
-              console.log('[RECOVERY] No cloud data available for recovery')
-            }
-          } catch (error) {
-            console.error('[RECOVERY] Device recovery error:', error)
-            toast({
-              title: "Recovery Error",
-              description: "An error occurred during data recovery.",
-              variant: "destructive",
-            })
-          }
-        } else if (hasLocalData) {
-          console.log('[RECOVERY] Device already has local data - skipping recovery')
-        } else if (!hasCloudData) {
-          console.log('[RECOVERY] No cloud data available - skipping recovery')
-        }
-      }
-
-      // Delay recovery to allow other sync operations to complete first
-      const recoveryTimeout = setTimeout(performDeviceRecovery, 2000)
-      return () => clearTimeout(recoveryTimeout)
-    }
-  }, [isAuthenticated, user, hasExistingWalletData, getAllUserData, transactions.length, budgets.length, goals.length, debtAccounts.length, creditAccounts.length, debtCreditTransactions.length, categories.length, emergencyFund, userProfile, syncState.isSyncing])
-
-  // Auto-sync from Convex when component mounts and sync is enabled
-  useEffect(() => {
-    if (isAuthenticated && syncState.isEnabled && !syncState.isSyncing && getLatestWalletData) {
-      // Only sync from Convex if we have data there and it's newer than our last sync
-      const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-      const convexDataTime = getLatestWalletData.lastModified
-
-      if (!lastSyncTime || (convexDataTime && convexDataTime > parseInt(lastSyncTime))) {
-        syncFromConvex()
-      }
-    }
-  }, [isAuthenticated, syncState.isEnabled, syncState.isSyncing, getLatestWalletData])
 
   // Generate user-friendly device name
   const getDeviceInfo = () => {
@@ -253,36 +128,14 @@ export function useConvexSync() {
     }
   }
 
-  // Enable Convex sync (automatically when user signs in)
+  // Enable Convex sync
   const enableSync = async () => {
-    // Wait for auth to be fully loaded with timeout
-    let attempts = 0
-    const maxAttempts = 50 // 5 seconds max wait
-
-    while (authLoading && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      attempts++
-    }
-
     if (!isAuthenticated || !user) {
-      console.error('[enableSync] Auth check failed after waiting:', { isAuthenticated, user, authLoading })
-      // Don't throw error, just return success false to allow retry
       return { success: false, error: "User not authenticated" }
     }
 
     try {
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
-
-      // Generate consistent password from user data for encryption
-      const syncPassword = `convex_sync_${user.id}_${user.email}`
-
-      // Perform initial sync - don't fail if this fails
-      try {
-        await syncToConvex(syncPassword)
-      } catch (syncError) {
-        console.warn('[enableSync] Initial sync failed, but continuing:', syncError)
-        // Don't fail the entire enable process for sync issues
-      }
 
       // Update settings
       localStorage.setItem("convex_sync_enabled", "true")
@@ -292,10 +145,8 @@ export function useConvexSync() {
         isSyncing: false,
       }))
 
-      console.log('[enableSync] Sync enabled successfully')
       return { success: true }
     } catch (error: any) {
-      console.error('[enableSync] Failed to enable sync:', error)
       setSyncState(prev => ({
         ...prev,
         isSyncing: false,
@@ -316,7 +167,6 @@ export function useConvexSync() {
 
       setSyncState({
         isEnabled: false,
-        isPaused: false,
         isSyncing: false,
         lastSyncTime: null,
         error: null,
@@ -339,7 +189,7 @@ export function useConvexSync() {
     }
   }
 
-  // Sync data to Convex
+  // Sync data to Convex (manual push)
   const syncToConvex = async (password?: string) => {
     if (!isAuthenticated || !user || !syncState.isEnabled) {
       return { success: false, error: "Sync not enabled or user not authenticated" }
@@ -350,6 +200,14 @@ export function useConvexSync() {
 
     try {
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
+
+      // Register/update device
+      const { deviceId, deviceName } = getDeviceInfo()
+      await registerDeviceMutation({
+        userId: user.id as any,
+        deviceId,
+        deviceName,
+      })
 
       // Prepare wallet data - EXCLUDE default categories
       const userCreatedCategories = categories.filter(cat => !cat.isDefault)
@@ -370,21 +228,10 @@ export function useConvexSync() {
       const { encrypted, hash } = await encryptWalletData(walletData, syncPassword)
 
       // Store in Convex
-      const { deviceId, deviceName } = getDeviceInfo()
       await storeWalletDataMutation({
         userId: user.id as any,
-        deviceId,
         encryptedData: encrypted,
         dataHash: hash,
-        version: "1.0",
-      })
-
-      // Update sync metadata
-      await updateSyncMetadataMutation({
-        userId: user.id as any,
-        deviceId,
-        deviceName,
-        syncVersion: "1.0",
       })
 
       const now = Date.now()
@@ -401,256 +248,17 @@ export function useConvexSync() {
       setSyncState(prev => ({
         ...prev,
         isSyncing: false,
-        error: error.message || "Sync failed",
+        error: error.message || "Push failed",
       }))
 
       return { success: false, error: error.message }
     }
   }
 
-  // Smart merge function for conflict resolution
-  const mergeWalletData = (localData: any, remoteData: any) => {
-    const merged = { ...localData }
-    const conflicts: any[] = []
-    const mergeLog: string[] = []
-
-    // Helper function to get timestamp
-    const getTimestamp = (item: any) => item?.lastModified || item?.timeEquivalent || item?.createdAt || 0
-
-    // Merge transactions (always combine, no loss)
-    if (remoteData.transactions && Array.isArray(remoteData.transactions)) {
-      const localTransactions = localData.transactions || []
-      const remoteTransactions = remoteData.transactions
-
-      // Create maps for efficient lookup
-      const localMap = new Map(localTransactions.map((t: any) => [t.id, t]))
-      const remoteMap = new Map(remoteTransactions.map((t: any) => [t.id, t]))
-
-      // Merge transactions
-      const mergedTransactions = []
-
-      // Add all local transactions
-      for (const local of localTransactions) {
-        mergedTransactions.push(local)
-      }
-
-      // Add remote transactions that don't exist locally
-      for (const remote of remoteTransactions) {
-        if (!localMap.has(remote.id)) {
-          mergedTransactions.push(remote)
-          mergeLog.push(`Added transaction: ${remote.description} (${remote.amount})`)
-        } else {
-          // Check which version is newer
-          const localVersion = localMap.get(remote.id)
-          if (getTimestamp(remote) > getTimestamp(localVersion)) {
-            // Replace with newer version
-            const index = mergedTransactions.findIndex((t: any) => t.id === remote.id)
-            if (index !== -1) {
-              mergedTransactions[index] = remote
-              mergeLog.push(`Updated transaction: ${remote.description}`)
-            }
-          }
-        }
-      }
-
-      merged.transactions = mergedTransactions
-    }
-
-    // Merge budgets (combine all)
-    if (remoteData.budgets && Array.isArray(remoteData.budgets)) {
-      const localBudgets = localData.budgets || []
-      const remoteBudgets = remoteData.budgets
-
-      const localMap = new Map(localBudgets.map((b: any) => [b.id, b]))
-      const mergedBudgets = [...localBudgets]
-
-      for (const remote of remoteBudgets) {
-        if (!localMap.has(remote.id)) {
-          mergedBudgets.push(remote)
-          mergeLog.push(`Added budget: ${remote.name}`)
-        } else if (getTimestamp(remote) > getTimestamp(localMap.get(remote.id))) {
-          const index = mergedBudgets.findIndex((b: any) => b.id === remote.id)
-          if (index !== -1) {
-            mergedBudgets[index] = remote
-            mergeLog.push(`Updated budget: ${remote.name}`)
-          }
-        }
-      }
-
-      merged.budgets = mergedBudgets
-    }
-
-    // Merge goals (combine all)
-    if (remoteData.goals && Array.isArray(remoteData.goals)) {
-      const localGoals = localData.goals || []
-      const remoteGoals = remoteData.goals
-
-      const localMap = new Map(localGoals.map((g: any) => [g.id, g]))
-      const mergedGoals = [...localGoals]
-
-      for (const remote of remoteGoals) {
-        if (!localMap.has(remote.id)) {
-          mergedGoals.push(remote)
-          mergeLog.push(`Added goal: ${remote.name}`)
-        } else if (getTimestamp(remote) > getTimestamp(localMap.get(remote.id))) {
-          const index = mergedGoals.findIndex((g: any) => g.id === remote.id)
-          if (index !== -1) {
-            mergedGoals[index] = remote
-            mergeLog.push(`Updated goal: ${remote.name}`)
-          }
-        }
-      }
-
-      merged.goals = mergedGoals
-    }
-
-    // Merge categories (ONLY user-created, exclude defaults)
-    if (remoteData.categories && Array.isArray(remoteData.categories)) {
-      const localCategories = localData.categories || []
-      const remoteCategories = remoteData.categories
-
-      // Filter out default categories from both local and remote
-      const localUserCategories = localCategories.filter((c: any) => !c.isDefault)
-      const remoteUserCategories = remoteCategories.filter((c: any) => !c.isDefault)
-
-      const localMap = new Map(localUserCategories.map((c: any) => [c.id, c]))
-      const mergedCategories = [...localUserCategories]
-
-      for (const remote of remoteUserCategories) {
-        if (!localMap.has(remote.id)) {
-          mergedCategories.push(remote)
-          mergeLog.push(`Added user category: ${remote.name}`)
-        } else if (getTimestamp(remote) > getTimestamp(localMap.get(remote.id))) {
-          const index = mergedCategories.findIndex((c: any) => c.id === remote.id)
-          if (index !== -1) {
-            mergedCategories[index] = remote
-            mergeLog.push(`Updated user category: ${remote.name}`)
-          }
-        }
-      }
-
-      // Combine with default categories (which are not synced)
-      const defaultCategories = localCategories.filter((c: any) => c.isDefault)
-      merged.categories = [...defaultCategories, ...mergedCategories]
-    }
-
-    // Merge debt accounts (combine all, no loss)
-    if (remoteData.debtAccounts && Array.isArray(remoteData.debtAccounts)) {
-      const localDebtAccounts = localData.debtAccounts || []
-      const remoteDebtAccounts = remoteData.debtAccounts
-
-      const localMap = new Map(localDebtAccounts.map((d: any) => [d.id, d]))
-      const mergedDebtAccounts = [...localDebtAccounts]
-
-      for (const remote of remoteDebtAccounts) {
-        if (!localMap.has(remote.id)) {
-          mergedDebtAccounts.push(remote)
-          mergeLog.push(`Added debt account: ${remote.name}`)
-        } else {
-          // For debt accounts, keep the one with the most recent activity
-          const localVersion = localMap.get(remote.id)
-          if (getTimestamp(remote) > getTimestamp(localVersion)) {
-            const index = mergedDebtAccounts.findIndex((d: any) => d.id === remote.id)
-            if (index !== -1) {
-              mergedDebtAccounts[index] = remote
-              mergeLog.push(`Updated debt account: ${remote.name}`)
-            }
-          }
-        }
-      }
-
-      merged.debtAccounts = mergedDebtAccounts
-    }
-
-    // Merge credit accounts (combine all, no loss)
-    if (remoteData.creditAccounts && Array.isArray(remoteData.creditAccounts)) {
-      const localCreditAccounts = localData.creditAccounts || []
-      const remoteCreditAccounts = remoteData.creditAccounts
-
-      const localMap = new Map(localCreditAccounts.map((c: any) => [c.id, c]))
-      const mergedCreditAccounts = [...localCreditAccounts]
-
-      for (const remote of remoteCreditAccounts) {
-        if (!localMap.has(remote.id)) {
-          mergedCreditAccounts.push(remote)
-          mergeLog.push(`Added credit account: ${remote.name}`)
-        } else {
-          // For credit accounts, keep the one with the most recent activity
-          const localVersion = localMap.get(remote.id)
-          if (getTimestamp(remote) > getTimestamp(localVersion)) {
-            const index = mergedCreditAccounts.findIndex((c: any) => c.id === remote.id)
-            if (index !== -1) {
-              mergedCreditAccounts[index] = remote
-              mergeLog.push(`Updated credit account: ${remote.name}`)
-            }
-          }
-        }
-      }
-
-      merged.creditAccounts = mergedCreditAccounts
-    }
-
-    // Merge debt/credit transactions (combine all, no loss)
-    if (remoteData.debtCreditTransactions && Array.isArray(remoteData.debtCreditTransactions)) {
-      const localTransactions = localData.debtCreditTransactions || []
-      const remoteTransactions = remoteData.debtCreditTransactions
-
-      const localMap = new Map(localTransactions.map((t: any) => [t.id, t]))
-      const mergedTransactions = [...localTransactions]
-
-      for (const remote of remoteTransactions) {
-        if (!localMap.has(remote.id)) {
-          mergedTransactions.push(remote)
-          mergeLog.push(`Added debt/credit transaction: ${remote.description}`)
-        }
-        // Note: We don't update existing transactions to avoid conflicts
-        // Each transaction is unique and should only exist once
-      }
-
-      merged.debtCreditTransactions = mergedTransactions
-    }
-
-    // Handle emergency fund (keep higher value)
-    if (remoteData.emergencyFund !== undefined) {
-      const localFund = localData.emergencyFund || 0
-      const remoteFund = remoteData.emergencyFund
-
-      if (remoteFund > localFund) {
-        merged.emergencyFund = remoteFund
-        mergeLog.push(`Updated emergency fund: $${remoteFund} (was $${localFund})`)
-      } else if (remoteFund < localFund) {
-        mergeLog.push(`Kept local emergency fund: $${localFund} (remote had $${remoteFund})`)
-      }
-    }
-
-    // Handle user profile (merge fields)
-    if (remoteData.userProfile) {
-      merged.userProfile = {
-        ...localData.userProfile,
-        ...remoteData.userProfile,
-        lastModified: Math.max(
-          localData.userProfile?.lastModified || 0,
-          remoteData.userProfile.lastModified || 0
-        )
-      }
-      mergeLog.push(`Merged user profile settings`)
-    }
-
-    return { merged, conflicts, mergeLog }
-  }
-
-  // Sync data from Convex with smart conflict resolution
-  const syncFromConvex = async (password?: string) => {
+  // Sync data from Convex (manual pull)
+  const syncFromConvex = useCallback(async (password?: string) => {
     if (!isAuthenticated || !user) {
       return { success: false, error: "User not authenticated" }
-    }
-
-    // If sync is not enabled, try to enable it first
-    if (!syncState.isEnabled) {
-      const enableResult = await enableSync()
-      if (!enableResult.success) {
-        return { success: false, error: "Failed to enable sync" }
-      }
     }
 
     // Use provided password or generate one from user ID for consistency
@@ -659,337 +267,118 @@ export function useConvexSync() {
     try {
       setSyncState(prev => ({ ...prev, isSyncing: true, error: null }))
 
-      // Try to get latest data from Convex - use device-agnostic approach if device-specific fails
-      let latestData = getLatestWalletData
-
-      // If no device-specific data, try user-wide query
-      if (!latestData && getAllUserData) {
-        latestData = getAllUserData
-      }
+      // Get data from Convex
+      const latestData = getWalletData
 
       if (!latestData) {
         setSyncState(prev => ({ ...prev, isSyncing: false }))
+        toast({
+          title: "No Data Found",
+          description: "No data found in cloud to sync.",
+        })
         return { success: true, message: "No remote data to sync" }
       }
 
       // Decrypt data
       const remoteData = await decryptWalletData(latestData.encryptedData, syncPassword)
 
-      // Prepare local data for comparison
-      const localData = {
-        userProfile,
-        transactions,
-        budgets,
-        goals,
-        debtAccounts,
-        creditAccounts,
-        debtCreditTransactions,
-        categories,
-        emergencyFund,
-        exportedAt: Date.now(),
+      // Import the remote data directly (replace local data)
+      const success = await importData(remoteData)
+
+      if (success) {
+        const now = Date.now()
+        localStorage.setItem("convex_last_sync_time", now.toString())
+
+        setSyncState(prev => ({
+          ...prev,
+          isSyncing: false,
+          lastSyncTime: now,
+        }))
+
+        toast({
+          title: "Data Pulled Successfully",
+          description: "Remote data has been imported to this device.",
+        })
+
+        return { success: true, data: remoteData }
+      } else {
+        toast({
+          title: "Import Failed",
+          description: "Failed to import remote data.",
+          variant: "destructive",
+        })
+        return { success: false, error: "Import failed" }
       }
-
-      // Perform smart merge
-      const { merged, conflicts, mergeLog } = mergeWalletData(localData, remoteData)
-      // Import the merged data into the local wallet
-      if (merged) {
-        try {
-          console.log('[syncFromConvex] Importing merged data...')
-          // Use the importData function from the wallet data context
-          const success = await importData(merged)
-
-          if (success) {
-            const now = Date.now()
-            localStorage.setItem("convex_last_sync_time", now.toString())
-
-            setSyncState(prev => ({
-              ...prev,
-              isSyncing: false,
-              lastSyncTime: now,
-            }))
-
-
-            // Show detailed sync results
-            if (mergeLog.length > 0) {
-              toast({
-                title: "Smart Sync Complete",
-                description: `${mergeLog.length} changes merged successfully. No data lost!`,
-              })
-
-              // Log details for debugging
-            } else {
-            }
-
-            return { success: true, data: merged, mergeLog, conflicts }
-          } else {
-            toast({
-              title: "Sync Warning",
-              description: "Data synced but some items may not have been imported.",
-              variant: "default",
-            })
-            return { success: false, error: "Import failed" }
-          }
-        } catch (importError) {
-          toast({
-            title: "Sync Error",
-            description: "Failed to import synced data. Please try again.",
-            variant: "destructive",
-          })
-          return { success: false, error: "Import failed" }
-        }
-      }
-
-      setSyncState(prev => ({ ...prev, isSyncing: false }))
-      return { success: false, error: "Merge failed" }
     } catch (error: any) {
-      console.error("[syncFromConvex] ❌ Download failed:", error)
       setSyncState(prev => ({
         ...prev,
         isSyncing: false,
         error: error.message || "Download failed",
       }))
 
+      toast({
+        title: "Pull Failed",
+        description: error.message || "Failed to pull data from cloud.",
+        variant: "destructive",
+      })
+
       return { success: false, error: error.message || "Download failed" }
     }
+  }, [isAuthenticated, user, getWalletData, importData])
+
+
+
+  // Get current device info
+  const getCurrentDevice = () => {
+    return getDeviceInfo()
   }
 
-  // Get stored sync password
-  const getSyncPassword = async (): Promise<string | null> => {
+  // Remove a device
+  const removeDevice = async (deviceId: string) => {
+    if (!isAuthenticated || !user) {
+      return { success: false, error: "User not authenticated" }
+    }
+
     try {
-      const encryptedPassword = localStorage.getItem("convex_sync_password")
-      const saltString = localStorage.getItem("convex_sync_salt")
-      if (!encryptedPassword || !saltString) return null
+      const result = await removeDeviceMutation({
+        userId: user.id as any,
+        deviceId,
+      })
 
-      const salt = new Uint8Array(
-        atob(saltString)
-          .split("")
-          .map((char) => char.charCodeAt(0))
-      )
-      const key = await SecureWallet.deriveKeyFromPin("convex_sync_key", salt)
-      return await SecureWallet.decryptData(encryptedPassword, key)
-    } catch (error) {
-      console.error("Failed to decrypt sync password:", error)
-      return null
-    }
-  }
-
-  // AUTOMATIC RECYCLE BIN CLEANUP - Clean expired items every sync
-  useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated || !user) {
-      return
-    }
-
-    const performRecycleBinCleanup = async () => {
-      try {
-        console.log('[CLEANUP] 🔄 Checking for expired recycle bin items...')
-
-        const result = await cleanupExpiredMutation({
-          userId: user.id as any
+      if (result.success) {
+        toast({
+          title: "Device Removed",
+          description: `Successfully removed ${result.deviceName || 'device'}.`,
         })
-
-        if (result.success && result.deletedCount > 0) {
-          console.log(`[CLEANUP] ✅ Cleaned up ${result.deletedCount} expired items`)
-
-          // Clean up localStorage as well
-          if (result.expiredItemIds && result.expiredItemIds.length > 0) {
-            const { saveToLocalStorage } = await import("@/lib/storage")
-
-            // Clean up from different localStorage arrays
-            const storageKeys = ['transactions', 'budgets', 'goals', 'categories', 'debtAccounts', 'creditAccounts']
-
-            for (const key of storageKeys) {
-              const existingData = JSON.parse(localStorage.getItem(key) || '[]')
-              const filteredData = existingData.filter((item: any) => !result.expiredItemIds.includes(item.id))
-
-              if (filteredData.length !== existingData.length) {
-                await saveToLocalStorage(key, filteredData)
-                console.log(`[CLEANUP] ✅ Cleaned up ${existingData.length - filteredData.length} items from ${key}`)
-              }
-            }
-          }
-        } else if (result.success) {
-          console.log('[CLEANUP] ✅ No expired items to clean up')
-        }
-      } catch (error) {
-        console.error('[CLEANUP] ❌ Error during recycle bin cleanup:', error)
+        return { success: true }
+      } else {
+        toast({
+          title: "Remove Failed",
+          description: result.error || "Failed to remove device.",
+          variant: "destructive",
+        })
+        return { success: false, error: result.error }
       }
-    }
-
-    // Run cleanup every 6 hours (21600000 ms)
-    const cleanupInterval = setInterval(performRecycleBinCleanup, 21600000)
-
-    // Also run cleanup immediately when sync is enabled
-    performRecycleBinCleanup()
-
-    return () => clearInterval(cleanupInterval)
-  }, [syncState.isEnabled, isAuthenticated, user])
-
-  // SMART SYNC - PREVENTS DATA LOSS WITH INTELLIGENT MERGING
-  useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated || syncState.isSyncing || syncState.isPaused) {
-      return
-    }
-
-    const performSmartSync = async () => {
-      try {
-        // Step 1: UPLOAD FIRST - Always upload current local data
-        const uploadResult = await syncToConvex()
-        if (!uploadResult.success) {
-          console.error('Upload failed:', uploadResult.error)
-          return // Don't download if upload failed
-        }
-
-        // Step 2: WAIT - Give Convex time to process the upload
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        // Step 3: DOWNLOAD WITH SMART CHECKS
-        // Only download if remote data is actually newer
-        if (getLatestWalletData) {
-          const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-          const remoteTime = getLatestWalletData.lastModified
-
-          if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
-            const downloadResult = await syncFromConvex()
-            if (!downloadResult.success && !downloadResult.message) {
-              console.error('Download failed:', downloadResult.error)
-            }
-          }
-        }
-
-      } catch (error) {
-        console.error("Critical sync error:", error)
-        setSyncState(prev => ({
-          ...prev,
-          error: error instanceof Error ? error.message : "Critical sync error"
-        }))
-      }
-    }
-
-    // Execute with smart delay to prevent excessive calls
-    const timeoutId = setTimeout(performSmartSync, 1000) // 1 second delay
-
-    return () => clearTimeout(timeoutId)
-  }, [
-    // Trigger on data changes, but exclude sync state to prevent loops
-    // Use lengths instead of arrays to avoid reference changes causing useEffect warnings
-    // Ensure all values are defined to prevent array size changes
-    transactions?.length || 0,
-    budgets?.length || 0,
-    goals?.length || 0,
-    debtAccounts?.length || 0,
-    creditAccounts?.length || 0,
-    debtCreditTransactions?.length || 0,
-    categories?.length || 0,
-    emergencyFund || 0,
-    syncState.isEnabled,
-    isAuthenticated,
-    syncState.isPaused
-    // Note: Removed syncState.isSyncing to prevent sync loops
-    // Note: Removed userProfile to avoid TypeScript errors and unnecessary sync triggers
-  ])
-
-  // CONTINUOUS MONITORING - Check for remote changes every 10 seconds (respects pause state)
-  useEffect(() => {
-    if (!syncState.isEnabled || !isAuthenticated || syncState.isPaused) {
-      return
-    }
-
-    const monitoringInterval = setInterval(async () => {
-      try {
-        if (syncState.isSyncing) {
-          return
-        }
-
-        // Check if remote data is newer
-        if (getLatestWalletData) {
-          const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-          const remoteTime = getLatestWalletData.lastModified
-
-          if (!lastSyncTime || (remoteTime && remoteTime > parseInt(lastSyncTime))) {
-            await syncFromConvex()
-          }
-        }
-      } catch (error) {
-        console.error("Monitoring error:", error)
-      }
-    }, 10000) // Check every 10 seconds
-
-    return () => clearInterval(monitoringInterval)
-  }, [syncState.isEnabled, isAuthenticated, syncState.isSyncing, syncState.isPaused])
-
-  // Pause auto sync
-  const pauseSync = async () => {
-    try {
-      setSyncState(prev => ({ ...prev, isPaused: true }))
-      localStorage.setItem("convex_sync_paused", "true")
-
-      toast({
-        title: "Auto Sync Paused",
-        description: "Automatic sync is paused. You can still sync manually.",
-      })
-
-      return { success: true }
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: "Failed to pause sync",
+        title: "Remove Failed",
+        description: error.message || "Failed to remove device.",
         variant: "destructive",
       })
       return { success: false, error: error.message }
     }
-  }
-
-  // Resume auto sync
-  const resumeSync = async () => {
-    try {
-      setSyncState(prev => ({ ...prev, isPaused: false }))
-      localStorage.removeItem("convex_sync_paused")
-
-      toast({
-        title: "Auto Sync Resumed",
-        description: "Automatic sync is now active again.",
-      })
-
-      return { success: true }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to resume sync",
-        variant: "destructive",
-      })
-      return { success: false, error: error.message }
-    }
-  }
-
-  // Load pause state from localStorage
-  useEffect(() => {
-    const isPaused = localStorage.getItem("convex_sync_paused") === "true"
-    setSyncState(prev => ({ ...prev, isPaused }))
-  }, [])
-
-  // Refresh sync state from localStorage
-  const refreshSyncState = () => {
-    const isEnabled = localStorage.getItem("convex_sync_enabled") === "true"
-    const isPaused = localStorage.getItem("convex_sync_paused") === "true"
-    const lastSyncTime = localStorage.getItem("convex_last_sync_time")
-
-    setSyncState(prev => ({
-      ...prev,
-      isEnabled,
-      isPaused,
-      lastSyncTime: lastSyncTime ? parseInt(lastSyncTime) : null,
-    }))
   }
 
   return {
     ...syncState,
     enableSync,
     disableSync,
-    pauseSync,
-    resumeSync,
     syncToConvex,
     syncFromConvex,
-    refreshSyncState,
+    getCurrentDevice,
+    removeDevice,
+    devices: getUserDevices || [],
+    getWalletData,
     user,
     isAuthenticated,
   }

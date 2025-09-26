@@ -66,7 +66,6 @@ export function MainTabs({
   useEffect(() => {
     const validateSession = () => {
       if (!SessionManager.isSessionValid()) {
-        console.log('[MainTabs] Session invalid, dispatching expiry event')
         const event = new CustomEvent('wallet-session-expired')
         window.dispatchEvent(event)
       }

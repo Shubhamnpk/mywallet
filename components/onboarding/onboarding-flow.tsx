@@ -28,7 +28,6 @@ import {
   Camera,
   ImageIcon,
   X,
-  Cloud,
   Loader2
 } from 'lucide-react';
 import type { UserProfile } from '@/types/wallet';
@@ -38,7 +37,6 @@ import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useConvexAuth } from '@/hooks/use-convex-auth';
 import { useConvexSync } from '@/hooks/use-convex-sync';
-import { ConvexAuthModal } from '@/components/auth/convex-auth-modal';
 
 // Security and validation constants
 const SECURITY_CONSTANTS = {
@@ -192,19 +190,17 @@ const features = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, isAuthenticated, signUp, signIn, isLoading: authLoading } = useConvexAuth()
-  const { syncFromConvex } = useConvexSync()
+  const { user, isAuthenticated, signUp, signIn, isLoading: authLoading, lastAuthMode } = useConvexAuth()
+  const { syncFromConvex, getWalletData } = useConvexSync()
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [showConvexLogin, setShowConvexLogin] = useState(false);
-  const [isRestoringData, setIsRestoringData] = useState(false);
   const [dataRestored, setDataRestored] = useState(false);
 
   // Ref to prevent multiple Convex sync attempts
   const skipConvexSkipRef = useRef(false);
 
   const [formData, setFormData] = useState({
-    name: '',
+    name: user?.name || user?.email?.split('@')[0] || '',
     avatar: null as string | null,
     monthlyEarning: '',
     currency: 'NPR',
@@ -221,6 +217,7 @@ export default function OnboardingPage() {
   // Memoized calculations for performance
   const currentStep = useMemo(() => steps.find(s => s.id === step) || steps[0], [step])
   const maxStep = useMemo(() => formData.enableSecurity ? 6 : 5, [formData.enableSecurity])
+  const finalStep = useMemo(() => formData.enableSecurity ? 6 : 5, [formData.enableSecurity])
   const hourlyRate = useMemo(() => {
     if (!formData.monthlyEarning || !formData.workingHoursPerDay || !formData.workingDaysPerMonth) {
       return '0.00'
@@ -230,18 +227,39 @@ export default function OnboardingPage() {
     return rate.toFixed(2)
   }, [formData.monthlyEarning, formData.workingHoursPerDay, formData.workingDaysPerMonth])
 
-  // Handle Convex authentication - don't sync or redirect during onboarding
+  // Handle Convex authentication - check for existing data on sign-in
   React.useEffect(() => {
     if (!isAuthenticated || !user || skipConvexSkipRef.current) return;
 
-    // Always prevent sync and redirect during onboarding phase
-    // User should complete onboarding first before any sync operations
-    console.log('[Onboarding] User authenticated with Convex - allowing onboarding completion first');
+    // If this is a sign-in, try to pull data from Convex
+    if (lastAuthMode === "signin") {
+      // Wait for getWalletData to be loaded (not undefined)
+      if (getWalletData === undefined) return; // Still loading
+
+      // Try to pull data
+      syncFromConvex().then((result) => {
+        if (result.success && result.data) {
+          // Data pulled successfully, redirect to dashboard
+          router.push('/');
+        } else {
+          // No data or failed to pull, stay on onboarding
+          if (!result.data) {
+            toast.info("No cloud data found. Please complete your wallet setup.");
+          } else {
+            toast.error("Failed to load your data. Please complete setup.");
+          }
+        }
+      });
+      skipConvexSkipRef.current = true;
+      return;
+    }
+
+    // For sign-up, prevent sync and stay on onboarding
     skipConvexSkipRef.current = true;
 
     // Don't perform any sync operations during onboarding
     // The user will be able to sync after completing onboarding
-  }, [isAuthenticated, user])
+  }, [isAuthenticated, user, lastAuthMode, getWalletData, syncFromConvex, router])
 
   // Enhanced validation with proper error handling
   const validateStep = useCallback(() => {
@@ -287,7 +305,6 @@ export default function OnboardingPage() {
       }
       return true;
     } catch (error) {
-      console.error('Validation error:', error);
       toast.error('Validation failed. Please check your input.');
       return false;
     }
@@ -297,15 +314,15 @@ export default function OnboardingPage() {
     if (!validateStep()) return;
 
     if (step === 4 && !formData.enableSecurity) {
-      setStep(6); // Skip PIN setup
+      setStep(5); // Skip PIN setup and go to completion step
     } else {
       setStep(Math.min(step + 1, maxStep));
     }
   };
 
   const handleBack = () => {
-    if (step === 6 && !formData.enableSecurity) {
-      setStep(4); // Skip PIN setup
+    if (step === 5 && !formData.enableSecurity) {
+      setStep(4); // Go back to schedule step
     } else {
       setStep(Math.max(step - 1, 0));
     }
@@ -334,7 +351,6 @@ export default function OnboardingPage() {
       }
       reader.readAsDataURL(file)
     } catch (error) {
-      console.error('Image selection error:', error)
       toast.error('Failed to process image. Please try again.')
     }
   }, [])
@@ -380,20 +396,16 @@ export default function OnboardingPage() {
       } else if (!formData.enableSecurity) {
         // If security is disabled, ensure no PIN data exists and clear any previous security data
         SecurePinManager.clearAllSecurityData();
-        console.log('[Onboarding] Security disabled - cleared all security data');
       }
 
       // Get PIN data from localStorage if security is enabled
       let pinData = {};
       if (formData.enableSecurity && formData.pin) {
-        const pinHash = localStorage.getItem('wallet_pin_hash');
-        const pinSalt = localStorage.getItem('wallet_pin_salt');
-        if (pinHash && pinSalt) {
-          pinData = {
-            pin: pinHash,
-            pinSalt: pinSalt
-          };
-        }
+        // Store the actual PIN for encryption initialization
+        pinData = {
+          pin: formData.pin, // Store the actual PIN, not the hash
+          securityEnabled: true
+        };
       }
 
       const userProfile: UserProfile = {
@@ -415,12 +427,11 @@ export default function OnboardingPage() {
 
       toast.success(`Welcome, ${userProfile.name}! Your financial journey begins now.`);
 
-      // Small delay to show success message, then redirect
+      // Force reload to ensure clean state transition
       setTimeout(() => {
-        router.push('/');
-      }, 1500);
+        window.location.href = '/';
+      }, 500);
     } catch (error) {
-      console.error('Onboarding completion error:', error);
       toast.error('Setup failed. Please try again.');
     } finally {
       setIsLoading(false);
@@ -488,37 +499,6 @@ export default function OnboardingPage() {
                     ))}
                   </div>
 
-                  {/* Convex Login Option */}
-                  <div className="mt-6 pt-4 border-t border-white/20">
-                    <p className="text-xs text-white/80 mb-3 text-center">
-                      Already have a Convex account?
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowConvexLogin(true)}
-                      className="w-full bg-white/10 border-white/30 text-white hover:bg-white/20 hover:border-white/50 transition-all duration-300"
-                      disabled={authLoading || isRestoringData}
-                    >
-                      <Cloud className="w-4 h-4 mr-2" />
-                      {authLoading ? 'Connecting...' : isRestoringData ? 'Restoring Data...' : 'Sign in with Convex'}
-                    </Button>
-                    {isAuthenticated && !isRestoringData && (
-                      <p className="text-xs text-green-300 mt-2 text-center">
-                        ✅ Connected as {user?.email}
-                      </p>
-                    )}
-                    {isRestoringData && (
-                      <div className="mt-3 p-3 bg-blue-500/20 border border-blue-400/30 rounded-lg">
-                        <div className="flex items-center justify-center gap-2 text-blue-200">
-                          <div className="w-4 h-4 border-2 border-blue-200/30 border-t-blue-200 rounded-full animate-spin" />
-                          <span className="text-sm font-medium">Restoring your wallet data...</span>
-                        </div>
-                        <p className="text-xs text-blue-300/80 mt-1 text-center">
-                          This may take a few seconds
-                        </p>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             )}
@@ -889,21 +869,6 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Convex Auth Modal */}
-        <ConvexAuthModal
-          open={showConvexLogin}
-          onOpenChange={setShowConvexLogin}
-          onAuthSuccess={() => {
-            // Redirect to dashboard immediately when authentication succeeds
-            router.push('/')
-          }}
-          signUp={signUp}
-          signIn={signIn}
-          isLoading={authLoading}
-          title="Welcome Back to MyWallet"
-          description="Sign in to sync your wallet data across all your devices"
-          initialMode="signin"
-        />
       </div>
     </div>
   );

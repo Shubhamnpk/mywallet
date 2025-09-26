@@ -23,7 +23,6 @@ export function useServiceWorker() {
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) {
-      console.log('Service Worker not supported')
       return
     }
 
@@ -36,8 +35,6 @@ export function useServiceWorker() {
         const registration = await navigator.serviceWorker.register('/sw.js', {
           scope: '/'
         })
-
-        console.log('Service Worker registered:', registration)
 
         setState(prev => ({
           ...prev,
@@ -65,13 +62,11 @@ export function useServiceWorker() {
         // Handle messages from service worker
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event.data && event.data.type === 'SYNC_COMPLETE') {
-            console.log('Data sync completed')
             // You can trigger a refresh or show a notification here
           }
         })
 
       } catch (error) {
-        console.error('Service Worker registration failed:', error)
         setState(prev => ({
           ...prev,
           isInstalling: false,
@@ -84,7 +79,6 @@ export function useServiceWorker() {
 
     // Handle controller change (when new SW takes control)
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      console.log('Service Worker controller changed')
       window.location.reload()
     })
 

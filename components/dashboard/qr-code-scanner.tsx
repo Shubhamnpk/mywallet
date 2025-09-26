@@ -58,9 +58,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       try {
         const jsQR = (await import('jsqr')).default
         jsQRRef.current = jsQR
-        console.log('jsQR library loaded successfully')
       } catch (error) {
-        console.error('Failed to load jsQR library:', error)
+        // Failed to load jsQR library
       }
     }
     loadJsQR()
@@ -271,9 +270,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       // start live scan loop
   await listCameras()
   startLiveScan()
-    } catch (error) {
-      console.error('Camera error:', error)
-      // Provide specific error messages
+} catch (error) {
+  // Provide specific error messages
       let errorMessage = 'Camera access failed'
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
@@ -304,7 +302,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       toast.info(newState ? 'Flashlight enabled' : 'Flashlight disabled')
       onFlashlightToggle?.()
     } catch (e) {
-      console.warn('Torch toggle failed', e)
       toast.error('Flashlight not supported on this device')
     }
   }, [torchOn, onFlashlightToggle])
@@ -450,7 +447,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       await listCameras()
       startLiveScan()
     } catch (error) {
-      console.error('Camera error:', error)
       toast.error('Camera access failed')
     } finally {
       setIsInitializingCamera(false)
@@ -551,7 +547,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         toast.error('No QR code found in the image')
       }
     } catch (error) {
-      console.error('QR processing error:', error)
       toast.error('Failed to scan QR code')
     } finally {
       setIsProcessing(false)

@@ -25,11 +25,13 @@ export function useConvexAuth() {
     isLoading: true,
     isAuthenticated: false,
   })
+  const [lastAuthMode, setLastAuthMode] = useState<"signup" | "signin" | null>(null)
 
   // Load user from localStorage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem("convex_user")
     const storedUserId = localStorage.getItem("convex_user_id")
+    const storedLastAuthMode = localStorage.getItem("convex_last_auth_mode")
 
     if (storedUser && storedUserId) {
       try {
@@ -40,9 +42,9 @@ export function useConvexAuth() {
         const isValidUserId = storedUserId.startsWith('u') || storedUserId.length === 32
 
         if (!isValidUserId) {
-          console.warn("Invalid user ID detected, clearing stored auth data:", storedUserId)
           localStorage.removeItem("convex_user")
           localStorage.removeItem("convex_user_id")
+          localStorage.removeItem("convex_last_auth_mode")
           setAuthState(prev => ({ ...prev, isLoading: false }))
           return
         }
@@ -52,10 +54,15 @@ export function useConvexAuth() {
           isLoading: false,
           isAuthenticated: true,
         })
+
+        // Restore last auth mode if available
+        if (storedLastAuthMode) {
+          setLastAuthMode(storedLastAuthMode as "signup" | "signin")
+        }
       } catch (error) {
-        console.error("Failed to parse stored user:", error)
         localStorage.removeItem("convex_user")
         localStorage.removeItem("convex_user_id")
+        localStorage.removeItem("convex_last_auth_mode")
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     } else {
@@ -100,6 +107,7 @@ export function useConvexAuth() {
       // Store in localStorage
       localStorage.setItem("convex_user", JSON.stringify(user))
       localStorage.setItem("convex_user_id", result.userId)
+      localStorage.setItem("convex_last_auth_mode", "signup")
 
       setAuthState({
         user,
@@ -107,9 +115,8 @@ export function useConvexAuth() {
         isAuthenticated: true,
       })
 
-      // Automatically enable sync for new users
-      localStorage.setItem("convex_sync_auto_enabled", "true")
-      localStorage.setItem("convex_sync_enabled", "true")
+      // Track that this was a sign up operation
+      setLastAuthMode("signup")
 
       toast({
         title: "Account Created",
@@ -153,6 +160,7 @@ export function useConvexAuth() {
       // Store in localStorage
       localStorage.setItem("convex_user", JSON.stringify(user))
       localStorage.setItem("convex_user_id", result.userId)
+      localStorage.setItem("convex_last_auth_mode", "signin")
 
       setAuthState({
         user,
@@ -160,12 +168,8 @@ export function useConvexAuth() {
         isAuthenticated: true,
       })
 
-      // Automatically enable sync for signed-in users
-      // The useConvexSync hook will detect authentication and enable sync
-      localStorage.setItem("convex_sync_auto_enabled", "true")
-
-      // Also set sync as enabled for this user
-      localStorage.setItem("convex_sync_enabled", "true")
+      // Track that this was a sign in operation
+      setLastAuthMode("signin")
 
       toast({
         title: "Signed In",
@@ -192,6 +196,7 @@ export function useConvexAuth() {
     const convexKeysToRemove = [
       "convex_user",
       "convex_user_id",
+      "convex_last_auth_mode",
       "convex_device_id",
       "convex_device_name",
       "convex_sync_password",
@@ -199,7 +204,6 @@ export function useConvexAuth() {
       "convex_sync_enabled",
       "convex_last_sync_time",
       "convex_sync_paused",
-      "convex_sync_auto_enabled",
       "sync_manually_disabled"
     ]
 
@@ -211,6 +215,9 @@ export function useConvexAuth() {
       isAuthenticated: false,
     })
 
+    // Clear last auth mode
+    setLastAuthMode(null)
+
     toast({
       title: "Signed Out",
       description: "You have been signed out of your Convex sync account. All Convex-related data has been cleared from local storage.",
@@ -219,6 +226,7 @@ export function useConvexAuth() {
 
   return {
     ...authState,
+    lastAuthMode,
     signUp,
     signIn,
     signOut,

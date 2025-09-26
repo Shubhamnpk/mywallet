@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api"
 import { useConvexAuth } from "@/hooks/use-convex-auth"
 import { DataIntegrityManager } from "@/lib/data-integrity"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
 import type {
   UserProfile,
   Transaction,
@@ -107,7 +108,6 @@ const useMemoizedCalculations = () => {
 
 export function useWalletData() {
   const { user } = useConvexAuth()
-  const createVersionedOperation = useMutation(api.walletData.createVersionedOperation)
 
   // Get device info consistent with sync system
   const getDeviceInfo = () => {
@@ -144,6 +144,27 @@ export function useWalletData() {
       setIsLoaded(true)
       return
     }
+
+    // For new users, immediately show onboarding without loading data
+    const hasAnyStoredData = !!(
+      localStorage.getItem("userProfile") ||
+      localStorage.getItem("transactions") ||
+      localStorage.getItem("budgets") ||
+      localStorage.getItem("goals") ||
+      localStorage.getItem("debtAccounts") ||
+      localStorage.getItem("creditAccounts") ||
+      localStorage.getItem("categories")
+    )
+
+    if (!hasAnyStoredData) {
+      // New user - show onboarding immediately
+      setShowOnboarding(true)
+      setIsAuthenticated(true)
+      setIsLoaded(true)
+      return
+    }
+
+    // Existing user - load their data
     loadDataWithIntegrityCheck()
   }, [isLoaded])
 
@@ -154,30 +175,61 @@ export function useWalletData() {
         await saveToLocalStorage(key, data)
         return
       }
-      if (!WalletDataEncryption.isInitialized()) {
-        const initialized = await WalletDataEncryption.initializeWithStoredKey()
-        if (!initialized) {
-          await WalletDataEncryption.generateNewKey()
+
+      // Check if user has security enabled (PIN set up)
+      const hasSecurity = SecurePinManager.hasPin()
+      const hasConvexAuth = !!user // Check if user is authenticated with Convex
+
+      if (hasSecurity && !hasConvexAuth) {
+        // Use PIN-based encryption for non-convex users with security enabled
+        if (!WalletDataEncryption.isInitialized()) {
+          // Try to get cached master key from SecureKeyManager
+          const masterKey = await SecureKeyManager.getMasterKey("")
+          if (masterKey) {
+            // Initialize WalletDataEncryption with the existing CryptoKey
+            await WalletDataEncryption.initializeWithKey(masterKey)
+          } else {
+            // For now, fall back to unencrypted storage
+            await saveToLocalStorage(key, data)
+            return
+          }
         }
+
+        const encryptedData = await WalletDataEncryption.encryptData(data)
+        await saveToLocalStorage(key, encryptedData)
+      } else if (hasConvexAuth) {
+        // Use existing Convex encryption system
+        if (!WalletDataEncryption.isInitialized()) {
+          const initialized = await WalletDataEncryption.initializeWithStoredKey()
+          if (!initialized) {
+            await WalletDataEncryption.generateNewKey()
+          }
+        }
+
+        const encryptedData = await WalletDataEncryption.encryptData(data)
+        await saveToLocalStorage(key, encryptedData)
+      } else {
+        // No security enabled - store as plain text
+        await saveToLocalStorage(key, data)
       }
 
-      const encryptedData = await WalletDataEncryption.encryptData(data)
-      await saveToLocalStorage(key, encryptedData)
+      // Update integrity record for all data types (skip during onboarding to avoid conflicts)
+      if (key !== 'userProfile' || data?.securityEnabled !== false) {
+        const allData = {
+          userProfile,
+          transactions,
+          budgets,
+          goals,
+          debtAccounts,
+          creditAccounts,
+          debtCreditTransactions,
+          categories,
+          emergencyFund,
+          [key]: data,
+        }
 
-      const allData = {
-        userProfile,
-        transactions,
-        budgets,
-        goals,
-        debtAccounts,
-        creditAccounts,
-        debtCreditTransactions,
-        categories,
-        emergencyFund,
-        [key]: data,
+        await DataIntegrityManager.updateIntegrityRecord(allData)
       }
-
-      await DataIntegrityManager.updateIntegrityRecord(allData)
     } catch (error) {
       try {
         // Fallback to unencrypted storage if encryption fails
@@ -208,67 +260,117 @@ export function useWalletData() {
       const savedDebtCreditTransactions = localStorage.getItem("debtCreditTransactions")
       const savedCategories = localStorage.getItem("categories")
 
-      // Initialize encryption if not already done
-      if (!WalletDataEncryption.isInitialized()) {
-        const hasEncryptedData = !!(savedProfile || savedTransactions || savedBudgets || savedGoals ||
-                                   savedDebtAccounts || savedCreditAccounts || savedCategories)
+      // Check user authentication and security status
+      const hasConvexAuth = !!user
+      const hasSecurity = SecurePinManager.hasPin()
 
-        if (hasEncryptedData) {
-          // Try to initialize with stored key for existing encrypted data
-          const initialized = await WalletDataEncryption.initializeWithStoredKey()
-          if (!initialized) {
-            console.warn('Encrypted data exists but no decryption key found - data may be corrupted or from another device')
-            console.log('Starting fresh with new encryption key')
-            // Clear potentially corrupted data and start fresh
-            localStorage.removeItem('userProfile')
-            localStorage.removeItem('transactions')
-            localStorage.removeItem('budgets')
-            localStorage.removeItem('goals')
-            localStorage.removeItem('debtAccounts')
-            localStorage.removeItem('creditAccounts')
-            localStorage.removeItem('categories')
-            localStorage.removeItem('emergencyFund')
-            localStorage.removeItem('debtCreditTransactions')
-            // Generate new key for fresh start
+      // Initialize encryption based on user type
+      if (!WalletDataEncryption.isInitialized()) {
+        if (hasConvexAuth) {
+          // Convex user - use existing encryption system
+          const hasEncryptedData = !!(savedProfile || savedTransactions || savedBudgets || savedGoals ||
+                                     savedDebtAccounts || savedCreditAccounts || savedCategories)
+
+          if (hasEncryptedData) {
+            const initialized = await WalletDataEncryption.initializeWithStoredKey()
+            if (!initialized) {
+              console.warn('Encrypted data exists but no decryption key found - data may be corrupted or from another device')
+              console.log('Starting fresh with new encryption key')
+              // For Convex users, don't clear existing data - try to load as plain JSON
+              if (!hasConvexAuth) {
+                // Clear potentially corrupted data and start fresh for non-Convex users
+                localStorage.removeItem('userProfile')
+                localStorage.removeItem('transactions')
+                localStorage.removeItem('budgets')
+                localStorage.removeItem('goals')
+                localStorage.removeItem('debtAccounts')
+                localStorage.removeItem('creditAccounts')
+                localStorage.removeItem('categories')
+                localStorage.removeItem('emergencyFund')
+                localStorage.removeItem('debtCreditTransactions')
+              }
+              // Generate new key for fresh start
+              await WalletDataEncryption.generateNewKey()
+            }
+          } else {
+            // No existing data, generate new key
             await WalletDataEncryption.generateNewKey()
           }
+        } else if (hasSecurity) {
+          // Non-convex user with PIN security - initialize with PIN-derived key
+          // We'll handle this during decryption since we need the PIN
         } else {
-          // No existing data, generate new key
-          await WalletDataEncryption.generateNewKey()
+          // No security - no encryption needed
         }
       }
 
       // Decrypt data if it exists
       const decryptData = async (encryptedData: string | null, key: string) => {
-        if (!encryptedData) return null
-
-        // First, try to parse as plain JSON (for backward compatibility)
-        try {
-          const parsed = JSON.parse(encryptedData)
-          console.log(`Successfully parsed ${key} as plain JSON`)
-          return parsed
-        } catch (parseError) {
-          // Not plain JSON, try decryption
-          console.log(`${key} is not plain JSON, attempting decryption`)
+        if (!encryptedData) {
+          return key === "userProfile" ? null : []
         }
 
-        // Try decryption
+        // Try decryption based on user type
         try {
-          return await WalletDataEncryption.decryptData(encryptedData)
-        } catch (error) {
-          console.error(`Failed to decrypt ${key}:`, error)
+          if (hasConvexAuth) {
+            // Convex user - try decryption first
+            const result = await WalletDataEncryption.decryptData(encryptedData)
+            if (result) return result
 
-          // If decryption fails, check if it might be corrupted data
-          if (encryptedData.length > 100 && /^[A-Za-z0-9+/=]*={0,2}$/.test(encryptedData)) {
-            console.warn(`Data appears to be encrypted but decryption failed for ${key} - clearing corrupted data`)
-            // Clear the corrupted data
-            localStorage.removeItem(key)
+            // If decryption fails, try plain JSON for backward compatibility
+            try {
+              const parsed = JSON.parse(encryptedData)
+              return parsed
+            } catch (parseError) {
+              return key === "userProfile" ? null : []
+            }
+          } else if (hasSecurity) {
+            // Non-convex user with PIN - initialize encryption with PIN if needed
+            if (!WalletDataEncryption.isInitialized()) {
+              // Get the PIN from SecureKeyManager
+              const masterKey = await SecureKeyManager.getMasterKey("")
+              if (masterKey) {
+                // Initialize with the existing CryptoKey
+                await WalletDataEncryption.initializeWithKey(masterKey)
+                const result = await WalletDataEncryption.decryptData(encryptedData)
+                return result || (key === "userProfile" ? null : [])
+              } else {
+                return key === "userProfile" ? null : []
+              }
+            } else {
+              const result = await WalletDataEncryption.decryptData(encryptedData)
+              return result || (key === "userProfile" ? null : [])
+            }
           } else {
-            console.warn(`Clearing potentially corrupted data for ${key}`)
-            localStorage.removeItem(key)
+            // No security - try plain JSON first
+            try {
+              const parsed = JSON.parse(encryptedData)
+              return parsed
+            } catch (parseError) {
+              // Not plain JSON, perhaps old encrypted data
+              return key === "userProfile" ? null : []
+            }
+          }
+        } catch (error) {
+          // If decryption fails
+          if (!hasConvexAuth) {
+            // For non-Convex users, clear corrupted data
+            if (encryptedData.length > 100 && /^[A-Za-z0-9+/=]*={0,2}$/.test(encryptedData)) {
+              localStorage.removeItem(key)
+            } else {
+              localStorage.removeItem(key)
+            }
+          } else {
+            // For Convex users, try plain JSON before clearing
+            try {
+              const parsed = JSON.parse(encryptedData)
+              return parsed
+            } catch (parseError) {
+              localStorage.removeItem(key)
+            }
           }
 
-          return null
+          return key === "userProfile" ? null : []
         }
       }
 
@@ -288,21 +390,19 @@ export function useWalletData() {
         const validation = await DataIntegrityManager.validateAllData(parsedData)
 
         if (!validation.isValid) {
-          console.warn('Data integrity check failed, but continuing with loaded data')
+          // Data integrity check failed, but continuing with loaded data
         }
       }
 
       if (parsedData.userProfile) {
-        console.log('[useWalletData] User profile found, setting up dashboard mode')
         setUserProfile(parsedData.userProfile)
         setIsFirstTime(false)
         setShowOnboarding(false) // Ensure onboarding is not shown when profile exists
 
         // Always allow access when user profile exists - authentication is handled separately
         setIsAuthenticated(true)
-        console.log('[useWalletData] User authenticated - profile exists')
       } else {
-        console.log('[useWalletData] No user profile found, showing onboarding')
+        // All users (including Convex users) should complete onboarding
         setShowOnboarding(true)
         setIsAuthenticated(true)
       }
@@ -345,7 +445,6 @@ export function useWalletData() {
 
       setIsLoaded(true)
     } catch (error) {
-      console.error('Failed to load wallet data:', error)
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
@@ -354,12 +453,6 @@ export function useWalletData() {
 
   // saveDataWithIntegrity is declared above as a hoisted function
   const handleOnboardingComplete = (profileData: UserProfile) => {
-    console.log('[useWalletData] Onboarding completion called with:', {
-      name: profileData.name,
-      securityEnabled: profileData.securityEnabled,
-      hasPin: !!profileData.pin
-    })
-
     const completeProfile = {
       ...profileData,
       securityEnabled: profileData.securityEnabled,
@@ -371,17 +464,13 @@ export function useWalletData() {
     setShowOnboarding(false)
     setIsFirstTime(false)
 
-    console.log('[useWalletData] Onboarding completed - showOnboarding set to false')
-
     // Set authentication state based on security settings
     if (profileData.securityEnabled) {
       // If security is enabled, authentication will be handled by PIN validation
       setIsAuthenticated(false)
-      console.log('[useWalletData] Security enabled - authentication set to false (PIN required)')
     } else {
       // If security is disabled, allow immediate access
       setIsAuthenticated(true)
-      console.log('[useWalletData] Security disabled - authentication set to true (direct access)')
     }
 
     // Dispatch event to notify other components of onboarding completion
@@ -497,7 +586,6 @@ export function useWalletData() {
             try {
               updateGoalContribution(newTransaction.allocationTarget, newTransaction.amount)
             } catch (goalError) {
-              console.warn('Goal contribution update failed:', goalError)
               // Don't fail the transaction for goal errors
             }
           }
@@ -533,7 +621,6 @@ export function useWalletData() {
         }
       }
     } catch (error) {
-      console.error('Transaction addition failed:', error)
       throw error // Re-throw to allow caller to handle
     }
   }, [transactions, balance, userProfile, saveDataWithIntegrity])
@@ -875,46 +962,9 @@ export function useWalletData() {
   }
 
   const deleteBudget = async (id: string) => {
-    // Create versioned delete operation
-    const budgetToDelete = budgets.find(b => b.id === id)
-    if (budgetToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(budgetToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(budgetToDelete))
-
-        // Prepare display information for recycle bin
-        const displayName = budgetToDelete.name || `Budget ${budgetToDelete.id.slice(-8)}`
-        const displayAmount = budgetToDelete.limit
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'budget',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedBudgets = budgets.filter((budget) => budget.id !== id)
-        setBudgets(updatedBudgets)
-        await saveDataWithIntegrity("budgets", updatedBudgets)
-
-        console.log(`[DELETE] Budget ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation for budget:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedBudgets = budgets.filter((budget) => budget.id !== id)
-        setBudgets(updatedBudgets)
-        await saveDataWithIntegrity("budgets", updatedBudgets)
-      }
-    }
+    const updatedBudgets = budgets.filter((budget) => budget.id !== id)
+    setBudgets(updatedBudgets)
+    await saveDataWithIntegrity("budgets", updatedBudgets)
   }
 
   // Accept goal payload from UI
@@ -950,227 +1000,79 @@ export function useWalletData() {
   }
 
   const deleteGoal = async (id: string) => {
-    // Create versioned delete operation
-    const goalToDelete = goals.find(g => g.id === id)
-    if (goalToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(goalToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(goalToDelete))
-
-        // Prepare display information for recycle bin
-        const displayName = goalToDelete.title || goalToDelete.name || `Goal ${goalToDelete.id.slice(-8)}`
-        const displayAmount = goalToDelete.targetAmount
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'goal',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedGoals = goals.filter((goal) => goal.id !== id)
-        setGoals(updatedGoals)
-        await saveDataWithIntegrity("goals", updatedGoals)
-
-        console.log(`[DELETE] Goal ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation for goal:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedGoals = goals.filter((goal) => goal.id !== id)
-        setGoals(updatedGoals)
-        await saveDataWithIntegrity("goals", updatedGoals)
-      }
-    }
+    const updatedGoals = goals.filter((goal) => goal.id !== id)
+    setGoals(updatedGoals)
+    await saveDataWithIntegrity("goals", updatedGoals)
   }
 
   const deleteTransaction = async (id: string) => {
-    // Create versioned delete operation
-    const transactionToDelete = transactions.find(t => t.id === id)
-    if (transactionToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(transactionToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(transactionToDelete))
+    const updatedTransactions = transactions.filter((transaction) => transaction.id !== id)
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
 
-        // Prepare display information for recycle bin
-        const displayName = transactionToDelete.description || `Transaction ${transactionToDelete.id.slice(-8)}`
-        const displayAmount = transactionToDelete.amount
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'transaction',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedTransactions = transactions.filter((transaction) => transaction.id !== id)
-        setTransactions(updatedTransactions)
-        await saveDataWithIntegrity("transactions", updatedTransactions)
-
-        // Recalculate balance
-        const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
-          if (tx.type === "income") {
-            return sum + (tx.actual ?? tx.amount)
-          } else {
-            return sum - (tx.actual ?? tx.amount)
-          }
-        }, 0)
-        setBalance(newBalance)
-
-        console.log(`[DELETE] Transaction ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedTransactions = transactions.filter((transaction) => transaction.id !== id)
-        setTransactions(updatedTransactions)
-        await saveDataWithIntegrity("transactions", updatedTransactions)
+    // Recalculate balance
+    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
+      if (tx.type === "income") {
+        return sum + (tx.actual ?? tx.amount)
+      } else {
+        return sum - (tx.actual ?? tx.amount)
       }
-    }
+    }, 0)
+    setBalance(newBalance)
   }
 
   const deleteDebtAccount = async (id: string) => {
-    // Create versioned delete operation
-    const debtToDelete = debtAccounts.find(d => d.id === id)
-    if (debtToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(debtToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(debtToDelete))
-
-        // Prepare display information for recycle bin
-        const displayName = debtToDelete.name || `Debt Account ${debtToDelete.id.slice(-8)}`
-        const displayAmount = debtToDelete.balance
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'debtAccount',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
-        setDebtAccounts(updatedDebtAccounts)
-        await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
-
-        console.log(`[DELETE] Debt Account ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation for debt account:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
-        setDebtAccounts(updatedDebtAccounts)
-        await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
-      }
-    }
+    const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
+    setDebtAccounts(updatedDebtAccounts)
+    await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
   }
 
   const deleteCreditAccount = async (id: string) => {
-    // Create versioned delete operation
-    const creditToDelete = creditAccounts.find(c => c.id === id)
-    if (creditToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(creditToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(creditToDelete))
-
-        // Prepare display information for recycle bin
-        const displayName = creditToDelete.name || `Credit Account ${creditToDelete.id.slice(-8)}`
-        const displayAmount = creditToDelete.balance
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'creditAccount',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedCreditAccounts = creditAccounts.filter((credit) => credit.id !== id)
-        setCreditAccounts(updatedCreditAccounts)
-        await saveDataWithIntegrity("creditAccounts", updatedCreditAccounts)
-
-        console.log(`[DELETE] Credit Account ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation for credit account:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedCreditAccounts = creditAccounts.filter((credit) => credit.id !== id)
-        setCreditAccounts(updatedCreditAccounts)
-        await saveDataWithIntegrity("creditAccounts", updatedCreditAccounts)
-      }
-    }
+    const updatedCreditAccounts = creditAccounts.filter((credit) => credit.id !== id)
+    setCreditAccounts(updatedCreditAccounts)
+    await saveDataWithIntegrity("creditAccounts", updatedCreditAccounts)
   }
 
   const clearAllData = async () => {
-    console.log('[CLEAR] Starting comprehensive data clearing...')
+    // Starting comprehensive data clearing
 
     try {
       // Clear data integrity records
       DataIntegrityManager.clearIntegrityRecords()
-      console.log('[CLEAR] Data integrity records cleared')
+      // Data integrity records cleared
 
       // Clear all encryption keys
       SecureKeyManager.clearAllKeys()
-      console.log('[CLEAR] Encryption keys cleared')
+      // Encryption keys cleared
 
       // Clear wallet encryption keys
       WalletDataEncryption.clear()
-      console.log('[CLEAR] Wallet encryption cleared')
+      // Wallet encryption cleared
 
       // Clear all PIN and security data comprehensively
       const { SecurePinManager } = await import("@/lib/secure-pin-manager")
       SecurePinManager.clearAllSecurityData()
-      console.log('[CLEAR] PIN and security data cleared')
+      // PIN and security data cleared
 
       // Clear current session
       SessionManager.clearSession()
-      console.log('[CLEAR] Session cleared')
+      // Session cleared
 
       // Clear ALL localStorage data for the site - multiple passes for thoroughness
       if (typeof window !== 'undefined') {
         // First pass: clear all localStorage
         localStorage.clear()
-        console.log('[CLEAR] localStorage cleared (pass 1)')
+        // localStorage cleared (pass 1)
 
         // Second pass: verify and clear any remaining keys
         const remainingKeys = Object.keys(localStorage)
         if (remainingKeys.length > 0) {
-          console.log('[CLEAR] Found remaining localStorage keys:', remainingKeys)
+          // Found remaining localStorage keys
           remainingKeys.forEach(key => {
             try {
               localStorage.removeItem(key)
             } catch (e) {
-              console.warn(`[CLEAR] Failed to remove localStorage key: ${key}`, e)
+              // Failed to remove localStorage key
             }
           })
         }
@@ -1178,7 +1080,7 @@ export function useWalletData() {
         // Also clear sessionStorage if it exists
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.clear()
-          console.log('[CLEAR] sessionStorage cleared')
+          // sessionStorage cleared
         }
 
         // Clear all cookies for this domain - comprehensive approach
@@ -1192,7 +1094,7 @@ export function useWalletData() {
             document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname
             document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=." + window.location.hostname
           }
-          console.log('[CLEAR] Cookies cleared')
+          // Cookies cleared
         }
 
         // Clear IndexedDB databases if they exist
@@ -1203,11 +1105,11 @@ export function useWalletData() {
             for (const db of databases) {
               if (db.name) {
                 indexedDB.deleteDatabase(db.name)
-                console.log(`[CLEAR] IndexedDB database deleted: ${db.name}`)
+                // IndexedDB database deleted
               }
             }
           } catch (e) {
-            console.warn('[CLEAR] Error clearing IndexedDB:', e)
+            // Error clearing IndexedDB
           }
         }
 
@@ -1217,15 +1119,15 @@ export function useWalletData() {
             const cacheNames = await caches.keys()
             for (const cacheName of cacheNames) {
               await caches.delete(cacheName)
-              console.log(`[CLEAR] Cache deleted: ${cacheName}`)
+              // Cache deleted
             }
           } catch (e) {
-            console.warn('[CLEAR] Error clearing caches:', e)
+            // Error clearing caches
           }
         }
 
         // Force reload to clear any in-memory state
-        console.log('[CLEAR] Forcing page reload to ensure complete cleanup...')
+        // Forcing page reload to ensure complete cleanup
         setTimeout(() => {
           window.location.reload()
         }, 100)
@@ -1246,11 +1148,11 @@ export function useWalletData() {
       setShowOnboarding(true)
       setIsFirstTime(true)
 
-      console.log('[CLEAR] State reset to empty')
-      console.log('[CLEAR] Comprehensive data clearing completed successfully')
+      // State reset to empty
+      // Comprehensive data clearing completed successfully
 
     } catch (error) {
-      console.error('[CLEAR] Error during data clearing:', error)
+      // Error during data clearing
       // Even if clearing fails, reset state
       setUserProfile(null)
       setTransactions([])
@@ -1299,12 +1201,12 @@ export function useWalletData() {
 
   // Recalculate all client-side data after import/sync
   const recalculateClientData = async (importedData: any) => {
-    console.log("[v0] 🔄 Starting client-side recalculations...")
+    // Starting client-side recalculations
 
     try {
       // 1. Recalculate budget spending from transactions
       if (importedData.budgets && importedData.transactions) {
-        console.log("[v0] 📊 Recalculating budget spending...")
+        // Recalculating budget spending
         const recalculatedBudgets = importedData.budgets.map((budget: Budget) => {
           const budgetTransactions = importedData.transactions.filter((tx: Transaction) =>
             tx.category && (budget.categories?.includes(tx.category) || budget.category === tx.category)
@@ -1313,14 +1215,14 @@ export function useWalletData() {
           return { ...budget, spent: totalSpent }
         })
 
-        console.log(`[v0] ✅ Recalculated spending for ${recalculatedBudgets.length} budgets`)
+        // Recalculated spending for budgets
         setBudgets(recalculatedBudgets)
         await saveDataWithIntegrity("budgets", recalculatedBudgets)
       }
 
       // 2. Recalculate goal contributions from transactions
       if (importedData.goals && importedData.transactions) {
-        console.log("[v0] 🎯 Recalculating goal contributions...")
+        // Recalculating goal contributions
         const recalculatedGoals = importedData.goals.map((goal: Goal) => {
           const goalTransactions = importedData.transactions.filter((tx: Transaction) =>
             tx.allocationType === "goal" && tx.allocationTarget === goal.id
@@ -1329,14 +1231,14 @@ export function useWalletData() {
           return { ...goal, currentAmount: totalContributed }
         })
 
-        console.log(`[v0] ✅ Recalculated contributions for ${recalculatedGoals.length} goals`)
+        // Recalculated contributions for goals
         setGoals(recalculatedGoals)
         await saveDataWithIntegrity("goals", recalculatedGoals)
       }
 
       // 3. Recalculate category statistics
       if (importedData.categories && importedData.transactions) {
-        console.log("[v0] 📈 Recalculating category statistics...")
+        // Recalculating category statistics
         const recalculatedCategories = importedData.categories.map((category: Category) => {
           const categoryTransactions = importedData.transactions.filter((tx: Transaction) =>
             tx.category === category.name
@@ -1349,14 +1251,14 @@ export function useWalletData() {
           }
         })
 
-        console.log(`[v0] ✅ Recalculated stats for ${recalculatedCategories.length} categories`)
+        // Recalculated stats for categories
         setCategories(recalculatedCategories)
         await saveDataWithIntegrity("categories", recalculatedCategories)
       }
 
       // 4. Recalculate debt account balances from transactions
       if (importedData.debtAccounts && importedData.transactions) {
-        console.log("[v0] 💰 Recalculating debt balances...")
+        // Recalculating debt balances
         const recalculatedDebts = importedData.debtAccounts.map((debt: DebtAccount) => {
           // Find all debt-related transactions for this account
           const debtTransactions = importedData.transactions.filter((tx: Transaction) =>
@@ -1377,29 +1279,29 @@ export function useWalletData() {
           return { ...debt, balance: currentBalance }
         })
 
-        console.log(`[v0] ✅ Recalculated balances for ${recalculatedDebts.length} debt accounts`)
+        // Recalculated balances for debt accounts
         setDebtAccounts(recalculatedDebts)
         await saveDataWithIntegrity("debtAccounts", recalculatedDebts)
       }
 
       // 5. Recalculate credit account balances
       if (importedData.creditAccounts && importedData.transactions) {
-        console.log("[v0] 💳 Recalculating credit balances...")
+        // Recalculating credit balances
         // Credit calculations are more complex - for now, keep imported values
         // This can be enhanced later if needed
-        console.log(`[v0] ✅ Credit accounts preserved (${importedData.creditAccounts.length})`)
+        // Credit accounts preserved
       }
 
-      console.log("[v0] 🎉 All client-side recalculations completed!")
+      // All client-side recalculations completed
     } catch (error) {
-      console.error("[v0] ❌ Error during recalculations:", error)
+      // Error during recalculations
       // Don't fail the entire import for recalculation errors
     }
   }
 
   const importData = async (dataOrJson: string | any) => {
     try {
-      console.log("[v0] Starting data import...")
+      // Starting data import
       const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
       // Validate data structure
@@ -1407,27 +1309,14 @@ export function useWalletData() {
         throw new Error("Invalid backup file format - missing required data")
       }
 
-      console.log("[v0] Import data summary:", {
-        hasUserProfile: !!data.userProfile,
-        transactionsCount: data.transactions?.length || 0,
-        budgetsCount: data.budgets?.length || 0,
-        goalsCount: data.goals?.length || 0,
-        debtAccountsCount: data.debtAccounts?.length || 0,
-        creditAccountsCount: data.creditAccounts?.length || 0,
-        categoriesCount: data.categories?.length || 0,
-        emergencyFund: data.emergencyFund || 0,
-      })
-
       // Import user profile
       if (data.userProfile) {
-        console.log("[v0] Importing user profile...")
         setUserProfile(data.userProfile)
         await saveDataWithIntegrity("userProfile", data.userProfile)
       }
 
       // Import transactions
       if (data.transactions && Array.isArray(data.transactions)) {
-        console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
         await saveDataWithIntegrity("transactions", data.transactions)
         // Calculate balance based on actual cash flow
@@ -1443,37 +1332,31 @@ export function useWalletData() {
 
       // Import other data
       if (data.budgets && Array.isArray(data.budgets)) {
-        console.log(`[v0] Importing ${data.budgets.length} budgets...`)
         setBudgets(data.budgets)
         await saveDataWithIntegrity("budgets", data.budgets)
       }
 
       if (data.goals && Array.isArray(data.goals)) {
-        console.log(`[v0] Importing ${data.goals.length} goals...`)
         setGoals(data.goals)
         await saveDataWithIntegrity("goals", data.goals)
       }
 
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
-        console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
         setDebtAccounts(data.debtAccounts)
         await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
       }
 
       if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
-        console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
         setCreditAccounts(data.creditAccounts)
         await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
       }
 
       if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
-        console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
         setDebtCreditTransactions(data.debtCreditTransactions)
         await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
       }
 
       if (data.categories && Array.isArray(data.categories)) {
-        console.log(`[v0] Importing ${data.categories.length} categories...`)
         setCategories(data.categories)
         await saveDataWithIntegrity("categories", data.categories)
       }
@@ -1481,22 +1364,18 @@ export function useWalletData() {
       // Import emergency fund
       if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
         const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
-        console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
         setEmergencyFund(emergencyFundValue)
         await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
       }
 
       // Import scrollbar setting
       if (data.settings?.showScrollbars !== undefined && typeof window !== 'undefined') {
-        console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
       // CRITICAL: Recalculate all client-side data after import
-      console.log("[v0] 🔄 Triggering client-side recalculations...")
       await recalculateClientData(data)
 
-      console.log("[v0] ✅ Data import and recalculations completed successfully")
       return true
     } catch (error) {
       console.error("[v0] Error importing data:", error)
@@ -1639,7 +1518,6 @@ export function useWalletData() {
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
 
-    console.log("[v0] Goal spending completed successfully")
 
     return {
       success: true,
@@ -1677,46 +1555,9 @@ export function useWalletData() {
       throw new Error("Cannot delete default categories")
     }
 
-    // Create versioned delete operation
-    const categoryToDelete = categories.find(c => c.id === id)
-    if (categoryToDelete) {
-      try {
-        // Encrypt the data before sending to Convex
-        const { WalletEncryption } = await import("@/lib/encryption")
-        const encryptedData = await WalletDataEncryption.encryptData(categoryToDelete)
-        const dataHash = await WalletEncryption.hashData(JSON.stringify(categoryToDelete))
-
-        // Prepare display information for recycle bin
-        const displayName = categoryToDelete.name || `Category ${categoryToDelete.id.slice(-8)}`
-        const displayAmount = categoryToDelete.totalSpent || 0
-
-        // Create versioned operation (this will handle soft delete and recycle bin)
-        await createVersionedOperation({
-          itemId: id,
-          operation: 'DELETE',
-          encryptedData: encryptedData,
-          dataHash: dataHash,
-          userId: user?.id as any || 'unknown',
-          itemType: 'category',
-          deviceId: getDeviceInfo(),
-          displayName,
-          displayAmount,
-        })
-
-        // IMMEDIATELY REMOVE FROM LOCAL STORAGE (clean approach)
-        const updatedCategories = categories.filter((cat) => cat.id !== id)
-        setCategories(updatedCategories)
-        await saveDataWithIntegrity("categories", updatedCategories)
-
-        console.log(`[DELETE] Category ${id} removed from localStorage, available in recycle bin for 7 days`)
-      } catch (error) {
-        console.error('Failed to create versioned delete operation for category:', error)
-        // Fallback to direct deletion if versioned operation fails
-        const updatedCategories = categories.filter((cat) => cat.id !== id)
-        setCategories(updatedCategories)
-        await saveDataWithIntegrity("categories", updatedCategories)
-      }
-    }
+    const updatedCategories = categories.filter((cat) => cat.id !== id)
+    setCategories(updatedCategories)
+    await saveDataWithIntegrity("categories", updatedCategories)
   }
 
   const updateCategoryStats = async () => {
@@ -1792,3 +1633,4 @@ export function useWalletData() {
       : null,
   }
 }
+

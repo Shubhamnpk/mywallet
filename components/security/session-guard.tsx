@@ -82,7 +82,7 @@ const playSound = (activity: string) => {
       }
     }
   } catch (error) {
-    console.error("Error playing sound:", error)
+    // Error playing sound
   }
 }
 
@@ -577,6 +577,16 @@ export function SessionGuard({ children }: SessionGuardProps) {
   const [showNewPinSetup, setShowNewPinSetup] = useState(false)
 
   useEffect(() => {
+    // Check if user has completed onboarding
+    const userProfile = localStorage.getItem('userProfile')
+    const isFirstTime = localStorage.getItem('isFirstTime')
+
+    // If user hasn't completed onboarding yet, don't require PIN authentication
+    if (!userProfile || isFirstTime === 'true') {
+      setShowPinScreen(false)
+      return
+    }
+
 
     // If no PIN is set up, allow access
     if (!hasPin) {

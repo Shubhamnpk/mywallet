@@ -8,7 +8,6 @@ export default function RegisterSW() {
     function onBeforeInstall(e: any) {
       e.preventDefault()
       try { (window as any).__deferredPrompt = e } catch {}
-      console.log('beforeinstallprompt captured')
     }
     window.addEventListener('beforeinstallprompt', onBeforeInstall)
 

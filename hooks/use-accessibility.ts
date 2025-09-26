@@ -152,7 +152,7 @@ export function useAccessibility() {
         }
       }
     } catch (error) {
-      console.error("Error playing sound:", error)
+      // Error playing sound
     }
   }
 

@@ -1,10 +1,7 @@
 "use client"
 
-import { createContext, useContext, type ReactNode, useMemo } from "react"
+import { createContext, useContext, type ReactNode } from "react"
 import { useWalletData as useWalletDataHook } from "@/hooks/use-wallet-data"
-import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import { useConvexAuth } from "@/hooks/use-convex-auth"
 import type {
   UserProfile,
   Transaction,
@@ -77,48 +74,6 @@ interface WalletDataProviderProps {
 
 export function WalletDataProvider({ children }: WalletDataProviderProps) {
   const walletData = useWalletDataHook()
-  const { user } = useConvexAuth()
-
-  // Get current data state to filter out soft-deleted items
-  const currentDataState = useQuery(
-    api.walletData.getCurrentDataState,
-    user?.id ? { userId: user.id as any } : "skip"
-  )
-
-  // Create filtered data that excludes soft-deleted items using useMemo
-  const filteredData = useMemo(() => {
-    if (!currentDataState || !walletData.isLoaded) {
-      return walletData
-    }
-
-    // Create a set of soft-deleted item IDs
-    const softDeletedIds = new Set(
-      currentDataState
-        .filter(item => item.status === 'soft_deleted')
-        .map(item => item.id)
-    )
-
-    // Create a set of permanently deleted item IDs
-    const permanentlyDeletedIds = new Set(
-      currentDataState
-        .filter(item => item.status === 'permanently_deleted')
-        .map(item => item.id)
-    )
-
-    // Combine both sets of items to exclude
-    const itemsToExclude = new Set([...softDeletedIds, ...permanentlyDeletedIds])
-
-    // Filter out soft-deleted and permanently deleted items from all data arrays
-    return {
-      ...walletData,
-      transactions: walletData.transactions.filter(t => !itemsToExclude.has(t.id)),
-      budgets: walletData.budgets.filter(b => !itemsToExclude.has(b.id)),
-      goals: walletData.goals.filter(g => !itemsToExclude.has(g.id)),
-      categories: walletData.categories.filter(c => !itemsToExclude.has(c.id)),
-      debtAccounts: walletData.debtAccounts.filter(d => !itemsToExclude.has(d.id)),
-      creditAccounts: walletData.creditAccounts.filter(c => !itemsToExclude.has(c.id)),
-    }
-  }, [walletData, currentDataState])
 
   if (!walletData.isLoaded) {
     return (
@@ -128,7 +83,7 @@ export function WalletDataProvider({ children }: WalletDataProviderProps) {
     )
   }
 
-  return <WalletDataContext.Provider value={filteredData}>{children}</WalletDataContext.Provider>
+  return <WalletDataContext.Provider value={walletData}>{children}</WalletDataContext.Provider>
 }
 
 export function useWalletData() {

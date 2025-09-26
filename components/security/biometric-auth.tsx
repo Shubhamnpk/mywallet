@@ -133,12 +133,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
 
         setIsEnrolled(true)
         setCredentialId(credentialId)
-
-        console.log('Biometric enrollment successful')
       }
 
     } catch (error) {
-      console.error('Biometric enrollment failed:', error)
       let errorMessage = 'Biometric enrollment failed'
 
       if (error instanceof Error) {

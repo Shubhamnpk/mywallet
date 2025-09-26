@@ -9,7 +9,6 @@ export function ServiceWorkerRegister() {
   useEffect(() => {
     if (serviceWorker.updateAvailable) {
       // Show update notification
-      console.log('App update available!')
     }
   }, [serviceWorker.updateAvailable])
 

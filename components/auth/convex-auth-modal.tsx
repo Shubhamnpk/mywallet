@@ -64,12 +64,17 @@ export function ConvexAuthModal({
       if (result.success) {
         onOpenChange(false);
         setFormData({ email: '', password: '', name: '' });
-        toast.success(
-          authMode === "signup"
-            ? "Account created! Sync is now active."
-            : "Signed in! Your data will sync automatically."
-        );
-        onAuthSuccess?.();
+
+        if (authMode === "signup") {
+          // New account created - redirect to onboarding
+          toast.success("Account created! Let's set up your wallet.");
+          // Redirect to onboarding will be handled by the parent component
+          onAuthSuccess?.();
+        } else {
+          // Existing account signed in - check if onboarding needed
+          toast.success("Signed in! Your data will sync automatically.");
+          onAuthSuccess?.();
+        }
       } else {
         toast.error(result.error || "Authentication failed");
       }

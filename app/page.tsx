@@ -12,44 +12,25 @@ export default function MyWallet() {
   const router = useRouter()
   const pathname = usePathname()
   const { userProfile, showOnboarding, isLoaded } = useWalletData()
-  const { isAuthenticated } = useConvexAuth()
+  const { isAuthenticated, lastAuthMode } = useConvexAuth()
 
-  console.log('[MyWallet] Page state:', {
-    isLoaded,
-    showOnboarding,
-    hasUserProfile: !!userProfile,
-    isAuthenticated,
-    pathname
-  })
-
-  // Redirect logic for onboarding and authentication
+  // Simplified redirect logic for onboarding and authentication
   useEffect(() => {
     if (!isLoaded) return
 
-    console.log('[MyWallet] Redirect logic - Convex authenticated:', isAuthenticated, 'showOnboarding:', showOnboarding, 'hasUserProfile:', !!userProfile, 'pathname:', pathname)
+    const isOnDashboard = pathname === '/'
+    const isOnOnboarding = pathname === '/onboarding'
 
-    // If user is authenticated with Convex, always go to dashboard (skip onboarding)
+    // For authenticated users, check localStorage for onboarding completion
     if (isAuthenticated) {
-      if (pathname === '/onboarding') {
-        console.log('[MyWallet] Convex authenticated user on onboarding page, redirecting to dashboard')
-        router.push('/')
-      }
-      return
+      const storedUserProfile = localStorage.getItem('userProfile')
+      const storedIsFirstTime = localStorage.getItem('isFirstTime')
+      const hasCompletedOnboarding = storedUserProfile && storedIsFirstTime === 'false'
+
     }
 
-    // User is not authenticated with Convex
-    // If they have local wallet data, show dashboard
-    if (userProfile && !showOnboarding) {
-      if (pathname !== '/') {
-        console.log('[MyWallet] User has wallet data, redirecting to dashboard')
-        router.push('/')
-      }
-      return
-    }
-
-    // User is not authenticated and has no local data, show onboarding
-    if (showOnboarding && pathname !== '/onboarding') {
-      console.log('[MyWallet] No authentication or data, redirecting to onboarding')
+    // Redirect to onboarding for new users
+    if (showOnboarding && !userProfile && isOnDashboard) {
       router.push('/onboarding')
     }
   }, [isLoaded, isAuthenticated, showOnboarding, userProfile, router, pathname])
@@ -63,7 +44,7 @@ export default function MyWallet() {
     )
   }
 
-  // If onboarding should be shown and user is not authenticated, redirect to onboarding
+  // If onboarding should be shown and user is not authenticated, show loading while redirecting
   if (showOnboarding && !userProfile) {
     return (
       <div className="flex items-center justify-center min-h-screen">

@@ -107,7 +107,6 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
       const { data: { text } } = await worker.recognize(imageData)
       await worker.terminate()
 
-      console.log('OCR Extracted text:', text)
       return text
     } catch (error) {
       await worker.terminate()

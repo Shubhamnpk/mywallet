@@ -100,6 +100,10 @@ export function useAuthentication(): AuthState & AuthActions {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Check if user has completed onboarding
+        const userProfile = localStorage.getItem('userProfile')
+        const isFirstTime = localStorage.getItem('isFirstTime')
+
         const status = SecurePinManager.getAuthStatus()
 
         setAuthState({
@@ -112,13 +116,18 @@ export function useAuthentication(): AuthState & AuthActions {
           lockoutTimeRemaining: status.lockoutTimeRemaining,
         })
 
-        // If no PIN is set up, allow access
+        // If user hasn't completed onboarding yet, allow access (no auth required)
+        if (!userProfile || isFirstTime === 'true') {
+          setAuthState(prev => ({ ...prev, isAuthenticated: true }))
+          return
+        }
+
+        // If no PIN is set up but user has completed onboarding, allow access
         if (!status.hasPin) {
           setAuthState(prev => ({ ...prev, isAuthenticated: true }))
         } else {
           // If PIN is set up, ALWAYS require PIN authentication
           // Sessions are only used for extending authenticated sessions, not bypassing PIN
-          console.log('[useAuthentication] PIN is set up, requiring authentication')
           setAuthState(prev => ({
             ...prev,
             isAuthenticated: false,
@@ -131,7 +140,6 @@ export function useAuthentication(): AuthState & AuthActions {
 
     // Listen for session expiry events
     const handleSessionExpiry = () => {
-      console.log('[useAuthentication] Session expired, updating auth state')
       setAuthState(prev => ({
         ...prev,
         isAuthenticated: false,
@@ -141,7 +149,6 @@ export function useAuthentication(): AuthState & AuthActions {
 
     // Listen for onboarding completion events to re-initialize auth state
     const handleOnboardingComplete = () => {
-      console.log('[useAuthentication] Onboarding completed, re-initializing auth state')
       initializeAuth()
     }
 
@@ -198,7 +205,6 @@ export function useAuthentication(): AuthState & AuthActions {
         return false
       }
     } catch (error) {
-      console.error("[v0] PIN setup error:", error)
       setAuthState(prev => ({ ...prev, isLoading: false }))
       toast({
         title: "Setup Error",
@@ -326,7 +332,6 @@ export function useAuthentication(): AuthState & AuthActions {
     try {
       // Handle biometric authentication (empty PIN)
       if (pin === "") {
-        console.log('[useAuthentication] Biometric authentication detected')
         // For biometric auth, we don't validate PIN but create session directly
         // This assumes biometric validation has already happened
 
