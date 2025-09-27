@@ -63,6 +63,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
 
           <div className="flex items-center gap-2 sm:hidden">
             <OfflineBadge />
+            <ThemeToggle />
             <button
               className="w-9 h-9 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
               onClick={() => router.push("/settings")}
