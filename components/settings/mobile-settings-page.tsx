@@ -44,10 +44,11 @@ interface MobileSettingsPageProps {
 type SettingsView = "main" | "profile" | "security" | "theme" | "data" | "accessibility" | "about"
 
 export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
-  const [currentView, setCurrentView] = useState<SettingsView>("main")
-  const [searchQuery, setSearchQuery] = useState("")
-  const { userProfile } = useWalletData()
-  const router = useRouter()
+   const [currentView, setCurrentView] = useState<SettingsView>("main")
+   const [searchQuery, setSearchQuery] = useState("")
+   const [highlightQuery, setHighlightQuery] = useState("")
+   const { userProfile } = useWalletData()
+   const router = useRouter()
 
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([])
   useEffect(() => {
@@ -236,28 +237,32 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
             </button>
           )}
         </div>
-        {/* User Profile */}
-        <div className="flex items-center p-4 mb-1 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
-             onClick={() => setCurrentView("profile")}>
-          <div className="flex-1">
-            <div className="font-medium text-lg text-gray-900 dark:text-white mb-1">
-              {userProfile?.name || "Mr/Ms lovely user"}
+        {!searchQuery.trim() && (
+          <>
+            {/* User Profile */}
+            <div className="flex items-center p-4 mb-1 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
+                 onClick={() => setCurrentView("profile")}>
+              <div className="flex-1">
+                <div className="font-medium text-lg text-gray-900 dark:text-white mb-1">
+                  {userProfile?.name || "Mr/Ms lovely user"}
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {getCurrentCurrencySymbol()} • myWallet lovelyUser
+                </div>
+              </div>
+              <Avatar className="w-12 h-12 mr-4">
+                <AvatarImage src={userProfile?.avatar} />
+                <AvatarFallback className="bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 text-primary font-bold text-2xl shadow-inner">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
             </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              {getCurrentCurrencySymbol()} • myWallet lovelyUser
-            </div>
-          </div>
-          <Avatar className="w-12 h-12 mr-4">
-            <AvatarImage src={userProfile?.avatar} />
-            <AvatarFallback className="bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 text-primary font-bold text-2xl shadow-inner">
-              {getInitials()}
-            </AvatarFallback>
-          </Avatar>
-        </div>
 
-        {/* Suggestions */}
-        {suggestions.length > 0 && (
-          <SuggestionsCarousel suggestions={suggestions} onDismiss={dismissSuggestion} />
+            {/* Suggestions */}
+            {suggestions.length > 0 && (
+              <SuggestionsCarousel suggestions={suggestions} onDismiss={dismissSuggestion} />
+            )}
+          </>
         )}
       </div>
 
@@ -277,6 +282,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
                   if (item.id === "profile" || item.id === "security" || item.id === "theme" ||
                       item.id === "data" || item.id === "accessibility" || item.id === "about") {
                     setCurrentView(item.id as SettingsView)
+                    setHighlightQuery(searchQuery)
                   }
                   // For other items, you could add navigation or actions here
                 }}
@@ -320,7 +326,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
 
     const renderContent = () => {
       switch (currentView) {
-        case "profile": return <UserProfileSettings />
+        case "profile": return <UserProfileSettings highlightQuery={highlightQuery} />
         case "security": return <SecuritySettings />
         case "theme": return <ThemeSettings />
         case "data": return <DataSettings />

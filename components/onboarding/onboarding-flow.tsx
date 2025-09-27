@@ -328,11 +328,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const progress = (step / maxStep) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-primary flex items-center justify-center p-3">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-3">
       <div className="w-full max-w-md">
 
         {/* Main Card */}
-        <Card className="border-0 shadow-xl glass border-white/20">
+        <Card className="border-0 shadow-xl bg-card/600 backdrop-blur-sm border border-border/60">
           <CardHeader className="text-center pb-3">
             <div className="flex items-center justify-center gap-3 mb-3">
               <div className="w-16 h-16 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 rounded-xl flex items-center justify-center shadow-lg">
@@ -358,7 +358,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 {/* Journey Message */}
                 <div className="space-y-4">
                   <div className="relative">
-                    <p className="text-base text-white/95 font-medium leading-relaxed">
+                    <p className="text-base text-foreground/90 font-medium leading-relaxed">
                       Let's start your journey to
                     </p>
                     <p className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-primary text-transparent bg-clip-text">
@@ -369,16 +369,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   {/* Feature Showcase */}
                   <div className="grid grid-cols-2 gap-3 mt-6">
                     {features.map((feature, index) => (
-                      <div key={index} className="group relative p-3 rounded-lg bg-gradient-to-br from-white/15 to-white/5 border border-white/10 backdrop-blur-md hover:from-white/20 hover:to-white/10 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                      <div key={index} className="group relative p-3 rounded-lg bg-card/50 border border-border/30 backdrop-blur-md hover:bg-card/70 hover:border-border/50 transition-all duration-300 hover:scale-105 hover:shadow-lg">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         <div className="relative z-10">
                           <div className={`inline-flex items-center justify-center w-8 h-8 rounded-md ${feature.bgColor} mb-2 group-hover:scale-110 transition-transform duration-300`}>
                             <feature.icon className={`w-4 h-4 ${feature.color}`} />
                           </div>
-                          <h3 className="font-semibold text-xs text-white group-hover:text-white/95 transition-colors">
+                          <h3 className="font-semibold text-xs text-foreground group-hover:text-foreground/95 transition-colors">
                             {feature.title}
                           </h3>
-                          <p className="text-xs text-white/70 group-hover:text-white/80 transition-colors leading-tight">
+                          <p className="text-xs text-muted-foreground group-hover:text-foreground/80 transition-colors leading-tight">
                             {feature.description}
                           </p>
                         </div>
@@ -518,7 +518,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                         <div className={`w-4 h-4 rounded-full border-2 ${
                           formData.walletType === 'timed' ? 'border-primary bg-primary' : 'border-muted-foreground'
                         }`}>
-                          {formData.walletType === 'timed' && <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5" />}
+                          {formData.walletType === 'timed' && <div className="w-2 h-2 bg-primary-foreground rounded-full mx-auto mt-0.5" />}
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold">Timed Wallet</h3>
@@ -538,7 +538,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                         <div className={`w-4 h-4 rounded-full border-2 ${
                           formData.walletType === 'normal' ? 'border-primary bg-primary' : 'border-muted-foreground'
                         }`}>
-                          {formData.walletType === 'normal' && <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5" />}
+                          {formData.walletType === 'normal' && <div className="w-2 h-2 bg-primary-foreground rounded-full mx-auto mt-0.5" />}
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold">Normal Wallet</h3>
@@ -780,10 +780,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   key={stepNum}
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${
                     isActive
-                      ? 'bg-white scale-125'
+                      ? 'bg-primary scale-125'
                       : isCompleted
-                        ? 'bg-white'
-                        : 'bg-white/30'
+                        ? 'bg-primary/70'
+                        : 'bg-muted-foreground/30'
                   }`}
                 />
               );

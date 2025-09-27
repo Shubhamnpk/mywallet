@@ -15,7 +15,7 @@ import { toast } from "@/hooks/use-toast"
 import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
 
-export function UserProfileSettings() {
+export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: string }) {
   const { userProfile, updateUserProfile, clearAllData } = useWalletData()
   const [formData, setFormData] = useState<any>(
     userProfile || {
@@ -226,7 +226,7 @@ export function UserProfileSettings() {
                 className={`relative ${editMode ? 'cursor-pointer' : ''}`}
                 onClick={() => editMode && !getAvatarSrc() && handleFileUpload()}
               >
-                <Avatar className="w-32 h-32 ring-4 ring-primary/10 shadow-xl transition-all duration-300 group-hover:ring-primary/30 group-hover:shadow-2xl group-hover:scale-105">
+                <Avatar className={`w-32 h-32 ring-4 ${highlightQuery.toLowerCase().includes("avatar") ? "ring-primary" : "ring-primary/10"} shadow-xl transition-all duration-300 group-hover:ring-primary/30 group-hover:shadow-2xl group-hover:scale-105`}>
                   <AvatarImage
                     src={getAvatarSrc() || undefined}
                     className="object-cover"
@@ -343,13 +343,13 @@ export function UserProfileSettings() {
                       placeholder="Enter your full name"
                       value={formData.name}
                       onChange={(e) => updateField("name", e.target.value)}
-                      className="h-11"
+                      className={`h-11 ${highlightQuery.toLowerCase().includes("name") ? "ring-2 ring-primary" : ""}`}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="currency" className="text-sm font-medium">Currency</Label>
                     <Select value={formData.currency} onValueChange={handleCurrencyChange}>
-                      <SelectTrigger className="h-11">
+                      <SelectTrigger className={`h-11 ${highlightQuery.toLowerCase().includes("currency") ? "ring-2 ring-primary" : ""}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -468,7 +468,7 @@ export function UserProfileSettings() {
                   placeholder="5000"
                   value={formData.monthlyEarning}
                   onChange={(e) => updateField("monthlyEarning", Number(e.target.value))}
-                  className="h-11"
+                  className={`h-11 ${highlightQuery.toLowerCase().includes("earning") || highlightQuery.toLowerCase().includes("monthly") ? "ring-2 ring-primary" : ""}`}
                 />
               </div>
               <div className="space-y-2">
