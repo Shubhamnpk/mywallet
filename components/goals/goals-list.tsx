@@ -36,7 +36,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GoalProgressVisualization } from "./goal-progress-visualization"
 import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
-import { MilestoneCelebrations } from "./milestone-celebrations"
 
 interface EnhancedGoalsListProps {
   goals: Goal[]
@@ -205,11 +204,10 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   return (
     <div className="space-y-4">
       <Tabs defaultValue="goals" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="goals">Goals</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
           <TabsTrigger value="planning">Planning</TabsTrigger>
-          <TabsTrigger value="achievements">Achievements</TabsTrigger>
         </TabsList>
 
         <TabsContent value="goals" className="space-y-4 mt-6">
@@ -457,10 +455,6 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
             currentBalance={balance}
             monthlyIncome={userProfile.monthlyEarning}
           />
-        </TabsContent>
-
-        <TabsContent value="achievements" className="space-y-4 mt-6">
-          <MilestoneCelebrations goals={goals} userProfile={userProfile} />
         </TabsContent>
       </Tabs>
 

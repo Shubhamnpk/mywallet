@@ -14,9 +14,33 @@ import { LogOut, Trash2, Upload, Save, Plus, PencilLine, Camera, X, User, ImageI
 import { toast } from "@/hooks/use-toast"
 import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
+import { useAchievements } from "@/hooks/use-achievements"
+import { AchievementsProfile } from "@/components/achievements/achievements-profile"
 
 export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: string }) {
-  const { userProfile, updateUserProfile, clearAllData } = useWalletData()
+  const {
+    userProfile,
+    updateUserProfile,
+    clearAllData,
+    goals,
+    transactions,
+    budgets,
+    debtAccounts
+  } = useWalletData()
+
+  const {
+    achievements,
+    unlockedAchievements,
+    lockedAchievements,
+    celebration,
+    dismissCelebration
+  } = useAchievements({
+    goals,
+    transactions,
+    budgets,
+    debtAccounts,
+    userProfile: userProfile!
+  })
   const [formData, setFormData] = useState<any>(
     userProfile || {
       name: "",
@@ -530,6 +554,32 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Achievements Profile */}
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+            </div>
+            <div>
+              <CardTitle className="text-xl">Achievements</CardTitle>
+              <CardDescription>Track your financial milestones and accomplishments</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <AchievementsProfile
+            achievements={achievements}
+            unlockedAchievements={unlockedAchievements}
+            lockedAchievements={lockedAchievements}
+            celebration={celebration}
+            onDismissCelebration={dismissCelebration}
+          />
         </CardContent>
       </Card>
 

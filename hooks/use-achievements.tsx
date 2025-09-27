@@ -207,7 +207,7 @@ export function useAchievements({
         description: "Eliminated all outstanding debt",
         icon: <CheckCircle2 className="w-5 h-5" />,
         color: "text-emerald-600 bg-emerald-50",
-        unlocked: debtAccounts.length === 0 || debtAccounts.every(d => d.balance === 0),
+        unlocked: debtAccounts.length > 0 && debtAccounts.every(d => d.balance === 0),
         progress: debtAccounts.filter(d => d.balance === 0).length,
         maxProgress: debtAccounts.length || 1,
         category: "Debt Management"
