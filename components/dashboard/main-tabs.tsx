@@ -197,6 +197,7 @@ export function MainTabs({
               budgets={budgets}
               userProfile={userProfile}
               onAddBudget={onAddBudget}
+              onUpdateBudget={onUpdateBudget}
               onDeleteBudget={onDeleteBudget}
             />
           </TabsContent>

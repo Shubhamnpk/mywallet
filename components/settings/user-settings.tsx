@@ -14,9 +14,33 @@ import { LogOut, Trash2, Upload, Save, Plus, PencilLine, Camera, X, User, ImageI
 import { toast } from "@/hooks/use-toast"
 import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
+import { useAchievements } from "@/hooks/use-achievements"
+import { AchievementsProfile } from "@/components/achievements/achievements-profile"
 
-export function UserProfileSettings() {
-  const { userProfile, updateUserProfile, clearAllData } = useWalletData()
+export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: string }) {
+  const {
+    userProfile,
+    updateUserProfile,
+    clearAllData,
+    goals,
+    transactions,
+    budgets,
+    debtAccounts
+  } = useWalletData()
+
+  const {
+    achievements,
+    unlockedAchievements,
+    lockedAchievements,
+    celebration,
+    dismissCelebration
+  } = useAchievements({
+    goals,
+    transactions,
+    budgets,
+    debtAccounts,
+    userProfile: userProfile!
+  })
   const [formData, setFormData] = useState<any>(
     userProfile || {
       name: "",
@@ -63,10 +87,14 @@ export function UserProfileSettings() {
 
   const hourlyRate = useMemo(() => {
     const hours = formData.workingHoursPerDay * formData.workingDaysPerMonth
-    return hours > 0 ? formData.monthlyEarning / hours : 0
+    const rate = hours > 0 ? formData.monthlyEarning / hours : 0
+    return isNaN(rate) ? 0 : rate
   }, [formData.monthlyEarning, formData.workingHoursPerDay, formData.workingDaysPerMonth])
 
-  const perMinuteRate = useMemo(() => (hourlyRate > 0 ? hourlyRate / 60 : 0), [hourlyRate])
+  const perMinuteRate = useMemo(() => {
+    const rate = hourlyRate > 0 ? hourlyRate / 60 : 0
+    return isNaN(rate) ? 0 : rate
+  }, [hourlyRate])
 
   const handleSave = () => {
     updateUserProfile(formData)
@@ -222,7 +250,7 @@ export function UserProfileSettings() {
                 className={`relative ${editMode ? 'cursor-pointer' : ''}`}
                 onClick={() => editMode && !getAvatarSrc() && handleFileUpload()}
               >
-                <Avatar className="w-32 h-32 ring-4 ring-primary/10 shadow-xl transition-all duration-300 group-hover:ring-primary/30 group-hover:shadow-2xl group-hover:scale-105">
+                <Avatar className={`w-32 h-32 ring-4 ${highlightQuery.toLowerCase().includes("avatar") ? "ring-primary" : "ring-primary/10"} shadow-xl transition-all duration-300 group-hover:ring-primary/30 group-hover:shadow-2xl group-hover:scale-105`}>
                   <AvatarImage
                     src={getAvatarSrc() || undefined}
                     className="object-cover"
@@ -339,13 +367,13 @@ export function UserProfileSettings() {
                       placeholder="Enter your full name"
                       value={formData.name}
                       onChange={(e) => updateField("name", e.target.value)}
-                      className="h-11"
+                      className={`h-11 ${highlightQuery.toLowerCase().includes("name") ? "ring-2 ring-primary" : ""}`}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="currency" className="text-sm font-medium">Currency</Label>
                     <Select value={formData.currency} onValueChange={handleCurrencyChange}>
-                      <SelectTrigger className="h-11">
+                      <SelectTrigger className={`h-11 ${highlightQuery.toLowerCase().includes("currency") ? "ring-2 ring-primary" : ""}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -437,7 +465,7 @@ export function UserProfileSettings() {
             <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                 <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-                  {getCurrentCurrencySymbol}{formData.monthlyEarning.toLocaleString()}
+                  {getCurrentCurrencySymbol}{(formData.monthlyEarning || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-emerald-600/70 dark:text-emerald-400/70">Monthly Earning</div>
               </div>
@@ -464,7 +492,7 @@ export function UserProfileSettings() {
                   placeholder="5000"
                   value={formData.monthlyEarning}
                   onChange={(e) => updateField("monthlyEarning", Number(e.target.value))}
-                  className="h-11"
+                  className={`h-11 ${highlightQuery.toLowerCase().includes("earning") || highlightQuery.toLowerCase().includes("monthly") ? "ring-2 ring-primary" : ""}`}
                 />
               </div>
               <div className="space-y-2">
@@ -526,6 +554,32 @@ export function UserProfileSettings() {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Achievements Profile */}
+      <Card className="hidden md:block border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+            </div>
+            <div>
+              <CardTitle className="text-xl">Achievements</CardTitle>
+              <CardDescription>Track your financial milestones and accomplishments</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <AchievementsProfile
+            achievements={achievements}
+            unlockedAchievements={unlockedAchievements}
+            lockedAchievements={lockedAchievements}
+            celebration={celebration}
+            onDismissCelebration={dismissCelebration}
+          />
         </CardContent>
       </Card>
 

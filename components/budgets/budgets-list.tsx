@@ -24,21 +24,27 @@ import {
   SortAsc,
   SortDesc,
   Calendar,
+  Edit,
 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
 import type { Budget, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
+import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 
 interface BudgetsListProps {
   budgets: Budget[]
   userProfile: UserProfile
   onAddBudget: (budget: any) => void
+  onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
   onDeleteBudget: (id: string) => void
 }
 
-export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget }: BudgetsListProps) {
+export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
+  const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -105,18 +111,45 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
     return filtered
   }, [budgets, searchQuery, statusFilter, sortBy, sortOrder])
 
-  const formatTimeEquivalent = (minutes: number) => {
-    // Convert minutes back to amount for proper calculation
-    const hourlyRate = userProfile.hourlyRate || (userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay))
-    const amount = (minutes / 60) * hourlyRate
-    const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
-    const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
-    return breakdown ? breakdown.formatted.userFriendly : "0m"
-  }
 
   const handleAddBudget = (budgetData: any) => {
     onAddBudget(budgetData)
     setDialogOpen(false)
+  }
+
+  const handleUpdateBudget = (id: string, budgetData: any) => {
+    onUpdateBudget?.(id, budgetData)
+    setDialogOpen(false)
+    setEditingBudget(null)
+  }
+
+  const handleEditBudget = (budget: Budget) => {
+    setEditingBudget(budget)
+    setDialogOpen(true)
+  }
+
+  const handleSelectAll = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
+      setSelectedBudgets(new Set(filteredAndSortedBudgets.map(b => b.id)))
+    } else {
+      setSelectedBudgets(new Set())
+    }
+  }
+
+  const handleSelectBudget = (budgetId: string, checked: boolean | "indeterminate") => {
+    const isChecked = checked === true
+    const newSelected = new Set(selectedBudgets)
+    if (isChecked) {
+      newSelected.add(budgetId)
+    } else {
+      newSelected.delete(budgetId)
+    }
+    setSelectedBudgets(newSelected)
+  }
+
+  const handleBulkDelete = () => {
+    selectedBudgets.forEach(id => onDeleteBudget(id))
+    setSelectedBudgets(new Set())
   }
 
   const toggleExpanded = (budgetId: string) => {
@@ -133,10 +166,18 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
           <Target className="w-5 h-5" />
           Budgets ({filteredAndSortedBudgets.length})
         </h3>
-        <Button onClick={() => setDialogOpen(true)} className="flex items-center gap-2">
-          <PlusCircle className="w-4 h-4" />
-          New Budget
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedBudgets.size > 0 && (
+            <Button variant="destructive" onClick={handleBulkDelete} className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedBudgets.size})
+            </Button>
+          )}
+          <Button onClick={() => { setEditingBudget(null); setDialogOpen(true) }} className="flex items-center gap-2">
+            <PlusCircle className="w-4 h-4" />
+            New Budget
+          </Button>
+        </div>
       </div>
 
       {/* Filters & Controls */}
@@ -189,6 +230,21 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
         </div>
       )}
 
+      {/* Select All Section */}
+      {filteredAndSortedBudgets.length > 0 && (
+        <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+          <Checkbox
+            checked={selectedBudgets.size === filteredAndSortedBudgets.length && filteredAndSortedBudgets.length > 0}
+            onCheckedChange={handleSelectAll}
+          />
+          <span className="text-sm text-muted-foreground">
+            {selectedBudgets.size === 0
+              ? "Select all budgets"
+              : `${selectedBudgets.size} of ${filteredAndSortedBudgets.length} budgets selected`}
+          </span>
+        </div>
+      )}
+
       {/* States */}
       {budgets.length === 0 ? (
         <Card className="text-center p-8">
@@ -222,8 +278,8 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
             const isOverBudget = budget.spent > budget.limit
             const isExpanded = expandedBudgets.has(budget.id)
 
-            const budgetTimeEquivalent = Math.round(budget.limit / (userProfile.hourlyRate / 60))
-            const spentTimeEquivalent = Math.round(budget.spent / (userProfile.hourlyRate / 60))
+            const budgetTimeBreakdown = getTimeEquivalentBreakdown(budget.limit, userProfile)
+            const spentTimeBreakdown = getTimeEquivalentBreakdown(budget.spent, userProfile)
 
             return (
               <Card key={budget.id} className={`transition border ${isOverBudget ? "border-red-200 bg-red-50/50" : ""}`}>
@@ -244,13 +300,19 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                 <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(budget.id)}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center gap-2 cursor-pointer flex-1">
-                          <Target className="w-5 h-5 text-primary" />
-                          <CardTitle className="text-lg">{budget.name}</CardTitle>
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </div>
-                      </CollapsibleTrigger>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selectedBudgets.has(budget.id)}
+                          onCheckedChange={(checked) => handleSelectBudget(budget.id, checked as boolean)}
+                        />
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center gap-2 cursor-pointer flex-1">
+                            <Target className="w-5 h-5 text-primary" />
+                            <CardTitle className="text-lg">{budget.name}</CardTitle>
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </CollapsibleTrigger>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Badge
                           variant={status === "exceeded" ? "destructive" : status === "warning" ? "secondary" : "default"}
@@ -259,6 +321,14 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                           <StatusIcon className="w-3 h-3" />
                           {status === "exceeded" ? "Over Budget" : status === "warning" ? "Near Limit" : "On Track"}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditBudget(budget)}
+                          className="text-muted-foreground hover:text-primary"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -273,7 +343,6 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                     <div className="space-y-2 mt-3">
                       <div className="flex justify-between text-sm">
                           <span className="flex items-center gap-1">
-                          <span className="font-medium">{currencySymbol}</span>
                           Spent: {formatCurrency(budget.spent, userProfile.currency, userProfile.customCurrency)}
                         </span>
                         <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>
@@ -298,14 +367,14 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                           <Clock className="w-4 h-4 text-amber-600" />
                           Time Investment
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="text-muted-foreground">Budget represents</p>
-                            <p className="font-medium">{formatTimeEquivalent(budgetTimeEquivalent)} of work</p>
+                            <p className="font-medium">{budgetTimeBreakdown ? budgetTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Already spent</p>
-                            <p className="font-medium">{formatTimeEquivalent(spentTimeEquivalent)} of work</p>
+                            <p className="font-medium">{spentTimeBreakdown ? spentTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
                           </div>
                         </div>
                       </div>
@@ -326,7 +395,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
                       </div>
 
                       {/* Meta Info */}
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-muted-foreground" />
                           <span>Period: {budget.period}</span>
@@ -348,9 +417,11 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onDeleteBudget 
       {/* Dialog */}
       <BudgetDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingBudget(null) }}
         userProfile={userProfile}
         onAddBudget={handleAddBudget}
+        editingBudget={editingBudget || undefined}
+        onUpdateBudget={handleUpdateBudget}
       />
     </div>
   )

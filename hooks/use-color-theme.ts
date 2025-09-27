@@ -105,6 +105,14 @@ export function useColorTheme() {
       // For custom theme, convert hex to oklch and use the custom primary color
       const oklchColor = hexToOklch(customPrimaryColor)
       document.documentElement.style.setProperty("--primary", oklchColor)
+    } else if (themeId.startsWith("custom-")) {
+      // Handle user-created custom themes
+      const customThemes = JSON.parse(localStorage.getItem('wallet_custom_themes') || '[]')
+      const customTheme = customThemes.find((t: any) => t.id === themeId)
+      if (customTheme) {
+        const oklchColor = hexToOklch(customTheme.primary)
+        document.documentElement.style.setProperty("--primary", oklchColor)
+      }
     } else {
       const selectedTheme = colorThemes.find((t) => t.id === themeId)
       if (selectedTheme) {
@@ -257,6 +265,13 @@ export function useColorTheme() {
   const handleColorThemeChange = (newTheme: string) => {
     setColorTheme(newTheme)
     localStorage.setItem("wallet_color_theme", newTheme)
+
+    // Reset custom background when switching away from custom theme
+    if (newTheme !== "custom") {
+      setCustomBackgroundColor("")
+      localStorage.setItem("wallet_custom_background_color", "")
+    }
+
     applyColorTheme(newTheme)
   }
 

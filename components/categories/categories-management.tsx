@@ -444,6 +444,7 @@ export function CategoriesManagement({
                     /* TODO: Implement details view */
                   }}
                   onEdit={() => setEditingCategory(category)}
+                  onDelete={() => handleDeleteCategory(category)}
                   showActions={true}
                 />
                 <div className="absolute top-2 right-2 z-10">

@@ -55,10 +55,14 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails, onE
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{ backgroundColor: category.color || "#3b82f6" }}
-            />
+            <div className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs">
+              {category.icon || (
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: category.color || "#3b82f6" }}
+                />
+              )}
+            </div>
             <div className="min-w-0">
               <CardTitle className="text-base truncate">{category.name}</CardTitle>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -150,7 +154,7 @@ export function CategoryProgressCard({ category, userProfile, onViewDetails, onE
 
         {/* Action Buttons */}
         <div className="flex gap-2">
-          {showActions && !category.isDefault && (
+          {showActions && (
             <>
               <Button
                 variant="outline"

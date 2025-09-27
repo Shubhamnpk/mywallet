@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Fingerprint,
   Shield,
@@ -255,7 +256,6 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
     return { isChrome, isFirefox, isSafari, isEdge }
   }
 
-  // If PIN is not enabled, show a message requiring PIN setup first
   if (!pinEnabled) {
     return (
       <Card>
@@ -266,15 +266,12 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span className="text-sm text-amber-700 font-medium">PIN Required</span>
-            </div>
-            <p className="text-sm text-amber-600 mt-2">
-              Biometric authentication requires PIN protection to be enabled first. Please set up your PIN in the section above.
-            </p>
-          </div>
+          <Alert className="border-primary/20 bg-primary/5">
+            <AlertTriangle className="w-4 h-4 text-primary" />
+            <AlertDescription className="text-primary">
+              <strong>PIN Required</strong>Biometric authentication requires PIN protection to be enabled first. Please set up your PIN in the section above.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     )

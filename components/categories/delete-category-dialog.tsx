@@ -45,7 +45,6 @@ export function DeleteCategoryDialog({
   }
 
   const getRiskLevel = () => {
-    if (isDefault) return "high"
     if (isInUse) return "medium"
     return "low"
   }
@@ -59,13 +58,10 @@ export function DeleteCategoryDialog({
           <div className="flex items-center gap-3">
             <div className={cn(
               "p-3 rounded-xl",
-              riskLevel === "high" ? "bg-red-100 dark:bg-red-900/20" :
               riskLevel === "medium" ? "bg-amber-100 dark:bg-amber-900/20" :
               "bg-blue-100 dark:bg-blue-900/20"
             )}>
-              {riskLevel === "high" ? (
-                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
-              ) : riskLevel === "medium" ? (
+              {riskLevel === "medium" ? (
                 <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               ) : (
                 <Trash2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -107,22 +103,6 @@ export function DeleteCategoryDialog({
           </div>
 
           {/* Risk Assessment */}
-          {riskLevel === "high" && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5" />
-                <div>
-                  <p className="font-medium text-red-800 dark:text-red-200">
-                    Cannot Delete Default Category
-                  </p>
-                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                    This is a default category that comes with the app. Default categories cannot be deleted to maintain system functionality.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {riskLevel === "medium" && (
             <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg">
               <div className="flex items-start gap-3">
@@ -167,9 +147,9 @@ export function DeleteCategoryDialog({
               Cancel
             </Button>
             <Button
-              variant={riskLevel === "high" ? "secondary" : "destructive"}
+              variant="destructive"
               onClick={handleDelete}
-              disabled={isDeleting || riskLevel === "high"}
+              disabled={isDeleting}
               className="flex-1"
             >
               {isDeleting ? (
@@ -177,8 +157,6 @@ export function DeleteCategoryDialog({
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Deleting...
                 </div>
-              ) : riskLevel === "high" ? (
-                "Cannot Delete"
               ) : (
                 <>
                   <Trash2 className="w-4 h-4 mr-2" />

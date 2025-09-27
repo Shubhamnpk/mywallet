@@ -149,3 +149,18 @@ export interface DebtCreditTransaction {
   date: string
   balanceAfter: number
 }
+
+export interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: React.ReactNode
+  color: string
+  unlocked: boolean
+  unlockedAt?: Date
+  goalId?: string
+  progress: number
+  maxProgress: number
+  category: string
+  rarity: "common" | "rare" | "epic" | "legendary"
+}
