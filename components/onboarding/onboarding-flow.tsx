@@ -49,45 +49,45 @@ const steps = [
   },
   {
     id: 1,
-    title: "Welcome",
-    subtitle: "Let's get started",
+    title: "Let's Get Personal",
+    subtitle: "Your name & profile",
     icon: User,
-    description: "Tell us about yourself"
+    description: "Set your name and profile picture"
   },
   {
     id: 2,
-    title: "Profile Picture",
-    subtitle: "Personalize your account",
-    icon: User,
-    description: "Add a profile picture or use your initials"
+    title: "How do you want to use MyWallet?",
+    subtitle: "Choose your style",
+    icon: Clock,
+    description: "Pick the experience that fits you best"
   },
   {
     id: 3,
-    title: "Earnings",
-    subtitle: "Your income details",
+    title: "What's your monthly income?",
+    subtitle: "Your earnings",
     icon: DollarSign,
-    description: "Help us calculate your time value"
+    description: "This helps us show you the real value of your time"
   },
   {
     id: 4,
-    title: "Schedule",
-    subtitle: "Work preferences",
+    title: "Tell us about your work schedule",
+    subtitle: "Your daily routine",
     icon: Calendar,
-    description: "Fine-tune your working hours"
+    description: "How many hours do you work each day?"
   },
   {
     id: 5,
-    title: "Security",
-    subtitle: "Your Privacy First",
+    title: "Keep your wallet secure",
+    subtitle: "Your privacy matters",
     icon: Shield,
-    description: "AES-256 encryption, stored locally"
+    description: "Add a PIN to protect your financial data"
   },
   {
     id: 6,
-    title: "Perfect! 🎉",
-    subtitle: "You're all set!",
+    title: "You're all set! 🎉",
+    subtitle: "Welcome aboard!",
     icon: Sparkles,
-    description: "Ready to start your journey"
+    description: "Ready to take control of your finances"
   }
 ];
 
@@ -128,10 +128,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [formData, setFormData] = useState({
     name: '',
     avatar: null as string | null,
+    walletType: 'timed' as 'timed' | 'normal',
     monthlyEarning: '',
     currency: 'NPR',
-    workingHoursPerDay: '8',
-    workingDaysPerMonth: '20',
+    workingHoursPerDay: '',
+    workingDaysPerMonth: '',
     enableSecurity: true,
     pin: '',
     confirmPin: '',
@@ -152,7 +153,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         }
         break;
       case 2:
-        // Profile picture step - no validation required
         break;
       case 3:
         if (!formData.monthlyEarning || parseFloat(formData.monthlyEarning) <= 0) {
@@ -187,18 +187,38 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const handleNext = () => {
     if (!validateStep()) return;
 
-    if (step === 4 && !formData.enableSecurity) {
-      setStep(6); // Skip PIN setup
+    if (formData.walletType === 'normal') {
+      // Skip Earnings and Schedule for normal wallet
+      if (step === 2) {
+        setStep(5); // Skip to Security
+      } else if (step === 5 && !formData.enableSecurity) {
+        setStep(6); // Skip to Complete
+      } else {
+        setStep(Math.min(step + 1, maxStep));
+      }
     } else {
-      setStep(Math.min(step + 1, maxStep));
+      // For timed wallet, proceed normally
+      if (step === 5 && !formData.enableSecurity) {
+        setStep(6); // Skip to Complete
+      } else {
+        setStep(Math.min(step + 1, maxStep));
+      }
     }
   };
 
   const handleBack = () => {
-    if (step === 6 && !formData.enableSecurity) {
-      setStep(4); // Skip PIN setup
+    if (formData.walletType === 'normal') {
+      if (step === 5) {
+        setStep(2);
+      } else {
+        setStep(Math.max(step - 1, 0));
+      }
     } else {
-      setStep(Math.max(step - 1, 0));
+      if (step === 6 && !formData.enableSecurity) {
+        setStep(5); // Back to Security
+      } else {
+        setStep(Math.max(step - 1, 0));
+      }
     }
   };
 
@@ -369,36 +389,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 1 - Welcome */}
+            {/* Step 1 - Profile Setup */}
             {step === 1 && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-medium">What should we call you?</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter your name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="h-10"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {features.slice(0, 2).map((feature, index) => (
-                    <div key={index} className="p-3 rounded-lg bg-background-secondary border">
-                      <feature.icon className={`w-5 h-5 ${feature.color} mb-2`} />
-                      <h3 className="font-semibold text-sm">{feature.title}</h3>
-                      <p className="text-xs text-muted-foreground">{feature.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Step 2 - Profile Picture */}
-            {step === 2 && (
-              <div className="space-y-6">
-
+              <div className="space-y-8">
+                {/* Avatar Section */}
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
                     {/* Hidden file inputs */}
@@ -425,19 +419,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       className="relative cursor-pointer"
                       onClick={() => !formData.avatar && handleFileUpload()}
                     >
-                      <Avatar className="w-32 h-32 ring-4 ring-background shadow-lg transition-all duration-300 group-hover:ring-primary/20 group-hover:shadow-xl">
+                      <Avatar className="w-24 h-24 ring-2 ring-primary/20 shadow-md transition-all duration-300 group-hover:ring-primary/40 group-hover:shadow-lg">
                         <AvatarImage
                           src={formData.avatar || undefined}
                           className="object-cover"
                         />
-                        <AvatarFallback className="bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-bold text-3xl">
+                        <AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/10 text-primary font-bold text-2xl">
                           {getInitials()}
                         </AvatarFallback>
                       </Avatar>
 
                       {/* Hover overlay with options */}
-                      <div className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                        <div className="flex gap-2">
+                      <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                        <div className="flex gap-1">
                           {!formData.avatar ? (
                             <>
                               <button
@@ -445,20 +439,20 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                                   e.stopPropagation();
                                   handleFileUpload();
                                 }}
-                                className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                                className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-gray-700 hover:bg-white transition-colors shadow-sm"
                                 title="Upload from gallery"
                               >
-                                <ImageIcon className="w-5 h-5" />
+                                <ImageIcon className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleCameraCapture();
                                 }}
-                                className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                                className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center text-gray-700 hover:bg-white transition-colors shadow-sm"
                                 title="Take photo"
                               >
-                                <Camera className="w-5 h-5" />
+                                <Camera className="w-4 h-4" />
                               </button>
                             </>
                           ) : (
@@ -467,10 +461,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                                 e.stopPropagation();
                                 handleRemoveAvatar();
                               }}
-                              className="w-10 h-10 bg-destructive/80 rounded-full flex items-center justify-center text-white hover:bg-destructive transition-colors"
+                              className="w-8 h-8 bg-red-500/90 rounded-full flex items-center justify-center text-white hover:bg-red-500 transition-colors shadow-sm"
                               title="Remove avatar"
                             >
-                              <X className="w-5 h-5" />
+                              <X className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -478,18 +472,80 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     </div>
                   </div>
 
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">
+                  <div className="text-center space-y-1">
+                    <p className="text-sm text-muted-foreground font-medium">
                       {formData.avatar
-                        ? "✨ Profile picture uploaded! Hover to remove"
-                        : "📸 Click the avatar or hover for options"
+                        ? "✨ Profile picture set! Hover to change"
+                        : "📸 Add a profile picture (optional)"
                       }
                     </p>
                     {!formData.avatar && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground/80">
                         Or continue with beautiful auto-generated initials
                       </p>
                     )}
+                  </div>
+                </div>
+                {/* Name Input Section */}
+                <div className="space-y-3">
+                  <Label htmlFor="name" className="text-sm font-semibold text-foreground/90">What should we call you?</Label>
+                  <Input
+                    id="name"
+                    placeholder="Enter your name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="h-12 text-base border-2 border-border/50 focus:border-primary/50 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 - Wallet Type */}
+            {step === 2 && (
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold text-foreground/90">Choose your wallet type</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setFormData({ ...formData, walletType: 'timed' })}
+                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${
+                        formData.walletType === 'timed'
+                          ? 'border-primary bg-primary/10 shadow-md'
+                          : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full border-2 ${
+                          formData.walletType === 'timed' ? 'border-primary bg-primary' : 'border-muted-foreground'
+                        }`}>
+                          {formData.walletType === 'timed' && <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5" />}
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold">Timed Wallet</h3>
+                          <p className="text-xs text-muted-foreground">See how much your purchases cost in work hours</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setFormData({ ...formData, walletType: 'normal' })}
+                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${
+                        formData.walletType === 'normal'
+                          ? 'border-primary bg-primary/10 shadow-md'
+                          : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full border-2 ${
+                          formData.walletType === 'normal' ? 'border-primary bg-primary' : 'border-muted-foreground'
+                        }`}>
+                          {formData.walletType === 'normal' && <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5" />}
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold">Normal Wallet</h3>
+                          <p className="text-xs text-muted-foreground">Standard wallet without time tracking features</p>
+                        </div>
+                      </div>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -644,7 +700,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               </div>
             )}
 
-            {/* Step 6 - Complete */}
+            {/* Step 6 - Perfect! */}
             {step === 6 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">

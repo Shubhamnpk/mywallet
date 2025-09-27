@@ -1,14 +1,17 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
-import { RotateCcw } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { RotateCcw, Plus, Edit, Trash2 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useColorTheme } from "@/hooks/use-color-theme"
 import { Palette, Sun, Moon, Monitor, Contrast, Type, Scissors, Shrink, Droplet } from "lucide-react"
@@ -63,8 +66,126 @@ export function ThemeSettings() {
     handleResetToDefaults,
   } = useColorTheme()
 
+  // Custom theme type
+  type CustomTheme = {
+    id: string
+    name: string
+    primary: string
+    description: string
+    gradient: string
+    solid: string
+  }
+
+  // Custom theme management state
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('wallet_custom_themes')
+      return saved ? JSON.parse(saved) : []
+    }
+    return []
+  })
+  const [customThemeModalOpen, setCustomThemeModalOpen] = useState(false)
+  const [editingTheme, setEditingTheme] = useState<CustomTheme | null>(null)
+  const [newThemeName, setNewThemeName] = useState('')
+  const [newThemeColor, setNewThemeColor] = useState('#10b981')
+
+  // Convert hex color to oklch format (same as in useColorTheme hook)
+  const hexToOklch = (hex: string) => {
+    // Simple conversion - for better accuracy, you'd use a proper color conversion library
+    // This is a basic approximation
+    const r = parseInt(hex.slice(1, 3), 16) / 255
+    const g = parseInt(hex.slice(3, 5), 16) / 255
+    const b = parseInt(hex.slice(5, 7), 16) / 255
+
+    // Convert RGB to OKLCH (simplified)
+    // This is a rough approximation - in production, use a proper color library
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const delta = max - min
+
+    let h = 0
+    if (delta !== 0) {
+      if (max === r) h = ((g - b) / delta) % 6
+      else if (max === g) h = (b - r) / delta + 2
+      else h = (r - g) / delta + 4
+      h *= 60
+    }
+
+    const l = (max + min) / 2
+    const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1))
+    const c = s * Math.sqrt(l * (1 - l)) // Approximation
+
+    return `oklch(${l} ${c} ${h})`
+  }
+
+  // Custom theme management functions
+  const saveCustomThemes = (themes: CustomTheme[]) => {
+    setCustomThemes(themes)
+    localStorage.setItem('wallet_custom_themes', JSON.stringify(themes))
+  }
+
+  const handleCreateCustomTheme = () => {
+    setNewThemeColor('#10b981')
+    setNewThemeName('')
+    setEditingTheme(null)
+    setCustomThemeModalOpen(true)
+  }
+
+  const handleEditCustomTheme = (theme: CustomTheme) => {
+    setEditingTheme(theme)
+    setNewThemeName(theme.name)
+    setNewThemeColor(theme.primary)
+    setCustomThemeModalOpen(true)
+  }
+
+  const handleDeleteCustomTheme = (themeId: string) => {
+    const updatedThemes = customThemes.filter(t => t.id !== themeId)
+    saveCustomThemes(updatedThemes)
+
+    // If the deleted theme was selected, switch to default
+    if (colorTheme === themeId) {
+      handleColorThemeChange('emerald')
+    }
+  }
+
+  const handleSaveCustomTheme = () => {
+    if (!newThemeName.trim()) return
+
+    const themeData = {
+      id: editingTheme ? editingTheme.id : `custom-${Date.now()}`,
+      name: newThemeName.trim(),
+      primary: newThemeColor,
+      description: editingTheme ? editingTheme.description : 'Custom theme',
+      gradient: `from-[${newThemeColor}] via-[${newThemeColor}]/80 to-[${newThemeColor}]/60`,
+      solid: `bg-[${newThemeColor}]`
+    }
+
+    let updatedThemes
+    if (editingTheme) {
+      updatedThemes = customThemes.map(t => t.id === editingTheme.id ? themeData : t)
+    } else {
+      updatedThemes = [...customThemes, themeData]
+    }
+
+    saveCustomThemes(updatedThemes)
+    setCustomThemeModalOpen(false)
+    setNewThemeName('')
+    setEditingTheme(null)
+  }
+
   return (
     <div className="space-y-6">
+      {/* Reset to Defaults */}
+      <div className="flex justify-end ">
+        <Button
+          variant="outline"
+          onClick={handleResetToDefaults}
+          className="gap-2"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Reset to Defaults
+        </Button>
+      </div>
       {/* Enhanced Theme Mode */}
       <Card>
         <CardHeader className="pb-4">
@@ -133,54 +254,109 @@ export function ThemeSettings() {
           <CardDescription>Choose your preferred color scheme</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3">
-            {colorThemes.map((themeOption) => {
-              // For custom theme, use the actual custom color
-              const displayColor = themeOption.id === "custom" ? customPrimaryColor : themeOption.primary
+          <div className="space-y-4">
+            {/* Built-in Themes */}
+            <div className="grid grid-cols-2 gap-3">
+              {colorThemes.map((themeOption) => {
+                // Convert colors to OKLCH for accurate preview (same as actual theme application)
+                let previewColor = themeOption.primary
+                if (themeOption.id === "custom") {
+                  previewColor = hexToOklch(customPrimaryColor)
+                }
 
-              return (
-                <div
-                  key={themeOption.id}
-                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                    colorTheme === themeOption.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => handleColorThemeChange(themeOption.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    {themeOption.id === "custom" ? (
-                      // Custom theme with inline color picker
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="color"
-                          value={customPrimaryColor}
-                          onChange={(e) => handleCustomPrimaryColorChange(e.target.value)}
-                          className="w-8 h-8 p-0 border-2 border-white shadow-sm rounded-full cursor-pointer"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <div>
-                          <p className="font-medium">{themeOption.name}</p>
-                          <p className="text-sm text-muted-foreground">{themeOption.description}</p>
-                        </div>
+                return (
+                  <div
+                    key={themeOption.id}
+                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      colorTheme === themeOption.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                    onClick={() => handleColorThemeChange(themeOption.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                        style={{ backgroundColor: previewColor }}
+                      />
+                      <div>
+                        <p className="font-medium">{themeOption.name}</p>
+                        <p className="text-sm text-muted-foreground">{themeOption.description}</p>
                       </div>
-                    ) : (
-                      // Regular themes
-                      <>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Custom Themes Section */}
+            {customThemes.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm">Your Custom Themes</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {customThemes.map((theme) => (
+                    <div
+                      key={theme.id}
+                      className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all group ${
+                        colorTheme === theme.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                      onClick={() => handleColorThemeChange(theme.id)}
+                    >
+                      <div className="flex items-center gap-3">
                         <div
                           className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
-                          style={{ backgroundColor: displayColor }}
+                          style={{ backgroundColor: hexToOklch(theme.primary) }}
                         />
-                        <div>
-                          <p className="font-medium">{themeOption.name}</p>
-                          <p className="text-sm text-muted-foreground">{themeOption.description}</p>
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{theme.name}</p>
+                          <p className="text-xs text-muted-foreground">Custom</p>
                         </div>
-                      </>
-                    )}
-                  </div>
+                      </div>
+
+                      {/* Edit/Delete buttons */}
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditCustomTheme(theme)
+                          }}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteCustomTheme(theme.id)
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )
-            })}
+              </div>
+            )}
+
+            {/* Create Custom Theme Button */}
+            <Button
+              onClick={handleCreateCustomTheme}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Create Custom Theme
+            </Button>
           </div>
 
           {/* Gradient/Solid Toggle */}
@@ -204,29 +380,121 @@ export function ThemeSettings() {
               <Droplet className="w-5 h-5" />
               Custom Colors
             </CardTitle>
-            <CardDescription>Customize your color scheme</CardDescription>
+            <CardDescription>Customize your color scheme with full control</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Label htmlFor="custom-primary">Primary Color</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input
-                    id="custom-primary"
-                    type="color"
-                    value={customPrimaryColor}
-                    onChange={(e) => handleCustomPrimaryColorChange(e.target.value)}
-                    className="w-12 h-10 p-1 border rounded"
+          <CardContent className="space-y-6">
+            {/* Color Preview */}
+            <div className="p-4 rounded-lg border bg-gradient-to-r from-card to-muted/20">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-sm">Color Preview</h4>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                    style={{ backgroundColor: customPrimaryColor }}
                   />
-                  <Input
-                    type="text"
-                    value={customPrimaryColor}
-                    onChange={(e) => handleCustomPrimaryColorChange(e.target.value)}
-                    className="flex-1"
-                    placeholder="#000000"
-                  />
+                  <span className="text-xs text-muted-foreground">{customPrimaryColor}</span>
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <Button size="sm" className="text-xs" style={{ backgroundColor: customPrimaryColor, borderColor: customPrimaryColor }}>
+                  Primary Button
+                </Button>
+                <Badge variant="secondary" className="text-xs">Badge</Badge>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: customPrimaryColor }} />
+              </div>
+            </div>
+
+            {/* Color Pickers Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Primary Color */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                    style={{ backgroundColor: customPrimaryColor }}
+                  />
+                  <Label htmlFor="custom-primary" className="font-medium">Primary Color</Label>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Input
+                      id="custom-primary"
+                      type="color"
+                      value={customPrimaryColor}
+                      onChange={(e) => handleCustomPrimaryColorChange(e.target.value)}
+                      className="w-14 h-10 p-1 border-2 rounded-lg cursor-pointer"
+                    />
+                    <Input
+                      type="text"
+                      value={customPrimaryColor}
+                      onChange={(e) => handleCustomPrimaryColorChange(e.target.value)}
+                      className="flex-1 font-mono text-sm"
+                      placeholder="#000000"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Used for buttons, links, and primary UI elements
+                  </p>
+                </div>
+              </div>
+
+              {/* Background Color */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-border"
+                    style={{ backgroundColor: customBackgroundColor || 'transparent' }}
+                  />
+                  <Label htmlFor="custom-background" className="font-medium">Background Color</Label>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Input
+                      id="custom-background"
+                      type="color"
+                      value={customBackgroundColor}
+                      onChange={(e) => handleCustomBackgroundColorChange(e.target.value)}
+                      className="w-14 h-10 p-1 border-2 rounded-lg cursor-pointer"
+                    />
+                    <Input
+                      type="text"
+                      value={customBackgroundColor}
+                      onChange={(e) => handleCustomBackgroundColorChange(e.target.value)}
+                      className="flex-1 font-mono text-sm"
+                      placeholder="transparent"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional custom background for the app
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Color Presets */}
+            <div className="space-y-3">
+              <Label className="font-medium">Quick Presets</Label>
+              <div className="grid grid-cols-6 gap-2">
+                {[
+                  '#10b981', // emerald
+                  '#3b82f6', // blue
+                  '#8b5cf6', // purple
+                  '#f59e0b', // orange
+                  '#ec4899', // rose
+                  '#06b6d4'  // cyan
+                ].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => handleCustomPrimaryColorChange(color)}
+                    className="w-8 h-8 rounded-lg border-2 border-white shadow-sm hover:scale-110 transition-transform"
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Click any color to apply it as your primary color
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -300,41 +568,6 @@ export function ThemeSettings() {
         </CardContent>
       </Card>
 
-      {/* Background */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Palette className="w-5 h-5" />
-            Background
-          </CardTitle>
-          <CardDescription>Customize background appearance</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="custom-background">Custom Background Color</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  id="custom-background"
-                  type="color"
-                  value={customBackgroundColor}
-                  onChange={(e) => handleCustomBackgroundColorChange(e.target.value)}
-                  className="w-12 h-10 p-1 border rounded"
-                />
-                <Input
-                  type="text"
-                  value={customBackgroundColor}
-                  onChange={(e) => handleCustomBackgroundColorChange(e.target.value)}
-                  className="flex-1"
-                />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                This color may be used in certain UI elements
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Accessibility Options */}
       <Card>
@@ -401,17 +634,90 @@ export function ThemeSettings() {
         </CardContent>
       </Card>
 
-      {/* Reset to Defaults */}
-      <div className="flex justify-center pt-4">
-        <Button
-          variant="outline"
-          onClick={handleResetToDefaults}
-          className="gap-2"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Reset to Defaults
-        </Button>
-      </div>
+      {/* Custom Theme Modal */}
+      <Dialog open={customThemeModalOpen} onOpenChange={setCustomThemeModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="w-5 h-5" />
+              {editingTheme ? 'Edit Custom Theme' : 'Create Custom Theme'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingTheme
+                ? 'Update your custom theme colors and name.'
+                : 'Choose a color and give your custom theme a name.'
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Color Picker */}
+            <div className="space-y-2">
+              <Label htmlFor="theme-color">Theme Color</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="theme-color"
+                  type="color"
+                  value={newThemeColor}
+                  onChange={(e) => setNewThemeColor(e.target.value)}
+                  className="w-16 h-12 p-1 border-2 rounded-lg cursor-pointer"
+                />
+                <Input
+                  type="text"
+                  value={newThemeColor}
+                  onChange={(e) => setNewThemeColor(e.target.value)}
+                  className="flex-1 font-mono text-sm"
+                  placeholder="#000000"
+                />
+              </div>
+            </div>
+
+            {/* Color Preview */}
+            <div className="p-3 rounded-lg border bg-gradient-to-r from-card to-muted/20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Preview</span>
+                <div
+                  className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                  style={{ backgroundColor: newThemeColor }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="text-xs" style={{ backgroundColor: newThemeColor, borderColor: newThemeColor }}>
+                  Button
+                </Button>
+                <Badge variant="secondary" className="text-xs">Badge</Badge>
+              </div>
+            </div>
+
+            {/* Theme Name */}
+            <div className="space-y-2">
+              <Label htmlFor="theme-name">Theme Name</Label>
+              <Input
+                id="theme-name"
+                value={newThemeName}
+                onChange={(e) => setNewThemeName(e.target.value)}
+                placeholder="Enter theme name..."
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCustomThemeModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCustomTheme}
+              disabled={!newThemeName.trim()}
+            >
+              {editingTheme ? 'Update Theme' : 'Create Theme'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

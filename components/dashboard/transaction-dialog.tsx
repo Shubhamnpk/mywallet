@@ -359,10 +359,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             });
           }
         } else if (formData.allocationType === "credit") {
-          // Handle credit allocation
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
           if (creditAccount) {
-            // Add to credit balance (charge)
             await updateCreditBalance(creditAccount.id, creditAccount.balance + numAmount);
             transactionResult = await addTransaction({
               type,
@@ -555,7 +553,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       const minimumPayment = debtFormData.minimumPayment ? Number.parseFloat(debtFormData.minimumPayment) : 0
       const interestRate = debtFormData.interestRate ? Number.parseFloat(debtFormData.interestRate) : 0
 
-      // Create debt account
       const newDebt = addDebtAccount({
         name: debtFormData.name.trim(),
         balance: debtAmount,
@@ -564,8 +561,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         createdAt: new Date().toISOString(),
       })
-
-      // Complete the transaction with debt
       await completeTransactionWithDebt(
         pendingTransaction,
         debtFormData.name.trim(),
@@ -580,8 +575,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       })
 
       playSound("transaction-success")
-
-      // Reset forms and close dialogs
       setShowDebtDialog(false)
       setPendingTransactionResult(null)
       setPendingTransaction(null)
@@ -623,17 +616,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className={cn(
-                "p-2 rounded-lg",
-                type === "income" ? "bg-green-100 dark:bg-green-900/20" : "bg-blue-100 dark:bg-blue-900/20"
-              )}>
-                <span className={cn(
-                  "text-lg font-bold",
-                  type === "income" ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"
-                )}>
-                  {currencySymbol}
-                </span>
-              </div>
               Add New Transaction
             </DialogTitle>
           </DialogHeader>
@@ -651,7 +633,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 </TabsTrigger>
                 <TabsTrigger
                   value="expense"
-                  className="flex items-center gap-2 h-10 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-900/20 dark:data-[state=active]:text-blue-400"
+                  className="flex items-center gap-2 h-10 data-[state=active]:bg-destructive/25 data-[state=active]:text-red-700 dark:data-[state=active]:bg-red-900/20 dark:data-[state=active]:text-red-400"
                 >
                   <TrendingDown className="w-4 h-4" />
                   Expense
@@ -660,7 +642,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             </Tabs>
 
             <div className="space-y-5">
-              {/* Amount Field */}
               <div className="space-y-2">
                 <Label htmlFor="amount" className="text-sm font-medium flex items-center gap-1">
                   Amount
@@ -1232,19 +1213,16 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               <Button
                 type="button"
                 onClick={async () => {
-                  // If debtFormData.name matches an existing debt id, attach to that
                   const debtAmount = pendingTransactionResult?.debtAmount
                   const availableBalance = pendingTransactionResult?.availableBalance
                   if (!pendingTransaction || !pendingTransactionResult) return
 
                   const existingDebt = debtAccounts.find(d => d.id === debtFormData.name)
                   if (existingDebt) {
-                    // Add charge to existing debt (if API available). Fallback: create a new debt with same name and attach.
                     if (typeof addDebtToAccount === 'function') {
                       await addDebtToAccount(existingDebt.id, debtAmount, `Charge from transaction: ${pendingTransaction.description || pendingTransaction.category}`)
                       await completeTransactionWithDebt(pendingTransaction, existingDebt.name, existingDebt.id, availableBalance, debtAmount)
                     } else {
-                      // Fallback: create a new debt account with the same name and attach the debtAmount
                       const newDebt = addDebtAccount({
                         name: existingDebt.name + " (from transaction)",
                         balance: debtAmount,
@@ -1256,7 +1234,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       await completeTransactionWithDebt(pendingTransaction, newDebt.name, newDebt.id, availableBalance, debtAmount)
                     }
                   } else {
-                    // Create new debt via existing flow
                     await handleCreateDebt()
                     return
                   }

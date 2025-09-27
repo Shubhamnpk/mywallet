@@ -63,10 +63,14 @@ export function UserProfileSettings() {
 
   const hourlyRate = useMemo(() => {
     const hours = formData.workingHoursPerDay * formData.workingDaysPerMonth
-    return hours > 0 ? formData.monthlyEarning / hours : 0
+    const rate = hours > 0 ? formData.monthlyEarning / hours : 0
+    return isNaN(rate) ? 0 : rate
   }, [formData.monthlyEarning, formData.workingHoursPerDay, formData.workingDaysPerMonth])
 
-  const perMinuteRate = useMemo(() => (hourlyRate > 0 ? hourlyRate / 60 : 0), [hourlyRate])
+  const perMinuteRate = useMemo(() => {
+    const rate = hourlyRate > 0 ? hourlyRate / 60 : 0
+    return isNaN(rate) ? 0 : rate
+  }, [hourlyRate])
 
   const handleSave = () => {
     updateUserProfile(formData)
@@ -437,7 +441,7 @@ export function UserProfileSettings() {
             <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
                 <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-                  {getCurrentCurrencySymbol}{formData.monthlyEarning.toLocaleString()}
+                  {getCurrentCurrencySymbol}{(formData.monthlyEarning || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-emerald-600/70 dark:text-emerald-400/70">Monthly Earning</div>
               </div>
