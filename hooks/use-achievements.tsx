@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import type { Goal, Achievement, UserProfile, Transaction, Budget, DebtAccount } from "@/types/wallet"
 import {
   Trophy,
@@ -40,6 +40,8 @@ export function useAchievements({
     goal?: Goal
   }>({ show: false, achievement: null })
 
+  const celebratedAchievements = useRef<Set<string>>(new Set())
+
   const achievements = useMemo(() => {
     const newAchievements: Achievement[] = []
 
@@ -58,6 +60,7 @@ export function useAchievements({
       progressMilestones.forEach((milestone) => {
         const achievementId = `${goal.id}_${milestone.threshold}`
         const isUnlocked = progress >= milestone.threshold
+        const rarity = milestone.threshold === 25 ? "common" : milestone.threshold === 50 ? "rare" : milestone.threshold === 75 ? "epic" : "legendary"
 
         newAchievements.push({
           id: achievementId,
@@ -70,7 +73,8 @@ export function useAchievements({
           goalId: goal.id,
           progress: Math.min(progress, milestone.threshold),
           maxProgress: milestone.threshold,
-          category: "Goal Progress"
+          category: "Goal Progress",
+          rarity
         })
       })
     })
@@ -91,7 +95,8 @@ export function useAchievements({
         unlocked: totalGoals >= 1,
         progress: Math.min(totalGoals, 1),
         maxProgress: 1,
-        category: "Goal Setting"
+        category: "Goal Setting",
+        rarity: "common" as const
       },
       {
         id: "goal_collector",
@@ -102,7 +107,8 @@ export function useAchievements({
         unlocked: totalGoals >= 5,
         progress: Math.min(totalGoals, 5),
         maxProgress: 5,
-        category: "Goal Setting"
+        category: "Goal Setting",
+        rarity: "rare" as const
       },
       {
         id: "first_completion",
@@ -113,7 +119,8 @@ export function useAchievements({
         unlocked: completedGoals >= 1,
         progress: Math.min(completedGoals, 1),
         maxProgress: 1,
-        category: "Goal Setting"
+        category: "Goal Setting",
+        rarity: "rare" as const
       },
       {
         id: "goal_master",
@@ -124,7 +131,8 @@ export function useAchievements({
         unlocked: completedGoals >= 10,
         progress: Math.min(completedGoals, 10),
         maxProgress: 10,
-        category: "Goal Setting"
+        category: "Goal Setting",
+        rarity: "legendary" as const
       },
       {
         id: "saving_champion",
@@ -135,7 +143,8 @@ export function useAchievements({
         unlocked: totalSaved >= 10000,
         progress: Math.min(totalSaved, 10000),
         maxProgress: 10000,
-        category: "Savings"
+        category: "Savings",
+        rarity: "epic" as const
       },
       {
         id: "consistency_king",
@@ -152,7 +161,8 @@ export function useAchievements({
         }),
         progress: 1,
         maxProgress: 1,
-        category: "Consistency"
+        category: "Consistency",
+        rarity: "epic" as const
       }
     ]
 
@@ -178,7 +188,8 @@ export function useAchievements({
         unlocked: totalIncome > 0,
         progress: Math.min(totalIncome, 1),
         maxProgress: 1,
-        category: "Transactions"
+        category: "Transactions",
+        rarity: "common" as const
       },
       {
         id: "budget_keeper",
@@ -199,7 +210,8 @@ export function useAchievements({
           return spent <= budget.limit
         }).length,
         maxProgress: budgets.length || 1,
-        category: "Budgeting"
+        category: "Budgeting",
+        rarity: "rare" as const
       },
       {
         id: "debt_free",
@@ -210,7 +222,80 @@ export function useAchievements({
         unlocked: debtAccounts.length > 0 && debtAccounts.every(d => d.balance === 0),
         progress: debtAccounts.filter(d => d.balance === 0).length,
         maxProgress: debtAccounts.length || 1,
-        category: "Debt Management"
+        category: "Debt Management",
+        rarity: "epic" as const
+      },
+      {
+        id: "transaction_novice",
+        title: "Transaction Novice",
+        description: "Recorded 10 transactions",
+        icon: <TrendingUp className="w-5 h-5" />,
+        color: "text-green-600 bg-green-50",
+        unlocked: transactions.length >= 10,
+        progress: Math.min(transactions.length, 10),
+        maxProgress: 10,
+        category: "Transactions",
+        rarity: "common" as const
+      },
+      {
+        id: "transaction_expert",
+        title: "Transaction Expert",
+        description: "Recorded 100 transactions",
+        icon: <TrendingUp className="w-5 h-5" />,
+        color: "text-blue-600 bg-blue-50",
+        unlocked: transactions.length >= 100,
+        progress: Math.min(transactions.length, 100),
+        maxProgress: 100,
+        category: "Transactions",
+        rarity: "rare" as const
+      },
+      {
+        id: "transaction_master",
+        title: "Transaction Master",
+        description: "Recorded 1000 transactions",
+        icon: <Crown className="w-5 h-5" />,
+        color: "text-purple-600 bg-purple-50",
+        unlocked: transactions.length >= 1000,
+        progress: Math.min(transactions.length, 1000),
+        maxProgress: 1000,
+        category: "Transactions",
+        rarity: "legendary" as const
+      },
+      {
+        id: "wealth_builder",
+        title: "Wealth Builder",
+        description: "Saved over $50,000 across all goals",
+        icon: <Medal className="w-5 h-5" />,
+        color: "text-orange-600 bg-orange-50",
+        unlocked: totalSaved >= 50000,
+        progress: Math.min(totalSaved, 50000),
+        maxProgress: 50000,
+        category: "Savings",
+        rarity: "legendary" as const
+      },
+      {
+        id: "goal_perfectionist",
+        title: "Goal Perfectionist",
+        description: "Created 25 financial goals",
+        icon: <Star className="w-5 h-5" />,
+        color: "text-indigo-600 bg-indigo-50",
+        unlocked: totalGoals >= 25,
+        progress: Math.min(totalGoals, 25),
+        maxProgress: 25,
+        category: "Goal Setting",
+        rarity: "legendary" as const
+      },
+      {
+        id: "income_mogul",
+        title: "Income Mogul",
+        description: "Earned over $100,000 in total income",
+        icon: <TrendingUp className="w-5 h-5" />,
+        color: "text-emerald-600 bg-emerald-50",
+        unlocked: totalIncome >= 100000,
+        progress: Math.min(totalIncome, 100000),
+        maxProgress: 100000,
+        category: "Income",
+        rarity: "epic" as const
       }
     ]
 
@@ -226,20 +311,18 @@ export function useAchievements({
 
   // Trigger celebrations for newly unlocked achievements
   useEffect(() => {
-    const unlockedAchievements = achievements.filter(a => a.unlocked)
-    unlockedAchievements.forEach((achievement) => {
-      // Check if this is a newly unlocked achievement (you might want to store this in localStorage or context)
-      // For now, we'll just trigger celebration on any unlocked achievement
-      if (!celebration.show) {
-        setTimeout(() => {
-          setCelebration({
-            show: true,
-            achievement,
-            goal: achievement.goalId ? goals.find(g => g.id === achievement.goalId) : undefined
-          })
-        }, 1000)
-      }
-    })
+    const unlockedAchievements = achievements.filter(a => a.unlocked && !celebratedAchievements.current.has(a.id))
+    if (unlockedAchievements.length > 0 && !celebration.show) {
+      const achievement = unlockedAchievements[0] // Celebrate the first new achievement
+      setTimeout(() => {
+        setCelebration({
+          show: true,
+          achievement,
+          goal: achievement.goalId ? goals.find(g => g.id === achievement.goalId) : undefined
+        })
+        celebratedAchievements.current.add(achievement.id)
+      }, 1000)
+    }
   }, [achievements, celebration.show, goals])
 
   const unlockedAchievements = achievements.filter(a => a.unlocked)

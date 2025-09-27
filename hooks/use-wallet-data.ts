@@ -965,11 +965,6 @@ export function useWalletData() {
   }
 
   const deleteCategory = async (id: string) => {
-    const category = categories.find((cat) => cat.id === id)
-    if (category?.isDefault) {
-      throw new Error("Cannot delete default categories")
-    }
-
     const updatedCategories = categories.filter((cat) => cat.id !== id)
     setCategories(updatedCategories)
     await saveDataWithIntegrity("categories", updatedCategories)

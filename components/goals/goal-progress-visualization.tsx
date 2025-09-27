@@ -164,22 +164,38 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
               <p className="text-2xl font-bold text-blue-600">{goals.length}</p>
               <p className="text-sm text-blue-600 dark:text-blue-400">Total Goals</p>
             </div>
             <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
               <p className="text-2xl font-bold text-emerald-600">
-                {goalProjections.filter(g => g.status === 'completed').length}
+                {goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length}
               </p>
               <p className="text-sm text-emerald-600 dark:text-emerald-400">Completed</p>
             </div>
             <div className="text-center p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
               <p className="text-2xl font-bold text-amber-600">
+                {formatCurrency(
+                  goals.reduce((sum, g) => sum + g.currentAmount, 0),
+                  userProfile.currency,
+                  userProfile.customCurrency
+                )}
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">Total Saved</p>
+            </div>
+            <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <p className="text-2xl font-bold text-purple-600">
+                {Math.round(goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length) || 0}%
+              </p>
+              <p className="text-sm text-purple-600 dark:text-purple-400">Avg Progress</p>
+            </div>
+            <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+              <p className="text-2xl font-bold text-orange-600">
                 {goalProjections.filter(g => g.status === 'on-track').length}
               </p>
-              <p className="text-sm text-amber-600 dark:text-amber-400">On Track</p>
+              <p className="text-sm text-orange-600 dark:text-orange-400">On Track</p>
             </div>
             <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
               <p className="text-2xl font-bold text-red-600">

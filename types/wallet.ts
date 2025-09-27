@@ -162,4 +162,5 @@ export interface Achievement {
   progress: number
   maxProgress: number
   category: string
+  rarity: "common" | "rare" | "epic" | "legendary"
 }

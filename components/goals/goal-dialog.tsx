@@ -33,7 +33,8 @@ import {
   Calendar,
   DollarSign,
   TrendingUp,
-  Clock
+  Clock,
+  Trophy
 } from "lucide-react"
 
 interface GoalDialogProps {
@@ -44,16 +45,89 @@ interface GoalDialogProps {
 }
 
 const GOAL_CATEGORIES = [
-  { id: "emergency", name: "Emergency Fund", icon: AlertTriangle, color: "text-red-600 bg-red-50", description: "Build a safety net for unexpected expenses" },
-  { id: "savings", name: "General Savings", icon: PiggyBank, color: "text-green-600 bg-green-50", description: "Save for future needs and opportunities" },
-  { id: "house", name: "Home", icon: Home, color: "text-blue-600 bg-blue-50", description: "Buy, renovate, or maintain your home" },
-  { id: "car", name: "Vehicle", icon: Car, color: "text-gray-600 bg-gray-50", description: "Purchase or maintain a vehicle" },
-  { id: "education", name: "Education", icon: GraduationCap, color: "text-purple-600 bg-purple-50", description: "Fund education and learning" },
-  { id: "health", name: "Health & Wellness", icon: Heart, color: "text-pink-600 bg-pink-50", description: "Medical expenses and wellness" },
-  { id: "travel", name: "Travel", icon: Plane, color: "text-cyan-600 bg-cyan-50", description: "Vacations and travel experiences" },
-  { id: "shopping", name: "Shopping", icon: ShoppingBag, color: "text-orange-600 bg-orange-50", description: "Major purchases and shopping" },
-  { id: "business", name: "Business", icon: Briefcase, color: "text-indigo-600 bg-indigo-50", description: "Start or grow a business" },
-  { id: "other", name: "Other", icon: Target, color: "text-slate-600 bg-slate-50", description: "Custom goals and aspirations" },
+  {
+    id: "emergency",
+    name: "Emergency Fund",
+    icon: AlertTriangle,
+    color: "text-red-600 bg-red-50",
+    description: "Build a safety net for unexpected expenses (3-6 months of living costs)",
+  },
+  {
+    id: "savings",
+    name: "General Savings",
+    icon: PiggyBank,
+    color: "text-green-600 bg-green-50",
+    description: "Save for future needs and opportunities",
+  },
+  {
+    id: "house",
+    name: "Home Purchase",
+    icon: Home,
+    color: "text-blue-600 bg-blue-50",
+    description: "Save for buying, building, or improving a home",
+  },
+  {
+    id: "car",
+    name: "Vehicle",
+    icon: Car,
+    color: "text-gray-600 bg-gray-50",
+    description: "Save for a car, motorcycle, or transportation",
+  },
+  {
+    id: "education",
+    name: "Education",
+    icon: GraduationCap,
+    color: "text-purple-600 bg-purple-50",
+    description: "Fund education, courses, or skill development",
+  },
+  {
+    id: "health",
+    name: "Health & Wellness",
+    icon: Heart,
+    color: "text-pink-600 bg-pink-50",
+    description: "Medical expenses, insurance, and health investments",
+  },
+  {
+    id: "travel",
+    name: Plane,
+    color: "text-cyan-600 bg-cyan-50",
+    description: "Vacations, pilgrimages, and travel experiences",
+  },
+  {
+    id: "wedding",
+    name: "Wedding & Ceremonies",
+    icon: Star,
+    color: "text-rose-600 bg-rose-50",
+    description: "Wedding expenses and traditional ceremonies",
+  },
+  {
+    id: "retirement",
+    name: "Retirement",
+    icon: Trophy,
+    color: "text-amber-600 bg-amber-50",
+    description: "Save for retirement and golden years",
+  },
+  {
+    id: "business",
+    name: "Business/Investment",
+    icon: Briefcase,
+    color: "text-indigo-600 bg-indigo-50",
+    description: "Start a business or invest in opportunities",
+  },
+  {
+    id: "shopping",
+    name: "Shopping",
+    icon: ShoppingBag,
+    color: "text-orange-600 bg-orange-50",
+    description: "Consumer goods and personal purchases",
+  },
+  {
+    id: "other",
+    name: "Other",
+    icon: Target,
+    color: "text-slate-600 bg-slate-50",
+    description: "Custom goals and personal objectives",
+  },
 ]
 
 const PRIORITY_LEVELS = [
@@ -71,32 +145,53 @@ const GOAL_TEMPLATES = [
     priority: "high" as const,
   },
   {
-    name: "Vacation Fund",
+    name: "Wedding Fund",
+    category: "wedding",
+    targetAmount: 20000,
+    description: "Save for wedding expenses and traditional ceremonies",
+    priority: "high" as const,
+  },
+  {
+    name: "Pilgrimage Fund",
     category: "travel",
-    targetAmount: 3000,
-    description: "Save for your dream vacation or holiday trip",
+    targetAmount: 5000,
+    description: "Save for spiritual journeys and religious pilgrimages",
     priority: "medium" as const,
   },
   {
-    name: "New Car",
-    category: "car",
-    targetAmount: 25000,
-    description: "Save for a new or used vehicle purchase",
-    priority: "medium" as const,
-  },
-  {
-    name: "Home Down Payment",
+    name: "Home Purchase",
     category: "house",
     targetAmount: 50000,
-    description: "Save for a down payment on your first home",
+    description: "Save for buying or building your family home",
     priority: "high" as const,
   },
   {
-    name: "College Fund",
+    name: "Education Fund",
     category: "education",
-    targetAmount: 100000,
-    description: "Save for education expenses or student loans",
+    targetAmount: 25000,
+    description: "Save for education, courses, or skill development",
     priority: "high" as const,
+  },
+  {
+    name: "Retirement Fund",
+    category: "retirement",
+    targetAmount: 100000,
+    description: "Save for retirement and ensure family security",
+    priority: "medium" as const,
+  },
+  {
+    name: "Business Startup",
+    category: "business",
+    targetAmount: 15000,
+    description: "Save to start your own business or investment",
+    priority: "medium" as const,
+  },
+  {
+    name: "Festival Shopping",
+    category: "shopping",
+    targetAmount: 2000,
+    description: "Save for festive shopping and family celebrations",
+    priority: "low" as const,
   },
 ]
 
@@ -336,7 +431,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
           {/* Basic Information */}
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="title" className="flex items-center gap-2">
                     <Target className="w-4 h-4" />
@@ -354,8 +449,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
 
                 <div className="space-y-2">
                   <Label htmlFor="targetAmount" className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4" />
-                    Target Amount ({currencySymbol}) *
+                    Target Amount ( {currencySymbol} ) *
                   </Label>
                   <Input
                     id="targetAmount"
@@ -400,64 +494,41 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
             </CardContent>
           </Card>
 
-          {/* Category Selection */}
+          {/* Category and Priority Selection */}
           <Card>
             <CardContent className="pt-6">
-              <Label className="text-base font-semibold mb-4 block">Category</Label>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                {GOAL_CATEGORIES.map((category) => {
-                  const IconComponent = category.icon
-                  const isSelected = formData.category === category.id
-                  return (
-                    <button
-                      key={category.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, category: category.id })}
-                      className={`p-3 rounded-lg border-2 text-left transition-all ${
-                        isSelected
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-muted hover:border-primary/50"
-                      }`}
-                    >
-                      <div className={`p-2 rounded-lg w-fit mb-2 ${category.color}`}>
-                        <IconComponent className="w-4 h-4" />
-                      </div>
-                      <div className="text-sm font-medium">{category.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{category.description}</div>
-                    </button>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category" className="text-base font-semibold">Category</Label>
+                  <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GOAL_CATEGORIES.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {typeof category.name === 'string' ? category.name : 'Category'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-          {/* Priority Selection */}
-          <Card>
-            <CardContent className="pt-6">
-              <Label className="text-base font-semibold mb-4 block">Priority Level</Label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {PRIORITY_LEVELS.map((priority) => {
-                  const IconComponent = priority.icon
-                  const isSelected = formData.priority === priority.id
-                  return (
-                    <button
-                      key={priority.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, priority: priority.id as "low" | "medium" | "high" })}
-                      className={`p-4 rounded-lg border-2 text-left transition-all ${
-                        isSelected
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-muted hover:border-primary/50"
-                      }`}
-                    >
-                      <div className={`p-2 rounded-lg w-fit mb-3 ${priority.color}`}>
-                        <IconComponent className="w-5 h-5" />
-                      </div>
-                      <div className="font-medium">{priority.name}</div>
-                      <div className="text-sm text-muted-foreground mt-1">{priority.description}</div>
-                    </button>
-                  )
-                })}
+                <div className="space-y-2">
+                  <Label htmlFor="priority" className="text-base font-semibold">Priority Level</Label>
+                  <Select value={formData.priority} onValueChange={(value: "low" | "medium" | "high") => setFormData({ ...formData, priority: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_LEVELS.map((priority) => (
+                        <SelectItem key={priority.id} value={priority.id}>
+                          {priority.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -471,6 +542,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   <p className="text-sm text-muted-foreground">Automatically add money to this goal</p>
                 </div>
                 <button
+                  title="Toggle Auto-Contribute"
                   type="button"
                   onClick={() => setFormData({ ...formData, autoContribute: !formData.autoContribute })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${

@@ -558,7 +558,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
       </Card>
 
       {/* Achievements Profile */}
-      <Card className="border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
+      <Card className="hidden md:block border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
