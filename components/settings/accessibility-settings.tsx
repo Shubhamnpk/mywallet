@@ -660,9 +660,8 @@ export function AccessibilitySettings() {
                 <SelectValue placeholder="Choose number format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="us">US Style (1,111,111)</SelectItem>
-                <SelectItem value="eu">European Style (11,11,111)</SelectItem>
-                <SelectItem value="ne">Indian Style (11,11,111)</SelectItem>
+                <SelectItem value="us">International Style (1,111,111)</SelectItem>
+                <SelectItem value="ne">Nepali Style (11,11,111)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
@@ -674,15 +673,11 @@ export function AccessibilitySettings() {
             <p className="font-medium mb-2">Preview</p>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>US Style:</span>
+                <span>International Style:</span>
                 <span className="font-mono">1,111,111.50</span>
               </div>
               <div className="flex justify-between">
-                <span>European Style:</span>
-                <span className="font-mono">11,11,111.50</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Indian Style:</span>
+                <span>Nepali Style:</span>
                 <span className="font-mono">11,11,111.50</span>
               </div>
             </div>
