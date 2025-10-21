@@ -71,6 +71,7 @@ export function AccessibilitySettings() {
   const [budgetWarningCustomUrl, setBudgetWarningCustomUrl] = useState("")
   const [pinSuccessCustomUrl, setPinSuccessCustomUrl] = useState("")
   const [pinFailedCustomUrl, setPinFailedCustomUrl] = useState("")
+  const [numberFormat, setNumberFormat] = useState("us")
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -109,6 +110,7 @@ export function AccessibilitySettings() {
     const savedBudgetWarningCustomUrl = localStorage.getItem("wallet_budget_warning_custom_url") || ""
     const savedPinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
     const savedPinFailedCustomUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
+    const savedNumberFormat = localStorage.getItem("wallet_number_format") || "us"
 
     setScreenReader(savedScreenReader)
     setKeyboardNav(savedKeyboardNav)
@@ -134,6 +136,7 @@ export function AccessibilitySettings() {
     setBudgetWarningCustomUrl(savedBudgetWarningCustomUrl)
     setPinSuccessCustomUrl(savedPinSuccessCustomUrl)
     setPinFailedCustomUrl(savedPinFailedCustomUrl)
+    setNumberFormat(savedNumberFormat)
 
     applyAccessibilitySettings(savedScreenReader, savedKeyboardNav, savedFontSize, savedFocusIndicators)
 
@@ -488,6 +491,7 @@ export function AccessibilitySettings() {
       budgetWarningCustomUrl: "",
       pinSuccessCustomUrl: "",
       pinFailedCustomUrl: "",
+      numberFormat: "us",
     }
 
     setScreenReader(defaults.screenReader)
@@ -513,6 +517,7 @@ export function AccessibilitySettings() {
     setBudgetWarningCustomUrl(defaults.budgetWarningCustomUrl)
     setPinSuccessCustomUrl(defaults.pinSuccessCustomUrl)
     setPinFailedCustomUrl(defaults.pinFailedCustomUrl)
+    setNumberFormat(defaults.numberFormat)
 
     // Clear localStorage
     Object.keys(defaults).forEach((key) => {
@@ -628,6 +633,54 @@ export function AccessibilitySettings() {
               This is how your text will appear with the selected font size. Transaction amounts and time calculations
               will scale accordingly.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Number Formatting */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <span className="text-2xl">🔢</span>
+            Number Formatting
+          </CardTitle>
+          <CardDescription>Choose how numbers are displayed and formatted</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <Label htmlFor="number-format">Number Format Style</Label>
+            <Select value={numberFormat} onValueChange={(value) => {
+              setNumberFormat(value)
+              localStorage.setItem("wallet_number_format", value)
+              // Dispatch custom event to notify other components
+              window.dispatchEvent(new CustomEvent('numberFormatChange'))
+              announceToScreenReader(`Number format changed to ${value === 'us' ? 'US style' : value === 'eu' ? 'European style' : 'Indian style'}`)
+            }}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose number format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="us">International Style (1,111,111)</SelectItem>
+                <SelectItem value="ne">Nepali Style (11,11,111)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              This affects how numbers are displayed in transaction inputs and throughout the app.
+            </p>
+          </div>
+
+          <div className="p-4 border rounded-lg bg-muted/50">
+            <p className="font-medium mb-2">Preview</p>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>International Style:</span>
+                <span className="font-mono">1,111,111.50</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Nepali Style:</span>
+                <span className="font-mono">11,11,111.50</span>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

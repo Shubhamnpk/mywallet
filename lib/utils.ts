@@ -17,14 +17,17 @@ export function formatTime(hours: number): string {
 }
 
 export function formatCurrency(amount: number, currency: string, customCurrency?: { code: string; symbol: string; name: string; }): string {
+  const numberFormat = localStorage.getItem("wallet_number_format") || "us"
+  const locale = numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'
+
   if (currency === "CUSTOM" && customCurrency) {
-    return `${customCurrency.symbol}${amount.toFixed(2)}`
+    return `${customCurrency.symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
   const symbol = getCurrencySymbol(currency, customCurrency)
   if (symbol && symbol !== currency) {
-    return `${symbol}${amount.toFixed(2)}`
+    return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency,
   }).format(amount)

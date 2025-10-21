@@ -465,7 +465,7 @@ export function AchievementsProfile({
       </Dialog>
 
       {/* Celebration Dialog */}
-      <Dialog open={celebration.show && !isMobile} onOpenChange={onDismissCelebration}>
+      <Dialog open={false} onOpenChange={onDismissCelebration}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-center gap-2 text-2xl font-bold">

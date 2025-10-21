@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle, Receipt, X } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol } from "@/lib/currency"
+import { getCurrencySymbol, getLocaleForCurrency } from "@/lib/currency"
 import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -76,6 +76,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     category: initialCategory || "",
     receiptImage: initialReceiptImage || ""
   }))
+  const [displayAmount, setDisplayAmount] = useState("")
   const [fieldStates, setFieldStates] = useState<Record<keyof FormData, FieldState>>({
     amount: { touched: !!initialAmount, blurred: false },
     category: { touched: !!initialCategory, blurred: false },
@@ -105,6 +106,36 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const currencySymbol = useMemo(() => {
     return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
   }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+
+  const [numberFormat, setNumberFormat] = useState(() => {
+    return localStorage.getItem("wallet_number_format") || "us"
+  })
+
+  // Listen for number format changes
+  useEffect(() => {
+    const updateFormat = () => {
+      const newFormat = localStorage.getItem("wallet_number_format") || "us"
+      setNumberFormat(newFormat)
+      // Force re-render of displayAmount when format changes
+      if (formData.amount) {
+        setDisplayAmount(parseFloat(formData.amount).toLocaleString(newFormat === 'us' ? 'en-US' : newFormat === 'eu' ? 'de-DE' : 'en-IN'))
+      }
+    }
+
+    // Listen for storage changes
+    window.addEventListener('storage', updateFormat)
+
+    // Listen for custom events
+    window.addEventListener('numberFormatChange', updateFormat)
+
+    // Initial check
+    updateFormat()
+
+    return () => {
+      window.removeEventListener('storage', updateFormat)
+      window.removeEventListener('numberFormatChange', updateFormat)
+    }
+  }, [formData.amount])
 
   const numAmount = useMemo(() => {
     const parsed = Number.parseFloat(formData.amount)
@@ -236,6 +267,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         category: initialCategory || prev.category,
         receiptImage: initialReceiptImage || prev.receiptImage
       }))
+      setDisplayAmount(initialAmount ? parseFloat(initialAmount).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN') : "")
       setFieldStates(prev => ({
         ...prev,
         amount: initialAmount ? { touched: true, blurred: false } : prev.amount,
@@ -247,7 +279,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         setType(initialType)
       }
     }
-  }, [initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage])
+  }, [initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage, numberFormat])
 
   // Persist form data
   useEffect(() => {
@@ -258,7 +290,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   const handleFieldChange = useCallback(
     (field: keyof FormData, value: string) => {
-      setFormData((prev) => ({ ...prev, [field]: value }))
+      if (field === "amount") {
+        const rawValue = value.replace(/,/g, '')
+        if (/^\d*\.?\d*$/.test(rawValue) || rawValue === '') {
+          setFormData((prev) => ({ ...prev, [field]: rawValue }))
+          setDisplayAmount(rawValue ? parseFloat(rawValue).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN') : "")
+        }
+      } else {
+        setFormData((prev) => ({ ...prev, [field]: value }))
+      }
 
       // Mark field as touched
       setFieldStates(prev => ({
@@ -284,6 +324,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       category: initialCategory || "",
       receiptImage: initialReceiptImage || ""
     })
+    setDisplayAmount(initialAmount ? parseFloat(initialAmount).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN') : "")
     setFieldStates({
       amount: { touched: !!initialAmount, blurred: false },
       category: { touched: !!initialCategory, blurred: false },
@@ -301,7 +342,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowDebtMoreOptions(false)
     setPendingTransactionResult(null)
     setPendingTransaction(null)
-  }, [initialAmount, initialDescription, initialType, initialCategory])
+  }, [initialAmount, initialDescription, initialType, initialCategory, numberFormat])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
@@ -654,11 +695,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   <Input
                     ref={amountInputRef}
                     id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.amount}
-                    onChange={(e) => handleFieldChange("amount", e.target.value)}
+                    type="text"
+                    value={displayAmount}
+                    onChange={(e) => {
+                      const rawValue = e.target.value.replace(/,/g, '')
+                      if (/^\d*\.?\d*$/.test(rawValue) || rawValue === '') {
+                        handleFieldChange("amount", rawValue)
+                      }
+                    }}
                     onBlur={() => handleFieldBlur("amount")}
                     placeholder="0.00"
                     className={cn(
@@ -839,7 +883,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     </Label>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => setShowAddCategory(!showAddCategory)}
                       className="text-xs h-7 px-2 text-primary hover:text-primary"

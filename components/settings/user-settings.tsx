@@ -102,6 +102,18 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     setEditMode(false)
   }
 
+  const handleCancelChanges = () => {
+    if (userProfile) {
+      // Reset form data to original values
+      setFormData({ ...userProfile, customCurrency: userProfile.customCurrency || { code: "", symbol: "", name: "" } })
+      setShowCustomCurrency(userProfile.currency === "CUSTOM")
+      setAvatarPreview(null)
+      setShowAvatarDialog(false)
+    }
+    toast({ title: "Changes Cancelled", description: "All unsaved changes have been reverted." })
+    setEditMode(false)
+  }
+
   const handleLogout = () => {
     localStorage.removeItem("wallet_session")
     window.location.reload()
@@ -583,43 +595,41 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         </CardContent>
       </Card>
 
-      {/* Enhanced Save Changes (only in edit mode) */}
-      {editMode && (
-        <Card className={`border-0 shadow-lg transition-all duration-300 ${
-          hasChanges
-            ? "bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 shadow-primary/10"
-            : "bg-muted/30"
-        }`}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full transition-colors ${
-                  hasChanges ? "bg-primary animate-pulse" : "bg-muted-foreground/50"
-                }`}></div>
-                <div>
-                  <p className={`text-sm font-medium ${
-                    hasChanges ? "text-primary" : "text-muted-foreground"
-                  }`}>
-                    {hasChanges ? "Unsaved Changes" : "No Changes"}
+      {/* Enhanced Save Changes (only in edit mode and when there are changes) */}
+      {editMode && hasChanges && (
+        <Card className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-[calc(100vw-2rem)] border-0 shadow-lg transition-all duration-300 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 shadow-primary/10">
+          <CardContent className="pt-4 pb-4 px-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-3 h-3 rounded-full bg-primary animate-pulse flex-shrink-0"></div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-primary">
+                    Unsaved Changes
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {hasChanges ? "Don't forget to save your updates" : "All changes are saved"}
+                    Don't forget to save your updates
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={handleSave}
-                disabled={!hasChanges}
-                size="lg"
-                className={`transition-all duration-200 ${
-                  hasChanges
-                    ? "bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {hasChanges ? "Save Changes" : "Saved"}
-              </Button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  onClick={handleCancelChanges}
+                  variant="outline"
+                  size="sm"
+                  className="border-muted-foreground/20 hover:bg-muted/50 transition-all duration-200 text-xs px-2 py-1 h-8 min-w-[60px]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={!hasChanges}
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-200 text-xs px-2 py-1 h-8 min-w-[80px]"
+                >
+                  <Save className="w-3 h-3 mr-1" />
+                  Save
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

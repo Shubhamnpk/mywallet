@@ -22,6 +22,24 @@ export default function SettingsPage() {
   const isMobile = useIsMobile()
   const [showMobileSettings, setShowMobileSettings] = useState(false)
 
+  // SEO metadata for settings page
+  const pageMetadata = {
+    title: "Settings - MyWallet | Account, Security & Preferences",
+    description: "Manage your MyWallet account settings, security preferences, theme options, data management, and accessibility features. Customize your personal finance experience.",
+    keywords: "MyWallet settings, account settings, security settings, theme settings, data management, accessibility settings, user preferences",
+    openGraph: {
+      title: "Settings - MyWallet | Account, Security & Preferences",
+      description: "Manage your MyWallet account settings, security preferences, and customize your personal finance experience.",
+      url: "https://mywallet.app/settings",
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title: "Settings - MyWallet | Account, Security & Preferences",
+      description: "Manage your MyWallet account settings, security preferences, and customize your personal finance experience.",
+    },
+  };
+
   // Redirect to home if no user profile or onboarding is needed
   useEffect(() => {
     if (!userProfile || showOnboarding) {
