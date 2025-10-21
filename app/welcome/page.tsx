@@ -17,7 +17,7 @@ export default function WelcomePage() {
     openGraph: {
       title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
       description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Free forever, works offline.",
-      url: "https://mywallet.app/welcome",
+      url: "https://mywalletnp.vercel.app/welcome",
       type: "website",
       images: [
         {
