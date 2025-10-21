@@ -24,6 +24,7 @@ export const metadata: Metadata = {
   },
   manifest: '/manifest.json',
   other: {
+    'google-site-verification': 'sbInOUmzo4b091hxSKQiABNP9QYXpwYKIMlzfKyavQE',
     'msapplication-TileImage': '/image.png',
     'msapplication-TileColor': '#000000',
   },
