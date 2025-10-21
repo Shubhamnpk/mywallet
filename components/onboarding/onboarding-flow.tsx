@@ -579,15 +579,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       />
                     </div>
                   </div>
-                  
-                  {formData.monthlyEarning && (
-                    <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-                      <div className="flex items-center gap-2 text-primary">
-                        <TrendingUp className="w-4 h-4" />
-                        <span className="font-medium text-sm">Hourly rate: {formData.currency} {hourlyRate}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -595,41 +586,60 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {/* Step 4 - Schedule */}
             {step === 4 && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    This helps us calculate your hourly rate for time-aware spending insights
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Hours/day</Label>
+                    <Label className="text-sm font-medium">How many hours do you work per day?</Label>
                     <Input
                       type="number"
                       min="1"
                       max="24"
+                      placeholder="e.g., 8"
                       value={formData.workingHoursPerDay}
                       onChange={(e) => setFormData({ ...formData, workingHoursPerDay: e.target.value })}
-                      className="h-10"
+                      className="h-12 text-base"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Typical work hours per day (e.g., 8 for full-time)
+                    </p>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Days/month</Label>
+                    <Label className="text-sm font-medium">How many days do you work per month?</Label>
                     <Input
                       type="number"
                       min="1"
                       max="31"
+                      placeholder="e.g., 22"
                       value={formData.workingDaysPerMonth}
                       onChange={(e) => setFormData({ ...formData, workingDaysPerMonth: e.target.value })}
-                      className="h-10"
+                      className="h-12 text-base"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Working days in a typical month (e.g., 22 excluding weekends)
+                    </p>
                   </div>
                 </div>
-                
-                <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-primary">
-                      {formData.currency} {hourlyRate}/hr
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth)} hours/month
+
+                {(formData.workingHoursPerDay && formData.workingDaysPerMonth) && (
+                  <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                    <div className="text-center space-y-2">
+                      <div className="text-lg font-bold text-primary">
+                        Your hourly rate: {formData.currency} {hourlyRate}/hr
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Based on {parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth)} working hours per month
+                      </div>
+                      <div className="text-xs text-muted-foreground/80">
+                        This shows how much each hour of your work is worth
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
