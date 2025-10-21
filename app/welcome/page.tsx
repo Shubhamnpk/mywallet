@@ -9,6 +9,33 @@ export default function WelcomePage() {
   const [scrollY, setScrollY] = useState(0);
   const [activeFeature, setActiveFeature] = useState(0);
 
+  // SEO metadata for welcome page
+  const pageMetadata = {
+    title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+    description: "Discover MyWallet, the innovative personal finance app that shows expenses in terms of time worked. Free budget tracker with offline functionality, goal setting, and smart financial insights.",
+    keywords: "personal finance app, free budget tracker, expense tracker, money management, financial goals, time-based budgeting, offline finance app, PWA, financial planning",
+    openGraph: {
+      title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+      description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Free forever, works offline.",
+      url: "https://mywallet.app/welcome",
+      type: "website",
+      images: [
+        {
+          url: "/mywallet.png",
+          width: 1200,
+          height: 630,
+          alt: "MyWallet - Free Personal Finance App Interface",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+      description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked.",
+      images: ["/mywallet.png"],
+    },
+  };
+
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener('scroll', handleScroll);
@@ -146,11 +173,12 @@ export default function WelcomePage() {
                   <div className="relative bg-card/50 backdrop-blur-sm rounded-3xl p-8 border border-border shadow-2xl">
                     <Image
                       src="/mywallet.png"
-                      alt="MyWallet App Interface"
+                      alt="MyWallet - Smart Financial Tracking App Interface showing expense tracking and budget management features - free personal finance app with time-based insights"
                       width={400}
                       height={600}
                       className="w-full h-auto rounded-2xl shadow-lg"
                       priority
+                      loading="eager"
                     />
                     <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg">
                       <Smartphone className="w-10 h-10 text-primary-foreground" />

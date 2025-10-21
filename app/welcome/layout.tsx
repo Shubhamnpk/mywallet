@@ -1,52 +1,38 @@
-import { Metadata } from 'next';
+import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: 'Welcome to MyWallet - Your Personal Finance Companion',
-  description: 'Discover MyWallet, the ultimate personal finance app for tracking expenses, managing budgets, achieving goals, and securing your financial future. Start your journey to financial freedom today.',
-  keywords: 'personal finance, wallet app, expense tracker, budget management, financial goals, money management, secure finance, PWA, offline support',
-  authors: [{ name: 'MyWallet Team' }],
+  title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+  description: "Discover MyWallet, the innovative personal finance app that shows expenses in terms of time worked. Free budget tracker with offline functionality, goal setting, and smart financial insights.",
+  keywords: "personal finance app, free budget tracker, expense tracker, money management, financial goals, time-based budgeting, offline finance app, PWA, financial planning",
   openGraph: {
-    title: 'Welcome to MyWallet - Your Personal Finance Companion',
-    description: 'Take control of your finances with MyWallet. Track expenses, set budgets, achieve goals, and enjoy secure, offline-ready financial management.',
-    url: 'https://mywallet.app/welcome',
-    siteName: 'MyWallet',
+    title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+    description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Free forever, works offline.",
+    url: "https://mywallet.app/welcome",
+    type: "website",
     images: [
       {
-        url: '/mywallet.png',
+        url: "/mywallet.png",
         width: 1200,
         height: 630,
-        alt: 'MyWallet App Logo',
+        alt: "MyWallet - Free Personal Finance App Interface",
       },
     ],
-    locale: 'en_US',
-    type: 'website',
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'Welcome to MyWallet - Your Personal Finance Companion',
-    description: 'Take control of your finances with MyWallet. Track expenses, set budgets, achieve goals, and enjoy secure, offline-ready financial management.',
-    images: ['/mywallet.png'],
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
+    card: "summary_large_image",
+    title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
+    description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked.",
+    images: ["/mywallet.png"],
   },
   alternates: {
-    canonical: 'https://mywallet.app/welcome',
+    canonical: "/welcome",
   },
-};
+}
 
 export default function WelcomeLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  return children;
+  return children
 }
