@@ -30,7 +30,7 @@ export default function SettingsPage() {
     openGraph: {
       title: "Settings - MyWallet | Account, Security & Preferences",
       description: "Manage your MyWallet account settings, security preferences, and customize your personal finance experience.",
-      url: "https://mywallet.app/settings",
+      url: "https://mywalletnp.vercel.app/settings",
       type: "website",
     },
     twitter: {

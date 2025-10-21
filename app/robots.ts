@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = 'https://mywallet.app'
+  const baseUrl = 'https://mywalletnp.vercel.app'
 
   return {
     rules: {
