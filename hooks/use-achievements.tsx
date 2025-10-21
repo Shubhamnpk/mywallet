@@ -325,10 +325,14 @@ export function useAchievements({
     }
   }, [achievements, celebration.show, goals])
 
+
   const unlockedAchievements = achievements.filter(a => a.unlocked)
   const lockedAchievements = achievements.filter(a => !a.unlocked)
 
   const dismissCelebration = () => {
+    if (celebration.achievement) {
+      celebratedAchievements.current.add(celebration.achievement.id)
+    }
     setCelebration({ show: false, achievement: null })
   }
 

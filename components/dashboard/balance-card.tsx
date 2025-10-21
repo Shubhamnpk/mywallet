@@ -92,7 +92,9 @@ export function CombinedBalanceCard() {
 
   // Format currency helper
   const formatCurrency = (amount: number) => {
-    return `${currencySymbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+    const numberFormat = localStorage.getItem("wallet_number_format") || "us"
+    const locale = numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'
+    return `${currencySymbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2 })}`
   }
 
   const getThemeBasedBackground = () => {

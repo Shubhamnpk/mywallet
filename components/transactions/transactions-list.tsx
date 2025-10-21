@@ -90,8 +90,7 @@ export function TransactionsList({
   const [sortBy, setSortBy] = useState<"date" | "amount">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(5)
+  const [visibleCount, setVisibleCount] = useState(7)
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const isMobile = useIsMobile()
   const [showFilters, setShowFilters] = useState(false)
@@ -114,8 +113,9 @@ export function TransactionsList({
   }, [initialTransactions])
 
   useEffect(() => {
-    setCurrentPage(1)
+    setVisibleCount(7)
   }, [searchTerm, filter, categoryFilter, sortBy, sortOrder, dateRange])
+
 
   const refreshManually = async () => {
     if (!fetchTransactions) return
@@ -125,8 +125,6 @@ export function TransactionsList({
     setLoading(false)
   }
 
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
   const categories = Array.from(new Set(transactions.map((t) => t.category)))
   const filteredTransactions = transactions
     .filter((t) => {
@@ -138,8 +136,8 @@ export function TransactionsList({
       } else if (dateRange?.to) {
         return transactionDate <= dateRange.to
       } else {
-        // Default to last 7 days if no date range selected
-        return transactionDate >= sevenDaysAgo
+        // No default date filter
+        return true
       }
     })
     .filter((transaction) => {
@@ -160,11 +158,7 @@ export function TransactionsList({
       }
     })
 
-  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage)
-  const paginatedTransactions = filteredTransactions.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
+  const visibleTransactions = filteredTransactions.slice(0, visibleCount)
 
   const getTimeEquivalentDisplay = (amount: number) => {
     const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
@@ -308,12 +302,12 @@ export function TransactionsList({
             <div className="text-center py-8 text-muted-foreground">
               {searchTerm || filter !== "all" || categoryFilter !== "all" || dateRange?.from || dateRange?.to
                 ? "No transactions match your filters"
-                : "No transactions in the last 7 days. Add your first transaction!"}
+                : "No transactions found. Add your first transaction!"}
             </div>
           ) : (
             <>
               <ul className="space-y-3">
-                {paginatedTransactions.map((transaction) => (
+                {visibleTransactions.map((transaction) => (
                   <li
                     key={transaction.id}
                     className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
@@ -367,34 +361,24 @@ export function TransactionsList({
                   </li>
                 ))}
               </ul>
-              {totalPages > 1 && (
-                <div className="mt-4 flex justify-center">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                        <PaginationItem key={page}>
-                          <PaginationLink
-                            onClick={() => setCurrentPage(page)}
-                            isActive={currentPage === page}
-                          >
-                            {page}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
+              {(visibleCount < filteredTransactions.length || visibleCount > 7) && (
+                <div className="mt-4 flex justify-center gap-2">
+                  {visibleCount < filteredTransactions.length && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setVisibleCount(prev => prev + 7)}
+                    >
+                      Load More
+                    </Button>
+                  )}
+                  {visibleCount > 7 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setVisibleCount(7)}
+                    >
+                      Show Less
+                    </Button>
+                  )}
                 </div>
               )}
             </>
