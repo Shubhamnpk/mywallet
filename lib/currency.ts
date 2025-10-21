@@ -67,7 +67,21 @@ export function getCurrencyLabel(currencyCode: string, customCurrency?: { name: 
  */
 export function formatCurrency(amount: number, currencyCode: string, customCurrency?: { symbol: string }): string {
   const symbol = getCurrencySymbol(currencyCode, customCurrency)
-  return `${symbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+  const locale = getLocaleForCurrency(currencyCode)
+  return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2 })}`
+}
+
+/**
+ * Get locale for a given currency code
+ */
+export function getLocaleForCurrency(currencyCode: string): string {
+  switch (currencyCode) {
+    case "NPR":
+      return "ne-NP" // Nepali locale for Indian-style numbering (1,10,000)
+    case "USD":
+    default:
+      return "en-US" // US locale for US-style numbering (110,000)
+  }
 }
 
 /**

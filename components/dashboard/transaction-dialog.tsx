@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle, Receipt, X } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol } from "@/lib/currency"
+import { getCurrencySymbol, getLocaleForCurrency } from "@/lib/currency"
 import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -883,7 +883,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     </Label>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => setShowAddCategory(!showAddCategory)}
                       className="text-xs h-7 px-2 text-primary hover:text-primary"
