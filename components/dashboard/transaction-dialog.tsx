@@ -62,7 +62,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment } =
     useWalletData()
   const { playSound } = useAccessibility()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -378,26 +378,20 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       try {
         let transactionResult;
         if (formData.allocationType === "debt") {
-          // Handle debt allocation
+          // Handle debt repayment allocation
           const debtAccount = debtAccounts.find(d => d.id === formData.allocationTarget);
           if (debtAccount) {
-            // Add to debt balance
-            await addDebtCharge(debtAccount.id, numAmount, formData.description || "Expense allocation to debt");
-            transactionResult = await addTransaction({
-              type,
-              amount: numAmount,
-              category: "Debt Payment",
-              subcategory: formData.subcategory || undefined,
-              description: formData.description.trim() || `Expense allocated to debt: ${debtAccount.name}`,
-              date: new Date().toISOString(),
-              allocationType: formData.allocationType,
-              allocationTarget: formData.allocationTarget || undefined,
-              total: numAmount,
-              actual: numAmount,
-              debtUsed: numAmount,
-              debtAccountId: debtAccount.id,
-              status: "debt",
-            });
+            // Make debt payment (reduce debt balance)
+            const paymentResult = await makeDebtPayment(debtAccount.id, numAmount);
+            if (!paymentResult.success) {
+              setIsSubmitting(false)
+              toast.error("Failed to allocate to debt", {
+                description: paymentResult.error || "Unable to process debt payment."
+              })
+              playSound("transaction-failed")
+              return
+            }
+            transactionResult = paymentResult.transaction;
           }
         } else if (formData.allocationType === "credit") {
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
@@ -470,7 +464,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
          toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
            description: formData.allocationType === "goal" ? `${currencySymbol}${numAmount} contributed to goal` :
-                       formData.allocationType === "debt" ? `${currencySymbol}${numAmount} added to debt account` :
+                       formData.allocationType === "debt" ? `${currencySymbol}${numAmount} applied to debt repayment` :
                        formData.allocationType === "credit" ? `${currencySymbol}${numAmount} charged to credit account` :
                        `${currencySymbol}${numAmount} added to ${formData.category}`,
            duration: 3000,
