@@ -1,11 +1,13 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Wallet, Settings, Menu } from "lucide-react"
+import { Wallet, Settings, Menu, Share, Share2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { OfflineBadge } from "@/components/ui/offline-badge"
+import { useState } from "react"
+import { ShareModal } from "@/components/dashboard/share-modal"
 
 interface DashboardHeaderProps {
   userProfile: UserProfile
@@ -13,6 +15,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
 
   const getInitials = () => {
     return userProfile.name
@@ -45,7 +48,16 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
            </div>
 
           <button
-            className="hidden sm:flex w-10 h-10 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
+            className="hidden sm:flex justify-center items-center w-10 h-10 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"
+            onClick={() => setIsShareModalOpen(true)}
+            aria-label="Share app"
+            title="Share MyWallet"
+          >
+            <Share className="w-5 h-5 text-primary transition-transform duration-200 hover:scale-110" />
+          </button>
+
+          <button
+            className="hidden sm:flex w-10 h-10 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"
             onClick={() => router.push("/settings")}
             aria-label="Open settings"
             title="Settings & Profile"
@@ -65,7 +77,15 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             <OfflineBadge />
             <ThemeToggle />
             <button
-              className="w-9 h-9 rounded-full ring-2 ring-background hover:ring-primary/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md"
+              className="flex justify-center items-center w-9 h-9 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"
+              onClick={() => setIsShareModalOpen(true)}
+              aria-label="Share app"
+              title="Share MyWallet"
+            >
+              <Share className="w-4 h-4 text-primary transition-transform duration-200 hover:scale-110" />
+            </button>
+            <button
+              className="w-9 h-9 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"
               onClick={() => router.push("/settings")}
               aria-label="Open settings"
               title="Settings & Profile"
@@ -83,6 +103,10 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           </div>
         </div>
       </div>
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+      />
     </header>
   )
 }
