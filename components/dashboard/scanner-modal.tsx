@@ -295,7 +295,10 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
         ...allHistory.map(item => [
           item.type,
           item.scanType,
-          `"${(item.data.beautified?.displayText || item.data.data || item.data.amount || '').replace(/"/g, '""')}"`,
+          `"${(item.scanType === 'receipt' 
+            ? `${item.data.merchant || 'Unknown'} - ${item.data.amount || '0'}`
+            : (item.data.beautified?.displayText || item.data.data || '')
+          ).replace(/"/g, '""')}"`,
           new Date(item.timestamp).toISOString()
         ].join(','))
       ].join('\n')
@@ -309,7 +312,6 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
     }
     toast.success(`History exported as ${format.toUpperCase()}`)
   }, [scanHistory, localQrHistory])
-
   // Filter history based on search and filter
   const filteredHistory = useCallback(() => {
     const allHistory = [

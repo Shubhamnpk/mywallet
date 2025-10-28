@@ -53,8 +53,7 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   images: { unoptimized: true },
   env: {
-    NEXT_PUBLIC_BUILD_NUMBER: process.env.NEXT_PUBLIC_BUILD_NUMBER || `${process.env.npm_package_version || '1.1.3'}.${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
-    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '1.1.3'
+    NEXT_PUBLIC_BUILD_NUMBER: process.env.NEXT_PUBLIC_BUILD_NUMBER || process.env.npm_package_version || '1.1.3',    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '1.1.3'
   }
 }
 

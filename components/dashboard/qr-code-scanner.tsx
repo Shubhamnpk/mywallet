@@ -181,7 +181,9 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     }
 
     // Bitcoin/Satoshi address detection
-    if (data.startsWith('bitcoin:') || (data.length >= 26 && data.length <= 35 && /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(data))) {
+    if (data.startsWith('bitcoin:') || 
+        (data.length >= 26 && data.length <= 35 && /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(data)) ||
+        (data.length >= 42 && data.length <= 62 && /^bc1[a-z0-9]{39,59}$/.test(data))) {
       return {
         type: 'bitcoin',
         title: 'Bitcoin Address',
@@ -189,7 +191,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         displayText: data.length > 20 ? `${data.substring(0, 17)}...` : data
       }
     }
-
     // Default as text
     return {
       type: 'text',

@@ -12,9 +12,11 @@ import {
   X,
   Camera,
   Mic,
-  Calculator
+  Calculator,
+  Plane
 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { GamingPlaceModal } from "./gaming-place-modal"
 
 interface QuickAction {
   id: string
@@ -26,6 +28,7 @@ interface QuickAction {
 
 export function QuickActionsWidget() {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showGamingPlace, setShowGamingPlace] = useState(false)
   const { balance } = useWalletData()
 
   const quickActions: QuickAction[] = [
@@ -72,49 +75,67 @@ export function QuickActionsWidget() {
         setIsExpanded(false)
       },
       color: 'bg-orange-500 hover:bg-orange-600'
+    },
+    {
+      id: 'gaming-place',
+      label: 'Gaming Place',
+      icon: <Plane className="w-4 h-4" />,
+      action: () => {
+        setShowGamingPlace(true)
+        setIsExpanded(false)
+      },
+      color: 'bg-pink-500 hover:bg-pink-600'
     }
   ]
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 md:hidden">
-      {/* Expanded Actions */}
-      {isExpanded && (
-        <Card className="mb-2 p-2 shadow-lg">
-          <CardContent className="p-2">
-            <div className="grid grid-cols-2 gap-2">
-              {quickActions.map((action) => (
-                <Button
-                  key={action.id}
-                  variant="ghost"
-                  size="sm"
-                  onClick={action.action}
-                  className="flex flex-col items-center gap-1 h-auto p-3"
-                >
-                  <div className={`p-2 rounded-full ${action.color} text-white`}>
-                    {action.icon}
-                  </div>
-                  <span className="text-xs text-center">{action.label}</span>
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Main FAB */}
-      <Button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={`h-14 w-14 rounded-full shadow-lg transition-all duration-300 ${
-          isExpanded ? 'rotate-45' : ''
-        }`}
-        size="lg"
-      >
-        {isExpanded ? (
-          <X className="w-6 h-6" />
-        ) : (
-          <Plus className="w-6 h-6" />
+    <>
+      <div className="fixed bottom-20 right-4 z-50 md:hidden">
+        {/* Expanded Actions */}
+        {isExpanded && (
+          <Card className="mb-2 p-2 shadow-lg">
+            <CardContent className="p-2">
+              <div className="grid grid-cols-2 gap-2">
+                {quickActions.map((action) => (
+                  <Button
+                    key={action.id}
+                    variant="ghost"
+                    size="sm"
+                    onClick={action.action}
+                    className="flex flex-col items-center gap-1 h-auto p-3"
+                  >
+                    <div className={`p-2 rounded-full ${action.color} text-white`}>
+                      {action.icon}
+                    </div>
+                    <span className="text-xs text-center">{action.label}</span>
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
-      </Button>
-    </div>
+
+        {/* Main FAB */}
+        <Button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`h-14 w-14 rounded-full shadow-lg transition-all duration-300 ${
+            isExpanded ? 'rotate-45' : ''
+          }`}
+          size="lg"
+        >
+          {isExpanded ? (
+            <X className="w-6 h-6" />
+          ) : (
+            <Plus className="w-6 h-6" />
+          )}
+        </Button>
+      </div>
+
+      {/* Gaming Place Modal */}
+      <GamingPlaceModal
+        isOpen={showGamingPlace}
+        onClose={() => setShowGamingPlace(false)}
+      />
+    </>
   )
 }

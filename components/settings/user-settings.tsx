@@ -126,6 +126,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
 
   const handleSaveWorkData = () => {
     if (formData.monthlyEarning > 0 && formData.workingHoursPerDay > 0 && formData.workingDaysPerMonth > 0) {
+      updateUserProfile(formData)
       setShowWorkDataDialog(false)
       toast({
         title: "Time Wallet Enabled",
@@ -139,7 +140,6 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
       })
     }
   }
-
   const handleCancelChanges = () => {
     if (userProfile) {
       // Reset form data to original values
