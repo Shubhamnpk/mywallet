@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, History, Copy, ExternalLink, Phone, Mail, Wifi, Flashlight, FlashlightOff } from "lucide-react"
+import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, History, Copy, ExternalLink, Phone, Mail, Wifi, Flashlight, FlashlightOff, Search, Download, Filter } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import QRCodeScanner from "./qr-code-scanner"
@@ -126,6 +126,8 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   const [qrCameraFacingMode, setQrCameraFacingMode] = useState<'environment' | 'user'>('environment')
   const [scanHistory, setScanHistory] = useState<any[]>([])
   const [localQrHistory, setLocalQrHistory] = useState<any[]>([])
+  const [historySearch, setHistorySearch] = useState("")
+  const [historyFilter, setHistoryFilter] = useState("all")
 
   // Load scan history from localStorage
   useEffect(() => {
@@ -222,9 +224,13 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
         window.location.href = `mailto:${beautified.email}`
         break
       case 'phone':
-        window.location.href = `tel:${beautified.phone || beautified.number || beautified.tel}`        
+        window.location.href = `tel:${beautified.phone || beautified.number || beautified.tel}`
+        break
       case 'wifi':
         copyToClipboard(`WiFi Network: ${beautified.ssid}\nPassword: ${beautified.password || 'No password'}`)
+        break
+      case 'calendar':
+        copyToClipboard(beautified.icsData || beautified.displayText)
         break
       default:
         copyToClipboard(beautified.content || beautified.displayText)
@@ -265,6 +271,64 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
     localStorage.removeItem('qrScanHistory')
     toast.success('Scan history cleared')
   }, [])
+
+  // Export history
+  const exportHistory = useCallback((format: 'json' | 'csv') => {
+    const allHistory = [
+      ...scanHistory.map(item => ({ ...item, scanType: 'receipt' })),
+      ...localQrHistory.map(item => ({ ...item, scanType: 'qr' }))
+    ].sort((a, b) => b.timestamp - a.timestamp)
+
+    if (format === 'json') {
+      const dataStr = JSON.stringify(allHistory, null, 2)
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
+      const exportFileDefaultName = `scan-history-${new Date().toISOString().split('T')[0]}.json`
+      const linkElement = document.createElement('a')
+      linkElement.setAttribute('href', dataUri)
+      linkElement.setAttribute('download', exportFileDefaultName)
+      linkElement.click()
+    } else {
+      // CSV format
+      const headers = ['Type', 'Scan Type', 'Data', 'Timestamp']
+      const csvContent = [
+        headers.join(','),
+        ...allHistory.map(item => [
+          item.type,
+          item.scanType,
+          `"${(item.data.beautified?.displayText || item.data.data || item.data.amount || '').replace(/"/g, '""')}"`,
+          new Date(item.timestamp).toISOString()
+        ].join(','))
+      ].join('\n')
+
+      const dataUri = 'data:text/csv;charset=utf-8,'+ encodeURIComponent(csvContent)
+      const exportFileDefaultName = `scan-history-${new Date().toISOString().split('T')[0]}.csv`
+      const linkElement = document.createElement('a')
+      linkElement.setAttribute('href', dataUri)
+      linkElement.setAttribute('download', exportFileDefaultName)
+      linkElement.click()
+    }
+    toast.success(`History exported as ${format.toUpperCase()}`)
+  }, [scanHistory, localQrHistory])
+
+  // Filter history based on search and filter
+  const filteredHistory = useCallback(() => {
+    const allHistory = [
+      ...scanHistory.map(item => ({ ...item, scanType: 'receipt' })),
+      ...localQrHistory.map(item => ({ ...item, scanType: 'qr' }))
+    ].sort((a, b) => b.timestamp - a.timestamp)
+
+    return allHistory.filter(item => {
+      const matchesSearch = historySearch === '' ||
+        (item.data.beautified?.displayText || item.data.data || item.data.amount || '').toLowerCase().includes(historySearch.toLowerCase()) ||
+        item.type.toLowerCase().includes(historySearch.toLowerCase())
+
+      const matchesFilter = historyFilter === 'all' ||
+        (historyFilter === 'receipt' && item.scanType === 'receipt') ||
+        (historyFilter === 'qr' && item.scanType === 'qr')
+
+      return matchesSearch && matchesFilter
+    })
+  }, [scanHistory, localQrHistory, historySearch, historyFilter])
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="w-full h-full max-w-none max-h-none overflow-y-auto p-3 sm:p-4 md:p-6 sm:max-w-2xl sm:max-h-[90vh] md:max-w-4xl">
@@ -704,82 +768,118 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                     <History className="w-5 h-5" />
                     Scan History
                   </CardTitle>
-                  <Button
-                    onClick={clearAllHistory}
-                    variant="outline"
-                    size="sm"
-                    disabled={scanHistory.length === 0 && localQrHistory.length === 0}
-                  >
-                    Clear All
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => exportHistory('json')}
+                      variant="outline"
+                      size="sm"
+                      disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      JSON
+                    </Button>
+                    <Button
+                      onClick={() => exportHistory('csv')}
+                      variant="outline"
+                      size="sm"
+                      disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      CSV
+                    </Button>
+                    <Button
+                      onClick={clearAllHistory}
+                      variant="outline"
+                      size="sm"
+                      disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                    >
+                      Clear All
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {scanHistory.length === 0 && localQrHistory.length === 0 ? (
+                {/* Search and Filter */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search scans..."
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <select
+                    value={historyFilter}
+                    onChange={(e) => setHistoryFilter(e.target.value)}
+                    className="px-3 py-2 border rounded-md text-sm"
+                    title="Filter scan history"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="receipt">Receipts</option>
+                    <option value="qr">QR Codes</option>
+                  </select>
+                </div>
+
+                {filteredHistory().length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p>No scan history yet</p>
                     <p className="text-sm">Your recent scans will appear here</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {/* Receipt Scans */}
-                    {scanHistory.map((item) => (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {filteredHistory().map((item) => (
                       <Card key={item.id} className="p-4">
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-3">
-                            <Scan className="w-5 h-5 text-blue-500 mt-0.5" />
+                            {item.scanType === 'receipt' ? (
+                              <Scan className="w-5 h-5 text-blue-500 mt-0.5" />
+                            ) : (
+                              <QrCode className="w-5 h-5 text-green-500 mt-0.5" />
+                            )}
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
-                                <Badge variant="secondary">Receipt</Badge>
+                                <Badge variant="secondary">
+                                  {item.scanType === 'receipt' ? 'Receipt' : 'QR Code'}
+                                </Badge>
                                 <span className="text-xs text-muted-foreground">
                                   {new Date(item.timestamp).toLocaleString()}
                                 </span>
                               </div>
                               <div className="space-y-1">
-                                <p className="text-sm font-medium">
-                                  ${item.data.amount || 'Amount not detected'}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {item.data.merchant || 'Merchant not detected'}
-                                </p>
+                                {item.scanType === 'receipt' ? (
+                                  <>
+                                    <p className="text-sm font-medium">
+                                      ${item.data.amount || 'Amount not detected'}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {item.data.merchant || 'Merchant not detected'}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-sm font-medium">
+                                      {item.data.beautified?.title || 'QR Code'}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground break-all">
+                                      {item.data.beautified?.displayText || item.data.data}
+                                    </p>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </Card>
-                    ))}
-
-                    {/* QR Scans */}
-                    {localQrHistory.map((item) => (
-                      <Card key={item.id} className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-3">
-                            <QrCode className="w-5 h-5 text-green-500 mt-0.5" />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge variant="secondary">QR Code</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  {new Date(item.timestamp).toLocaleString()}
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-sm font-medium">
-                                  {item.data.beautified?.title || 'QR Code'}
-                                </p>
-                                <p className="text-sm text-muted-foreground break-all">
-                                  {item.data.beautified?.displayText || item.data.data}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => handleQRAction(item.data.beautified)}
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
+                          {item.scanType === 'qr' && (
+                            <Button
+                              onClick={() => handleQRAction(item.data.beautified)}
+                              variant="ghost"
+                              size="sm"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          )}
                         </div>
                       </Card>
                     ))}

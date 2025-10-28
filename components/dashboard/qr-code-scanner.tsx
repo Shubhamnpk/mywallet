@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi } from "lucide-react"
+import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat } from "lucide-react"
 
 // QR Code interfaces
 interface QRScanResult {
@@ -51,6 +51,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
   const [torchAvailable, setTorchAvailable] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  const [continuousScan, setContinuousScan] = useState(false)
 
   // Load jsQR library
   useEffect(() => {
@@ -162,6 +163,33 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       }
     }
 
+    // Calendar event detection (iCal format)
+    if (data.includes('BEGIN:VEVENT') || data.includes('DTSTART:') || data.includes('SUMMARY:')) {
+      const summaryMatch = data.match(/SUMMARY:([^\n]+)/)
+      const startMatch = data.match(/DTSTART:([^\n]+)/)
+      const locationMatch = data.match(/LOCATION:([^\n]+)/)
+
+      return {
+        type: 'calendar',
+        title: 'Calendar Event',
+        summary: summaryMatch ? summaryMatch[1] : 'Event',
+        startDate: startMatch ? startMatch[1] : null,
+        location: locationMatch ? locationMatch[1] : null,
+        icsData: data,
+        displayText: summaryMatch ? summaryMatch[1] : 'Calendar Event'
+      }
+    }
+
+    // Bitcoin/Satoshi address detection
+    if (data.startsWith('bitcoin:') || (data.length >= 26 && data.length <= 35 && /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(data))) {
+      return {
+        type: 'bitcoin',
+        title: 'Bitcoin Address',
+        address: data.replace('bitcoin:', ''),
+        displayText: data.length > 20 ? `${data.substring(0, 17)}...` : data
+      }
+    }
+
     // Default as text
     return {
       type: 'text',
@@ -195,6 +223,12 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         break
       case 'wifi':
         copyToClipboard(`WiFi Network: ${beautified.ssid}\nPassword: ${beautified.password || 'No password'}`)
+        break
+      case 'calendar':
+        copyToClipboard(beautified.icsData || beautified.displayText)
+        break
+      case 'bitcoin':
+        copyToClipboard(beautified.address)
         break
       default:
         copyToClipboard(beautified.content || beautified.displayText)
@@ -356,12 +390,24 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               setQrScanResult(result)
               onScanResult(result)
               toast.success(`QR Code detected: ${beautified.title}`)
-              // Stop scanning after successful detection from image
-              toast.success(`QR Code detected: ${beautified.title}`)
-              // Stop scanning and camera after successful detection
-              stopQRCamera()
-              onScanningChange(false)
-              return            }
+
+              // Add haptic feedback if supported
+              if ('vibrate' in navigator) {
+                navigator.vibrate(200)
+              }
+
+              // Stop scanning after successful detection unless continuous scan is enabled
+              if (!continuousScan) {
+                stopQRCamera()
+                onScanningChange(false)
+                return
+              } else {
+                // In continuous mode, reset lastScanned after a delay to allow rescanning same code
+                setTimeout(() => {
+                  lastScannedRef.current = null
+                }, 2000)
+              }
+            }
           }
         } catch (e) {
           // ignore image processing errors
@@ -670,6 +716,19 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   ))}
                 </select>
 
+                {/* Continuous scan toggle */}
+                <Button
+                  onClick={() => setContinuousScan(!continuousScan)}
+                  variant={continuousScan ? "default" : "outline"}
+                  size="sm"
+                  disabled={isInitializingCamera}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
+                >
+                  <Repeat className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden sm:inline">{continuousScan ? 'Continuous' : 'Single'}</span>
+                  <span className="sm:hidden">{continuousScan ? 'Cont' : 'Single'}</span>
+                </Button>
+
                 {/* Torch / flashlight toggle */}
                 <Button
                   onClick={toggleTorch}
@@ -822,6 +881,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 {qrScanResult.beautified?.type === 'email' && <Mail className="w-4 h-4" />}
                 {qrScanResult.beautified?.type === 'phone' && <Phone className="w-4 h-4" />}
                 {qrScanResult.beautified?.type === 'wifi' && <Wifi className="w-4 h-4" />}
+                {qrScanResult.beautified?.type === 'calendar' && <CheckCircle className="w-4 h-4" />}
+                {qrScanResult.beautified?.type === 'bitcoin' && <QrCode className="w-4 h-4" />}
                 <Badge variant="secondary">{qrScanResult.beautified?.title}</Badge>
               </div>
 
@@ -841,6 +902,26 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   )}
                 </div>
               )}
+
+              {qrScanResult.beautified?.type === 'calendar' && (
+                <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 rounded border">
+                  <p className="text-sm font-medium">Event Details:</p>
+                  <p className="text-xs">Summary: {qrScanResult.beautified.summary}</p>
+                  {qrScanResult.beautified.startDate && (
+                    <p className="text-xs">Start: {new Date(qrScanResult.beautified.startDate).toLocaleString()}</p>
+                  )}
+                  {qrScanResult.beautified.location && (
+                    <p className="text-xs">Location: {qrScanResult.beautified.location}</p>
+                  )}
+                </div>
+              )}
+
+              {qrScanResult.beautified?.type === 'bitcoin' && (
+                <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950/20 rounded border">
+                  <p className="text-sm font-medium">Bitcoin Address:</p>
+                  <p className="text-xs break-all">{qrScanResult.beautified.address}</p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 sm:gap-3">
@@ -853,6 +934,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 {qrScanResult.beautified?.type === 'email' && 'Send Email'}
                 {qrScanResult.beautified?.type === 'phone' && 'Call Number'}
                 {qrScanResult.beautified?.type === 'wifi' && 'Copy Password'}
+                {qrScanResult.beautified?.type === 'calendar' && 'Copy Event'}
+                {qrScanResult.beautified?.type === 'bitcoin' && 'Copy Address'}
                 {qrScanResult.beautified?.type === 'text' && 'Copy Text'}
                 {qrScanResult.beautified?.type === 'contact' && 'Copy Contact'}
               </Button>
