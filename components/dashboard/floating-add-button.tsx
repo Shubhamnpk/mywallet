@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Camera, Mic, Calculator, Lock } from "lucide-react"
+import { Plus, Camera, Mic, Calculator, Lock, Gamepad2 } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { getDefaultCategories, ALL_DEFAULT_CATEGORIES } from "@/lib/categories"
 import ReceiptScanner from "./receipt-scanner"
+import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
 
 declare global {
   interface Window {
@@ -36,6 +37,7 @@ const quickActions = [
   { id: "scan", icon: Camera, label: "Scan", color: "bg-emerald-500" },
   { id: "voice", icon: Mic, label: "Voice", color: "bg-blue-500" },
   { id: "calc", icon: Calculator, label: "Calc", color: "bg-amber-500" },
+  { id: "game", icon: Gamepad2, label: "Game", color: "bg-purple-500" },
   { id: "lock", icon: Lock, label: "Lock", color: "bg-red-500" },
 ]
 
@@ -64,6 +66,7 @@ export function FloatingAddButton({
   const [prefilledCategory, setPrefilledCategory] = useState("")
   const [prefilledReceiptImage, setPrefilledReceiptImage] = useState("")
   const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false)
+  const [isGamingPlaceOpen, setIsGamingPlaceOpen] = useState(false)
 
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
@@ -105,6 +108,9 @@ export function FloatingAddButton({
           break
         case "calc":
           setIsCalculatorOpen(true)
+          break
+        case "game":
+          setIsGamingPlaceOpen(true)
           break
         default:
           setIsDialogOpen(true)
@@ -532,6 +538,12 @@ export function FloatingAddButton({
         isOpen={isReceiptScannerOpen}
         onOpenChange={setIsReceiptScannerOpen}
         onTransactionData={handleReceiptData}
+      />
+
+      {/* Gaming Place Modal */}
+      <GamingPlaceModal
+        isOpen={isGamingPlaceOpen}
+        onClose={() => setIsGamingPlaceOpen(false)}
       />
     </>
   )

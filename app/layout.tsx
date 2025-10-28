@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL('https://mywallet.app'),
+  metadataBase: new URL('https://mywalletnp.vercel.app'),
   alternates: {
     canonical: '/',
   },
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://mywallet.app',
+    url: 'https://mywalletnp.vercel.app',
     title: 'MyWallet - Smart Financial Tracking App | Free Personal Finance Manager',
     description: 'Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Track budgets, achieve goals, and grow wealth with smart insights.',
     siteName: 'MyWallet',
@@ -98,7 +98,7 @@ export default function RootLayout({
     "@type": "SoftwareApplication",
     "name": "MyWallet",
     "description": "Smart financial tracking app that shows expenses in terms of time worked. Free personal finance manager with offline capabilities.",
-    "url": "https://mywallet.app",
+    "url": "https://mywalletnp.vercel.app",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "Web, iOS, Android",
     "offers": {
@@ -109,12 +109,12 @@ export default function RootLayout({
     "author": {
       "@type": "Organization",
       "name": "MyWallet Team",
-      "url": "https://mywallet.app"
+      "url": "https://mywalletnp.vercel.app"
     },
     "publisher": {
       "@type": "Organization",
       "name": "MyWallet",
-      "url": "https://mywallet.app"
+      "url": "https://mywalletnp.vercel.app"
     },
     "aggregateRating": {
       "@type": "AggregateRating",

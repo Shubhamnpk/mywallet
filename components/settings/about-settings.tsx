@@ -134,7 +134,7 @@ export function AboutSettings() {
               }}
               title="Development build - click for easter egg!"
             >
-              {process.env.NEXT_PUBLIC_BUILD_NUMBER || `${packageJson.version}.${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`}
+              {process.env.NEXT_PUBLIC_BUILD_NUMBER || 'dev'}
             </span>
           </div>
           <div className="flex items-center justify-between">

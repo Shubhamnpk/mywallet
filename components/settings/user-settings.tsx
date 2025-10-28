@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { LogOut, Trash2, Upload, Save, Plus, PencilLine, Camera, X, User, ImageIcon } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -56,6 +57,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   const [editMode, setEditMode] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [showAvatarDialog, setShowAvatarDialog] = useState(false)
+  const [showWorkDataDialog, setShowWorkDataDialog] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -96,12 +98,48 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     return isNaN(rate) ? 0 : rate
   }, [hourlyRate])
 
+  const isTimeWalletEnabled = useMemo(() => {
+    return formData.monthlyEarning > 0 && formData.workingHoursPerDay > 0 && formData.workingDaysPerMonth > 0
+  }, [formData.monthlyEarning, formData.workingHoursPerDay, formData.workingDaysPerMonth])
+
   const handleSave = () => {
     updateUserProfile(formData)
     toast({ title: "Profile Updated", description: "Your profile settings have been saved successfully." })
     setEditMode(false)
   }
 
+  const handleTimeWalletToggle = (enabled: boolean) => {
+    if (enabled) {
+      // Enable: Show dialog to enter work data
+      setShowWorkDataDialog(true)
+    } else {
+      // Disable: Clear work data to empty values
+      updateField("monthlyEarning", 0)
+      updateField("workingHoursPerDay", 0)
+      updateField("workingDaysPerMonth", 0)
+      toast({
+        title: "Time Wallet Disabled",
+        description: "Work data has been cleared and time-based calculations are now disabled.",
+      })
+    }
+  }
+
+  const handleSaveWorkData = () => {
+    if (formData.monthlyEarning > 0 && formData.workingHoursPerDay > 0 && formData.workingDaysPerMonth > 0) {
+      updateUserProfile(formData)
+      setShowWorkDataDialog(false)
+      toast({
+        title: "Time Wallet Enabled",
+        description: "Time-based value calculations are now active.",
+      })
+    } else {
+      toast({
+        title: "Invalid Data",
+        description: "Please fill in all work information fields.",
+        variant: "destructive",
+      })
+    }
+  }
   const handleCancelChanges = () => {
     if (userProfile) {
       // Reset form data to original values
@@ -347,27 +385,29 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   </div>
                 </div>
 
-                {/* Profile Stats */}
-                <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                    <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                      {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
+                {/* Profile Stats - Only show if time wallet is enabled */}
+                {isTimeWalletEnabled && (
+                  <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
+                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                        {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hourly Rate</div>
                     </div>
-                    <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hourly Rate</div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800">
-                    <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                      {formData.workingHoursPerDay}h
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800">
+                      <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                        {formData.workingHoursPerDay}h
+                      </div>
+                      <div className="text-sm text-green-600/70 dark:text-green-400/70">Daily Hours</div>
                     </div>
-                    <div className="text-sm text-green-600/70 dark:text-green-400/70">Daily Hours</div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800">
-                    <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                      {formData.workingDaysPerMonth}
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800">
+                      <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                        {formData.workingDaysPerMonth}
+                      </div>
+                      <div className="text-sm text-purple-600/70 dark:text-purple-400/70">Work Days</div>
                     </div>
-                    <div className="text-sm text-purple-600/70 dark:text-purple-400/70">Work Days</div>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="space-y-6">
@@ -473,27 +513,52 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!editMode ? (
-            <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-                  {getCurrentCurrencySymbol}{(formData.monthlyEarning || 0).toLocaleString()}
-                </div>
-                <div className="text-sm text-emerald-600/70 dark:text-emerald-400/70">Monthly Earning</div>
-              </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <div className="text-lg font-bold text-blue-700 dark:text-blue-400">
-                  {formData.workingHoursPerDay}h
-                </div>
-                <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hours per Day</div>
-              </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/20 dark:to-orange-900/20 border border-orange-200 dark:border-orange-800">
-                <div className="text-lg font-bold text-orange-700 dark:text-orange-400">
-                  {formData.workingDaysPerMonth}
-                </div>
-                <div className="text-sm text-orange-600/70 dark:text-orange-400/70">Days per Month</div>
-              </div>
+          {/* Time Wallet Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20">
+            <div className="space-y-1">
+              <Label htmlFor="time-wallet-toggle" className="text-sm font-medium">Time Wallet</Label>
+              <p className="text-xs text-muted-foreground">
+                {isTimeWalletEnabled
+                  ? "Time-based value calculations are active"
+                  : "Enable time-based value calculations for transactions"
+                }
+              </p>
             </div>
+            <Switch
+              id="time-wallet-toggle"
+              checked={isTimeWalletEnabled}
+              onCheckedChange={handleTimeWalletToggle}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
+
+          {!editMode ? (
+            isTimeWalletEnabled ? (
+              <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                  <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                    {getCurrentCurrencySymbol}{(formData.monthlyEarning || 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-emerald-600/70 dark:text-emerald-400/70">Monthly Earning</div>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
+                  <div className="text-lg font-bold text-blue-700 dark:text-blue-400">
+                    {formData.workingHoursPerDay}h
+                  </div>
+                  <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hours per Day</div>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/20 dark:to-orange-900/20 border border-orange-200 dark:border-orange-800">
+                  <div className="text-lg font-bold text-orange-700 dark:text-orange-400">
+                    {formData.workingDaysPerMonth}
+                  </div>
+                  <div className="text-sm text-orange-600/70 dark:text-orange-400/70">Days per Month</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm">Time wallet is disabled. Enable it to view your work information.</p>
+              </div>
+            )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -536,36 +601,38 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
             </div>
           )}
 
-          {/* Enhanced Preview Card */}
-          <div className="p-6 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 rounded-xl border border-primary/20">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold">Time Value Calculation</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="text-3xl font-bold text-primary">
-                  {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
+          {/* Enhanced Preview Card - Only show if time wallet is enabled */}
+          {isTimeWalletEnabled && (
+            <div className="p-6 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 rounded-xl border border-primary/20">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
                 </div>
-                <div className="text-sm text-muted-foreground">Your hourly rate</div>
+                <h3 className="text-lg font-semibold">Time Value Calculation</h3>
               </div>
-              <div className="space-y-1">
-                <div className="text-2xl font-semibold text-primary/80">
-                  {getCurrentCurrencySymbol}{perMinuteRate.toFixed(2)}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <div className="text-3xl font-bold text-primary">
+                    {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Your hourly rate</div>
                 </div>
-                <div className="text-sm text-muted-foreground">Per minute value</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-semibold text-primary/80">
+                    {getCurrentCurrencySymbol}{perMinuteRate.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Per minute value</div>
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-primary/5 rounded-lg">
+                <p className="text-sm text-primary/80">
+                  💡 This helps you understand the time cost of your purchases and make better financial decisions.
+                </p>
               </div>
             </div>
-            <div className="mt-4 p-3 bg-primary/5 rounded-lg">
-              <p className="text-sm text-primary/80">
-                💡 This helps you understand the time cost of your purchases and make better financial decisions.
-              </p>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -704,6 +771,84 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 Save Avatar
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Work Data Dialog */}
+      <Dialog open={showWorkDataDialog} onOpenChange={setShowWorkDataDialog}>
+        <DialogContent className="sm:max-w-lg border-0 shadow-2xl bg-gradient-to-br from-background to-background/95 backdrop-blur-sm">
+          <DialogHeader className="text-center pb-2">
+            <DialogTitle className="text-xl font-semibold">Enable Time Wallet</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Enter your work information to enable time-based value calculations for transactions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            <div className="space-y-3">
+              <Label htmlFor="dialog-monthly-earning" className="text-sm font-medium flex items-center gap-2">
+                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                Monthly Earning
+              </Label>
+              <Input
+                id="dialog-monthly-earning"
+                type="number"
+                placeholder="Enter amount (e.g., 5000)"
+                value={formData.monthlyEarning || ""}
+                onChange={(e) => updateField("monthlyEarning", Number(e.target.value) || 0)}
+                className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
+              />
+            </div>
+            <div className="space-y-3">
+              <Label htmlFor="dialog-hours-day" className="text-sm font-medium flex items-center gap-2">
+                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                Hours per Day
+              </Label>
+              <Input
+                id="dialog-hours-day"
+                type="number"
+                min="1"
+                max="24"
+                placeholder="Enter hours (e.g., 8)"
+                value={formData.workingHoursPerDay || ""}
+                onChange={(e) => updateField("workingHoursPerDay", Number(e.target.value) || 0)}
+                className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
+              />
+            </div>
+            <div className="space-y-3">
+              <Label htmlFor="dialog-days-month" className="text-sm font-medium flex items-center gap-2">
+                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                Days per Month
+              </Label>
+              <Input
+                id="dialog-days-month"
+                type="number"
+                min="1"
+                max="31"
+                placeholder="Enter days (e.g., 22)"
+                value={formData.workingDaysPerMonth || ""}
+                onChange={(e) => updateField("workingDaysPerMonth", Number(e.target.value) || 0)}
+                className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 w-full pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setShowWorkDataDialog(false)}
+              className="flex-1 h-11 border-2 hover:bg-muted/50 transition-colors"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveWorkData}
+              className="flex-1 h-11 bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-200"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Enable Time Wallet
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
