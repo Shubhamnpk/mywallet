@@ -690,6 +690,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     ref={amountInputRef}
                     id="amount"
                     type="text"
+                    inputMode="decimal"
                     value={displayAmount}
                     onChange={(e) => {
                       const rawValue = e.target.value.replace(/,/g, '')
