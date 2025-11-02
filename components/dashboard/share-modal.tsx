@@ -85,9 +85,17 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   }
 
   const modalContent = (
-    <ScrollArea className="relative h-full">
+    <ScrollArea className="relative h-full max-h-[100dvh] overflow-y-auto">
       <DialogTitle className="sr-only">Share MyWallet</DialogTitle>
-      <div className="flex flex-col gap-8 p-8">
+      <div className="flex flex-col gap-8 p-8 pb-24">
+        {/* Close button for mobile */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-background/80 backdrop-blur-sm border border-border hover:bg-background transition-colors"
+          aria-label="Close modal"
+        >
+          <X className="w-5 h-5" />
+        </button>
         {/* Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-accent mb-2">
@@ -208,7 +216,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   if (isMobile) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-lg p-0 gap-0 border-0 overflow-hidden">
+        <DialogContent className="w-[100dvw] h-[100dvh] max-w-none max-h-none p-0 gap-0 border-0">
           {modalContent}
         </DialogContent>
       </Dialog>

@@ -69,39 +69,49 @@ export function DataSettings() {
     try {
       const text = await importFile.text()
       setBackupFileContent(text)
-      let parsedData
-      try {
-        parsedData = JSON.parse(text)
-      } catch (parseError) {
-        throw new Error("Invalid backup file format")
-      }
 
-      let dataToImport = parsedData
-      if (parsedData.version && parsedData.salt && parsedData.payload) {
-        if (importPin) {
-          try {
-            const { restoreEncryptedBackup } = await import("@/lib/backup")
-            dataToImport = await restoreEncryptedBackup(text, importPin)
-          } catch (decryptError) {
+      let dataToImport
+      try {
+        const parsedData = JSON.parse(text)
+
+        // Check if this is an encrypted backup
+        if (parsedData.version && parsedData.salt && parsedData.payload) {
+          if (importPin) {
+            try {
+              const { restoreEncryptedBackup } = await import("@/lib/backup")
+              dataToImport = await restoreEncryptedBackup(text, importPin)
+              console.log("[v0] Successfully decrypted encrypted backup")
+            } catch (decryptError) {
+              const errorMsg = decryptError instanceof Error ? decryptError.message : "Unknown decryption error"
+              toast({
+                title: "Decryption Failed",
+                description: errorMsg,
+                variant: "destructive",
+              })
+              setIsImporting(false)
+              return
+            }
+          } else {
             toast({
-              title: "Decryption Failed",
-              description: "Invalid PIN or corrupted backup file.",
+              title: "PIN Required",
+              description: "This is an encrypted backup. Please enter your PIN to decrypt it.",
               variant: "destructive",
             })
             setIsImporting(false)
             return
           }
         } else {
-          toast({
-            title: "PIN Required",
-            description: "This is an encrypted backup. Please enter your PIN to decrypt it.",
-            variant: "destructive",
-          })
-          setIsImporting(false)
-          return
+          // Plain JSON backup
+          dataToImport = parsedData
+          console.log("[v0] Detected plain JSON backup")
         }
-      } else {
-        console.log("[v0] Detected plain JSON backup")
+      } catch (parseError) {
+        throw new Error("Invalid backup file format - not valid JSON")
+      }
+
+      // Validate that we have some data to import
+      if (!dataToImport || (typeof dataToImport === 'object' && Object.keys(dataToImport).length === 0)) {
+        throw new Error("Backup file contains no data to import")
       }
 
       // Store the data (decrypted or plain) for the modal

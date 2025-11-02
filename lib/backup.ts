@@ -53,26 +53,42 @@ export async function restoreEncryptedBackup(backupJson: string, pin: string): P
   }
 
   if (!envelope.payload || !envelope.salt) {
-    throw new Error("Invalid backup: missing fields")
+    throw new Error("Invalid backup: missing required fields (payload or salt)")
+  }
+
+  if (!envelope.version || envelope.version !== BACKUP_VERSION) {
+    throw new Error(`Unsupported backup version: ${envelope.version || 'unknown'}. Expected: ${BACKUP_VERSION}`)
   }
 
   // Decode salt
-  const salt = new Uint8Array(
-    atob(envelope.salt)
-      .split("")
-      .map((c) => c.charCodeAt(0)),
-  )
+  let salt: Uint8Array
+  try {
+    salt = new Uint8Array(
+      atob(envelope.salt)
+        .split("")
+        .map((c) => c.charCodeAt(0)),
+    )
+  } catch (err) {
+    throw new Error("Invalid backup: corrupted salt data")
+  }
 
   // Derive key using provided PIN and salt
   const key = await SecureWallet.deriveKeyFromPin(pin, salt)
 
   // Decrypt
-  const plain = await SecureWallet.decryptData(envelope.payload, key)
+  let plain: string
+  try {
+    plain = await SecureWallet.decryptData(envelope.payload, key)
+  } catch (err) {
+    throw new Error("Decryption failed: invalid PIN or corrupted backup data")
+  }
 
   // Verify integrity
-  const computedHash = await SecureWallet.generateIntegrityHash(plain)
-  if (computedHash !== envelope.integrityHash) {
-    throw new Error("Integrity check failed: backup data does not match stored hash")
+  if (envelope.integrityHash) {
+    const computedHash = await SecureWallet.generateIntegrityHash(plain)
+    if (computedHash !== envelope.integrityHash) {
+      throw new Error("Integrity check failed: backup data has been tampered with or is corrupted")
+    }
   }
 
   try {

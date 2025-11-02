@@ -277,7 +277,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
 
         {/* Game Board */}
         <div className="flex justify-center">
-          <div className="grid grid-cols-3 gap-2 aspect-square w-64 h-64 mx-auto bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 p-4 rounded-2xl border-2 border-border">
+          <div className="grid grid-cols-3 gap-2 w-full max-w-64 h-auto mx-auto bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 p-4 rounded-2xl border-2 border-border">
             {gameState.board.map((cell, index) => (
               <Button
                 key={index}
@@ -285,7 +285,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
                 className={cn(
                   "aspect-square text-4xl font-bold h-full rounded-xl transition-all duration-200",
                   "hover:bg-white/80 hover:scale-105 active:scale-95",
-                  "border-2 border-transparent hover:border-primary/20",
+                  "border-2 border-border/80 hover:border-primary/20",
                   cell === 'X' && "text-blue-600 hover:text-blue-700",
                   cell === 'O' && "text-red-600 hover:text-red-700",
                   "disabled:cursor-not-allowed disabled:hover:scale-100"

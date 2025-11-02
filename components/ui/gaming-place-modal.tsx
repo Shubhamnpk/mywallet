@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TravelMiniGame } from "./travel-mini-game"
 import { PingPongGame } from "./ping-pong-game"
 import { TicTacToeGame } from "./tic-tac-toe-game"
 import { Plane, Home, Users } from "lucide-react"
@@ -13,7 +12,7 @@ interface GamingPlaceModalProps {
   onClose: () => void
 }
 
-type GameType = 'travel' | 'pingpong' | 'tictactoe' | 'menu'
+type GameType = 'pingpong' | 'tictactoe' | 'menu'
 
 export function GamingPlaceModal({ isOpen, onClose }: GamingPlaceModalProps) {
   const [selectedGame, setSelectedGame] = useState<GameType>('menu')
@@ -22,12 +21,6 @@ export function GamingPlaceModal({ isOpen, onClose }: GamingPlaceModalProps) {
   if (!isOpen) return null
 
   const games = [
-    {
-      id: 'travel' as GameType,
-      name: 'Travel Quest',
-      icon: <Plane className="w-5 h-5" />,
-      description: 'Visit destinations around the world'
-    },
     {
       id: 'pingpong' as GameType,
       name: 'Ping Pong',
@@ -54,8 +47,6 @@ export function GamingPlaceModal({ isOpen, onClose }: GamingPlaceModalProps) {
 
   const renderGame = () => {
     switch (selectedGame) {
-      case 'travel':
-        return <TravelMiniGame isOpen={true} onClose={onClose} />
       case 'pingpong':
         return <PingPongGame isOpen={true} onClose={onClose} />
       case 'tictactoe':

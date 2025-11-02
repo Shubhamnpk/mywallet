@@ -752,18 +752,18 @@ export function useWalletData() {
       const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
       // Validate data structure
-      if (!data.userProfile && !Array.isArray(data.transactions)) {
-        throw new Error("Invalid backup file format - missing required data")
+      if (!data.userProfile && !Array.isArray(data.transactions) && !data.budgets && !data.goals && !data.debtAccounts && !data.creditAccounts && !data.categories && typeof data.emergencyFund !== 'number') {
+        throw new Error("Invalid backup file format - no valid data to import")
       }
 
-      // Import user profile
+      // Import user profile (only if selected)
       if (data.userProfile) {
         console.log("[v0] Importing user profile...")
         setUserProfile(data.userProfile)
         await saveDataWithIntegrity("userProfile", data.userProfile)
       }
 
-      // Import transactions
+      // Import transactions (only if selected)
       if (data.transactions && Array.isArray(data.transactions)) {
         console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
@@ -779,44 +779,49 @@ export function useWalletData() {
         setBalance(actualBalance)
       }
 
-      // Import other data
+      // Import budgets (only if selected)
       if (data.budgets && Array.isArray(data.budgets)) {
         console.log(`[v0] Importing ${data.budgets.length} budgets...`)
         setBudgets(data.budgets)
         await saveDataWithIntegrity("budgets", data.budgets)
       }
 
+      // Import goals (only if selected)
       if (data.goals && Array.isArray(data.goals)) {
         console.log(`[v0] Importing ${data.goals.length} goals...`)
         setGoals(data.goals)
         await saveDataWithIntegrity("goals", data.goals)
       }
 
+      // Import debt accounts (only if selected)
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
         console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
         setDebtAccounts(data.debtAccounts)
         await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
       }
 
+      // Import credit accounts (only if selected)
       if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
         console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
         setCreditAccounts(data.creditAccounts)
         await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
       }
 
-      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
+      // Import debt/credit transactions (only if debt or credit accounts are imported)
+      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions) && (data.debtAccounts || data.creditAccounts)) {
         console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
         setDebtCreditTransactions(data.debtCreditTransactions)
         await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
       }
 
+      // Import categories (only if selected)
       if (data.categories && Array.isArray(data.categories)) {
         console.log(`[v0] Importing ${data.categories.length} categories...`)
         setCategories(data.categories)
         await saveDataWithIntegrity("categories", data.categories)
       }
 
-      // Import emergency fund
+      // Import emergency fund (only if selected)
       if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
         const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
         console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
@@ -824,13 +829,13 @@ export function useWalletData() {
         await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
       }
 
-      // Import scrollbar setting
-      if (data.settings?.showScrollbars !== undefined && typeof window !== 'undefined') {
+      // Import scrollbar setting (only if userProfile is imported)
+      if (data.settings?.showScrollbars !== undefined && data.userProfile && typeof window !== 'undefined') {
         console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
-      console.log("[v0] Data import completed successfully")
+      console.log("[v0] Selective data import completed successfully")
       return true
     } catch (error) {
       console.error("[v0] Error importing data:", error)
