@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Loader2 } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Loader2, Zap } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
@@ -75,7 +76,7 @@ interface DebtCreditManagementProps {
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
   const wallet = useWalletData()
-  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, balance, debtCreditTransactions } = wallet
+  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
 
   // Loading and error states
@@ -96,6 +97,16 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     accountType: "debt",
   })
   const [paymentAmount, setPaymentAmount] = useState("")
+  const [addDebtAmount, setAddDebtAmount] = useState("")
+  const [addDebtDialog, setAddDebtDialog] = useState<{
+    open: boolean
+    accountId: string
+    accountName: string
+  }>({
+    open: false,
+    accountId: "",
+    accountName: "",
+  })
   const [debtDetailsDialog, setDebtDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
   const [creditDetailsDialog, setCreditDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
   const [summaryExpanded, setSummaryExpanded] = useState(false)
@@ -119,6 +130,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     interestType: "simple",
     minimumPayment: "",
     dueDate: "",
+    isFastDebt: false,
   })
 
   const [creditForm, setCreditForm] = useState({
@@ -132,6 +144,19 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     dueDate: "",
   })
 
+  // Auto-update fast debt checkbox based on interest and payment settings
+  useEffect(() => {
+    const interestRate = Number.parseFloat(debtForm.interestRate) || 0
+    const minPayment = Number.parseFloat(debtForm.minimumPayment) || 0
+    const shouldBeFastDebt = interestRate === 0 && minPayment === 0
+
+    if (shouldBeFastDebt && !debtForm.isFastDebt) {
+      setDebtForm(prev => ({ ...prev, isFastDebt: true }))
+    } else if (!shouldBeFastDebt && debtForm.isFastDebt) {
+      // Don't auto-uncheck if user manually checked it
+    }
+  }, [debtForm.interestRate, debtForm.minimumPayment])
+
   // Form validation helpers
   const validateDebtForm = useCallback(() => {
     if (!validateAccountName(debtForm.name)) {
@@ -142,7 +167,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
       setError("Invalid balance amount")
       return false
     }
-    if (!validateInterestRate(debtForm.interestRate)) {
+    if (!debtForm.isFastDebt && !validateInterestRate(debtForm.interestRate)) {
       setError("Invalid interest rate")
       return false
     }
@@ -178,20 +203,25 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   }, [creditForm])
 
   const handleAddDebt = () => {
-    if (!debtForm.name || !debtForm.balance || !debtForm.interestRate) return
+    if (!debtForm.name || !debtForm.balance || (!debtForm.isFastDebt && !debtForm.interestRate)) return
+
+    // Auto-classify as fast debt if no interest and no minimum payment
+    const autoIsFastDebt = debtForm.isFastDebt ||
+      (Number.parseFloat(debtForm.interestRate) === 0 && Number.parseFloat(debtForm.minimumPayment || '0') === 0)
 
     addDebtAccount({
       name: debtForm.name,
       balance: Number.parseFloat(debtForm.balance),
-      interestRate: Number.parseFloat(debtForm.interestRate),
-      minimumPayment: Number.parseFloat(debtForm.minimumPayment) || 0,
-      dueDate: debtForm.dueDate,
+      interestRate: autoIsFastDebt ? 0 : Number.parseFloat(debtForm.interestRate),
+      minimumPayment: autoIsFastDebt ? 0 : (Number.parseFloat(debtForm.minimumPayment) || 0),
+      dueDate: autoIsFastDebt ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : debtForm.dueDate,
       createdAt: new Date().toISOString(),
       interestFrequency: debtForm.interestFrequency,
       interestType: debtForm.interestType,
+      isFastDebt: autoIsFastDebt,
     } as any)
 
-    setDebtForm({ name: "", balance: "", interestRate: "", interestFrequency: "yearly", interestType: "simple", minimumPayment: "", dueDate: "" })
+    setDebtForm({ name: "", balance: "", interestRate: "", interestFrequency: "yearly", interestType: "simple", minimumPayment: "", dueDate: "", isFastDebt: false })
     setShowAddDialog(false)
   }
 
@@ -236,6 +266,17 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
       } catch (err) {
         // ignore or show toast in future
       }
+    }
+  }
+
+  const handleAddDebtCharge = async () => {
+    const amount = Number.parseFloat(addDebtAmount)
+    if (!Number.isFinite(amount) || amount <= 0) return
+
+    const result = await addDebtToAccount(addDebtDialog.accountId, amount)
+    if (result && result.success) {
+      setAddDebtDialog({ open: false, accountId: "", accountName: "" })
+      setAddDebtAmount("")
     }
   }
 
@@ -367,8 +408,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
   const totalCreditLimit = creditAccounts.reduce((sum, credit) => sum + credit.creditLimit, 0)
   const overallUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
 
-  // Calculate total accrued interest across all debt accounts
+  // Calculate total accrued interest across all debt accounts (excluding fast debts)
   const totalAccruedInterest = debtAccounts.reduce((sum, debt) => {
+    if (debt.isFastDebt) return sum
     const timeElapsed = getTimeSinceCreation(debt.createdAt || new Date().toISOString())
     const accrued = calculateInterest(
       debt.balance,
@@ -474,8 +516,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                     const originalBalance = debt.balance + totalPaid
                     const progress = originalBalance > 0 ? (totalPaid / originalBalance) * 100 : 0
 
-                    const timeElapsed = getTimeSinceCreation(debt.createdAt || new Date().toISOString())
-                    const accruedInterest = calculateInterest(
+                    const isFastDebt = debt.isFastDebt
+                    const timeElapsed = isFastDebt ? 0 : getTimeSinceCreation(debt.createdAt || new Date().toISOString())
+                    const accruedInterest = isFastDebt ? 0 : calculateInterest(
                       debt.balance,
                       debt.interestRate || 0,
                       timeElapsed,
@@ -484,9 +527,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                     )
                     const totalWithInterest = debt.balance + accruedInterest
 
-                    // Calculate payoff projection
-                    const monthlyPayment = (debt as any).minimumPayment || calculateMinimumPayment(debt.balance, (debt as any).interestRate || 0)
-                    const payoffProjection = calculatePayoffProjection(
+                    // Calculate payoff projection (skip for fast debts)
+                    const monthlyPayment = isFastDebt ? 0 : ((debt as any).minimumPayment || calculateMinimumPayment(debt.balance, (debt as any).interestRate || 0))
+                    const payoffProjection = isFastDebt ? null : calculatePayoffProjection(
                       debt.balance,
                       monthlyPayment,
                       (debt as any).interestRate || 0,
@@ -513,9 +556,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                 </div>
                               </CollapsibleTrigger>
                               <div className="flex items-center gap-2">
-                                <Badge variant="destructive" className="flex items-center gap-1">
+                                <Badge variant={isFastDebt ? "secondary" : "destructive"} className="flex items-center gap-1">
                                   <AlertTriangle className="w-3 h-3" />
-                                  Debt
+                                  {isFastDebt ? "Fast Debt" : "Debt"}
                                 </Badge>
                                 <Button
                                   variant="ghost"
@@ -531,10 +574,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                             <div className="space-y-2 mt-3">
                               <div className="flex justify-between text-sm">
                                 <span className="flex items-center gap-1">
-                                  <span className="font-medium">{getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}</span>
                                   Balance: {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
                                 </span>
-                                <span>Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</span>
+                                {!isFastDebt && <span>Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</span>}
                               </div>
                               <Progress value={progress} className="h-2 rounded-full" />
                               <div className="flex justify-between text-xs text-muted-foreground">
@@ -551,7 +593,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           <CollapsibleContent>
                             <CardContent className="space-y-4 pt-0">
                               {/* Quick Actions */}
-                              <div className="flex items-center gap-2">
+                              <div className="grid grid-cols-2 gap-2">
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -568,6 +610,20 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                 >
                                   <Minus className="w-3 h-3 mr-1" />
                                   Make Payment
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setAddDebtDialog({
+                                      open: true,
+                                      accountId: debt.id,
+                                      accountName: debt.name,
+                                    })
+                                  }
+                                  className="flex-1"
+                                >
+                                  ➕ Add Debt
                                 </Button>
                                 <Button
                                   size="sm"
@@ -628,7 +684,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                               )}
 
                               {/* Payoff Projection */}
-                              {payoffProjection.months > 0 && (
+                              {payoffProjection && payoffProjection.months > 0 && (
                                 <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-3">
                                   <h5 className="font-medium text-sm mb-2 text-blue-800 dark:text-blue-200">🎯 Payoff Projection</h5>
                                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -653,15 +709,17 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
                               {/* Account Details */}
                               <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                                    <span>Rate: {(debt as any).interestRate || 0}%</span>
-                                  </div>
+                                {!isFastDebt && (
                                   <div className="flex items-center gap-2">
                                     <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                                    <span>Min Pay: {formatCurrency((debt as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
+                                    <span>Rate: {(debt as any).interestRate || 0}%</span>
                                   </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                                  <span>Min Pay: {formatCurrency((debt as any).minimumPayment || 0, userProfile.currency, userProfile.customCurrency)}</span>
                                 </div>
+                              </div>
                             </CardContent>
                           </CollapsibleContent>
                         </Collapsible>
@@ -732,7 +790,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                             <div className="space-y-2 mt-3">
                               <div className="flex justify-between text-sm">
                                 <span className="flex items-center gap-1">
-                                  <span className="font-medium">{getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}</span>
                                   Balance: {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)}
                                 </span>
                                 <span>Available: {formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</span>
@@ -913,6 +970,18 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 />
               </div>
 
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="debt-fast"
+                  checked={debtForm.isFastDebt}
+                  onCheckedChange={(checked) => setDebtForm({ ...debtForm, isFastDebt: checked as boolean })}
+                />
+                <Label htmlFor="debt-fast" className="text-sm font-medium flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-orange-500" />
+                  Fast Debt (No Interest, No Minimum Payment)
+                </Label>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="debt-balance" className="text-sm font-medium">
                   Current Balance ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
@@ -929,51 +998,53 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="debt-rate" className="text-sm font-medium">Interest Rate (%)</Label>
-                  <Input
-                    id="debt-rate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={debtForm.interestRate}
-                    onChange={(e) => setDebtForm({ ...debtForm, interestRate: e.target.value })}
-                    placeholder="0.00"
-                    className="h-11"
-                  />
-                </div>
+              {!debtForm.isFastDebt && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="debt-rate" className="text-sm font-medium">Interest Rate (%)</Label>
+                    <Input
+                      id="debt-rate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={debtForm.interestRate}
+                      onChange={(e) => setDebtForm({ ...debtForm, interestRate: e.target.value })}
+                      placeholder="0.00"
+                      className="h-11"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="debt-frequency" className="text-sm font-medium">Interest Frequency</Label>
-                  <select
-                    id="debt-frequency"
-                    value={debtForm.interestFrequency}
-                    onChange={(e) => setDebtForm({ ...debtForm, interestFrequency: e.target.value })}
-                    title="Interest Frequency"
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="yearly">Yearly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="debt-frequency" className="text-sm font-medium">Interest Frequency</Label>
+                    <select
+                      id="debt-frequency"
+                      value={debtForm.interestFrequency}
+                      onChange={(e) => setDebtForm({ ...debtForm, interestFrequency: e.target.value })}
+                      title="Interest Frequency"
+                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="yearly">Yearly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="debt-type" className="text-sm font-medium">Interest Type</Label>
-                  <select
-                    id="debt-type"
-                    value={debtForm.interestType}
-                    onChange={(e) => setDebtForm({ ...debtForm, interestType: e.target.value })}
-                    title="Interest Type"
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="simple">Simple Interest</option>
-                    <option value="compound">Compound Interest</option>
-                  </select>
+                  <div className="space-y-2">
+                    <Label htmlFor="debt-type" className="text-sm font-medium">Interest Type</Label>
+                    <select
+                      id="debt-type"
+                      value={debtForm.interestType}
+                      onChange={(e) => setDebtForm({ ...debtForm, interestType: e.target.value })}
+                      title="Interest Type"
+                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="simple">Simple Interest</option>
+                      <option value="compound">Compound Interest</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="debt-payment" className="text-sm font-medium">
@@ -998,10 +1069,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 <Button
                   onClick={handleAddDebt}
                   className="flex-1 h-11 bg-destructive hover:bg-destructive/90"
-                  disabled={!debtForm.name || !debtForm.balance || !debtForm.interestRate}
+                  disabled={!debtForm.name || !debtForm.balance || (!debtForm.isFastDebt && !debtForm.interestRate)}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Debt Account
+                  Add {debtForm.isFastDebt ? "Fast Debt" : "Debt"} Account
                 </Button>
               </div>
             </TabsContent>
@@ -1153,8 +1224,9 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                     <div className="space-y-2 mb-4">
                       <p className="text-sm text-muted-foreground">Principal: {formatCurrency(acc?.balance || 0, userProfile.currency, userProfile.customCurrency)}</p>
                       {(() => {
-                        const timeElapsed = getTimeSinceCreation(acc?.createdAt || new Date().toISOString())
-                        const accruedInterest = calculateInterest(
+                        const isFastDebt = acc?.isFastDebt
+                        const timeElapsed = isFastDebt ? 0 : getTimeSinceCreation(acc?.createdAt || new Date().toISOString())
+                        const accruedInterest = isFastDebt ? 0 : calculateInterest(
                           acc?.balance || 0,
                           acc?.interestRate || 0,
                           timeElapsed,
@@ -1165,17 +1237,23 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
                         return (
                           <>
-                            {accruedInterest > 0 && (
-                              <>
-                                <p className="text-sm text-muted-foreground">Accrued Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</p>
-                                <p className="text-sm font-medium text-destructive">Total Balance: {formatCurrency(totalWithInterest, userProfile.currency, userProfile.customCurrency)}</p>
-                              </>
+                            {isFastDebt ? (
+                              <p className="text-sm text-muted-foreground">Fast Debt - No interest accrued</p>
+                            ) : (
+                              accruedInterest > 0 && (
+                                <>
+                                  <p className="text-sm text-muted-foreground">Accrued Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</p>
+                                  <p className="text-sm font-medium text-destructive">Total Balance: {formatCurrency(totalWithInterest, userProfile.currency, userProfile.customCurrency)}</p>
+                                </>
+                              )
                             )}
-                            <div className="text-xs text-muted-foreground mt-2">
-                              <p>Interest Rate: {acc?.interestRate}% ({(acc as any)?.interestFrequency || 'yearly'})</p>
-                              <p>Type: {(acc as any)?.interestType === 'simple' ? 'Simple Interest' : 'Compound Interest'}</p>
-                              <p>Time Elapsed: {timeElapsed.toFixed(2)} years</p>
-                            </div>
+                            {!isFastDebt && (
+                              <div className="text-xs text-muted-foreground mt-2">
+                                <p>Interest Rate: {acc?.interestRate}% ({(acc as any)?.interestFrequency || 'yearly'})</p>
+                                <p>Type: {(acc as any)?.interestType === 'simple' ? 'Simple Interest' : 'Compound Interest'}</p>
+                                <p>Time Elapsed: {timeElapsed.toFixed(2)} years</p>
+                              </div>
+                            )}
                           </>
                         )
                       })()}
@@ -1321,6 +1399,17 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 Cancel
               </Button>
               <Button
+                variant="outline"
+                onClick={() => {
+                  setPaymentDialog({ open: false, accountId: "", accountName: "", accountType: "debt" })
+                  setShowAddDialog(true)
+                  setActiveTab(paymentDialog.accountType)
+                }}
+                className="flex-1 h-11"
+              >
+                Add Account
+              </Button>
+              <Button
                 onClick={handlePayment}
                 disabled={
                   !paymentAmount || Number.parseFloat(paymentAmount) <= 0 || Number.parseFloat(paymentAmount) > balance
@@ -1329,6 +1418,57 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               >
                 <Minus className="w-4 h-4 mr-2" />
                 Make Payment
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Debt Dialog */}
+      <Dialog open={addDebtDialog.open} onOpenChange={(open) => setAddDebtDialog({ ...addDebtDialog, open })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              ➕ Add Debt
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="p-4 bg-muted/50 rounded-lg border">
+              <p className="text-sm text-muted-foreground mb-1">Add debt to:</p>
+              <p className="font-semibold text-lg">{addDebtDialog.accountName}</p>
+              <p className="text-sm text-muted-foreground mt-1">Debt Account</p>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">
+                Debt Amount ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={addDebtAmount}
+                onChange={(e) => setAddDebtAmount(e.target.value)}
+                placeholder="0.00"
+                className="h-12 text-lg"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setAddDebtDialog({ open: false, accountId: "", accountName: "" })}
+                className="flex-1 h-11"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddDebtCharge}
+                disabled={!addDebtAmount || Number.parseFloat(addDebtAmount) <= 0}
+                className="flex-1 h-11 bg-destructive hover:bg-destructive/90 text-white"
+              >
+                ➕ Add Debt
               </Button>
             </div>
           </div>

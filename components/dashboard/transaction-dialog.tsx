@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface FormData {
    amount: string
@@ -28,7 +29,7 @@ interface FormData {
    allocationType: "direct" | "goal" | "debt" | "credit"
    allocationTarget: string
    receiptImage?: string
- }
+  }
 
 interface DebtFormData {
   name: string
@@ -65,6 +66,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment } =
     useWalletData()
   const { playSound } = useAccessibility()
+  const isMobile = useIsMobile()
   const [internalOpen, setInternalOpen] = useState(false)
   const open = isOpen !== undefined ? isOpen : internalOpen
 
@@ -137,6 +139,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     }
   }, [formData.amount])
 
+
   const numAmount = useMemo(() => {
     const parsed = Number.parseFloat(formData.amount)
     return isNaN(parsed) ? 0 : parsed
@@ -179,7 +182,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       .filter((cat) => cat.type === type)
       .map((cat) => cat.name)
 
-    // If no categories in context, use default categories
     if (contextCategories.length === 0) {
       return getDefaultCategoryNames(type)
     }
@@ -187,7 +189,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return contextCategories.sort()
   }, [categories, type])
 
-  // Validation logic - only show errors when appropriate
   const getFieldError = useCallback((field: keyof FormData): string | undefined => {
     const fieldState = fieldStates[field]
     const shouldShowError = submitAttempted || (fieldState.touched && fieldState.blurred)
@@ -203,7 +204,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         if (!formData.category) return "Category is required"
         break
       case 'description':
-        // Description is now optional
         break
       case 'allocationTarget':
         if (formData.allocationType !== "direct" && !formData.allocationTarget) {
@@ -225,12 +225,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   const isFormValid = useMemo(() => {
     return Object.keys(errors).length === 0 &&
-            formData.amount &&
-            numAmount > 0 &&
-            ((formData.allocationType === "direct" && formData.category) ||
-             (formData.allocationType === "goal" && formData.allocationTarget) ||
-             (formData.allocationType === "debt" && formData.allocationTarget) ||
-             (formData.allocationType === "credit" && formData.allocationTarget))
+             formData.amount &&
+             numAmount > 0 &&
+             ((formData.allocationType === "direct" && formData.category) ||
+              (formData.allocationType === "goal" && formData.allocationTarget) ||
+              (formData.allocationType === "debt" && formData.allocationTarget) ||
+              (formData.allocationType === "credit" && formData.allocationTarget))
   }, [errors, formData, numAmount])
 
   // Focus management
@@ -648,7 +648,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   return (
     <TooltipProvider>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto", isMobile && "w-full h-full max-w-none fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 rounded-none border-none shadow-none p-4 z-[60]")}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Add New Transaction
@@ -780,13 +780,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     )}
 
                     {(debtAccounts?.length || 0) > 0 && (
-                      <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
-                        <RadioGroupItem value="debt" id="debt" />
-                        <Label htmlFor="debt" className="flex items-center gap-1 cursor-pointer text-sm">
-                          <AlertCircle className="w-3 h-3 text-red-500" />
-                          Debt ({debtAccounts?.length || 0})
-                        </Label>
-                      </div>
+                      <>
+                        <div className="flex items-center space-x-2 p-2 rounded-md border border-border/50 hover:border-border transition-colors">
+                          <RadioGroupItem value="debt" id="debt" />
+                          <Label htmlFor="debt" className="flex items-center gap-1 cursor-pointer text-sm">
+                            <AlertCircle className="w-3 h-3 text-red-500" />
+                            Debt ({debtAccounts?.length || 0})
+                          </Label>
+                        </div>
+                      </>
                     )}
 
                     {(creditAccounts?.length || 0) > 0 && (
@@ -1112,7 +1114,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
       {/* Debt Creation Dialog */}
       <Dialog open={showDebtDialog} onOpenChange={setShowDebtDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={cn("sm:max-w-md", isMobile && "w-full h-full max-w-none fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 rounded-none border-none shadow-none p-4 z-[60]")}>
           <DialogHeader>
             <DialogTitle>Create Debt Account</DialogTitle>
           </DialogHeader>

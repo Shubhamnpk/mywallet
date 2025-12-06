@@ -367,7 +367,7 @@ export function useWalletData() {
     return { debtAmount, transactionDescription }
   }
 
-  const addDebtToAccount = (debtId: string, amount: number, description?: string) => {
+  const addDebtToAccount = async (debtId: string, amount: number, description?: string) => {
     const debt = debtAccounts.find((d) => d.id === debtId)
     if (!debt) return { success: false, error: 'Debt account not found' }
 
@@ -395,6 +395,26 @@ export function useWalletData() {
     const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
     setDebtCreditTransactions(updatedDebtTransactions)
     saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions)
+
+    // Also create a regular transaction for main transactions list
+    const debtAdditionTransaction: Transaction = {
+      id: generateId('tx'),
+      type: "expense",
+      amount,
+      description: `Added to debt: ${debt?.name || 'debt'}`,
+      category: "Debt",
+      date: new Date().toISOString(),
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: 0,
+      debtUsed: amount,
+      debtAccountId: debtId,
+      status: "debt",
+    }
+
+    const updatedTransactions = [...transactions, debtAdditionTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
 
     return { success: true, transaction: debtCharge }
   }
