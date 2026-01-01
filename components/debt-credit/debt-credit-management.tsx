@@ -273,10 +273,21 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     const amount = Number.parseFloat(addDebtAmount)
     if (!Number.isFinite(amount) || amount <= 0) return
 
-    const result = await addDebtToAccount(addDebtDialog.accountId, amount)
-    if (result && result.success) {
-      setAddDebtDialog({ open: false, accountId: "", accountName: "" })
-      setAddDebtAmount("")
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const result = await addDebtToAccount(addDebtDialog.accountId, amount)
+      if (result && result.success) {
+        setAddDebtDialog({ open: false, accountId: "", accountName: "" })
+        setAddDebtAmount("")
+      } else {
+        setError(result?.error || "Failed to add debt")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add debt")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -1452,7 +1463,11 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 onChange={(e) => setAddDebtAmount(e.target.value)}
                 placeholder="0.00"
                 className="h-12 text-lg"
+                disabled={isLoading}
               />
+              {error && (
+                <p className="text-sm text-destructive">{error}</p>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -1465,10 +1480,19 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
               </Button>
               <Button
                 onClick={handleAddDebtCharge}
-                disabled={!addDebtAmount || Number.parseFloat(addDebtAmount) <= 0}
+                disabled={!addDebtAmount || Number.parseFloat(addDebtAmount) <= 0 || isLoading}
                 className="flex-1 h-11 bg-destructive hover:bg-destructive/90 text-white"
               >
-                ➕ Add Debt
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    ➕ Add Debt
+                  </>
+                )}
               </Button>
             </div>
           </div>
