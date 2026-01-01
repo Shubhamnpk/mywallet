@@ -273,33 +273,33 @@ export function DataSettings() {
                   Create a selective encrypted backup of your wallet data with advanced security features.
                 </p>
 
-                <Button
-                  onClick={handleCreateBackup}
-                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300"
-                  size="lg"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Create Selective Backup
-                </Button>
                 
               </div>
               <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-muted">
-            <div className="flex items-start gap-3">
-              <div className="p-1 bg-blue-500/10 rounded">
-                <FileText className="w-4 h-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-medium text-sm mb-1">Backup Features</h4>
+               <div className="flex items-start gap-3">
+                <div className="p-1 bg-blue-500/10 rounded">
+                 <FileText className="w-4 h-4 text-primary" />
+               </div>
+               <div className="flex-1">
+                  <h4 className="font-medium text-sm mb-1">Backup Features</h4>
                   <ul className="text-xs text-muted-foreground leading-relaxed">
                     <li>• Selective data export with encryption</li>
                     <li>• Automatic backup type detection</li>
                     <li>• PIN-protected security</li>
                     <li>• Cross-device compatibility</li>
                   </ul>
-              </div>
+                </div>
+             </div>
             </div>
-          </div>
-            </div>
+             <Button
+                  onClick={handleCreateBackup}
+                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300 mt-6"
+                  size="lg"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Create Selective Backup
+                </Button>
+           </div>
 
             {/* Import Section */}
             <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500/5 via-green-500/10 to-green-500/5 border border-green-500/20 p-6 hover:shadow-lg transition-all duration-300">

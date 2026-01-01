@@ -260,7 +260,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Profile</CardTitle>
-            <CardDescription>View and manage your profile information</CardDescription>
+            <CardDescription>Switch to edit mode to edit</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => setEditMode(!editMode)}>
             <PencilLine className="w-4 h-4 mr-2" />
@@ -353,19 +353,6 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Enhanced status text with better styling */}
-            <div className="text-center space-y-2">
-              <p className="text-xs text-muted-foreground max-w-xs">
-                {editMode ? (
-                  getAvatarSrc()
-                    ? "Hover over the avatar to manage your photo"
-                    : "Click the avatar or hover to add a photo"
-                ) : (
-                  "Switch to edit mode to change your profile picture"
-                )}
-              </p>
             </div>
           </div>
 
@@ -567,7 +554,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   id="monthly-earning"
                   type="number"
                   placeholder="5000"
-                  value={formData.monthlyEarning}
+                  value={formData.monthlyEarning || ""}
                   onChange={(e) => updateField("monthlyEarning", Number(e.target.value))}
                   className={`h-11 ${highlightQuery.toLowerCase().includes("earning") || highlightQuery.toLowerCase().includes("monthly") ? "ring-2 ring-primary" : ""}`}
                 />
@@ -580,7 +567,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   min="1"
                   max="24"
                   placeholder="8"
-                  value={formData.workingHoursPerDay}
+                  value={formData.workingHoursPerDay || ""}
                   onChange={(e) => updateField("workingHoursPerDay", Number(e.target.value))}
                   className="h-11"
                 />
@@ -593,7 +580,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   min="1"
                   max="31"
                   placeholder="22"
-                  value={formData.workingDaysPerMonth}
+                  value={formData.workingDaysPerMonth || ""}
                   onChange={(e) => updateField("workingDaysPerMonth", Number(e.target.value))}
                   className="h-11"
                 />
@@ -664,7 +651,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
 
       {/* Enhanced Save Changes (only in edit mode and when there are changes) */}
       {editMode && hasChanges && (
-        <Card className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-[calc(100vw-2rem)] border-0 shadow-lg transition-all duration-300 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 shadow-primary/10">
+        <Card className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 max-w-lg md:max-w-sm border-0 shadow-lg transition-all duration-300 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 shadow-primary/10">
           <CardContent className="pt-4 pb-4 px-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -672,9 +659,6 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-primary">
                     Unsaved Changes
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Don't forget to save your updates
                   </p>
                 </div>
               </div>
@@ -795,7 +779,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 id="dialog-monthly-earning"
                 type="number"
                 placeholder="Enter amount (e.g., 5000)"
-                value={formData.monthlyEarning || ""}
+                value={isNaN(formData.monthlyEarning) ? "" : formData.monthlyEarning}
                 onChange={(e) => updateField("monthlyEarning", Number(e.target.value) || 0)}
                 className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
               />
@@ -811,7 +795,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 min="1"
                 max="24"
                 placeholder="Enter hours (e.g., 8)"
-                value={formData.workingHoursPerDay || ""}
+                value={isNaN(formData.workingHoursPerDay) ? "" : formData.workingHoursPerDay}
                 onChange={(e) => updateField("workingHoursPerDay", Number(e.target.value) || 0)}
                 className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
               />
@@ -827,7 +811,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 min="1"
                 max="31"
                 placeholder="Enter days (e.g., 22)"
-                value={formData.workingDaysPerMonth || ""}
+                value={isNaN(formData.workingDaysPerMonth) ? "" : formData.workingDaysPerMonth}
                 onChange={(e) => updateField("workingDaysPerMonth", Number(e.target.value) || 0)}
                 className="h-12 text-base border-2 focus:border-primary/50 transition-colors"
               />

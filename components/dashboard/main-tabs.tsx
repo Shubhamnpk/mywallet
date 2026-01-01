@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -12,6 +12,7 @@ import { DebtCreditManagement } from "@/components/debt-credit/debt-credit-manag
 import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
 import { SessionManager } from "@/lib/session-manager"
+import { cn } from "@/lib/utils"
 import type { UserProfile, Transaction, Budget, Goal, Category } from "@/types/wallet"
 
 interface MainTabsProps {
@@ -80,8 +81,7 @@ export function MainTabs({
       validateSession()
     }
 
-    // Add event listener for when tabs might change
-    // Since shadcn tabs don't emit events, we'll validate on any click
+
     const handleClick = () => {
       // Small delay to allow tab state to update
       setTimeout(validateSession, 100)

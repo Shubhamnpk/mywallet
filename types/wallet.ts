@@ -30,7 +30,7 @@ export interface Transaction {
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
   // New allocation fields
-  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit"
+  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt"
   allocationTarget?: string
   subcategory?: string 
   // Enhanced debt transaction fields
@@ -111,18 +111,19 @@ export interface Category {
 }
 
 export interface DebtAccount {
-  id: string
-  name: string
-  balance: number
-  interestRate: number
-  minimumPayment: number
-  dueDate: string
-  createdAt: string
-  originalBalance?: number
-  monthlyPayment?: number
-  payoffDate?: string
-  totalInterestPaid?: number
-}
+   id: string
+   name: string
+   balance: number
+   interestRate: number
+   minimumPayment: number
+   dueDate: string
+   createdAt: string
+   originalBalance?: number
+   monthlyPayment?: number
+   payoffDate?: string
+   totalInterestPaid?: number
+   isFastDebt?: boolean
+ }
 
 export interface CreditAccount {
   id: string
