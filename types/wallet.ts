@@ -6,7 +6,7 @@ export interface UserProfile {
   workingHoursPerDay: number
   workingDaysPerMonth: number
   pin?: string
-  pinSalt?: string 
+  pinSalt?: string
   securityEnabled: boolean
   createdAt: string
   customCurrency?: {
@@ -14,13 +14,13 @@ export interface UserProfile {
     symbol: string
     name: string
   }
-  avatar?: string 
+  avatar?: string
 }
 
 export interface Transaction {
   id: string
   type: "income" | "expense"
-  amount: number 
+  amount: number
   description: string
   category: string
   date: string
@@ -32,13 +32,13 @@ export interface Transaction {
   // New allocation fields
   allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt"
   allocationTarget?: string
-  subcategory?: string 
+  subcategory?: string
   // Enhanced debt transaction fields
-  total: number 
-  actual: number 
-  debtUsed: number 
-  debtAccountId?: string | null 
-  status: "normal" | "debt" | "repayment" 
+  total: number
+  actual: number
+  debtUsed: number
+  debtAccountId?: string | null
+  status: "normal" | "debt" | "repayment"
 }
 
 export interface Budget {
@@ -111,19 +111,19 @@ export interface Category {
 }
 
 export interface DebtAccount {
-   id: string
-   name: string
-   balance: number
-   interestRate: number
-   minimumPayment: number
-   dueDate: string
-   createdAt: string
-   originalBalance?: number
-   monthlyPayment?: number
-   payoffDate?: string
-   totalInterestPaid?: number
-   isFastDebt?: boolean
- }
+  id: string
+  name: string
+  balance: number
+  interestRate: number
+  minimumPayment: number
+  dueDate: string
+  createdAt: string
+  originalBalance?: number
+  monthlyPayment?: number
+  payoffDate?: string
+  totalInterestPaid?: number
+  isFastDebt?: boolean
+}
 
 export interface CreditAccount {
   id: string
@@ -151,17 +151,49 @@ export interface DebtCreditTransaction {
   balanceAfter: number
 }
 
-export interface Achievement {
+export interface Portfolio {
   id: string
-  title: string
+  name: string
+  description?: string
+  color?: string
+  isDefault: boolean
+  createdAt: string
+}
+
+export interface PortfolioItem {
+  id: string
+  portfolioId: string
+  symbol: string
+  units: number
+  buyPrice: number // This will be the average cost price
+  currentPrice?: number
+  previousClose?: number
+  high?: number
+  low?: number
+  volume?: number
+  change?: number
+  percentChange?: number
+  sector?: string
+  lastUpdated?: string
+}
+
+export interface ShareTransaction {
+  id: string
+  portfolioId: string
+  symbol: string
+  type: "buy" | "sell" | "bonus" | "ipo" | "merger_in" | "merger_out"
+  quantity: number
+  price: number
+  date: string
   description: string
-  icon: React.ReactNode
-  color: string
-  unlocked: boolean
-  unlockedAt?: Date
-  goalId?: string
-  progress: number
-  maxProgress: number
-  category: string
-  rarity: "common" | "rare" | "epic" | "legendary"
+}
+
+export interface UpcomingIPO {
+  company: string
+  units: string
+  date_range: string
+  announcement_date: string
+  full_text: string
+  url: string
+  scraped_at: string
 }

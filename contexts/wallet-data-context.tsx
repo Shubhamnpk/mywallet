@@ -11,9 +11,11 @@ import type {
   CreditAccount,
   DebtCreditTransaction,
   Category,
+  Portfolio,
+  PortfolioItem,
+  ShareTransaction,
+  UpcomingIPO,
 } from "@/types/wallet"
-
-// Define the context type based on the return type of useWalletData
 type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
@@ -30,6 +32,12 @@ type WalletDataContextType = {
   isAuthenticated: boolean
   isLoaded: boolean
   balanceChange: { amount: number; type: "income" | "expense" } | null
+  portfolio: PortfolioItem[]
+  shareTransactions: ShareTransaction[]
+  upcomingIPOs: UpcomingIPO[]
+  isIPOsLoading: boolean
+  portfolios: Portfolio[]
+  activePortfolioId: string | null
   setShowOnboarding: (show: boolean) => void
   handleOnboardingComplete: (profileData: UserProfile) => void
   addTransaction: (transaction: Omit<Transaction, "id" | "timeEquivalent">) => Promise<any>
@@ -47,13 +55,28 @@ type WalletDataContextType = {
   deleteCreditAccount: (id: string) => void
   addToEmergencyFund: (amount: number) => void
   updateGoalContribution: (goalId: string, amount: number) => void
-  transferToGoal: (goalId: string, amount: number) => any
-  spendFromGoal: (goalId: string, amount: number, description: string) => any
-  makeDebtPayment: (debtId: string, paymentAmount: number) => any
+  transferToGoal: (goalId: string, amount: number) => Promise<any>
+  spendFromGoal: (goalId: string, amount: number, description: string) => Promise<any>
+  makeDebtPayment: (debtId: string, paymentAmount: number) => Promise<any>
   updateCreditBalance: (creditId: string, newBalance: number) => void
   createDebtForTransaction: (debtAmount: number, transactionDescription: string) => Promise<any>
   completeTransactionWithDebt: (pendingTransaction: any, debtAccountName: string, debtAccountId: string, availableBalance: number, debtAmount: number) => Promise<any>
-  addDebtToAccount: (debtId: string, amount: number, description?: string) => any
+  addDebtToAccount: (debtId: string, amount: number, description?: string) => Promise<any>
+  addPortfolioItem: (item: Omit<PortfolioItem, "id">) => Promise<PortfolioItem>
+  updatePortfolioItem: (id: string, updates: Partial<PortfolioItem>) => Promise<void>
+  deletePortfolioItem: (id: string) => Promise<void>
+  addPortfolio: (name: string, description?: string, color?: string) => Promise<Portfolio>
+  switchPortfolio: (id: string) => void
+  deletePortfolio: (id: string) => Promise<void>
+  updatePortfolio: (id: string, updates: Partial<Portfolio>) => Promise<void>
+  clearPortfolioHistory: () => Promise<void>
+  fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[]) => Promise<PortfolioItem[] | undefined>
+  getFaceValue: (symbol: string) => number
+  addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
+  deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>
+  deleteMultipleShareTransactions: (ids: string[]) => Promise<PortfolioItem[] | undefined>
+  recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<PortfolioItem[]>
+  importShareData: (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => Promise<PortfolioItem[] | undefined>
   refreshData: () => void
   clearAllData: () => void
   exportData: () => void
