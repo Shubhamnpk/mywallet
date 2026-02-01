@@ -617,13 +617,13 @@ export function PortfolioList() {
                                                 const closeDate = dateParts[1]?.trim();
 
                                                 return (
-                                                    <div key={i} className="group/item flex items-center justify-between p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden">
-                                                        <div className="flex flex-col gap-1.5 relative z-10">
-                                                            <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight">
+                                                    <div key={i} className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4">
+                                                        <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1">
+                                                            <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight truncate">
                                                                 {ipo.company}
                                                             </span>
-                                                            <div className="flex items-center flex-wrap gap-y-1 gap-x-4">
-                                                                <div className="flex items-center gap-2">
+                                                            <div className="flex items-center flex-wrap gap-y-1 gap-x-3 sm:gap-x-4">
+                                                                <div className="flex items-center gap-2 flex-wrap">
                                                                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 rounded-md border border-primary/20">
                                                                         <Calendar className="w-3 h-3 text-primary" />
                                                                         <span className="text-[10px] font-black text-primary uppercase tracking-tight">
@@ -646,7 +646,7 @@ export function PortfolioList() {
                                                             href={ipo.url}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="flex items-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10"
+                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0"
                                                         >
                                                             Details <ExternalLink className="w-3 h-3" />
                                                         </a>
@@ -714,12 +714,12 @@ export function PortfolioList() {
                     <ChevronLeft className="w-4 h-4 mr-1" />
                     Back to Portfolios
                 </Button>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex flex-row items-center justify-between gap-4">
                     <div className="text-left min-w-0 flex-1">
                         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                             <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Portfolio</h2>
                             <Select value={activePortfolioId || ""} onValueChange={switchPortfolio}>
-                                <SelectTrigger className="w-[140px] sm:w-[180px] h-8 sm:h-9 rounded-xl border-primary/20 bg-card/50 backdrop-blur-sm font-bold shadow-sm text-sm">
+                                <SelectTrigger className="hidden sm:flex w-[140px] sm:w-[180px] h-8 sm:h-9 rounded-xl border-primary/20 bg-card/50 backdrop-blur-sm font-bold shadow-sm text-sm">
                                     <SelectValue placeholder="Select Portfolio" />
                                 </SelectTrigger>
                                 <SelectContent className="rounded-xl border-primary/10">
@@ -743,16 +743,16 @@ export function PortfolioList() {
                         </div>
                         <p className="text-muted-foreground text-xs sm:text-sm font-medium hidden sm:block">Track and analyze your share market investments</p>
                     </div>
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <div className="flex gap-2 w-auto">
                         <Button
                             variant="outline"
-                            size="sm"
+                            size="icon"
                             onClick={handleRefresh}
                             disabled={isRefreshing}
-                            className="h-9 sm:h-10 rounded-xl px-3 sm:px-4 border-primary/20 hover:border-primary/40 bg-card/50 backdrop-blur-sm shadow-sm flex-1 sm:flex-none"
+                            className="h-9 w-9 sm:h-10 sm:w-auto sm:px-4 rounded-xl border-primary/20 hover:border-primary/40 bg-card/50 backdrop-blur-sm shadow-sm shrink-0"
                         >
-                            <RefreshCcw className={cn("w-4 h-4 mr-2", isRefreshing && "animate-spin")} />
-                            <span className="hidden sm:inline">Refresh</span>
+                            <RefreshCcw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+                            <span className="hidden sm:inline ml-2">Refresh</span>
                         </Button>
                         <AddTransactionModal
                             open={isAddDialogOpen}
@@ -786,63 +786,62 @@ export function PortfolioList() {
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Summary Cards Column */}
-                <div className="lg:col-span-1 flex flex-row lg:flex-col gap-3 sm:gap-4 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 -mx-4 px-4 lg:mx-0 lg:px-0">
-                    <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[140px] flex-1 lg:min-w-0">
-                        <CardHeader className="pb-2 px-3 sm:px-6">
-                            <div className="flex items-center justify-between mb-1">
-                                <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Net Worth</CardDescription>
-                                <div className="p-1 sm:p-1.5 bg-primary/10 rounded-lg text-primary">
-                                    <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <div className="lg:col-span-1 flex flex-row lg:flex-col gap-2 sm:gap-3 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0">
+                    <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-md overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[110px] sm:min-w-[120px] flex-1 lg:min-w-0 lg:p-2">
+                        <CardHeader className="pb-1 px-2 sm:px-4 pt-2 sm:pt-4">
+                            <div className="flex items-center justify-between mb-0.5">
+                                <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">Net Worth</CardDescription>
+                                <div className="p-0.5 bg-primary/10 rounded-lg text-primary">
+                                    <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                                 </div>
                             </div>
-                            <CardTitle className="text-lg sm:text-2xl font-black tracking-tight font-mono">
+                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
                                 रु {currentValue.toLocaleString()}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="px-3 sm:px-6">
+                        <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
                             <div className={cn(
-                                "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
+                                "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
                                 totalProfitLoss >= 0 ? "bg-green-500/10 text-green-600 border border-green-500/20" : "bg-red-500/10 text-red-600 border border-red-500/20"
                             )}>
-                                {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(2)}%)
+                                {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-md border hover:border-primary/10 transition-colors min-w-[120px] flex-1 lg:min-w-0">
-                        <CardHeader className="pb-2 space-y-0 text-left px-3 sm:px-6">
-                            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Today's Move</CardDescription>
-                            <CardTitle className="text-lg sm:text-xl font-black font-mono flex items-center gap-2">
+                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
+                        <CardHeader className="pb-1 space-y-0 text-left px-2 sm:px-4 pt-2 sm:pt-4">
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Today's Move</CardDescription>
+                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
                                 <span className={todayChange >= 0 ? "text-green-600" : "text-red-600"}>
                                     {todayChange >= 0 ? "+" : ""}{todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="px-3 sm:px-6">
-                            <div className="flex items-center gap-2">
+                        <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
+                            <div className="flex items-center gap-1">
                                 {todayChange >= 0 ? (
-                                    <div className="text-[9px] sm:text-[10px] font-black text-green-600 bg-green-500/10 px-1.5 sm:px-2 py-0.5 rounded border border-green-500/20 shadow-sm animate-in fade-in zoom-in duration-500">
-                                        +{todayChangePercentage.toFixed(2)}%
+                                    <div className="text-[8px] sm:text-[9px] font-black text-green-600 bg-green-500/10 px-1 py-0.5 rounded border border-green-500/20">
+                                        +{todayChangePercentage.toFixed(1)}%
                                     </div>
                                 ) : (
-                                    <div className="text-[9px] sm:text-[10px] font-black text-red-600 bg-red-500/10 px-1.5 sm:px-2 py-0.5 rounded border border-red-500/20 shadow-sm animate-in fade-in zoom-in duration-500">
-                                        {todayChangePercentage.toFixed(2)}%
+                                    <div className="text-[8px] sm:text-[9px] font-black text-red-600 bg-red-500/10 px-1 py-0.5 rounded border border-red-500/20">
+                                        {todayChangePercentage.toFixed(1)}%
                                     </div>
                                 )}
-                                <span className="hidden sm:inline text-[9px] text-muted-foreground uppercase font-black tracking-widest opacity-60">vs Prev Close</span>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-md border hover:border-primary/10 transition-colors min-w-[120px] flex-1 lg:min-w-0">
-                        <CardHeader className="pb-2 text-left px-3 sm:px-6">
-                            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Stake</CardDescription>
-                            <CardTitle className="text-lg sm:text-xl font-black font-mono">
+                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
+                        <CardHeader className="pb-1 text-left px-2 sm:px-4 pt-2 sm:pt-4">
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Total Stake</CardDescription>
+                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
                                 रु {totalInvestment.toLocaleString()}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="px-3 sm:px-6">
-                            <Badge variant="secondary" className="bg-primary/5 text-primary text-[9px] sm:text-[10px] rounded-md border-primary/20 font-black px-1.5 sm:px-2 uppercase tracking-wide">
+                        <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
+                            <Badge variant="secondary" className="bg-primary/5 text-primary text-[8px] sm:text-[9px] rounded border-primary/20 font-black px-1 uppercase tracking-wide">
                                 {portfolio.length} Scrips
                             </Badge>
                         </CardContent>
@@ -1092,8 +1091,16 @@ export function PortfolioList() {
                                         <p className="text-sm text-muted-foreground max-w-[300px] mt-2">
                                             Start by adding transactions or upload your Mero Share CSV to see your portfolio in action.
                                         </p>
-                                        <div className="flex gap-3 mt-6">
-                                            <Button variant="default" className="font-bold shadow-lg" onClick={triggerFileUpload}>
+                                        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                                            <Button
+                                                variant="default"
+                                                className="font-bold shadow-lg"
+                                                onClick={() => setIsAddDialogOpen(true)}
+                                            >
+                                                <Plus className="w-4 h-4 mr-2" />
+                                                New Transaction
+                                            </Button>
+                                            <Button variant="default" className="font-bold shadow-lg bg-primary/90" onClick={triggerFileUpload}>
                                                 <Upload className="w-4 h-4 mr-2" />
                                                 Import My Data
                                             </Button>
