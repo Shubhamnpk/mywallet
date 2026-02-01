@@ -4,13 +4,14 @@ import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Receipt, PiggyBank, Target, CreditCard, TrendingUp, FolderOpen } from "lucide-react"
+import { Receipt, PiggyBank, Target, CreditCard, TrendingUp, FolderOpen, Briefcase } from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/goals/goals-list"
 import { DebtCreditManagement } from "@/components/debt-credit/debt-credit-management"
 import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
+import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
 import type { UserProfile, Transaction, Budget, Goal, Category } from "@/types/wallet"
@@ -120,11 +121,17 @@ export function MainTabs({
       badge: null,
       description: "Manage debts and credit",
     },
-     {
+    {
       value: "categories",
       label: "Categories",
       icon: FolderOpen,
       description: "Organize your spending",
+    },
+    {
+      value: "portfolio",
+      label: "Portfolio",
+      icon: Briefcase,
+      description: "Track your Mero Share",
     },
     {
       value: "insights",
@@ -140,7 +147,7 @@ export function MainTabs({
       <Tabs defaultValue="transactions" className="w-full">
         {/* Desktop Tabs */}
         <div className="hidden lg:block">
-          <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted/50">
+          <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
             {tabs.map((tab) => (
               <TabsTrigger
                 key={tab.value}
@@ -223,6 +230,10 @@ export function MainTabs({
 
           <TabsContent value="debt-credit" className="space-y-4">
             <DebtCreditManagement userProfile={userProfile} />
+          </TabsContent>
+
+          <TabsContent value="portfolio" className="space-y-4">
+            <PortfolioList />
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">

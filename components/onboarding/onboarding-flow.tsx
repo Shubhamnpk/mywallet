@@ -261,11 +261,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const getInitials = () => {
     return formData.name
       ? formData.name
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
       : "U"
   }
 
@@ -321,6 +321,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   };
 
+  const handleSkip = () => {
+    const defaultProfile: UserProfile = {
+      name: 'Guest User',
+      monthlyEarning: 0,
+      currency: 'NPR',
+      workingHoursPerDay: 8,
+      workingDaysPerMonth: 22,
+      createdAt: new Date().toISOString(),
+      hourlyRate: 0,
+      securityEnabled: false,
+    };
+    onComplete(defaultProfile);
+    toast.info("Welcome! You can complete your profile later in Settings.");
+  };
+
   const hourlyRate = formData.monthlyEarning && formData.workingHoursPerDay && formData.workingDaysPerMonth
     ? (parseFloat(formData.monthlyEarning) / (parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth))).toFixed(2)
     : '0.00';
@@ -332,8 +347,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       <div className="w-full max-w-md">
 
         {/* Main Card */}
-        <Card className="border-0 shadow-xl bg-card/600 backdrop-blur-sm border border-border/60">
+        <Card className="border-0 shadow-xl bg-card/600 backdrop-blur-sm border border-border/60 relative overflow-hidden">
           <CardHeader className="text-center pb-3">
+            {step < maxStep && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-2 top-2 text-muted-foreground hover:text-foreground z-10"
+                onClick={handleSkip}
+                disabled={isLoading}
+              >
+                Skip
+              </Button>
+            )}
             <div className="flex items-center justify-center gap-3 mb-3">
               <div className="w-16 h-16 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 rounded-xl flex items-center justify-center shadow-lg">
                 <currentStep.icon className="w-8 h-8 text-primary drop-shadow-sm" />
@@ -352,8 +378,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {step === 0 && (
               <div className="space-y-6 text-center">
                 {/* Hero Section */}
-                    <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-primary/60 rounded-full mx-auto mt-3" />
-                  
+                <div className="w-12 h-0.5 bg-gradient-to-r from-primary to-primary/60 rounded-full mx-auto mt-3" />
+
 
                 {/* Journey Message */}
                 <div className="space-y-4">
@@ -508,16 +534,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setFormData({ ...formData, walletType: 'timed' })}
-                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${
-                        formData.walletType === 'timed'
+                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${formData.walletType === 'timed'
                           ? 'border-primary bg-primary/10 shadow-md'
                           : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
-                      }`}
+                        }`}
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <div className={`w-4 h-4 rounded-full border-2 ${
-                          formData.walletType === 'timed' ? 'border-primary bg-primary' : 'border-muted-foreground'
-                        }`}>
+                        <div className={`w-4 h-4 rounded-full border-2 ${formData.walletType === 'timed' ? 'border-primary bg-primary' : 'border-muted-foreground'
+                          }`}>
                           {formData.walletType === 'timed' && <div className="w-2 h-2 bg-primary-foreground rounded-full mx-auto mt-0.5" />}
                         </div>
                         <div>
@@ -528,16 +552,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     </button>
                     <button
                       onClick={() => setFormData({ ...formData, walletType: 'normal' })}
-                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${
-                        formData.walletType === 'normal'
+                      className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${formData.walletType === 'normal'
                           ? 'border-primary bg-primary/10 shadow-md'
                           : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
-                      }`}
+                        }`}
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <div className={`w-4 h-4 rounded-full border-2 ${
-                          formData.walletType === 'normal' ? 'border-primary bg-primary' : 'border-muted-foreground'
-                        }`}>
+                        <div className={`w-4 h-4 rounded-full border-2 ${formData.walletType === 'normal' ? 'border-primary bg-primary' : 'border-muted-foreground'
+                          }`}>
                           {formData.walletType === 'normal' && <div className="w-2 h-2 bg-primary-foreground rounded-full mx-auto mt-0.5" />}
                         </div>
                         <div>
@@ -749,7 +771,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   Back
                 </Button>
               )}
-              
+
               {step < maxStep ? (
                 <Button
                   onClick={handleNext}
@@ -788,13 +810,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               return (
                 <div
                   key={stepNum}
-                  className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                    isActive
+                  className={`w-2 h-2 rounded-full transition-all duration-300 ${isActive
                       ? 'bg-primary scale-125'
                       : isCompleted
                         ? 'bg-primary/70'
                         : 'bg-muted-foreground/30'
-                  }`}
+                    }`}
                 />
               );
             })}

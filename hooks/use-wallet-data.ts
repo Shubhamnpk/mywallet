@@ -12,6 +12,10 @@ import type {
   CreditAccount,
   DebtCreditTransaction,
   Category,
+  Portfolio,
+  PortfolioItem,
+  ShareTransaction,
+  UpcomingIPO,
 } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
@@ -34,6 +38,14 @@ export function useWalletData() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [emergencyFund, setEmergencyFund] = useState(0)
   const [balanceChange, setBalanceChange] = useState<{ amount: number; type: "income" | "expense" } | null>(null)
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([])
+  const [shareTransactions, setShareTransactions] = useState<ShareTransaction[]>([])
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([])
+  const [activePortfolioId, setActivePortfolioId] = useState<string | null>(null)
+  const [sectorsMap, setSectorsMap] = useState<Record<string, string>>({})
+  const [scripNamesMap, setScripNamesMap] = useState<Record<string, string>>({})
+  const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
+  const [isIPOsLoading, setIsIPOsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
@@ -42,6 +54,74 @@ export function useWalletData() {
     console.log('[HYDRATION] Starting to load wallet data from localStorage')
     loadDataWithIntegrityCheck()
   }, [isLoaded])
+  // Fetch sectors and upcoming IPOs once on load
+  useEffect(() => {
+    if (isLoaded) {
+      // Fetch sectors and names from remote API
+      fetch("/api/nepse/sectors")
+        .then(res => res.json())
+        .then(data => {
+          const sMap: Record<string, string> = {}
+          const nMap: Record<string, string> = {}
+          Object.entries(data).forEach(([sector, scrips]) => {
+            if (Array.isArray(scrips)) {
+              scrips.forEach((scrip: any) => {
+                const symbol = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+                if (symbol) {
+                  sMap[symbol] = sector
+                  if (scrip.name) {
+                    nMap[symbol] = scrip.name.trim()
+                  }
+                }
+              })
+            }
+          })
+          setSectorsMap(prev => ({ ...prev, ...sMap }))
+          setScripNamesMap(prev => ({ ...prev, ...nMap }))
+        })
+        .catch(err => console.error("Error pre-fetching sectors:", err))
+
+      // Fetch specific company names from local name.json
+      fetch("/name.json")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const nMap: Record<string, string> = {}
+            data.forEach((item: any) => {
+              if (item.symbol && item.name) {
+                nMap[item.symbol.trim().toUpperCase()] = item.name.trim()
+              }
+            })
+            setScripNamesMap(prev => ({ ...prev, ...nMap }))
+            saveToLocalStorage("scripNamesMap", nMap)
+          }
+        })
+        .catch(err => console.error("Error fetching name.json:", err))
+
+      // Fetch upcoming IPOs
+      setIsIPOsLoading(true)
+      fetch("/api/nepse/upcoming")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setUpcomingIPOs(data)
+        })
+        .catch(err => console.error("Error fetching upcoming IPOs:", err))
+        .finally(() => setIsIPOsLoading(false))
+    }
+  }, [isLoaded])
+
+  // Automatically update portfolio if sectors are missing but map is available
+  useEffect(() => {
+    if (isLoaded && portfolio.length > 0 && Object.keys(sectorsMap).length > 0) {
+      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
+      if (needsUpdate) {
+        setPortfolio(prev => prev.map(p => ({
+          ...p,
+          sector: p.sector || sectorsMap[p.symbol.trim().toUpperCase()] || "Others"
+        })))
+      }
+    }
+  }, [isLoaded, sectorsMap, portfolio.length])
 
   // Hoisted function so it can be used during initial load before
   async function saveDataWithIntegrity(key: string, data: any) {
@@ -58,6 +138,8 @@ export function useWalletData() {
         debtCreditTransactions,
         categories,
         emergencyFund,
+        portfolio,
+        shareTransactions,
         [key]: data,
       }
 
@@ -89,6 +171,8 @@ export function useWalletData() {
       const savedEmergencyFund = localStorage.getItem("emergencyFund")
       const savedDebtCreditTransactions = localStorage.getItem("debtCreditTransactions")
       const savedCategories = localStorage.getItem("categories")
+      const savedPortfolio = localStorage.getItem("portfolio")
+      const savedShareTransactions = localStorage.getItem("shareTransactions")
 
       const parsedData = {
         userProfile: savedProfile ? JSON.parse(savedProfile) : null,
@@ -100,6 +184,12 @@ export function useWalletData() {
         debtCreditTransactions: savedDebtCreditTransactions ? JSON.parse(savedDebtCreditTransactions) : [],
         categories: savedCategories ? JSON.parse(savedCategories) : [],
         emergencyFund: savedEmergencyFund ? Number.parseFloat(savedEmergencyFund) : 0,
+        portfolio: savedPortfolio ? JSON.parse(savedPortfolio) : [],
+        shareTransactions: savedShareTransactions ? JSON.parse(savedShareTransactions) : [],
+        portfolios: localStorage.getItem("portfolios") ? JSON.parse(localStorage.getItem("portfolios")!) : [],
+        activePortfolioId: localStorage.getItem("activePortfolioId") || null,
+        sectorsMap: localStorage.getItem("sectorsMap") ? JSON.parse(localStorage.getItem("sectorsMap")!) : {},
+        scripNamesMap: localStorage.getItem("scripNamesMap") ? JSON.parse(localStorage.getItem("scripNamesMap")!) : {},
       }
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
@@ -143,13 +233,39 @@ export function useWalletData() {
       setCreditAccounts(parsedData.creditAccounts)
       setDebtCreditTransactions(parsedData.debtCreditTransactions)
       setEmergencyFund(parsedData.emergencyFund)
+      setPortfolio(parsedData.portfolio)
+      setShareTransactions(parsedData.shareTransactions)
+
+      setPortfolios(parsedData.portfolios)
+      const finalActiveId = parsedData.activePortfolioId || (parsedData.portfolios.length > 0 ? parsedData.portfolios[0].id : null)
+      setActivePortfolioId(finalActiveId)
+      setSectorsMap(parsedData.sectorsMap)
+      setScripNamesMap(parsedData.scripNamesMap)
+
+      // Migration: Update existing items if they don't have portfolioId
+      if (parsedData.portfolio.length > 0 && !parsedData.portfolio[0].portfolioId) {
+        const updated = parsedData.portfolio.map((p: any) => ({ ...p, portfolioId: finalActiveId }))
+        setPortfolio(updated)
+        saveToLocalStorage("portfolio", updated)
+      }
+
+      if (parsedData.shareTransactions.length > 0 && !parsedData.shareTransactions[0].portfolioId) {
+        const updated = parsedData.shareTransactions.map((t: any) => ({ ...t, portfolioId: finalActiveId }))
+        setShareTransactions(updated)
+        saveToLocalStorage("shareTransactions", updated)
+      }
+
+      // If we have history but no holdings, recompute
+      if (parsedData.shareTransactions.length > 0 && parsedData.portfolio.length === 0) {
+        const recomputed = await recomputePortfolio(parsedData.shareTransactions)
+      }
 
       if (parsedData.categories.length > 0) {
         setCategories(parsedData.categories)
       } else {
         // Only create default categories if this is NOT a fresh start after clearing
         const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
-         parsedData.budgets.length > 0 || parsedData.goals.length > 0
+          parsedData.budgets.length > 0 || parsedData.goals.length > 0
         if (hasAnyData) {
           const defaultCategories = initializeDefaultCategories()
           setCategories(defaultCategories)
@@ -275,7 +391,7 @@ export function useWalletData() {
   const addToEmergencyFund = (amount: number) => {
     const newEmergencyFund = emergencyFund + amount
     setEmergencyFund(newEmergencyFund)
-  saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
+    saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
   }
 
   const transferToGoal = async (goalId: string, amount: number) => {
@@ -426,7 +542,7 @@ export function useWalletData() {
     availableBalance: number,
     debtAmount: number
   ) => {
-        // Set balance to 0 when all available balance is used
+    // Set balance to 0 when all available balance is used
     const newBalance = 0
     setBalance(newBalance)
 
@@ -473,8 +589,8 @@ export function useWalletData() {
     }
 
     const updatedCredits = [...creditAccounts, newCredit]
-  setCreditAccounts(updatedCredits)
-  saveToLocalStorage("creditAccounts", updatedCredits)
+    setCreditAccounts(updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits)
     return newCredit
   }
 
@@ -491,8 +607,8 @@ export function useWalletData() {
       return credit
     })
 
-  setCreditAccounts(updatedCredits)
-  saveToLocalStorage("creditAccounts", updatedCredits)
+    setCreditAccounts(updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits)
   }
 
   const makeDebtPayment = async (debtId: string, paymentAmount: number) => {
@@ -567,8 +683,8 @@ export function useWalletData() {
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
-  setDebtCreditTransactions(updatedDebtTransactions)
-  saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions)
+    setDebtCreditTransactions(updatedDebtTransactions)
+    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions)
 
     // If balanceAfter is zero, add a congratulatory transaction note and remove account already handled above
     if (debtTransaction.balanceAfter === 0) {
@@ -604,7 +720,7 @@ export function useWalletData() {
       alertThreshold: 0.8,
       allowDebt: false,
     }
-  
+
     const updatedBudgets = [...budgets, newBudget]
     setBudgets(updatedBudgets)
     await saveDataWithIntegrity("budgets", updatedBudgets)
@@ -731,6 +847,8 @@ export function useWalletData() {
     setDebtCreditTransactions([])
     setCategories([]) // Empty categories, no defaults
     setEmergencyFund(0)
+    setPortfolio([])
+    setShareTransactions([])
     setBalance(0)
     setIsAuthenticated(false)
     setShowOnboarding(true)
@@ -751,6 +869,8 @@ export function useWalletData() {
       debtCreditTransactions,
       categories,
       emergencyFund,
+      portfolio,
+      shareTransactions,
       exportDate: new Date().toISOString(),
       version: "1.0",
     }
@@ -797,6 +917,20 @@ export function useWalletData() {
           }
         }, 0)
         setBalance(actualBalance)
+      }
+
+      // Import portfolio (only if selected)
+      if (data.portfolio && Array.isArray(data.portfolio)) {
+        console.log(`[v0] Importing ${data.portfolio.length} portfolio items...`)
+        setPortfolio(data.portfolio)
+        await saveDataWithIntegrity("portfolio", data.portfolio)
+      }
+
+      // Import share transactions
+      if (data.shareTransactions && Array.isArray(data.shareTransactions)) {
+        console.log(`[v0] Importing ${data.shareTransactions.length} share transactions...`)
+        setShareTransactions(data.shareTransactions)
+        await saveDataWithIntegrity("shareTransactions", data.shareTransactions)
       }
 
       // Import budgets (only if selected)
@@ -900,7 +1034,12 @@ export function useWalletData() {
         const parsedCategories = JSON.parse(savedCategories)
         setCategories(parsedCategories)
       }
-    } catch (error) {}
+
+      const savedSectors = localStorage.getItem("sectorsMap")
+      const savedNames = localStorage.getItem("scripNamesMap")
+      if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
+      if (savedNames) setScripNamesMap(JSON.parse(savedNames))
+    } catch (error) { }
   }
 
   const spendFromGoal = async (goalId: string, amount: number, description: string) => {
@@ -1011,6 +1150,576 @@ export function useWalletData() {
     await saveDataWithIntegrity("categories", updatedCategories)
   }
 
+  const addPortfolioItem = async (item: Omit<PortfolioItem, "id">) => {
+    const newItem: PortfolioItem = {
+      ...item,
+      id: generateId('port'),
+      lastUpdated: new Date().toISOString(),
+    }
+    const updatedPortfolio = [...portfolio, newItem]
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    return newItem
+  }
+
+  const updatePortfolioItem = async (id: string, updates: Partial<PortfolioItem>) => {
+    const updatedPortfolio = portfolio.map((item) =>
+      item.id === id ? { ...item, ...updates, lastUpdated: new Date().toISOString() } : item
+    )
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+  }
+
+  const deletePortfolioItem = async (id: string) => {
+    const itemToDelete = portfolio.find((item) => item.id === id)
+    if (itemToDelete) {
+      // Also delete all transactions associated with this symbol
+      const symbolToDelete = itemToDelete.symbol
+      const updatedTransactions = shareTransactions.filter((t) => t.symbol !== symbolToDelete)
+      setShareTransactions(updatedTransactions)
+      await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    }
+
+    const updatedPortfolio = portfolio.filter((item) => item.id !== id)
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+  }
+
+  const addPortfolio = async (name: string, description?: string, color?: string) => {
+    const newPortfolio: Portfolio = {
+      id: generateId('port_list'),
+      name,
+      description,
+      color,
+      isDefault: portfolios.length === 0,
+      createdAt: new Date().toISOString()
+    }
+    const updated = [...portfolios, newPortfolio]
+    setPortfolios(updated)
+    await saveToLocalStorage("portfolios", updated)
+    if (updated.length === 1) {
+      setActivePortfolioId(newPortfolio.id)
+      saveToLocalStorage("activePortfolioId", newPortfolio.id)
+    }
+    return newPortfolio
+  }
+
+  const switchPortfolio = (id: string) => {
+    setActivePortfolioId(id)
+    saveToLocalStorage("activePortfolioId", id)
+  }
+
+  const deletePortfolio = async (id: string) => {
+    const updatedPortfolios = portfolios.filter(p => p.id !== id)
+
+
+    setPortfolios(updatedPortfolios)
+    await saveToLocalStorage("portfolios", updatedPortfolios)
+
+    // Delete all associated items and transactions
+    const updatedItems = portfolio.filter(p => p.portfolioId !== id)
+    setPortfolio(updatedItems)
+    await saveDataWithIntegrity("portfolio", updatedItems)
+
+    const updatedTxs = shareTransactions.filter(t => t.portfolioId !== id)
+    setShareTransactions(updatedTxs)
+    await saveDataWithIntegrity("shareTransactions", updatedTxs)
+
+    if (activePortfolioId === id) {
+      // If there are remaining portfolios, switch to the first one
+      if (updatedPortfolios.length > 0) {
+        setActivePortfolioId(updatedPortfolios[0].id)
+        saveToLocalStorage("activePortfolioId", updatedPortfolios[0].id)
+      } else {
+        // No portfolios left, clear active portfolio
+        setActivePortfolioId(null)
+        saveToLocalStorage("activePortfolioId", null)
+      }
+    }
+  }
+
+  const updatePortfolio = async (id: string, updates: Partial<Portfolio>) => {
+    const updated = portfolios.map(p => p.id === id ? { ...p, ...updates } : p)
+    setPortfolios(updated)
+    await saveToLocalStorage("portfolios", updated)
+  }
+
+  // Module-level cache (resets on browser reload)
+  let globalPortfolioCache: {
+    priceData: any[],
+    sectorData: Record<string, string[]>,
+    timestamp: number
+  } | null = null
+
+  const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) => {
+    const targetPortfolio = portfolioOverride || portfolio
+    if (targetPortfolio.length === 0) return
+
+    try {
+      // Check cache validity (2 minutes = 120000 milliseconds)
+      const CACHE_DURATION = 2 * 60 * 1000
+      const now = Date.now()
+
+      const isCacheValid = globalPortfolioCache &&
+        (now - globalPortfolioCache.timestamp) < CACHE_DURATION
+
+      // If cache is valid and not forcing refresh, use cached data
+      if (isCacheValid && !forceRefresh && globalPortfolioCache) {
+        console.log('Using cached portfolio prices (memory cache)')
+        const { priceData, sectorData } = globalPortfolioCache
+
+        // Process cached data same way as fresh data
+        const symbolToSector: Record<string, string> = {}
+        const symbolToName: Record<string, string> = {}
+        Object.entries(sectorData).forEach(([sector, scrips]) => {
+          if (Array.isArray(scrips)) {
+            scrips.forEach((scrip: any) => {
+              const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+              if (sym) {
+                symbolToSector[sym] = sector
+                if (scrip.name) {
+                  symbolToName[sym] = scrip.name.trim()
+                }
+              }
+            })
+          }
+        })
+
+        const updatedPortfolio = targetPortfolio.map(item => {
+          const matchingStock = priceData.find((s: any) =>
+            (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
+          )
+
+          const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+
+          if (matchingStock) {
+            const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
+            const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
+            const high = Number(matchingStock.high || matchingStock.high_price || item.high)
+            const low = Number(matchingStock.low || matchingStock.low_price || item.low)
+            const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
+            const change = Number(matchingStock.change || (ltp - pc) || item.change)
+            const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
+
+            return {
+              ...item,
+              currentPrice: ltp,
+              previousClose: pc,
+              high,
+              low,
+              volume,
+              change,
+              percentChange,
+              sector: sector,
+              lastUpdated: new Date().toISOString()
+            }
+          }
+
+          return {
+            ...item,
+            sector: sector
+          }
+        })
+
+        // Optimized state updates
+        if (JSON.stringify(updatedPortfolio) !== JSON.stringify(targetPortfolio)) {
+          setPortfolio(updatedPortfolio)
+          await saveDataWithIntegrity("portfolio", updatedPortfolio)
+        }
+        return updatedPortfolio
+      }
+
+      // Fetch fresh data from API
+      console.log('Fetching fresh portfolio prices from API')
+      const [priceRes, sectorRes] = await Promise.all([
+        fetch("/api/nepse/today"),
+        fetch("/api/nepse/sectors")
+      ])
+
+      const priceData = await priceRes.json()
+      let sectorData: Record<string, string[]> = {}
+
+      try {
+        if (sectorRes.ok) {
+          sectorData = await sectorRes.json()
+        }
+      } catch (e) {
+        console.warn("Could not fetch sectors, continuing with prices only")
+      }
+
+      if (!priceRes.ok) {
+        throw new Error(priceData.message || priceData.error || "Nepal Stock APIs are currently unavailable")
+      }
+
+      if (!Array.isArray(priceData)) {
+        throw new Error("Received invalid data format from stock exchange")
+      }
+
+      // Update memory cache
+      globalPortfolioCache = {
+        priceData,
+        sectorData,
+        timestamp: now
+      }
+
+      // Create maps for sectors and names
+      const symbolToSector: Record<string, string> = {}
+      const symbolToName: Record<string, string> = {}
+      Object.entries(sectorData).forEach(([sector, scrips]) => {
+        if (Array.isArray(scrips)) {
+          scrips.forEach((scrip: any) => {
+            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+            if (sym) {
+              symbolToSector[sym] = sector
+              if (scrip.name) {
+                symbolToName[sym] = scrip.name.trim()
+              }
+            }
+          })
+        }
+      })
+
+      const updatedPortfolio = targetPortfolio.map(item => {
+        const matchingStock = priceData.find((s: any) =>
+          (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
+        )
+
+        // Try to get sector from map, or keep existing, or fallback to "Others"
+        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+
+        if (matchingStock) {
+          // Normalize price field names from various community APIs
+          const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
+          const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
+          const high = Number(matchingStock.high || matchingStock.high_price || item.high)
+          const low = Number(matchingStock.low || matchingStock.low_price || item.low)
+          const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
+          const change = Number(matchingStock.change || (ltp - pc) || item.change)
+          const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
+
+          return {
+            ...item,
+            currentPrice: ltp,
+            previousClose: pc,
+            high,
+            low,
+            volume,
+            change,
+            percentChange,
+            sector: sector,
+            lastUpdated: new Date().toISOString()
+          }
+        }
+
+        // Even if price not found, update sector if we found it
+        return {
+          ...item,
+          sector: sector
+        }
+      })
+
+      setPortfolio(updatedPortfolio)
+      setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+      setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
+      saveToLocalStorage("sectorsMap", symbolToSector)
+      saveToLocalStorage("scripNamesMap", symbolToName)
+      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+      return updatedPortfolio
+    } catch (error: any) {
+      console.error("Error fetching prices:", error)
+      throw error // Propagate specialized error
+    }
+  }
+
+  const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
+    const newTx: ShareTransaction = {
+      ...tx,
+      id: generateId('stx'),
+    }
+    const updatedTransactions = [...shareTransactions, newTx]
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+
+    // Update Portfolio based on transaction
+    const existingItem = portfolio.find(p => p.symbol === tx.symbol && p.portfolioId === tx.portfolioId)
+    let updatedPortfolio = [...portfolio]
+
+    if (tx.type === 'buy' || tx.type === 'ipo' || tx.type === 'bonus' || tx.type === 'merger_in') {
+      if (existingItem) {
+        const totalUnits = existingItem.units + tx.quantity
+        const totalCost = (existingItem.units * existingItem.buyPrice) + (tx.quantity * tx.price)
+        const avgPrice = totalUnits > 0 ? totalCost / totalUnits : 0
+
+        updatedPortfolio = portfolio.map(p =>
+          p.symbol === tx.symbol ? { ...p, units: totalUnits, buyPrice: avgPrice, lastUpdated: new Date().toISOString() } : p
+        )
+      } else {
+        updatedPortfolio.push({
+          id: generateId('port'),
+          portfolioId: activePortfolioId!,
+          symbol: tx.symbol,
+          units: tx.quantity,
+          buyPrice: tx.price,
+          sector: sectorsMap[tx.symbol.toUpperCase()] || "Others",
+          lastUpdated: new Date().toISOString()
+        })
+      }
+    } else if (tx.type === 'sell' || tx.type === 'merger_out') {
+      if (existingItem) {
+        const remainingUnits = Math.max(0, existingItem.units - tx.quantity)
+        if (remainingUnits <= 0) {
+          updatedPortfolio = portfolio.filter(p => !(p.symbol === tx.symbol && p.portfolioId === tx.portfolioId))
+        } else {
+          updatedPortfolio = portfolio.map(p =>
+            (p.symbol === tx.symbol && p.portfolioId === tx.portfolioId) ? { ...p, units: remainingUnits, lastUpdated: new Date().toISOString() } : p
+          )
+        }
+      }
+    }
+
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    return { newTx, updatedPortfolio }
+  }
+
+  const deleteShareTransaction = async (id: string) => {
+    return await deleteMultipleShareTransactions([id])
+  }
+
+  const recomputePortfolio = async (transactionsToUse?: ShareTransaction[]) => {
+    const txs = transactionsToUse || shareTransactions
+    const newPortfolio: PortfolioItem[] = []
+
+    // Group by portfolioId first, then by symbol
+    const groupedByPortfolio = txs.reduce((acc, tx) => {
+      if (!acc[tx.portfolioId]) acc[tx.portfolioId] = {}
+      if (!acc[tx.portfolioId][tx.symbol]) acc[tx.portfolioId][tx.symbol] = []
+      acc[tx.portfolioId][tx.symbol].push(tx)
+      return acc
+    }, {} as Record<string, Record<string, ShareTransaction[]>>)
+
+    for (const [pId, symbolMap] of Object.entries(groupedByPortfolio)) {
+      for (const [symbol, symbolTxs] of Object.entries(symbolMap)) {
+        let totalUnits = 0
+        let totalCost = 0
+
+        const sortedSymbolTxs = [...symbolTxs].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        )
+
+        sortedSymbolTxs.forEach((t) => {
+          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "merger_in") {
+            totalUnits += t.quantity
+            totalCost += t.quantity * t.price
+          } else if (t.type === "sell" || t.type === "merger_out") {
+            totalUnits = Math.max(0, totalUnits - t.quantity)
+          }
+        })
+
+        if (totalUnits > 0) {
+          const existing = portfolio.find(p => p.symbol === symbol && p.portfolioId === pId)
+          newPortfolio.push({
+            id: existing?.id || generateId("port"),
+            portfolioId: pId,
+            symbol: symbol,
+            units: totalUnits,
+            buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
+            currentPrice: existing?.currentPrice,
+            previousClose: existing?.previousClose,
+            sector: existing?.sector || sectorsMap[symbol.toUpperCase()] || "Others",
+            lastUpdated: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
+    setPortfolio(newPortfolio)
+    await saveDataWithIntegrity("portfolio", newPortfolio)
+    return newPortfolio
+  }
+
+  const deleteMultipleShareTransactions = async (ids: string[]) => {
+    if (ids.length === 0) return
+
+    const txsToDelete = shareTransactions.filter((t) => ids.includes(t.id))
+    // Group affected (portfolioId, symbol) pairs
+    const affectedPairs = txsToDelete.reduce((acc, tx) => {
+      const key = `${tx.portfolioId}:${tx.symbol}`
+      acc.add(key)
+      return acc
+    }, new Set<string>())
+
+    const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+
+    // Recalculate portfolio for all affected pairs
+    let updatedPortfolio = [...portfolio]
+
+    for (const pair of affectedPairs) {
+      const [pId, symbol] = pair.split(':')
+      const symbolTransactions = updatedTransactions.filter((t) => t.symbol === symbol && t.portfolioId === pId)
+
+      if (symbolTransactions.length === 0) {
+        updatedPortfolio = updatedPortfolio.filter((p) => !(p.symbol === symbol && p.portfolioId === pId))
+      } else {
+        let totalUnits = 0
+        let totalCost = 0
+
+        const sortedSymbolTxs = [...symbolTransactions].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        )
+
+        sortedSymbolTxs.forEach((t) => {
+          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "merger_in") {
+            totalUnits += t.quantity
+            totalCost += t.quantity * t.price
+          } else if (t.type === "sell" || t.type === "merger_out") {
+            totalUnits = Math.max(0, totalUnits - t.quantity)
+          }
+        })
+
+        const avgPrice = totalUnits > 0 ? totalCost / (totalCost > 0 ? totalUnits : 1) : 0
+        const exists = updatedPortfolio.find((p) => p.symbol === symbol && p.portfolioId === pId)
+
+        if (exists) {
+          if (totalUnits <= 0) {
+            updatedPortfolio = updatedPortfolio.filter((p) => !(p.symbol === symbol && p.portfolioId === pId))
+          } else {
+            updatedPortfolio = updatedPortfolio.map((p) =>
+              p.symbol === symbol && p.portfolioId === pId
+                ? { ...p, units: totalUnits, buyPrice: avgPrice, lastUpdated: new Date().toISOString() }
+                : p
+            )
+          }
+        } else if (totalUnits > 0) {
+          updatedPortfolio.push({
+            id: generateId('port'),
+            portfolioId: pId,
+            symbol: symbol,
+            units: totalUnits,
+            buyPrice: avgPrice,
+            sector: sectorsMap[symbol.toUpperCase()] || "Others",
+            lastUpdated: new Date().toISOString()
+          })
+        }
+      }
+    }
+
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    return updatedPortfolio
+  }
+
+  const clearPortfolioHistory = async () => {
+    if (!activePortfolioId) return
+    const updatedTransactions = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+
+    const updatedPortfolio = portfolio.filter(p => p.portfolioId !== activePortfolioId)
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+  }
+
+  const importShareData = async (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => {
+    const rows = csvData.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()))
+    if (rows.length < 2) return
+
+    let detectedType = type
+    if (type === 'auto') {
+      const header = rows[0].join(',')
+      if (header.includes('Current Balance') || header.includes('Last Closing Price')) {
+        detectedType = 'portfolio'
+      } else if (header.includes('Transaction Date') || header.includes('History Description')) {
+        detectedType = 'history'
+      } else {
+        throw new Error("Could not detect CSV format. Please ensure it is a Mero Share export.")
+      }
+    }
+
+    const getFaceValue = (symbol: string) => {
+      const sector = sectorsMap[symbol.toUpperCase()]
+      return sector === "Mutual Fund" ? 10 : 100
+    }
+
+    if (detectedType === 'portfolio') {
+      // S.N, Scrip, Current Balance, Last Closing Price, Value..., Last Transaction Price (LTP), Value...
+      const newItems: PortfolioItem[] = []
+      rows.slice(1).forEach(row => {
+        if (row.length < 7 || row[0].toLowerCase().includes('total')) return
+        const symbol = row[1]
+        const units = parseFloat(row[2])
+        const price = parseFloat(row[5]) || parseFloat(row[3])
+        if (symbol && !isNaN(units)) {
+          // Use provided resolved price, otherwise fallback to LTP
+          const buyPrice = resolvedPrices && resolvedPrices[symbol] !== undefined
+            ? resolvedPrices[symbol]
+            : price
+
+          newItems.push({
+            id: generateId('port'),
+            portfolioId: activePortfolioId!,
+            symbol,
+            units,
+            buyPrice: buyPrice,
+            currentPrice: price,
+            sector: sectorsMap[symbol.toUpperCase()] || "Others",
+            lastUpdated: new Date().toISOString()
+          })
+        }
+      })
+      const otherPortfolioItems = portfolio.filter(p => p.portfolioId !== activePortfolioId)
+      const updatedPortfolio = [...otherPortfolioItems, ...newItems]
+      setPortfolio(updatedPortfolio)
+      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+      return updatedPortfolio
+    } else {
+      // S.N, Scrip, Transaction Date, Credit Quantity, Debit Quantity, Balance After Transaction, History Description
+      const newTxs: ShareTransaction[] = []
+      rows.slice(1).forEach(row => {
+        if (row.length < 7) return
+        const symbol = row[1]
+        const date = row[2]
+        const credit = parseFloat(row[3]) || 0
+        const debit = parseFloat(row[4]) || 0
+        const desc = row[6]
+
+        let txType: ShareTransaction['type'] = 'buy'
+        if (desc.includes('BONUS') || desc.includes('Bonus')) txType = 'bonus'
+        else if (desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')) txType = 'ipo'
+        else if (desc.includes('Merger')) txType = credit > 0 ? 'merger_in' : 'merger_out'
+        else if (debit > 0) txType = 'sell'
+
+        let price = 0
+        if (txType === 'ipo' || txType === 'buy' || txType === 'merger_in') {
+          const defaultPrice = (txType === 'ipo' || txType === 'merger_in') ? getFaceValue(symbol) : 0
+          price = resolvedPrices && resolvedPrices[symbol] !== undefined
+            ? resolvedPrices[symbol]
+            : defaultPrice
+        }
+
+        if (symbol && date) {
+          newTxs.push({
+            id: generateId('stx'),
+            portfolioId: activePortfolioId!,
+            symbol,
+            date,
+            quantity: credit || debit,
+            price: price,
+            type: txType,
+            description: desc
+          })
+        }
+      })
+      const otherPortfolioTxs = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
+      const updatedTxs = [...otherPortfolioTxs, ...newTxs]
+      setShareTransactions(updatedTxs)
+      await saveDataWithIntegrity("shareTransactions", updatedTxs)
+      return await recomputePortfolio(updatedTxs)
+    }
+  }
+
   return {
     userProfile,
     transactions,
@@ -1027,6 +1736,10 @@ export function useWalletData() {
     isAuthenticated,
     isLoaded,
     balanceChange,
+    portfolio,
+    shareTransactions,
+    portfolios,
+    activePortfolioId,
     setShowOnboarding,
     handleOnboardingComplete,
     addTransaction,
@@ -1039,7 +1752,7 @@ export function useWalletData() {
     deleteGoal,
     deleteTransaction,
     addDebtAccount,
-  addDebtToAccount,
+    addDebtToAccount,
     addCreditAccount,
     deleteDebtAccount,
     deleteCreditAccount,
@@ -1051,6 +1764,27 @@ export function useWalletData() {
     updateCreditBalance,
     createDebtForTransaction,
     completeTransactionWithDebt,
+    addPortfolioItem,
+    updatePortfolioItem,
+    deletePortfolioItem,
+    addPortfolio,
+    switchPortfolio,
+    deletePortfolio,
+    updatePortfolio,
+    clearPortfolioHistory,
+    fetchPortfolioPrices,
+    upcomingIPOs,
+    scripNamesMap,
+    isIPOsLoading,
+    getFaceValue: (symbol: string) => {
+      const sector = sectorsMap[symbol.toUpperCase()]
+      return sector === "Mutual Fund" ? 10 : 100
+    },
+    addShareTransaction,
+    deleteShareTransaction,
+    deleteMultipleShareTransactions,
+    recomputePortfolio,
+    importShareData,
     refreshData,
     clearAllData,
     exportData,
@@ -1062,9 +1796,9 @@ export function useWalletData() {
     updateCategoryStats,
     settings: userProfile
       ? {
-          currency: userProfile.currency,
-          customBudgetCategories: {},
-        }
+        currency: userProfile.currency,
+        customBudgetCategories: {},
+      }
       : null,
   }
 }
