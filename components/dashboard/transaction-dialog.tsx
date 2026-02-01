@@ -53,6 +53,7 @@ interface FieldState {
   blurred: boolean
 }
 
+
 const initialFormData: FormData = {
   amount: "",
   category: "",
@@ -290,15 +291,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   const handleFieldChange = useCallback(
     (field: keyof FormData, value: string) => {
-      if (field === "amount") {
-        const rawValue = value.replace(/,/g, '')
-        if (/^\d*\.?\d*$/.test(rawValue) || rawValue === '') {
-          setFormData((prev) => ({ ...prev, [field]: rawValue }))
-          setDisplayAmount(rawValue ? parseFloat(rawValue).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN') : "")
-        }
-      } else {
-        setFormData((prev) => ({ ...prev, [field]: value }))
-      }
+      setFormData((prev) => ({ ...prev, [field]: value }))
 
       // Mark field as touched
       setFieldStates(prev => ({
@@ -308,6 +301,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     },
     [],
   )
+
+  // Helper to format amount for display
+  const formatAmountDisplay = useCallback((value: string) => {
+    if (!value) return ''
+    const num = parseFloat(value)
+    if (isNaN(num)) return value
+    return num.toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
+  }, [numberFormat])
 
   const handleFieldBlur = useCallback((field: keyof FormData) => {
     setFieldStates(prev => ({
@@ -693,12 +694,52 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     inputMode="decimal"
                     value={displayAmount}
                     onChange={(e) => {
-                      const rawValue = e.target.value.replace(/,/g, '')
-                      if (/^\d*\.?\d*$/.test(rawValue) || rawValue === '') {
-                        handleFieldChange("amount", rawValue)
+                      const val = e.target.value
+                      
+                      // Remove existing commas for processing
+                      const rawValue = val.replace(/,/g, '')
+                      
+                      // Allow: digits, optional single dot, up to 2 digits after dot
+                      // Also allow trailing dot (e.g., "123.") while typing
+                      const isValid = /^\d*\.?\d{0,2}$/.test(rawValue) || rawValue === ''
+                      
+                      if (isValid) {
+                        // Store raw value (without commas)
+                        setFormData((prev) => ({ ...prev, amount: rawValue }))
+                        
+                        // Format for display with locale-appropriate commas
+                        if (rawValue) {
+                          const hasTrailingDot = rawValue.endsWith('.')
+                          const parts = rawValue.split('.')
+                          const intPart = parts[0] || '0'
+                          const decPart = parts[1] || ''
+                          
+                          // Format integer part with locale
+                          const formattedInt = parseInt(intPart, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
+                          
+                          // Combine with decimal part, preserving trailing dot while typing
+                          if (hasTrailingDot) {
+                            setDisplayAmount(`${formattedInt}.`)
+                          } else if (decPart) {
+                            setDisplayAmount(`${formattedInt}.${decPart}`)
+                          } else {
+                            setDisplayAmount(formattedInt)
+                          }
+                        } else {
+                          setDisplayAmount('')
+                        }
                       }
                     }}
-                    onBlur={() => handleFieldBlur("amount")}
+                    onBlur={() => {
+                      handleFieldBlur("amount")
+                      // Reformat on blur to ensure proper formatting
+                      if (formData.amount) {
+                        const num = parseFloat(formData.amount)
+                        if (!isNaN(num)) {
+                          setDisplayAmount(num.toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'))
+                        }
+                      }
+                    }}
                     placeholder="0.00"
                     className={cn(
                       "text-lg font-medium transition-all duration-200 pl-10",
