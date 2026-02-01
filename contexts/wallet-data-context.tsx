@@ -35,6 +35,7 @@ type WalletDataContextType = {
   portfolio: PortfolioItem[]
   shareTransactions: ShareTransaction[]
   upcomingIPOs: UpcomingIPO[]
+  scripNamesMap: Record<string, string>
   isIPOsLoading: boolean
   portfolios: Portfolio[]
   activePortfolioId: string | null
@@ -70,7 +71,7 @@ type WalletDataContextType = {
   deletePortfolio: (id: string) => Promise<void>
   updatePortfolio: (id: string, updates: Partial<Portfolio>) => Promise<void>
   clearPortfolioHistory: () => Promise<void>
-  fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[]) => Promise<PortfolioItem[] | undefined>
+  fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>

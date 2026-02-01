@@ -43,6 +43,7 @@ export function useWalletData() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([])
   const [activePortfolioId, setActivePortfolioId] = useState<string | null>(null)
   const [sectorsMap, setSectorsMap] = useState<Record<string, string>>({})
+  const [scripNamesMap, setScripNamesMap] = useState<Record<string, string>>({})
   const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -56,21 +57,46 @@ export function useWalletData() {
   // Fetch sectors and upcoming IPOs once on load
   useEffect(() => {
     if (isLoaded) {
-      // Fetch sectors
+      // Fetch sectors and names from remote API
       fetch("/api/nepse/sectors")
         .then(res => res.json())
         .then(data => {
-          const map: Record<string, string> = {}
-          Object.entries(data).forEach(([sector, symbols]) => {
-            if (Array.isArray(symbols)) {
-              symbols.forEach(sym => {
-                map[sym.toUpperCase()] = sector
+          const sMap: Record<string, string> = {}
+          const nMap: Record<string, string> = {}
+          Object.entries(data).forEach(([sector, scrips]) => {
+            if (Array.isArray(scrips)) {
+              scrips.forEach((scrip: any) => {
+                const symbol = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+                if (symbol) {
+                  sMap[symbol] = sector
+                  if (scrip.name) {
+                    nMap[symbol] = scrip.name.trim()
+                  }
+                }
               })
             }
           })
-          setSectorsMap(map)
+          setSectorsMap(prev => ({ ...prev, ...sMap }))
+          setScripNamesMap(prev => ({ ...prev, ...nMap }))
         })
         .catch(err => console.error("Error pre-fetching sectors:", err))
+
+      // Fetch specific company names from local name.json
+      fetch("/name.json")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const nMap: Record<string, string> = {}
+            data.forEach((item: any) => {
+              if (item.symbol && item.name) {
+                nMap[item.symbol.trim().toUpperCase()] = item.name.trim()
+              }
+            })
+            setScripNamesMap(prev => ({ ...prev, ...nMap }))
+            saveToLocalStorage("scripNamesMap", nMap)
+          }
+        })
+        .catch(err => console.error("Error fetching name.json:", err))
 
       // Fetch upcoming IPOs
       setIsIPOsLoading(true)
@@ -87,11 +113,11 @@ export function useWalletData() {
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
     if (isLoaded && portfolio.length > 0 && Object.keys(sectorsMap).length > 0) {
-      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.toUpperCase()])
+      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
       if (needsUpdate) {
         setPortfolio(prev => prev.map(p => ({
           ...p,
-          sector: p.sector || sectorsMap[p.symbol.toUpperCase()] || "Others"
+          sector: p.sector || sectorsMap[p.symbol.trim().toUpperCase()] || "Others"
         })))
       }
     }
@@ -162,6 +188,8 @@ export function useWalletData() {
         shareTransactions: savedShareTransactions ? JSON.parse(savedShareTransactions) : [],
         portfolios: localStorage.getItem("portfolios") ? JSON.parse(localStorage.getItem("portfolios")!) : [],
         activePortfolioId: localStorage.getItem("activePortfolioId") || null,
+        sectorsMap: localStorage.getItem("sectorsMap") ? JSON.parse(localStorage.getItem("sectorsMap")!) : {},
+        scripNamesMap: localStorage.getItem("scripNamesMap") ? JSON.parse(localStorage.getItem("scripNamesMap")!) : {},
       }
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
@@ -211,6 +239,8 @@ export function useWalletData() {
       setPortfolios(parsedData.portfolios)
       const finalActiveId = parsedData.activePortfolioId || (parsedData.portfolios.length > 0 ? parsedData.portfolios[0].id : null)
       setActivePortfolioId(finalActiveId)
+      setSectorsMap(parsedData.sectorsMap)
+      setScripNamesMap(parsedData.scripNamesMap)
 
       // Migration: Update existing items if they don't have portfolioId
       if (parsedData.portfolio.length > 0 && !parsedData.portfolio[0].portfolioId) {
@@ -1004,6 +1034,11 @@ export function useWalletData() {
         const parsedCategories = JSON.parse(savedCategories)
         setCategories(parsedCategories)
       }
+
+      const savedSectors = localStorage.getItem("sectorsMap")
+      const savedNames = localStorage.getItem("scripNamesMap")
+      if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
+      if (savedNames) setScripNamesMap(JSON.parse(savedNames))
     } catch (error) { }
   }
 
@@ -1209,12 +1244,93 @@ export function useWalletData() {
     await saveToLocalStorage("portfolios", updated)
   }
 
-  const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[]) => {
+  // Module-level cache (resets on browser reload)
+  let globalPortfolioCache: {
+    priceData: any[],
+    sectorData: Record<string, string[]>,
+    timestamp: number
+  } | null = null
+
+  const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) => {
     const targetPortfolio = portfolioOverride || portfolio
     if (targetPortfolio.length === 0) return
 
     try {
-      // Fetch prices and sectors in parallel
+      // Check cache validity (2 minutes = 120000 milliseconds)
+      const CACHE_DURATION = 2 * 60 * 1000
+      const now = Date.now()
+
+      const isCacheValid = globalPortfolioCache &&
+        (now - globalPortfolioCache.timestamp) < CACHE_DURATION
+
+      // If cache is valid and not forcing refresh, use cached data
+      if (isCacheValid && !forceRefresh && globalPortfolioCache) {
+        console.log('Using cached portfolio prices (memory cache)')
+        const { priceData, sectorData } = globalPortfolioCache
+
+        // Process cached data same way as fresh data
+        const symbolToSector: Record<string, string> = {}
+        const symbolToName: Record<string, string> = {}
+        Object.entries(sectorData).forEach(([sector, scrips]) => {
+          if (Array.isArray(scrips)) {
+            scrips.forEach((scrip: any) => {
+              const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+              if (sym) {
+                symbolToSector[sym] = sector
+                if (scrip.name) {
+                  symbolToName[sym] = scrip.name.trim()
+                }
+              }
+            })
+          }
+        })
+
+        const updatedPortfolio = targetPortfolio.map(item => {
+          const matchingStock = priceData.find((s: any) =>
+            (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
+          )
+
+          const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+
+          if (matchingStock) {
+            const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
+            const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
+            const high = Number(matchingStock.high || matchingStock.high_price || item.high)
+            const low = Number(matchingStock.low || matchingStock.low_price || item.low)
+            const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
+            const change = Number(matchingStock.change || (ltp - pc) || item.change)
+            const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
+
+            return {
+              ...item,
+              currentPrice: ltp,
+              previousClose: pc,
+              high,
+              low,
+              volume,
+              change,
+              percentChange,
+              sector: sector,
+              lastUpdated: new Date().toISOString()
+            }
+          }
+
+          return {
+            ...item,
+            sector: sector
+          }
+        })
+
+        // Optimized state updates
+        if (JSON.stringify(updatedPortfolio) !== JSON.stringify(targetPortfolio)) {
+          setPortfolio(updatedPortfolio)
+          await saveDataWithIntegrity("portfolio", updatedPortfolio)
+        }
+        return updatedPortfolio
+      }
+
+      // Fetch fresh data from API
+      console.log('Fetching fresh portfolio prices from API')
       const [priceRes, sectorRes] = await Promise.all([
         fetch("/api/nepse/today"),
         fetch("/api/nepse/sectors")
@@ -1239,23 +1355,37 @@ export function useWalletData() {
         throw new Error("Received invalid data format from stock exchange")
       }
 
-      // Create a symbol-to-sector map for efficient lookup
+      // Update memory cache
+      globalPortfolioCache = {
+        priceData,
+        sectorData,
+        timestamp: now
+      }
+
+      // Create maps for sectors and names
       const symbolToSector: Record<string, string> = {}
-      Object.entries(sectorData).forEach(([sector, symbols]) => {
-        if (Array.isArray(symbols)) {
-          symbols.forEach(sym => {
-            symbolToSector[sym.toUpperCase()] = sector
+      const symbolToName: Record<string, string> = {}
+      Object.entries(sectorData).forEach(([sector, scrips]) => {
+        if (Array.isArray(scrips)) {
+          scrips.forEach((scrip: any) => {
+            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+            if (sym) {
+              symbolToSector[sym] = sector
+              if (scrip.name) {
+                symbolToName[sym] = scrip.name.trim()
+              }
+            }
           })
         }
       })
 
       const updatedPortfolio = targetPortfolio.map(item => {
-        const matchingStock = priceData.find(s =>
-          (s.symbol || s.ticker || s.scrip || "").toUpperCase() === item.symbol.toUpperCase()
+        const matchingStock = priceData.find((s: any) =>
+          (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
         )
 
         // Try to get sector from map, or keep existing, or fallback to "Others"
-        const sector = symbolToSector[item.symbol.toUpperCase()] || item.sector || "Others"
+        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
 
         if (matchingStock) {
           // Normalize price field names from various community APIs
@@ -1289,8 +1419,10 @@ export function useWalletData() {
       })
 
       setPortfolio(updatedPortfolio)
-      setSectorsMap(symbolToSector)
+      setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+      setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
       saveToLocalStorage("sectorsMap", symbolToSector)
+      saveToLocalStorage("scripNamesMap", symbolToName)
       await saveDataWithIntegrity("portfolio", updatedPortfolio)
       return updatedPortfolio
     } catch (error: any) {
@@ -1642,6 +1774,7 @@ export function useWalletData() {
     clearPortfolioHistory,
     fetchPortfolioPrices,
     upcomingIPOs,
+    scripNamesMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {
       const sector = sectorsMap[symbol.toUpperCase()]
