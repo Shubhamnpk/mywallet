@@ -20,6 +20,8 @@ import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
+import { IPODetailModal } from "./modals/ipo-detail-modal"
+import { UpcomingIPO } from "@/types/wallet"
 
 export function PortfolioList() {
     const {
@@ -62,6 +64,8 @@ export function PortfolioList() {
     const [selectedTxs, setSelectedTxs] = useState<string[]>([])
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
+    const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
+    const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
@@ -84,6 +88,11 @@ export function PortfolioList() {
     const handleViewStockDetail = (item: PortfolioItem) => {
         setSelectedStock(item)
         setIsStockDetailOpen(true)
+    }
+
+    const handleViewIPODetail = (ipo: UpcomingIPO) => {
+        setSelectedIPO(ipo)
+        setIsIPODetailOpen(true)
     }
 
     const [newTx, setNewTx] = useState({
@@ -521,6 +530,18 @@ export function PortfolioList() {
     if (viewMode === "overview") {
         return (
             <>
+                {/* Global Modals for Overview */}
+                <StockDetailModal
+                    item={selectedStock}
+                    open={isStockDetailOpen}
+                    onOpenChange={setIsStockDetailOpen}
+                />
+                <IPODetailModal
+                    ipo={selectedIPO}
+                    open={isIPODetailOpen}
+                    onOpenChange={setIsIPODetailOpen}
+                />
+
                 <div className="space-y-8 animate-in fade-in duration-500 text-left">
                     <div className="flex items-center justify-between">
                         <div>
@@ -571,6 +592,7 @@ export function PortfolioList() {
                             <h3 className="text-xl font-black tracking-tight uppercase tracking-widest text-foreground/80">Market Opportunities</h3>
                         </div>
 
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {isIPOsLoading ? (
                                 <Card className="border-primary/20 bg-card shadow-xl overflow-hidden backdrop-blur-sm text-left">
@@ -612,44 +634,63 @@ export function PortfolioList() {
                                     <CardContent className="p-0">
                                         <div className="divide-y divide-muted/10">
                                             {upcomingIPOs.slice(0, 5).map((ipo, i) => {
-                                                const dateParts = ipo.date_range.split(/ to | - |-|–|—/);
-                                                const openDate = dateParts[0]?.trim();
-                                                const closeDate = dateParts[1]?.trim();
+                                                const statusLabel = ipo.status === 'open' ? 'Closing in' :
+                                                    ipo.status === 'upcoming' ? 'Opening in' :
+                                                        'Closed';
+
+                                                const statusColor = ipo.status === 'open' ? 'text-green-600 bg-green-500/10 border-green-500/20' :
+                                                    ipo.status === 'upcoming' ? 'text-blue-600 bg-blue-500/10 border-blue-500/20' :
+                                                        'text-muted-foreground bg-muted/20 border-muted/30';
 
                                                 return (
-                                                    <div key={i} className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4">
-                                                        <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1">
-                                                            <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight truncate">
-                                                                {ipo.company}
-                                                            </span>
-                                                            <div className="flex items-center flex-wrap gap-y-1 gap-x-3 sm:gap-x-4">
-                                                                <div className="flex items-center gap-2 flex-wrap">
-                                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 rounded-md border border-primary/20">
-                                                                        <Calendar className="w-3 h-3 text-primary" />
-                                                                        <span className="text-[10px] font-black text-primary uppercase tracking-tight">
-                                                                            Opens: {openDate}
-                                                                        </span>
-                                                                    </div>
-                                                                    {closeDate && (
-                                                                        <span className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-tight">
-                                                                            Till {closeDate}
-                                                                        </span>
+                                                    <div
+                                                        key={i}
+                                                        className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
+                                                        onClick={() => handleViewIPODetail(ipo)}
+                                                    >
+                                                        <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1 text-left">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight truncate max-w-[200px] sm:max-w-none">
+                                                                    {ipo.company}
+                                                                </span>
+                                                                {ipo.status && (
+                                                                    <Badge className={cn("text-[8px] font-black uppercase px-2 py-0 border", statusColor)}>
+                                                                        {ipo.status === 'open' ? 'Open Today' : ipo.status}
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-start flex-wrap gap-y-2 gap-x-3 sm:gap-x-4">
+                                                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
+                                                                    {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
+                                                                        <div className="flex flex-col gap-1 items-start">
+                                                                            <div className={cn(
+                                                                                "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
+                                                                                ipo.status === 'open' ? "border-green-500/30 text-green-600 bg-green-500/5" : "border-primary/30 text-primary bg-primary/5"
+                                                                            )}>
+                                                                                <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
+                                                                                {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
+                                                                            </div>
+                                                                            {ipo.status === 'upcoming' && ipo.openingDay && (
+                                                                                <span className="text-[9px] font-bold text-primary/60 uppercase tracking-tighter">
+                                                                                    Starts on {ipo.openingDay}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     )}
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 text-muted-foreground/60">
-                                                                    <LayoutGrid className="w-3 h-3 text-primary/40" />
-                                                                    <span className="text-[10px] font-bold uppercase tracking-tight">{ipo.units} Units</span>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <a
-                                                            href={ipo.url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0"
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0 h-auto"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleViewIPODetail(ipo);
+                                                            }}
                                                         >
-                                                            Details <ExternalLink className="w-3 h-3" />
-                                                        </a>
+                                                            View Info <Info className="w-3 h-3" />
+                                                        </Button>
                                                         <div className="absolute inset-y-0 left-0 w-1 bg-primary scale-y-0 group-hover/item:scale-y-100 transition-transform origin-center" />
                                                     </div>
                                                 )
@@ -688,7 +729,7 @@ export function PortfolioList() {
                             </Card>
                         </div>
                     </div>
-                </div>
+                </div >
             </>
         )
     }
@@ -771,6 +812,13 @@ export function PortfolioList() {
                 item={selectedStock}
                 open={isStockDetailOpen}
                 onOpenChange={setIsStockDetailOpen}
+            />
+
+            {/* IPO Detail Modal */}
+            <IPODetailModal
+                ipo={selectedIPO}
+                open={isIPODetailOpen}
+                onOpenChange={setIsIPODetailOpen}
             />
 
             {/* Import Price Modal */}

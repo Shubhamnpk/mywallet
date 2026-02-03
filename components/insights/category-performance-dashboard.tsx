@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { PieChart, BarChart3, TrendingUp, TrendingDown, Calendar, Target, AlertTriangle } from "lucide-react"
+import { PieChart, BarChart3, TrendingUp, TrendingDown, Calendar, Target, AlertTriangle, Star } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
@@ -22,6 +22,8 @@ interface CategoryData {
   monthlyTrend: number
   averageTransaction: number
   timeValue: number
+  isNecessity: boolean
+  isMicroSpendHeavy: boolean
 }
 
 interface OverviewCardProps {
@@ -95,7 +97,16 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
 
         const averageTransaction = stats.transactionCount > 0 ? stats.totalAmount / stats.transactionCount : 0
 
-        // Calculate time value (hours spent working to afford this category)
+        // Necessity Heuristic
+        const needs = ["Housing", "Bills & Utilities", "Transportation", "Healthcare", "Groceries", "Education", "Insurance"]
+        const isNecessity = needs.includes(name)
+
+        // Micro-spend detection (High frequency, low average)
+        const allExpenses = transactions.filter(t => t.type === 'expense')
+        const avgAll = allExpenses.length > 0 ? allExpenses.reduce((s, t) => s + t.amount, 0) / allExpenses.length : 0
+        const isMicroSpendHeavy = stats.transactionCount > 5 && averageTransaction < (avgAll * 0.5)
+
+        // Calculate time value
         const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
         const timeValue = hourlyRate > 0 ? (stats.totalAmount / hourlyRate) : 0
 
@@ -106,11 +117,13 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
           percentage,
           monthlyTrend,
           averageTransaction,
-          timeValue
+          timeValue,
+          isNecessity,
+          isMicroSpendHeavy
         }
       })
       .sort((a, b) => b.totalSpent - a.totalSpent)
-      .slice(0, 8) // Top 8 categories
+      .slice(0, 10) // Top 10
 
     // Precompute summary data
     const topCategory = categories[0]
@@ -120,6 +133,9 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
     const mostTimeIntensive = categories.reduce((max, cat) => cat.timeValue > max.timeValue ? cat : max, categories[0] || { timeValue: 0, name: 'None' })
     const highTrendCategories = categories.filter(cat => cat.monthlyTrend > 20)
 
+    const luxurySpending = categories.filter(c => !c.isNecessity).reduce((s, c) => s + c.totalSpent, 0)
+    const microSpendCount = categories.filter(c => c.isMicroSpendHeavy).length
+
     const summary = {
       totalExpenses,
       topCategory,
@@ -127,7 +143,9 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
       highestAvg,
       totalTimeValue,
       mostTimeIntensive,
-      highTrendCategories
+      highTrendCategories,
+      luxuryRatio: totalExpenses > 0 ? (luxurySpending / totalExpenses) * 100 : 0,
+      microSpendCount
     }
 
     return { categories, summary }
@@ -320,6 +338,11 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
                             <span className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">{category.name}</span>
                           </div>
                           <div className="flex items-center gap-2">
+                            {category.isNecessity ? (
+                              <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 border-blue-200">Necessity</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px] bg-purple-100 text-purple-700 border-purple-200">Lifestyle</Badge>
+                            )}
                             <div className="p-1 bg-white dark:bg-gray-700 rounded-md shadow-sm">
                               {getTrendIcon(category.monthlyTrend)}
                             </div>
@@ -408,30 +431,41 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
               </div>
 
               {/* Insights and Recommendations */}
-              {summary.highTrendCategories.length > 0 && (
-                <div className="relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 via-orange-500/10 to-red-500/10 rounded-lg sm:rounded-xl"></div>
-                  <div className="relative p-3 sm:p-6 bg-yellow-50/80 dark:bg-yellow-950/20 backdrop-blur-sm border border-yellow-200/50 dark:border-yellow-800/50 rounded-lg sm:rounded-xl shadow-sm">
-                    <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
-                      <div className="p-2 sm:p-3 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg sm:rounded-xl shadow-md animate-pulse">
-                        <AlertTriangle className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {summary.luxuryRatio > 40 && (
+                  <div className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-rose-500/10 rounded-lg sm:rounded-xl"></div>
+                    <div className="relative p-3 sm:p-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-white/20 dark:border-gray-700/20 rounded-lg sm:rounded-xl shadow-sm h-full">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                          <Star className="w-5 h-5 text-purple-600" />
+                        </div>
+                        <h4 className="font-bold text-purple-900 dark:text-purple-100 italic">Lifestyle Bloat</h4>
                       </div>
-                      <div>
-                        <h4 className="font-bold text-lg sm:text-xl text-yellow-700 dark:text-yellow-300">⚠️ Spending Insights</h4>
-                        <p className="text-xs sm:text-sm text-yellow-600 dark:text-yellow-400 font-medium">Action required</p>
-                      </div>
-                    </div>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 sm:p-4">
-                      <p className="text-yellow-800 dark:text-yellow-200 text-xs sm:text-sm font-medium mb-2">
-                        Categories with significant spending increase: <span className="font-bold">{summary.highTrendCategories.map(c => c.name).join(', ')}</span>
-                      </p>
-                      <p className="text-yellow-700 dark:text-yellow-300 text-xs sm:text-sm">
-                        💡 Consider reviewing your budget for these categories to optimize your spending patterns.
+                      <p className="text-sm text-purple-800 dark:text-purple-300">
+                        Your "Lifestyle" spending represents <span className="font-black">{summary.luxuryRatio.toFixed(0)}%</span> of your total expenses. Consider if these provide proportional value.
                       </p>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {summary.microSpendCount > 0 && (
+                  <div className="relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-indigo-500/10 rounded-lg sm:rounded-xl"></div>
+                    <div className="relative p-3 sm:p-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-white/20 dark:border-gray-700/20 rounded-lg sm:rounded-xl shadow-sm h-full">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-cyan-100 dark:bg-cyan-900/50 rounded-lg">
+                          <TrendingDown className="w-5 h-5 text-cyan-600" />
+                        </div>
+                        <h4 className="font-bold text-cyan-900 dark:text-cyan-100">Micro-leak Detection</h4>
+                      </div>
+                      <p className="text-sm text-cyan-800 dark:text-cyan-300">
+                        Detected high-frequency small payments in <span className="font-black">{summary.microSpendCount}</span> categories. These "micro-leaks" can drain your budget silently.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </AccordionContent>
         </AccordionItem>

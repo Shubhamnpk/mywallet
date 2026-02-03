@@ -41,8 +41,23 @@ export interface Transaction {
   status: "normal" | "debt" | "repayment"
 }
 
+export interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: any
+  color?: string
+  unlocked: boolean
+  unlockedAt?: Date | string
+  goalId?: string
+  progress: number
+  maxProgress: number
+  category: string
+  rarity: "common" | "rare" | "epic" | "legendary"
+}
+
 export interface Budget {
-  name: any
+  name: string
   id: string
   category: string
   limit: number
@@ -196,4 +211,10 @@ export interface UpcomingIPO {
   full_text: string
   url: string
   scraped_at: string
+  status?: 'upcoming' | 'open' | 'closed'
+  daysRemaining?: number
+  openingDate?: string
+  closingDate?: string
+  openingDay?: string
+  closingDay?: string
 }

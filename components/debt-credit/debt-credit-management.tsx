@@ -30,25 +30,25 @@ const SECURITY_CONSTANTS = {
 // Input validation helpers
 const validateAccountName = (name: string): boolean => {
   return typeof name === 'string' &&
-         name.length > 0 &&
-         name.length <= SECURITY_CONSTANTS.MAX_ACCOUNT_NAME_LENGTH &&
-         !/<script/i.test(name) // Basic XSS prevention
+    name.length > 0 &&
+    name.length <= SECURITY_CONSTANTS.MAX_ACCOUNT_NAME_LENGTH &&
+    !/<script/i.test(name) // Basic XSS prevention
 }
 
 const validateAmount = (amount: number | string): boolean => {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount
   return !isNaN(num) &&
-         isFinite(num) &&
-         num >= SECURITY_CONSTANTS.MIN_AMOUNT &&
-         num <= SECURITY_CONSTANTS.MAX_AMOUNT
+    isFinite(num) &&
+    num >= SECURITY_CONSTANTS.MIN_AMOUNT &&
+    num <= SECURITY_CONSTANTS.MAX_AMOUNT
 }
 
 const validateInterestRate = (rate: number | string): boolean => {
   const num = typeof rate === 'string' ? parseFloat(rate) : rate
   return !isNaN(num) &&
-         isFinite(num) &&
-         num >= SECURITY_CONSTANTS.MIN_INTEREST_RATE &&
-         num <= SECURITY_CONSTANTS.MAX_INTEREST_RATE
+    isFinite(num) &&
+    num >= SECURITY_CONSTANTS.MIN_INTEREST_RATE &&
+    num <= SECURITY_CONSTANTS.MAX_INTEREST_RATE
 }
 
 const sanitizeString = (str: string): string => {
@@ -490,7 +490,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
             </div>
           </CardContent>
         </Card>
-      </div>      
+      </div>
       {/* Debt and Credit Management */}
       <Card>
         <CardContent className="p-4">
@@ -740,7 +740,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                 </div>
               )}
             </TabsContent>
-            
+
             <TabsContent value="credit" className="space-y-4">
               {creditAccounts.length === 0 ? (
                 <div className="text-center py-8 px-4">
@@ -765,7 +765,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       .filter((t: any) => t.accountId === credit.id)
                       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .slice(0, 3)
-                  
+
 
                     return (
                       <Card key={credit.id} className="transition border">
@@ -894,16 +894,16 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                               {/* Credit Health Status */}
                               <div className={`p-3 rounded-lg border ${utilization <= 10 ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800/30' :
                                 utilization <= 30 ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800/30' :
-                                utilization <= 50 ? 'bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/20 dark:to-amber-950/20 border-yellow-200 dark:border-yellow-800/30' :
-                                utilization <= 70 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800/30' :
-                                'bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/20 dark:to-rose-950/20 border-red-200 dark:border-red-800/30'}`}>
+                                  utilization <= 50 ? 'bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/20 dark:to-amber-950/20 border-yellow-200 dark:border-yellow-800/30' :
+                                    utilization <= 70 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800/30' :
+                                      'bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/20 dark:to-rose-950/20 border-red-200 dark:border-red-800/30'}`}>
                                 <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
                                   💳 Credit Health Status
                                   <Badge variant="outline" className="text-xs">
                                     {utilization <= 10 ? 'Excellent' :
-                                     utilization <= 30 ? 'Good' :
-                                     utilization <= 50 ? 'Fair' :
-                                     utilization <= 70 ? 'Poor' : 'Critical'}
+                                      utilization <= 30 ? 'Good' :
+                                        utilization <= 50 ? 'Fair' :
+                                          utilization <= 70 ? 'Poor' : 'Critical'}
                                   </Badge>
                                 </h5>
                                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -920,10 +920,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                   <p className="font-medium text-sm mb-1">💡 Recommendation:</p>
                                   <p className="text-sm">
                                     {utilization <= 10 ? '🎉 Excellent! Keep your utilization low for the best credit scores.' :
-                                     utilization <= 30 ? '👍 Good job! Your utilization is in the ideal range.' :
-                                     utilization <= 50 ? '⚠️ Consider paying down your balance to improve your credit health.' :
-                                     utilization <= 70 ? '🚨 High utilization! Pay down immediately to avoid credit damage.' :
-                                     '🚨 Critical! Reduce utilization urgently to protect your credit score.'}
+                                      utilization <= 30 ? '👍 Good job! Your utilization is in the ideal range.' :
+                                        utilization <= 50 ? '⚠️ Consider paying down your balance to improve your credit health.' :
+                                          utilization <= 70 ? '🚨 High utilization! Pay down immediately to avoid credit damage.' :
+                                            '🚨 Critical! Reduce utilization urgently to protect your credit score.'}
                                   </p>
                                 </div>
                               </div>
@@ -1499,102 +1499,102 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         </DialogContent>
       </Dialog>
 
-     <Card className="border-primary/20">
-          <Collapsible open={insightsExpanded} onOpenChange={setInsightsExpanded}>
-            <CollapsibleTrigger asChild>
-              <CardContent className="p-3 cursor-pointer hover:bg-primary/5 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-primary" />
-                    <h4 className="font-semibold text-sm text-primary">Financial Insights</h4>
-                    <Badge variant="outline" className="text-xs border-primary/20 text-primary">
-                      {insightsExpanded ? 'Hide' : 'Show'} Insights
-                    </Badge>
-                  </div>
-                  {insightsExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-primary" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-primary" />
-                  )}
+      <Card className="border-primary/20">
+        <Collapsible open={insightsExpanded} onOpenChange={setInsightsExpanded}>
+          <CollapsibleTrigger asChild>
+            <CardContent className="p-3 cursor-pointer hover:bg-primary/5 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-primary" />
+                  <h4 className="font-semibold text-sm text-primary">Financial Insights</h4>
+                  <Badge variant="outline" className="text-xs border-primary/20 text-primary">
+                    {insightsExpanded ? 'Hide' : 'Show'} Insights
+                  </Badge>
                 </div>
-                {/* Quick Summary - Always Visible */}
-                <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-                  <div className="text-center p-2 bg-primary/5 rounded border border-primary/10">
-                    <p className="text-muted-foreground text-xs">Strategy</p>
-                    <p className="font-medium text-primary">
-                      {payoffStrategy?.strategy === 'avalanche' ? 'Avalanche' : 'Snowball'}
-                    </p>
-                  </div>
-                  <div className="text-center p-2 bg-chart-2/5 rounded border border-chart-2/10">
-                    <p className="text-muted-foreground text-xs">Credit Status</p>
-                    <p className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</p>
-                  </div>
+                {insightsExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-primary" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-primary" />
+                )}
+              </div>
+              {/* Quick Summary - Always Visible */}
+              <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
+                <div className="text-center p-2 bg-primary/5 rounded border border-primary/10">
+                  <p className="text-muted-foreground text-xs">Strategy</p>
+                  <p className="font-medium text-primary">
+                    {payoffStrategy?.strategy === 'avalanche' ? 'Avalanche' : 'Snowball'}
+                  </p>
                 </div>
-              </CardContent>
-            </CollapsibleTrigger>
+                <div className="text-center p-2 bg-chart-2/5 rounded border border-chart-2/10">
+                  <p className="text-muted-foreground text-xs">Credit Status</p>
+                  <p className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</p>
+                </div>
+              </div>
+            </CardContent>
+          </CollapsibleTrigger>
 
-            <CollapsibleContent>
-              <CardContent className="pt-0 pb-3 px-3 border-t border-primary/10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  {/* Debt Payoff Strategy */}
-                  {payoffStrategy && totalDebt > 0 && (
-                    <Card className="border-primary/20">
-                      <CardContent className="p-3">
-                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                          <TrendingDown className="w-4 h-4 text-primary" />
-                          Payoff Strategy
-                        </h4>
-                        <div className="space-y-1.5 text-xs">
-                          <p className="text-muted-foreground">
-                            <span className="font-medium text-primary">Recommended: {payoffStrategy.strategy === 'avalanche' ? 'Debt Avalanche' : 'Debt Snowball'}</span>
+          <CollapsibleContent>
+            <CardContent className="pt-0 pb-3 px-3 border-t border-primary/10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                {/* Debt Payoff Strategy */}
+                {payoffStrategy && totalDebt > 0 && (
+                  <Card className="border-primary/20">
+                    <CardContent className="p-3">
+                      <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <TrendingDown className="w-4 h-4 text-primary" />
+                        Payoff Strategy
+                      </h4>
+                      <div className="space-y-1.5 text-xs">
+                        <p className="text-muted-foreground">
+                          <span className="font-medium text-primary">Recommended: {payoffStrategy.strategy === 'avalanche' ? 'Debt Avalanche' : 'Debt Snowball'}</span>
+                        </p>
+                        <p className="text-muted-foreground">
+                          Savings: {formatCurrency(payoffStrategy.recommendedSavings, userProfile.currency, userProfile.customCurrency)}/year
+                        </p>
+                        <div className="mt-2 p-1.5 bg-primary/5 rounded border border-primary/10">
+                          <p className="font-medium text-primary text-xs">Next Priority:</p>
+                          <p className="text-primary/80 text-xs truncate">
+                            {payoffStrategy.avalancheDebts[0]?.name} ({(payoffStrategy.avalancheDebts[0] as any)?.interestRate || 0}% interest)
                           </p>
-                          <p className="text-muted-foreground">
-                            Savings: {formatCurrency(payoffStrategy.recommendedSavings, userProfile.currency, userProfile.customCurrency)}/year
-                          </p>
-                          <div className="mt-2 p-1.5 bg-primary/5 rounded border border-primary/10">
-                            <p className="font-medium text-primary text-xs">Next Priority:</p>
-                            <p className="text-primary/80 text-xs truncate">
-                              {payoffStrategy.avalancheDebts[0]?.name} ({(payoffStrategy.avalancheDebts[0] as any)?.interestRate || 0}% interest)
-                            </p>
-                          </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                  {/* Credit Health Insights */}
-                  {totalCreditUsed > 0 && (
-                    <Card className="border-chart-2/20">
-                      <CardContent className="p-3">
-                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-chart-2" />
-                          Credit Health
-                        </h4>
-                        <div className="space-y-1.5 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Utilization:</span>
-                            <span className={`font-medium ${utilizationStatus.color}`}>{overallUtilization.toFixed(1)}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Status:</span>
-                            <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Est. Score:</span>
-                            <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.score}+</span>
-                          </div>
-                          <div className="mt-2 p-1.5 bg-chart-2/5 rounded border border-chart-2/10">
-                            <p className="font-medium text-chart-2 text-xs">Tip:</p>
-                            <p className="text-chart-2/80 text-xs">{utilizationStatus.recommendation}</p>
-                          </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                {/* Credit Health Insights */}
+                {totalCreditUsed > 0 && (
+                  <Card className="border-chart-2/20">
+                    <CardContent className="p-3">
+                      <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-chart-2" />
+                        Credit Health
+                      </h4>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Utilization:</span>
+                          <span className={`font-medium ${utilizationStatus.color}`}>{overallUtilization.toFixed(1)}%</span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Status:</span>
+                          <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Est. Score:</span>
+                          <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.score}+</span>
+                        </div>
+                        <div className="mt-2 p-1.5 bg-chart-2/5 rounded border border-chart-2/10">
+                          <p className="font-medium text-chart-2 text-xs">Tip:</p>
+                          <p className="text-chart-2/80 text-xs">{utilizationStatus.recommendation}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
     </div>
   )
 }

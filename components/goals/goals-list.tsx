@@ -101,7 +101,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
       }
     })
 
-   
+
     const sorted = filtered.sort((a, b) => {
       switch (sortType) {
         case "progress":
@@ -178,7 +178,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     if (amount <= 0 || amount > balance) return
 
     try {
-      const result = transferToGoal(transferDialog.goalId, amount)
+      const result = await transferToGoal(transferDialog.goalId, amount)
       if (result && result.success) {
         setTransferDialog({ open: false, goalId: "", goalName: "" })
         setTransferAmount("")
@@ -361,13 +361,12 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                 return (
                   <Card
                     key={goal.id}
-                    className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg ${
-                      isCompleted
-                        ? "border-emerald-200 bg-gradient-to-r from-emerald-50/50 to-blue-50/50 dark:from-emerald-950/20 dark:to-blue-950/20"
-                        : isSelected
+                    className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg ${isCompleted
+                      ? "border-emerald-200 bg-gradient-to-r from-emerald-50/50 to-blue-50/50 dark:from-emerald-950/20 dark:to-blue-950/20"
+                      : isSelected
                         ? "ring-2 ring-blue-500 shadow-md"
                         : "hover:border-primary/30"
-                    }`}
+                      }`}
                   >
                     {/* Priority indicator stripe */}
                     {goal.priority && (
@@ -393,74 +392,74 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
-                                   <CardTitle className="text-base md:text-lg truncate">
-                                     {goal.title || goal.name}
-                                   </CardTitle>
-                                   {goal.priority && (
-                                     <Badge variant="outline" className={`text-xs ${getPriorityColor(goal.priority)}`}>
-                                       {goal.priority.toUpperCase()}
-                                     </Badge>
-                                   )}
-                                 </div>
+                                    <CardTitle className="text-base md:text-lg truncate">
+                                      {goal.title || goal.name}
+                                    </CardTitle>
+                                    {goal.priority && (
+                                      <Badge variant="outline" className={`text-xs ${getPriorityColor(goal.priority)}`}>
+                                        {goal.priority.toUpperCase()}
+                                      </Badge>
+                                    )}
+                                  </div>
 
-                                 <div className="flex items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
-                                   <div className="flex items-center gap-1">
-                                     <StatusIcon className="w-3 h-3 md:w-4 md:h-4" />
-                                     <span className="font-medium">{progress.toFixed(1)}% complete</span>
-                                   </div>
-                                   <div className="flex items-center gap-1">
-                                     <Calendar className="w-3 h-3 md:w-4 md:h-4" />
-                                     <span>{daysRemaining} days left</span>
-                                   </div>
-                                 </div>
-                               </div>
-                             </div>
-                           </div>
+                                  <div className="flex items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
+                                    <div className="flex items-center gap-1">
+                                      <StatusIcon className="w-3 h-3 md:w-4 md:h-4" />
+                                      <span className="font-medium">{progress.toFixed(1)}% complete</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3 md:w-4 md:h-4" />
+                                      <span>{daysRemaining} days left</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
 
-                           <div className="flex items-center justify-between md:justify-end gap-2 md:gap-3">
-                             <div className="text-left md:text-right flex-1 md:flex-none">
-                               <p className="text-xs text-muted-foreground">Target</p>
-                               <p className="font-bold text-base md:text-lg">
-                                 {formatCurrency(goal.targetAmount, userProfile.currency, userProfile.customCurrency)}
-                               </p>
-                               <p className="text-xs text-muted-foreground">
-                                 {formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)} saved
-                               </p>
-                             </div>
+                            <div className="flex items-center justify-between md:justify-end gap-2 md:gap-3">
+                              <div className="text-left md:text-right flex-1 md:flex-none">
+                                <p className="text-xs text-muted-foreground">Target</p>
+                                <p className="font-bold text-base md:text-lg">
+                                  {formatCurrency(goal.targetAmount, userProfile.currency, userProfile.customCurrency)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)} saved
+                                </p>
+                              </div>
 
-                             <DropdownMenu>
-                               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-muted">
-                                   <MoreHorizontal className="w-4 h-4" />
-                                 </Button>
-                               </DropdownMenuTrigger>
-                               <DropdownMenuContent align="end" className="w-48">
-                                 <DropdownMenuItem onClick={() => handleEditGoal(goal)} className="cursor-pointer">
-                                   <Edit className="w-4 h-4 mr-2" />
-                                   Edit Goal
-                                 </DropdownMenuItem>
-                                 {!isCompleted && (
-                                   <DropdownMenuItem
-                                     onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
-                                     className="cursor-pointer"
-                                   >
-                                     <Send className="w-4 h-4 mr-2" />
-                                     Add Money
-                                   </DropdownMenuItem>
-                                 )}
-                                 <DropdownMenuItem
-                                   onClick={() => handleDeleteGoal(goal.id)}
-                                   className="text-red-600 focus:text-red-600 cursor-pointer"
-                                 >
-                                   <Trash2 className="w-4 h-4 mr-2" />
-                                   Delete Goal
-                                 </DropdownMenuItem>
-                               </DropdownMenuContent>
-                             </DropdownMenu>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-muted">
+                                    <MoreHorizontal className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                  <DropdownMenuItem onClick={() => handleEditGoal(goal)} className="cursor-pointer">
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Edit Goal
+                                  </DropdownMenuItem>
+                                  {!isCompleted && (
+                                    <DropdownMenuItem
+                                      onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
+                                      className="cursor-pointer"
+                                    >
+                                      <Send className="w-4 h-4 mr-2" />
+                                      Add Money
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteGoal(goal.id)}
+                                    className="text-red-600 focus:text-red-600 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete Goal
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
 
-                             <ChevronDown className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-                           </div>
-                         </div>
+                              <ChevronDown className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                            </div>
+                          </div>
 
                           {/* Enhanced Progress Bar */}
                           <div className="mt-2 md:mt-4 ml-8 md:ml-12">
@@ -535,11 +534,11 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                   </p>
                                 </div>
                                 <div>
-                              <p className="text-amber-700 dark:text-amber-300 mb-1">Target Date</p>
-                              <p className="text-amber-700 dark:text-amber-300 mb-1">
-                                {new Date(goal.targetDate).toLocaleDateString()}
-                              </p>
-                              </div>
+                                  <p className="text-amber-700 dark:text-amber-300 mb-1">Target Date</p>
+                                  <p className="text-amber-700 dark:text-amber-300 mb-1">
+                                    {new Date(goal.targetDate).toLocaleDateString()}
+                                  </p>
+                                </div>
                                 <div>
                                   <p className="text-amber-700 dark:text-amber-300 mb-1">📅 Days Remaining</p>
                                   <p className="font-semibold text-amber-800 dark:text-amber-200">{daysRemaining} days</p>

@@ -545,14 +545,12 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   title="Toggle Auto-Contribute"
                   type="button"
                   onClick={() => setFormData({ ...formData, autoContribute: !formData.autoContribute })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    formData.autoContribute ? "bg-primary" : "bg-muted"
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.autoContribute ? "bg-primary" : "bg-muted"
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      formData.autoContribute ? "translate-x-6" : "translate-x-1"
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.autoContribute ? "translate-x-6" : "translate-x-1"
+                      }`}
                   />
                 </button>
               </div>

@@ -22,6 +22,7 @@ import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent,
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
+import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -103,7 +104,22 @@ export function useWalletData() {
       fetch("/api/nepse/upcoming")
         .then(res => res.json())
         .then(data => {
-          if (Array.isArray(data)) setUpcomingIPOs(data)
+          if (Array.isArray(data)) {
+            const processedIPOs: UpcomingIPO[] = data.map(ipo => {
+              const dates = parseNepaliDateRange(ipo.date_range)
+              if (dates) {
+                const statusInfo = getIPOStatus(dates.start, dates.end)
+                return {
+                  ...ipo,
+                  ...statusInfo,
+                  openingDate: dates.start.toISOString(),
+                  closingDate: dates.end.toISOString()
+                }
+              }
+              return ipo
+            })
+            setUpcomingIPOs(processedIPOs)
+          }
         })
         .catch(err => console.error("Error fetching upcoming IPOs:", err))
         .finally(() => setIsIPOsLoading(false))

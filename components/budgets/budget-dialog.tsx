@@ -38,7 +38,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
   const [customCategory, setCustomCategory] = useState("")
   const [emergencyUses, setEmergencyUses] = useState("3")
   const [searchTerm, setSearchTerm] = useState("")
-  const [errors, setErrors] = useState<{[key: string]: string}>({})
+  const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [showTips, setShowTips] = useState(false)
 
   // Populate form when editing
@@ -132,7 +132,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
   }
 
   const validateForm = () => {
-    const newErrors: {[key: string]: string} = {}
+    const newErrors: { [key: string]: string } = {}
 
     if (!budgetName.trim()) {
       newErrors.budgetName = "Budget name is required"

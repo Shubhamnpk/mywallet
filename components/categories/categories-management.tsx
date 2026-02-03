@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target, Trash2, Eye, EyeOff } from "lucide-react"
+
+import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target, Trash2 } from "lucide-react"
 import { getCurrencySymbol } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
 import { CreateCategoryModal } from "./create-category-modal"
@@ -202,64 +203,22 @@ export function CategoriesManagement({
   return (
     <div className="space-y-6">
       {/* Header Actions */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex items-center justify-between">
+      <div className="flex flex-row gap-2 sm:gap-4 items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />
-          Category 
+          Category
         </h3>
-      </div>
-        <div className="flex flex-col sm:flex-row gap-3 flex-1">
-          
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search categories..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
 
-          <div className="flex gap-2">
-            <Select value={filterType} onValueChange={(value: "all" | "income" | "expense") => setFilterType(value)}>
-              <SelectTrigger className="w-40">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="income">Income Only</SelectItem>
-                <SelectItem value="expense">Expense Only</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={sortBy}
-              onValueChange={(value: "usage" | "amount" | "transactions" | "name") => setSortBy(value)}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="usage">By Usage %</SelectItem>
-                <SelectItem value="amount">By Amount</SelectItem>
-                <SelectItem value="transactions">By Count</SelectItem>
-                <SelectItem value="name">By Name</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {bulkDeleteMode && customCategories.length > 0 && (
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={selectedCategories.size === customCategories.length}
                 onCheckedChange={handleSelectAll}
                 aria-label="Select all categories"
+                className="hidden sm:flex"
               />
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground hidden sm:inline">
                 {selectedCategories.size} of {customCategories.length} selected
               </span>
               {selectedCategories.size > 0 && (
@@ -270,7 +229,7 @@ export function CategoriesManagement({
                   className="flex items-center gap-2"
                 >
                   <Trash2 className="w-3 h-3" />
-                  Delete Selected ({selectedCategories.size})
+                  <span className="hidden sm:inline">Delete Selected ({selectedCategories.size})</span>
                 </Button>
               )}
               <Button
@@ -281,7 +240,8 @@ export function CategoriesManagement({
                   setSelectedCategories(new Set())
                 }}
               >
-                Cancel
+                <span className="hidden sm:inline">Cancel</span>
+                <span className="sm:hidden">✕</span>
               </Button>
             </div>
           )}
@@ -296,7 +256,7 @@ export function CategoriesManagement({
                   className="flex items-center gap-2"
                 >
                   <Trash2 className="w-3 h-3" />
-                  Bulk Delete
+                  <span className="hidden sm:inline">Bulk Delete</span>
                 </Button>
               )}
               <Button
@@ -304,52 +264,118 @@ export function CategoriesManagement({
                 className="flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
-                Add Category
+                <span className="hidden sm:inline">Add Category</span>
               </Button>
             </>
           )}
         </div>
       </div>
 
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search categories..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 rounded-xl border-border/60 bg-background/50 backdrop-blur-sm focus:border-primary/50 focus:ring-primary/20 font-medium shadow-sm"
+          />
+        </div>
+
+        {/* Filter Controls */}
+        <div className="flex gap-2">
+          <Select value={filterType} onValueChange={(value: "all" | "income" | "expense") => setFilterType(value)}>
+            <SelectTrigger className="w-[140px] h-10 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
+              <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="income">Income Only</SelectItem>
+              <SelectItem value="expense">Expense Only</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={sortBy}
+            onValueChange={(value: "usage" | "amount" | "transactions" | "name") => setSortBy(value)}
+          >
+            <SelectTrigger className="w-[140px] h-10 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="usage">By Usage %</SelectItem>
+              <SelectItem value="amount">By Amount</SelectItem>
+              <SelectItem value="transactions">By Count</SelectItem>
+              <SelectItem value="name">By Name</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 md:grid-cols-3 gap-2 md:gap-4">
-        <Card>
-          <CardContent className="p-2 md:p-4">
-            <div className="flex items-center gap-2">
-              <FolderOpen className="w-4 h-4 text-blue-600" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs md:text-sm text-muted-foreground">Enabled</p>
-                <p className="text-lg md:text-xl font-bold">{categories.filter(c => !disabledCategories.has(c.id)).length}</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group col-span-2 md:col-span-1">
+          <CardContent className="p-4 sm:p-5 relative z-10">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">Enabled Categories</p>
+              <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
+                <FolderOpen className="w-3.5 h-3.5" />
               </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+                {categories.filter(c => !disabledCategories.has(c.id)).length}
+              </p>
+              <span className="text-xs font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
+                / {categories.length} Total
+              </span>
+            </div>
+            <div className="mt-3 w-full bg-primary/10 h-1 rounded-full overflow-hidden">
+              <div
+                className="bg-primary h-full transition-all duration-500 rounded-full"
+                style={{ width: `${(categories.filter(c => !disabledCategories.has(c.id)).length / categories.length) * 100}%` }}
+              />
+            </div>
+          </CardContent>
+          {/* Ambient Glow */}
+          <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-primary/20 blur-3xl rounded-full pointer-events-none" />
+        </Card>
+
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Usage</p>
+              <Target className="w-3.5 h-3.5 text-primary opacity-60" />
+            </div>
+            <p className="text-xl sm:text-2xl font-black font-mono">
+              {categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}
+            </p>
+            <div className="mt-1 flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">With transactions</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-2 md:p-4">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-primary" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs md:text-sm text-muted-foreground">Active</p>
-                <p className="text-lg md:text-xl font-bold">{categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}</p>
-              </div>
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top Spender</p>
+              <BarChart3 className="w-3.5 h-3.5 text-amber-500 opacity-80" />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-2 md:p-4">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-amber-600" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs md:text-sm text-muted-foreground">Top Category</p>
-                <p className="text-sm font-bold truncate">
-                  {categoryStats.length > 0
-                    ? categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]?.name
-                    : "None"}
-                </p>
-              </div>
-            </div>
+            <p className="text-sm font-black truncate leading-tight">
+              {categoryStats.length > 0
+                ? categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]?.name
+                : "None"}
+            </p>
+            <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-wider">
+              {categoryStats.length > 0 && categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]
+                ? currencySymbol + (categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0].totalSpent).toLocaleString()
+                : "-"}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -383,61 +409,10 @@ export function CategoriesManagement({
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-3">
               {customCategories.map((category) => (
-                <div key={category.id} className="relative">
-                  {bulkDeleteMode && (
-                    <div className="absolute top-2 left-2 z-10">
-                      <Checkbox
-                        checked={selectedCategories.has(category.id)}
-                        onCheckedChange={() => handleSelectCategory(category.id)}
-                        aria-label={`Select ${category.name}`}
-                        className="bg-background border-2"
-                      />
-                    </div>
-                  )}
-                  <CategoryProgressCard
-                    category={category}
-                    userProfile={userProfile}
-                    onViewDetails={() => {
-                      /* TODO: Implement details view */
-                    }}
-                    onEdit={() => setEditingCategory(category)}
-                    onDelete={() => handleDeleteCategory(category)}
-                    showActions={!bulkDeleteMode}
-                  />
-                  {!bulkDeleteMode && (
-                    <div className="absolute top-2 right-2 z-10">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleCategory(category.id)}
-                        className={`p-1 h-6 w-6 rounded-full ${
-                          disabledCategories.has(category.id)
-                            ? 'text-muted-foreground hover:text-foreground'
-                            : 'text-primary hover:text-primary/80'
-                        }`}
-                        title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
-                      >
-                        {disabledCategories.has(category.id) ? (
-                          <EyeOff className="w-3 h-3" />
-                        ) : (
-                          <Eye className="w-3 h-3" />
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="default" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {defaultCategories.map((category) => (
-              <div key={category.id} className="relative">
                 <CategoryProgressCard
+                  key={category.id}
                   category={category}
                   userProfile={userProfile}
                   onViewDetails={() => {
@@ -445,51 +420,59 @@ export function CategoriesManagement({
                   }}
                   onEdit={() => setEditingCategory(category)}
                   onDelete={() => handleDeleteCategory(category)}
-                  showActions={true}
+                  showActions={!bulkDeleteMode}
+                  selectionMode={bulkDeleteMode}
+                  isSelected={selectedCategories.has(category.id)}
+                  onSelect={() => handleSelectCategory(category.id)}
+                  isDisabled={disabledCategories.has(category.id)}
+                  onToggleVisibility={() => handleToggleCategory(category.id)}
                 />
-                <div className="absolute top-2 right-2 z-10">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleToggleCategory(category.id)}
-                    className={`p-1 h-6 w-6 rounded-full ${
-                      disabledCategories.has(category.id)
-                        ? 'text-muted-foreground hover:text-foreground'
-                        : 'text-primary hover:text-primary/80'
-                    }`}
-                    title={disabledCategories.has(category.id) ? 'Enable category' : 'Disable category'}
-                  >
-                    {disabledCategories.has(category.id) ? (
-                      <EyeOff className="w-3 h-3" />
-                    ) : (
-                      <Eye className="w-3 h-3" />
-                    )}
-                  </Button>
-                </div>
-              </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="default" className="space-y-4">
+          <div className="space-y-3">
+            {defaultCategories.map((category) => (
+              <CategoryProgressCard
+                key={category.id}
+                category={category}
+                userProfile={userProfile}
+                onViewDetails={() => {
+                  /* TODO: Implement details view */
+                }}
+                onEdit={() => setEditingCategory(category)}
+                onDelete={() => handleDeleteCategory(category)}
+                showActions={true}
+                isDisabled={disabledCategories.has(category.id)}
+                onToggleVisibility={() => handleToggleCategory(category.id)}
+              />
             ))}
           </div>
         </TabsContent>
       </Tabs>
 
       {/* Edit Category Modal */}
-      {editingCategory && (
-        <CreateCategoryModal
-          isOpen={!!editingCategory}
-          onClose={() => setEditingCategory(null)}
-          onCreateCategory={(categoryData) => {
-            if (!onUpdateCategory || !editingCategory) return
+      {
+        editingCategory && (
+          <CreateCategoryModal
+            isOpen={!!editingCategory}
+            onClose={() => setEditingCategory(null)}
+            onCreateCategory={(categoryData) => {
+              if (!onUpdateCategory || !editingCategory) return
 
-            onUpdateCategory(editingCategory.id, {
-              name: categoryData.name,
-              color: categoryData.color,
-              icon: categoryData.icon,
-            })
-            setEditingCategory(null)
-          }}
-          categoryType={editingCategory.type}
-        />
-      )}
+              onUpdateCategory(editingCategory.id, {
+                name: categoryData.name,
+                color: categoryData.color,
+                icon: categoryData.icon,
+              })
+              setEditingCategory(null)
+            }}
+            categoryType={editingCategory.type}
+          />
+        )
+      }
 
       {/* New Modern Category Creation Modal */}
       <CreateCategoryModal
@@ -527,6 +510,6 @@ export function CategoriesManagement({
         transactions={transactions}
         onConfirmDelete={handleConfirmDelete}
       />
-    </div>
+    </div >
   )
 }

@@ -41,6 +41,7 @@ export function WalletDashboard({ userProfile }: WalletDashboardProps) {
           calculateTimeEquivalent={walletData.calculateTimeEquivalent}
           onDeleteTransaction={walletData.deleteTransaction}
           onAddBudget={walletData.addBudget}
+          onAddGoal={walletData.addGoal}
           onDeleteBudget={walletData.deleteBudget}
           onUpdateBudget={walletData.updateBudget}
           onAddCategory={walletData.addCategory}

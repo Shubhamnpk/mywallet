@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Receipt, PiggyBank, Target, CreditCard, TrendingUp, FolderOpen, Briefcase } from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
@@ -13,7 +12,6 @@ import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
 import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { SessionManager } from "@/lib/session-manager"
-import { cn } from "@/lib/utils"
 import type { UserProfile, Transaction, Budget, Goal, Category } from "@/types/wallet"
 
 interface MainTabsProps {
@@ -29,6 +27,7 @@ interface MainTabsProps {
   onAddBudget: (budget: Omit<Budget, "id">) => void
   onDeleteBudget: (id: string) => void
   onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
+  onAddGoal?: (goal: Omit<Goal, "id">) => void
   onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => Category
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
@@ -49,12 +48,15 @@ export function MainTabs({
   onAddBudget,
   onDeleteBudget,
   onUpdateBudget,
+  onAddGoal,
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
   onUpdateCategoryStats,
   debtAccounts = [],
 }: MainTabsProps) {
+  const [activeTab, setActiveTab] = useState("transactions")
+
   // Calculate summary stats for badges
   const recentTransactions = transactions.slice(0, 5).length
   const activeBudgets = budgets.filter((b) => b.spent < b.limit).length
@@ -144,7 +146,7 @@ export function MainTabs({
 
   return (
     <div className="space-y-6 pb-32 lg:pb-6">
-      <Tabs defaultValue="transactions" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {/* Desktop Tabs */}
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
@@ -243,8 +245,12 @@ export function MainTabs({
               budgets={budgets}
               goals={goals}
               debtAccounts={debtAccounts}
+              balance={balance}
               onExportData={onExportData}
               calculateTimeEquivalent={calculateTimeEquivalent}
+              onNavigate={setActiveTab}
+              onAddGoal={onAddGoal}
+              onAddBudget={onAddBudget}
             />
           </TabsContent>
         </div>
