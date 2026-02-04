@@ -23,6 +23,7 @@ import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
+import { toast } from "sonner"
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -119,6 +120,22 @@ export function useWalletData() {
               return ipo
             })
             setUpcomingIPOs(processedIPOs)
+
+            // Notify user if any IPO is open and automation is ready
+            const openIPOs = processedIPOs.filter(ipo => ipo.status === 'open')
+            if (openIPOs.length > 0 && userProfile?.meroShare?.isAutomatedEnabled) {
+              toast(`Found ${openIPOs.length} Open IPO(s)`, {
+                description: `You can apply for ${openIPOs[0].company} ${openIPOs.length > 1 ? 'and others' : ''} automatically.`,
+                action: {
+                  label: "View IPOs",
+                  onClick: () => {
+                    // We could potentially open the modal here if we had the callback
+                    // But for now just info is fine
+                  }
+                },
+                duration: 10000,
+              })
+            }
           }
         })
         .catch(err => console.error("Error fetching upcoming IPOs:", err))
@@ -1736,6 +1753,74 @@ export function useWalletData() {
     }
   }
 
+  const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
+    const portId = targetPortfolioId || activePortfolioId
+    if (!portId) {
+      throw new Error("No target portfolio selected")
+    }
+
+    try {
+      const response = await fetch('/api/meroshare/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentials })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to sync portfolio")
+
+      const meroPortfolio = data.portfolio as any[]
+      let updatedCount = 0
+      let addedCount = 0
+
+      // Get current portfolio items for comparison
+      const currentPortfolio = [...portfolio]
+      const updatedPortfolio = [...currentPortfolio]
+
+      for (const item of meroPortfolio) {
+        const existingIdx = updatedPortfolio.findIndex(
+          p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
+        )
+
+        if (existingIdx > -1) {
+          // Update existing item
+          updatedPortfolio[existingIdx] = {
+            ...updatedPortfolio[existingIdx],
+            units: item.units,
+            currentPrice: item.currentPrice,
+            lastUpdated: new Date().toISOString()
+          }
+          updatedCount++
+        } else {
+          // Add new item
+          const newItem: PortfolioItem = {
+            id: generateId('port_item'),
+            portfolioId: portId,
+            symbol: item.symbol,
+            units: item.units,
+            buyPrice: 0, // Users will need to update cost manually or it stays 0
+            currentPrice: item.currentPrice,
+            lastUpdated: new Date().toISOString(),
+            sector: "Others"
+          }
+          updatedPortfolio.push(newItem)
+          addedCount++
+        }
+      }
+
+      setPortfolio(updatedPortfolio)
+      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+
+      // Trigger a price refresh to update sectors and other metadata
+      await fetchPortfolioPrices(updatedPortfolio)
+
+      return { updatedCount, addedCount }
+    } catch (error: any) {
+      console.error("Portfolio Sync Error:", error)
+      throw error
+    }
+  }
+
   return {
     userProfile,
     transactions,
@@ -1789,6 +1874,22 @@ export function useWalletData() {
     updatePortfolio,
     clearPortfolioHistory,
     fetchPortfolioPrices,
+    syncMeroSharePortfolio,
+    checkIPOAllotment: async (credentials: any, ipoName: string) => {
+      try {
+        const response = await fetch('/api/meroshare/check-allotment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credentials, ipoName })
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || "Failed to check allotment")
+        return data
+      } catch (error: any) {
+        console.error("Allotment Check Error:", error)
+        throw error
+      }
+    },
     upcomingIPOs,
     scripNamesMap,
     isIPOsLoading,

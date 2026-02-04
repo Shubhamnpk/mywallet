@@ -13,6 +13,7 @@ import { ThemeSettings } from "./theme-settings"
 import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
+import { MeroShareSettings } from "./mero-share-settings"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -34,21 +35,22 @@ import {
   Lock,
   Star,
   ChevronRight,
-  Home
+  Home,
+  Share2
 } from "lucide-react"
 
 interface MobileSettingsPageProps {
   onClose: () => void
 }
 
-type SettingsView = "main" | "profile" | "security" | "theme" | "data" | "accessibility" | "about"
+type SettingsView = "main" | "profile" | "security" | "meroshare" | "theme" | "data" | "accessibility" | "about"
 
 export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
-   const [currentView, setCurrentView] = useState<SettingsView>("main")
-   const [searchQuery, setSearchQuery] = useState("")
-   const [highlightQuery, setHighlightQuery] = useState("")
-   const { userProfile } = useWalletData()
-   const router = useRouter()
+  const [currentView, setCurrentView] = useState<SettingsView>("main")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [highlightQuery, setHighlightQuery] = useState("")
+  const { userProfile } = useWalletData()
+  const router = useRouter()
 
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([])
   useEffect(() => {
@@ -84,7 +86,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
         if (deferredPrompt) {
           deferredPrompt.prompt()
           deferredPrompt.userChoice.then(() => {
-            try { delete (window as any).__deferredPrompt } catch {}
+            try { delete (window as any).__deferredPrompt } catch { }
           })
         } else {
           alert(
@@ -113,11 +115,11 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
   const getInitials = () => {
     return userProfile?.name
       ? userProfile.name
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
       : "U"
   }
 
@@ -144,6 +146,15 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       subtitle: "PIN • Biometric • Emergency access",
       category: "account",
       keywords: ["security", "pin", "biometric", "emergency", "access", "password", "lock"]
+    },
+    {
+      id: "meroshare",
+      icon: <Share2 className="w-6 h-6" />,
+      iconBg: "bg-indigo-600",
+      title: "MeroShare",
+      subtitle: "IPO Automation • Credentials",
+      category: "account",
+      keywords: ["meroshare", "ipo", "automation", "invest", "share"]
     },
     {
       id: "theme",
@@ -181,7 +192,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       category: "system",
       keywords: ["about", "version", "support", "legal", "help", "info"]
     },
-   
+
   ]
 
   // Filter settings items based on search query
@@ -241,7 +252,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
           <>
             {/* User Profile */}
             <div className="flex items-center p-4 mb-1 bg-card rounded-xl cursor-pointer hover:bg-muted transition-colors"
-                 onClick={() => setCurrentView("profile")}>
+              onClick={() => setCurrentView("profile")}>
               <div className="flex-1">
                 <div className="font-medium text-lg text-gray-900 dark:text-white mb-1">
                   {userProfile?.name || "Mr/Ms lovely user"}
@@ -279,8 +290,8 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
                 title={item.title}
                 subtitle={item.subtitle}
                 onClick={() => {
-                  if (item.id === "profile" || item.id === "security" || item.id === "theme" ||
-                      item.id === "data" || item.id === "accessibility" || item.id === "about") {
+                  if (item.id === "profile" || item.id === "security" || item.id === "meroshare" || item.id === "theme" ||
+                    item.id === "data" || item.id === "accessibility" || item.id === "about") {
                     setCurrentView(item.id as SettingsView)
                     setHighlightQuery(searchQuery)
                   }
@@ -316,6 +327,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       switch (currentView) {
         case "profile": return "Profile"
         case "security": return "Security"
+        case "meroshare": return "MeroShare"
         case "theme": return "Theme"
         case "data": return "Data"
         case "accessibility": return "Accessibility"
@@ -328,6 +340,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       switch (currentView) {
         case "profile": return <UserProfileSettings highlightQuery={highlightQuery} />
         case "security": return <SecuritySettings />
+        case "meroshare": return <MeroShareSettings />
         case "theme": return <ThemeSettings />
         case "data": return <DataSettings />
         case "accessibility": return <AccessibilitySettings />
@@ -444,7 +457,7 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
                 </div>
               </div>
               <button
-              type="button"
+                type="button"
                 aria-label={`Dismiss ${suggestion.title}`}
                 title="Dismiss"
                 onClick={() => onDismiss(suggestion.id)}

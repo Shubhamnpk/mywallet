@@ -658,6 +658,12 @@ export function PortfolioList() {
                                                                         {ipo.status === 'open' ? 'Open Today' : ipo.status}
                                                                     </Badge>
                                                                 )}
+                                                                {ipo.status === 'open' && userProfile?.meroShare?.isAutomatedEnabled && (
+                                                                    <Badge variant="outline" className="text-[8px] font-black uppercase px-2 py-0 border-primary shadow-[0_0_10px_rgba(var(--primary),0.3)] animate-pulse bg-primary/10 text-primary">
+                                                                        <Sparkles className="w-2.5 h-2.5 mr-1" />
+                                                                        Automation Ready
+                                                                    </Badge>
+                                                                )}
                                                             </div>
                                                             <div className="flex items-start flex-wrap gap-y-2 gap-x-3 sm:gap-x-4">
                                                                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">

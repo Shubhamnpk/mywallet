@@ -9,7 +9,9 @@ import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
 import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
 import { AboutSettings } from "@/components/settings/about-settings"
+import { MeroShareSettings } from "@/components/settings/mero-share-settings"
 import { MobileSettingsPage } from "@/components/settings/mobile-settings-page"
+import { Share2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState } from "react"
@@ -94,9 +96,10 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
             <TabsTrigger value="theme">Theme</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="accessibility">A11y</TabsTrigger>
@@ -109,6 +112,10 @@ export default function SettingsPage() {
 
           <TabsContent value="security">
             <SecuritySettings />
+          </TabsContent>
+
+          <TabsContent value="meroshare">
+            <MeroShareSettings />
           </TabsContent>
 
           <TabsContent value="theme">

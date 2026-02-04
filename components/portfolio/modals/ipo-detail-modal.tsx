@@ -26,6 +26,9 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { toast } from "sonner"
+import { useState } from "react"
 
 interface IPODetailModalProps {
     ipo: UpcomingIPO | null
@@ -34,6 +37,76 @@ interface IPODetailModalProps {
 }
 
 export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps) {
+    const { userProfile, checkIPOAllotment } = useWalletData()
+    const [isApplying, setIsApplying] = useState(false)
+    const [isCheckingResult, setIsCheckingResult] = useState(false)
+
+    const handleAutomatedApply = async () => {
+        if (!userProfile?.meroShare?.isAutomatedEnabled) {
+            toast.error("Automation is not enabled. Please setup your credentials in Settings.")
+            return
+        }
+
+        const { dpId, username, password, crn, pin } = userProfile.meroShare
+        if (!dpId || !username || !password || !crn || !pin) {
+            toast.error("Missing Mero Share credentials. Please complete your setup in Settings.")
+            return
+        }
+
+        setIsApplying(true)
+        const promise = fetch('/api/meroshare/apply', {
+            method: 'POST',
+            body: JSON.stringify({
+                credentials: userProfile.meroShare,
+                ipoName: ipo?.company,
+                kitta: 10 // defaulting to 10
+            })
+        }).then(async (res) => {
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || "Failed to apply")
+            return data
+        })
+
+        toast.promise(promise, {
+            loading: `Applying for ${ipo?.company}... This may take a few seconds.`,
+            success: (data) => {
+                setIsApplying(false)
+                onOpenChange(false)
+                return data.message || "Applied successfully!"
+            },
+            error: (err) => {
+                setIsApplying(false)
+                return err.message
+            }
+        })
+    }
+
+    const handleCheckAllotment = async () => {
+        if (!userProfile?.meroShare?.isAutomatedEnabled) {
+            toast.error("Mero Share setup required", { description: "Please setup your credentials in Settings to check allotment." })
+            return
+        }
+
+        setIsCheckingResult(true)
+        const promise = checkIPOAllotment(userProfile.meroShare, ipo?.company || "")
+
+        toast.promise(promise, {
+            loading: `Checking allotment for ${ipo?.company}...`,
+            success: (data) => {
+                setIsCheckingResult(false)
+                if (data.isAllotted) {
+                    return `Congratulations! You were allotted ${data.allottedQuantity} units.`
+                } else {
+                    return `Not Allotted: ${data.status}`
+                }
+            },
+            error: (err) => {
+                setIsCheckingResult(false)
+                return err.message
+            }
+        })
+    }
+
     // Determine status colors and labels
     const statusLabel = ipo?.status === 'open' ? 'Closing in' :
         ipo?.status === 'upcoming' ? 'Opening in' :
@@ -49,8 +122,10 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         switch (ipo.status) {
             case 'open':
                 return {
-                    title: "Application is Live!",
-                    description: "You can apply for this IPO now through MeroShare. We recommend applying for 10 units as per current allotment trends.",
+                    title: userProfile?.meroShare?.isAutomatedEnabled ? "Automation Ready!" : "Application is Live!",
+                    description: userProfile?.meroShare?.isAutomatedEnabled
+                        ? `You can apply automatically for 10 units of ${ipo.company}.`
+                        : "You can apply for this IPO now through MeroShare. We recommend applying for 10 units as per current allotment trends.",
                     icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
                     bgColor: "bg-green-500/5",
                     borderColor: "border-green-500/20"
@@ -63,13 +138,14 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                     bgColor: "bg-blue-500/5",
                     borderColor: "border-blue-500/20"
                 };
+            case 'closed':
             default:
                 return {
-                    title: "Subscription Closed",
-                    description: "The application period has ended. Stay tuned for the allotment results which usually take 7-10 days.",
-                    icon: <History className="w-5 h-5 text-muted-foreground" />,
-                    bgColor: "bg-muted/5",
-                    borderColor: "border-muted/20"
+                    title: "Check Results",
+                    description: "The subscription has ended. You can now use our automation to check if you've been allotted any units.",
+                    icon: <History className="w-5 h-5 text-indigo-500" />,
+                    bgColor: "bg-indigo-500/5",
+                    borderColor: "border-indigo-500/20"
                 };
         }
     };
@@ -245,17 +321,32 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             </Button>
                             <Button
                                 className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20 bg-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                disabled={isApplying}
                                 onClick={() => {
                                     if (ipo.status === 'open') {
-                                        window.open('https://meroshare.cdsc.com.np/', '_blank');
+                                        if (userProfile?.meroShare?.isAutomatedEnabled) {
+                                            handleAutomatedApply();
+                                        } else {
+                                            window.open('https://meroshare.cdsc.com.np/', '_blank');
+                                        }
+                                    } else if (ipo.status === 'closed' && userProfile?.meroShare?.isAutomatedEnabled) {
+                                        handleCheckAllotment();
                                     } else {
                                         onOpenChange(false);
                                     }
                                 }}
                             >
                                 {ipo.status === 'open' ? (
-                                    <>Apply Now <ArrowRight className="w-3.5 h-3.5 animate-pulse" /></>
-                                ) : 'Understood'}
+                                    <>
+                                        {userProfile?.meroShare?.isAutomatedEnabled ? 'Apply Automatically' : 'Apply Now'}
+                                        <ArrowRight className={cn("w-3.5 h-3.5", !isApplying && "animate-pulse")} />
+                                    </>
+                                ) : (
+                                    <>
+                                        {userProfile?.meroShare?.isAutomatedEnabled ? 'Check Allotment' : 'Understood'}
+                                        <Sparkles className={cn("w-3.5 h-3.5", !isCheckingResult && "animate-pulse")} />
+                                    </>
+                                )}
                             </Button>
                         </div>
 

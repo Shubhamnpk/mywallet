@@ -15,6 +15,14 @@ export interface UserProfile {
     name: string
   }
   avatar?: string
+  meroShare?: {
+    dpId: string
+    username: string
+    password?: string
+    crn?: string
+    pin?: string
+    isAutomatedEnabled: boolean
+  }
 }
 
 export interface Transaction {
