@@ -32,9 +32,9 @@ export function OfflineBadge() {
       >
         <div className="flex items-center gap-1">
           {offlineMode.isOnline ? (
-            <Wifi className="w-4 h-4 text-green-600" />
+            <Wifi className="w-4 h-4 text-success" />
           ) : (
-            <WifiOff className="w-4 h-4 text-orange-600" />
+            <WifiOff className="w-4 h-4 text-warning" />
           )}
           <span className="text-xs">
             {offlineMode.isOnline ? "Online" : "Offline"}

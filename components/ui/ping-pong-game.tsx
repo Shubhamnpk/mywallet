@@ -250,7 +250,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Home className="w-5 h-5 text-blue-500" />
+            <Home className="w-5 h-5 text-info" />
             Ping Pong
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -287,7 +287,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <div className="absolute bottom-4 left-4 right-4 flex justify-between pointer-events-auto">
                   <Button
                     size="lg"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-full shadow-lg"
+                    className="bg-info hover:bg-info/90 text-white font-bold px-6 py-3 rounded-full shadow-lg"
                     onTouchStart={(e) => {
                       e.preventDefault()
                       setKeys(prev => new Set(prev).add('w'))
@@ -311,7 +311,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                   </Button>
                   <Button
                     size="lg"
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-full shadow-lg"
+                    className="bg-info hover:bg-info/90 text-white font-bold px-6 py-3 rounded-full shadow-lg"
                     onTouchStart={(e) => {
                       e.preventDefault()
                       setKeys(prev => new Set(prev).add('s'))
@@ -383,7 +383,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
 
           {gameState.winner && (
             <div className="space-y-2">
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-xl font-bold text-success">
                 🎉 {gameState.winner} Wins! 🎉
               </div>
               <Button onClick={startGame}>

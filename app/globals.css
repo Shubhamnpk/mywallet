@@ -4,40 +4,72 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.15 0.01 258.34);
-  --card: oklch(0.98 0.002 258.34);
-  --card-foreground: oklch(0.15 0.01 258.34);
+  --background: oklch(0.99 0.002 258.34);
+  --foreground: oklch(0.12 0.02 258.34);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0.02 258.34);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.01 258.34);
-  --primary: oklch(0.5 0.18 162.4);
+  --popover-foreground: oklch(0.12 0.02 258.34);
+  --primary: oklch(0.45 0.15 160);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.01 258.34);
-  --secondary-foreground: oklch(0.15 0.01 258.34);
+  --secondary: oklch(0.94 0.01 258.34);
+  --secondary-foreground: oklch(0.12 0.02 258.34);
   --muted: oklch(0.96 0.005 258.34);
-  --muted-foreground: oklch(0.45 0.01 258.34);
-  --accent: oklch(0.55 0.18 162.4);
+  --muted-foreground: oklch(0.4 0.02 258.34);
+  --accent: oklch(0.45 0.15 160);
   --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.55 0.25 27.325);
+  --destructive: oklch(0.5 0.22 25);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.9 0.005 258.34);
-  --input: oklch(0.96 0.005 258.34);
-  --ring: oklch(0.5 0.18 162.4);
-  --chart-1: oklch(0.6 0.15 162.4);
-  --chart-2: oklch(0.45 0.15 162.4);
+  --border: oklch(0.88 0.01 258.34);
+  --input: oklch(0.94 0.01 258.34);
+  --ring: oklch(0.45 0.15 160);
+  --chart-1: oklch(0.45 0.15 160);
+  --chart-2: oklch(0.35 0.15 160);
   --chart-3: oklch(0.97 0.005 258.34);
   --chart-4: oklch(0.35 0.01 258.34);
   --chart-5: oklch(0.92 0.005 258.34);
-  --radius: 0.5rem;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.35 0.01 258.34);
-  --sidebar-primary: oklch(0.45 0.15 162.4);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.98 0.002 258.34);
+  --sidebar-foreground: oklch(0.25 0.02 258.34);
+  --sidebar-primary: oklch(0.45 0.15 160);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.6 0.15 162.4);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.92 0.005 258.34);
-  --sidebar-ring: oklch(0.45 0.15 162.4);
+  --sidebar-accent: oklch(0.94 0.01 258.34);
+  --sidebar-accent-foreground: oklch(0.12 0.02 258.34);
+  --sidebar-border: oklch(0.9 0.01 258.34);
+  --sidebar-ring: oklch(0.45 0.15 160);
+  --success: oklch(0.42 0.14 160);
+  --warning: oklch(0.45 0.12 65);
+  --error: oklch(0.45 0.15 25);
+  --info: oklch(0.45 0.15 250);
   --base-font-size: 16px;
+
+  /* Premium Goal Specific Tokens */
+  --goal-card-bg: oklch(1 0 0 / 0.4);
+  --goal-card-border: oklch(0.88 0.01 258.34 / 0.5);
+  --goal-progress-glow: oklch(0.45 0.15 160 / 0.3);
+}
+
+.dark {
+  --goal-card-bg: oklch(0.12 0.02 258.34 / 0.4);
+  --goal-card-border: oklch(0.25 0.02 258.34 / 0.5);
+}
+
+@layer utilities {
+  .glass-card {
+    @apply backdrop-blur-xl bg-[var(--goal-card-bg)] border border-[var(--goal-card-border)] shadow-xl;
+  }
+
+  .goal-progress-animate {
+    transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 20px -5px oklch(var(--primary) / 0.5);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px -5px oklch(var(--success) / 0.5);
+  }
 }
 
 .dark {
@@ -73,6 +105,10 @@
   --sidebar-accent-foreground: oklch(0.95 0.005 258.34);
   --sidebar-border: oklch(0.2 0.01 258.34);
   --sidebar-ring: oklch(0.6 0.15 162.4);
+  --success: oklch(0.75 0.12 160);
+  --warning: oklch(0.8 0.12 65);
+  --error: oklch(0.75 0.15 25);
+  --info: oklch(0.75 0.12 250);
 }
 
 @theme inline {
@@ -97,6 +133,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -120,6 +160,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
     /* Added smooth theme transitions and accessibility improvements */
@@ -137,6 +178,7 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+
     body {
       transition: none;
     }
@@ -165,6 +207,7 @@
       --ring: oklch(0.2 0 0);
       --primary: oklch(0.4 0.2 162.4);
     }
+
     .dark {
       --border: oklch(0.8 0 0);
       --ring: oklch(0.9 0 0);
@@ -316,15 +359,26 @@ h6 {
 
 /* PIN Input Error Animation - Enhanced for modern look */
 @keyframes shake {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateX(0) scale(1);
     filter: brightness(1);
   }
-  10%, 30%, 50%, 70%, 90% {
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
     transform: translateX(-4px) scale(1.02);
     filter: brightness(1.1);
   }
-  20%, 40%, 60%, 80% {
+
+  20%,
+  40%,
+  60%,
+  80% {
     transform: translateX(4px) scale(1.02);
     filter: brightness(1.1);
   }
@@ -338,8 +392,10 @@ h6 {
 /* Scrollbar Styles */
 .hide-scrollbars {
   /* Hide scrollbars for Webkit browsers (Chrome, Safari, Edge) */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
 }
 
 .hide-scrollbars::-webkit-scrollbar {

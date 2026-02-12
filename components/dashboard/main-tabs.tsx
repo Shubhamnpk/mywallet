@@ -32,7 +32,7 @@ interface MainTabsProps {
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
   onUpdateCategoryStats?: () => void
-  debtAccounts?: any[] // Add debt accounts prop
+  debtAccounts?: any[]
 }
 
 export function MainTabs({
@@ -70,7 +70,6 @@ export function MainTabs({
   useEffect(() => {
     const validateSession = () => {
       if (!SessionManager.isSessionValid()) {
-        console.log('[MainTabs] Session invalid, dispatching expiry event')
         const event = new CustomEvent('wallet-session-expired')
         window.dispatchEvent(event)
       }
@@ -83,7 +82,6 @@ export function MainTabs({
     const handleTabChange = () => {
       validateSession()
     }
-
 
     const handleClick = () => {
       // Small delay to allow tab state to update
@@ -145,7 +143,7 @@ export function MainTabs({
   ]
 
   return (
-    <div className="space-y-6 pb-32 lg:pb-6">
+    <div className="space-y-6 pb-24 lg:pb-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {/* Desktop Tabs */}
         <div className="hidden lg:block">
@@ -172,22 +170,47 @@ export function MainTabs({
 
         {/* Mobile Bottom Navigation */}
         <div className="block lg:hidden">
-          <TabsList className="fixed bottom-0 left-0 right-0 w-full bg-background/95 backdrop-blur-md border-t border-border shadow-lg z-50 flex justify-around items-center py-5 px-2 h-20">
-            {tabs.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="flex flex-col items-center justify-center p-3 text-xs flex-1 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg transition-all duration-200 ease-in-out"
-              >
-                <div className="relative">
-                  <tab.icon className="w-6 h-6" />
-                  {tab.badge && (
-                    <Badge variant="secondary" className="text-xs h-4 px-1 absolute -top-2 -right-2 bg-red-500 text-white">
-                    </Badge>
-                  )}
-                </div>
-              </TabsTrigger>
-            ))}
+          <TabsList className="fixed bottom-0 left-0 right-0 w-full bg-background/80 backdrop-blur-xl border-t border-zinc-200/80 dark:border-white/10 shadow-2xl z-50 flex justify-around items-end pb-2 pt-1.5 h-[70px] px-4 safe-area-bottom">
+            {tabs.filter(t => ['transactions', 'budgets', 'goals'].includes(t.value)).map((tab) => {
+              const isActive = activeTab === tab.value;
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="flex flex-col items-center justify-end p-0 h-14 w-16 gap-1.5 data-[state=active]:bg-transparent transition-all duration-300 ease-out flex-1 group"
+                >
+                  <div className={`relative p-2 rounded-2xl transition-all duration-300 ${isActive ? 'bg-primary text-primary-foreground translate-y-[-2px] shadow-lg shadow-primary/25' : 'text-muted-foreground hover:bg-muted/50'}`}>
+                    <tab.icon className={`w-6 h-6 transition-all duration-300 ${isActive ? 'scale-110' : 'group-active:scale-95'}`} />
+                    {tab.badge && (
+                      <Badge variant="secondary" className="text-xs h-4 w-4 p-0 flex items-center justify-center rounded-full absolute -top-1 -right-1 bg-destructive text-white border-2 border-background">
+                        {/* Dot indicator */}
+                      </Badge>
+                    )}
+                  </div>
+                  <span className={`text-[10px] font-medium transition-all duration-300 ${isActive ? 'text-primary translate-y-[-1px]' : 'text-muted-foreground/70'}`}>
+                    {tab.label}
+                  </span>
+                </TabsTrigger>
+              )
+            })}
+
+            {/* Tools Tab Trigger */}
+            <TabsTrigger
+              value="tools-menu"
+              onClick={(e) => {
+                e.preventDefault()
+                setActiveTab("tools-menu")
+              }}
+              data-state={['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'active' : 'inactive'}
+              className="flex flex-col items-center justify-end p-0 h-14 w-16 gap-1.5 data-[state=active]:bg-transparent transition-all duration-300 ease-out flex-1 group"
+            >
+              <div className={`relative p-2 rounded-2xl transition-all duration-300 ${['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'bg-primary text-primary-foreground translate-y-[-2px] shadow-lg shadow-primary/25' : 'text-muted-foreground hover:bg-muted/50'}`}>
+                <Briefcase className={`w-6 h-6 transition-all duration-300 ${['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'scale-110' : 'group-active:scale-95'}`} />
+              </div>
+              <span className={`text-[10px] font-medium transition-all duration-300 ${['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'text-primary translate-y-[-1px]' : 'text-muted-foreground/70'}`}>
+                Tools
+              </span>
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -252,6 +275,29 @@ export function MainTabs({
               onAddGoal={onAddGoal}
               onAddBudget={onAddBudget}
             />
+          </TabsContent>
+
+          {/* Mobile Tools Menu */}
+          <TabsContent value="tools-menu" className="space-y-6 lg:hidden animate-in fade-in-50 slide-in-from-bottom-4 duration-300">
+            <div className="grid grid-cols-2 gap-4">
+              {tabs.filter(t => ['debt-credit', 'categories', 'portfolio', 'insights'].includes(t.value)).map((tool) => (
+                <button
+                  key={tool.value}
+                  onClick={() => setActiveTab(tool.value)}
+                  className="flex flex-col items-center justify-center p-6 bg-card border rounded-xl shadow-sm hover:bg-muted/50 transition-all active:scale-95"
+                >
+                  <div className="p-3 bg-primary/10 rounded-full mb-3 text-primary">
+                    <tool.icon className="w-8 h-8" />
+                  </div>
+                  <span className="font-semibold text-lg">{tool.label}</span>
+                  <span className="text-xs text-muted-foreground mt-1 text-center">{tool.description}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-4 bg-muted/30 rounded-lg border border-border/50 text-center">
+              <p className="text-sm text-muted-foreground">Select a tool to open. Navigate back using the bottom menu.</p>
+            </div>
           </TabsContent>
         </div>
       </Tabs>

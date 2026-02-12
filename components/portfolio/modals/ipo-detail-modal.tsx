@@ -112,8 +112,8 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         ipo?.status === 'upcoming' ? 'Opening in' :
             'Closed';
 
-    const statusColor = ipo?.status === 'open' ? 'text-green-600 bg-green-500/10 border-green-500/20' :
-        ipo?.status === 'upcoming' ? 'text-blue-600 bg-blue-500/10 border-blue-500/20' :
+    const statusColor = ipo?.status === 'open' ? 'text-success bg-success/10 border-success/20' :
+        ipo?.status === 'upcoming' ? 'text-info bg-info/10 border-info/20' :
             'text-muted-foreground bg-muted/20 border-muted/30';
 
     // Helper to get actionable advice based on status
@@ -126,17 +126,17 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                     description: userProfile?.meroShare?.isAutomatedEnabled
                         ? `You can apply automatically for 10 units of ${ipo.company}.`
                         : "You can apply for this IPO now through MeroShare. We recommend applying for 10 units as per current allotment trends.",
-                    icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
-                    bgColor: "bg-green-500/5",
-                    borderColor: "border-green-500/20"
+                    icon: <CheckCircle2 className="w-5 h-5 text-success" />,
+                    bgColor: "bg-success/5",
+                    borderColor: "border-success/20"
                 };
             case 'upcoming':
                 return {
                     title: "Ready to invest?",
                     description: `Opens on ${ipo.openingDay || 'the scheduled date'}. Keep रु 1,000 ready in your account.`,
-                    icon: <BellRing className="w-5 h-5 text-blue-500 animate-bounce" />,
-                    bgColor: "bg-blue-500/5",
-                    borderColor: "border-blue-500/20"
+                    icon: <BellRing className="w-5 h-5 text-info animate-bounce" />,
+                    bgColor: "bg-info/5",
+                    borderColor: "border-info/20"
                 };
             case 'closed':
             default:
@@ -176,7 +176,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             {ipo.scraped_at && (
                                 <div className="flex items-center gap-1.5 opacity-50">
                                     <Clock className="w-3 h-3" />
-                                    <span className="text-[8px] font-black uppercase tracking-widest">
+                                    <span className="text-[10px] font-black uppercase tracking-widest">
                                         Data Sync: {new Date(ipo.scraped_at).toLocaleDateString()}
                                     </span>
                                 </div>
@@ -189,12 +189,12 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
 
                         <div className="flex items-center gap-2 mt-4">
                             {ipo.status && (
-                                <Badge className={cn("text-[9px] font-black uppercase px-3 py-1 border shadow-sm", statusColor)}>
+                                <Badge className={cn("text-[10px] font-black uppercase px-3 py-1 border shadow-sm", statusColor)}>
                                     {ipo.status === 'open' ? 'Currently Open' : ipo.status}
                                 </Badge>
                             )}
                             {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
-                                <Badge variant="outline" className="text-[9px] font-black uppercase px-3 py-1 border-primary/20 text-primary bg-primary/10 backdrop-blur-sm">
+                                <Badge variant="outline" className="text-[10px] font-black uppercase px-3 py-1 border-primary/20 text-primary bg-primary/10 backdrop-blur-sm">
                                     <Activity className={cn("w-3 h-3 mr-1.5", ipo.status === 'open' && "animate-pulse")} />
                                     {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
                                 </Badge>
@@ -223,35 +223,35 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         {/* Summary Stats */}
                         <div className="grid grid-cols-2 gap-3">
                             <div className="p-4 rounded-2xl bg-muted/20 border border-muted/50 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
-                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
                                     <LayoutGrid className="w-3 h-3 text-primary/60" /> Issue Size
                                 </span>
                                 <span className="text-lg font-black font-mono tracking-tight text-foreground truncate">
                                     {ipo.units.split(' ')[0]}
                                 </span>
-                                <span className="text-[8px] font-bold text-muted-foreground/60 uppercase">Total Units</span>
+                                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">Total Units</span>
                             </div>
                             <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
-                                <span className="text-[9px] font-black text-primary/70 uppercase tracking-widest flex items-center gap-1.5">
+                                <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest flex items-center gap-1.5">
                                     <CreditCard className="w-3 h-3" /> Min Apply
                                 </span>
                                 <span className="text-lg font-black font-mono tracking-tight text-primary">
                                     रु 1,000
                                 </span>
-                                <span className="text-[8px] font-bold text-primary/60 uppercase">10 Units Min</span>
+                                <span className="text-[10px] font-bold text-primary/60 uppercase">10 Units Min</span>
                             </div>
                         </div>
 
                         {/* Timeline */}
                         <div className="space-y-3">
                             <div className="flex items-center justify-between px-1">
-                                <h4 className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em]">Timeline</h4>
-                                <span className="text-[8px] font-black text-muted-foreground/30 uppercase">BS and AD Calendar</span>
+                                <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Timeline</h4>
+                                <span className="text-[10px] font-black text-muted-foreground/30 uppercase">BS and AD Calendar</span>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="flex flex-col p-3.5 rounded-2xl border border-primary/20 bg-primary/5 relative overflow-hidden group hover:border-primary/40 transition-all text-left">
-                                    <span className="text-[8px] font-black text-primary/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none">
+                                    <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none">
                                         <Calendar className="w-3 h-3" /> Open Date
                                     </span>
                                     <span className="text-[14px] font-black text-foreground leading-tight truncate">
@@ -264,7 +264,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                             </span>
                                         )}
                                         {ipo.openingDate && (
-                                            <span className="text-[9px] font-medium text-primary/40 uppercase bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
+                                            <span className="text-[10px] font-medium text-primary/40 uppercase bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
                                                 {new Date(ipo.openingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                             </span>
                                         )}
@@ -272,7 +272,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 </div>
 
                                 <div className="flex flex-col p-3.5 rounded-2xl border border-muted/50 bg-muted/10 hover:border-muted-foreground/30 transition-all text-left">
-                                    <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none text-left">
+                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none text-left">
                                         <Clock className="w-3 h-3" /> End Date
                                     </span>
                                     <span className="text-[14px] font-black text-foreground/80 leading-tight truncate text-left">
@@ -285,7 +285,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                             </span>
                                         )}
                                         {ipo.closingDate && (
-                                            <span className="text-[9px] font-medium text-muted-foreground/40 uppercase bg-muted/20 px-1.5 py-0.5 rounded-md border border-muted/30">
+                                            <span className="text-[10px] font-medium text-muted-foreground/40 uppercase bg-muted/20 px-1.5 py-0.5 rounded-md border border-muted/30">
                                                 {new Date(ipo.closingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                             </span>
                                         )}
@@ -313,15 +313,16 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         <div className="grid grid-cols-2 gap-3">
                             <Button
                                 variant="outline"
-                                className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all group"
+                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all group"
                                 onClick={() => window.open(ipo.url, '_blank')}
+                                disabled={!ipo.url}
                             >
                                 <ExternalLink className="w-3.5 h-3.5 mr-2 group-hover:scale-110 transition-transform" />
                                 Source Details
                             </Button>
                             <Button
-                                className="rounded-xl font-bold text-[10px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20 bg-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
-                                disabled={isApplying}
+                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20 bg-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                disabled={isApplying || isCheckingResult}
                                 onClick={() => {
                                     if (ipo.status === 'open') {
                                         if (userProfile?.meroShare?.isAutomatedEnabled) {
@@ -353,7 +354,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         {ipo.announcement_date && (
                             <div className="flex items-center justify-center gap-2 mt-3 grayscale opacity-30">
                                 <History className="w-2.5 h-2.5" />
-                                <p className="text-[8px] font-bold uppercase tracking-[0.1em]">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.1em]">
                                     Announced: {ipo.announcement_date}
                                 </p>
                             </div>

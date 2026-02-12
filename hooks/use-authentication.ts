@@ -151,12 +151,13 @@ export function useAuthentication(): AuthState & AuthActions {
     }
 
     // Listen for session expiry events
-    const handleSessionExpiry = () => {
-      console.log('[useAuthentication] Session expired, updating auth state')
-      setAuthState(prev => ({
-        ...prev,
-        isAuthenticated: false,
-        masterKey: undefined,
+	    const handleSessionExpiry = () => {
+	      console.log('[useAuthentication] Session expired, updating auth state')
+	      SecureKeyManager.expireKeyCache()
+	      setAuthState(prev => ({
+	        ...prev,
+	        isAuthenticated: false,
+	        masterKey: undefined,
       }))
     }
 
@@ -176,9 +177,10 @@ export function useAuthentication(): AuthState & AuthActions {
     try {
       const success = await SecurePinManager.setupPin(pin)
 
-      if (success) {
-        const masterKey = await SecureKeyManager.getMasterKey(pin)
-        const status = SecurePinManager.getAuthStatus()
+	      if (success) {
+	        const masterKey = await SecureKeyManager.getMasterKey(pin)
+	        const status = SecurePinManager.getAuthStatus()
+	        SecureKeyManager.cacheSessionPin(pin)
 
         // Create session after successful PIN setup for consistency
         SessionManager.createSession()
@@ -376,9 +378,10 @@ export function useAuthentication(): AuthState & AuthActions {
       // Regular PIN validation
       const result = await SecurePinManager.validatePin(pin)
 
-      if (result.success) {
-        // Get master key after successful validation
-        const masterKey = await SecureKeyManager.getMasterKey(pin)
+	      if (result.success) {
+	        // Get master key after successful validation
+	        const masterKey = await SecureKeyManager.getMasterKey(pin)
+	        SecureKeyManager.cacheSessionPin(pin)
 
         // Create session after successful authentication
         SessionManager.createSession()
@@ -485,9 +488,9 @@ export function useAuthentication(): AuthState & AuthActions {
   }, [])
 
   // Logout
-  const logout = useCallback(() => {
-    // Clear cached keys
-    SecureKeyManager.expireKeyCache()
+	  const logout = useCallback(() => {
+	    // Clear cached keys
+	    SecureKeyManager.expireKeyCache()
 
     setAuthState(prev => ({
       ...prev,
@@ -502,12 +505,12 @@ export function useAuthentication(): AuthState & AuthActions {
   }, [])
 
   // Lock App - manually lock and return to PIN screen
-  const lockApp = useCallback(() => {
+	  const lockApp = useCallback(() => {
     // Clear session
     SessionManager.clearSession()
 
-    // Clear cached keys
-    SecureKeyManager.expireKeyCache()
+	    // Clear cached keys
+	    SecureKeyManager.expireKeyCache()
 
     // Remove authentication timestamp to force lock screen
     localStorage.removeItem("wallet_last_auth")
@@ -525,8 +528,8 @@ export function useAuthentication(): AuthState & AuthActions {
   }, [])
 
   // Reset PIN (emergency/security reset)
-  const resetPin = useCallback(() => {
-    SecureKeyManager.clearAllKeys() // Clear all encryption keys
+	  const resetPin = useCallback(() => {
+	    SecureKeyManager.clearAllKeys() // Clear all encryption keys
     SecurePinManager.clearAllSecurityData() // Comprehensive security data cleanup
 
     setAuthState({

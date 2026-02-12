@@ -15,10 +15,11 @@ import {
   Award,
   Zap,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from "lucide-react"
 import type { Goal, UserProfile } from "@/types/wallet"
-import { formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 interface GoalProgressVisualizationProps {
   goals: Goal[]
@@ -111,17 +112,17 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
     switch (status) {
       case 'completed': return 'text-emerald-600 bg-emerald-50 border-emerald-200'
       case 'ahead': return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'on-track': return 'text-amber-600 bg-amber-50 border-amber-200'
-      case 'behind': return 'text-red-600 bg-red-50 border-red-200'
+      case 'on-track': return 'text-primary bg-primary/50 border-primary/20'
+      case 'behind': return 'text-amber-600 bg-amber-50 border-amber-200'
     }
   }
 
   const getStatusIcon = (status: GoalProjection['status']) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="w-5 h-5" />
-      case 'ahead': return <TrendingUp className="w-5 h-5" />
-      case 'on-track': return <Target className="w-5 h-5" />
-      case 'behind': return <AlertTriangle className="w-5 h-5" />
+      case 'completed': return <CheckCircle2 className="w-5 h-5 text-success" />
+      case 'ahead': return <TrendingUp className="w-5 h-5 text-info" />
+      case 'on-track': return <Target className="w-5 h-5 text-primary" />
+      case 'behind': return <AlertTriangle className="w-5 h-5 text-error" />
     }
   }
 
@@ -155,196 +156,231 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
 
   return (
     <div className="space-y-6">
-      {/* Overall Progress Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            Goal Progress Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <p className="text-2xl font-bold text-blue-600">{goals.length}</p>
-              <p className="text-sm text-blue-600 dark:text-blue-400">Total Goals</p>
-            </div>
-            <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-              <p className="text-2xl font-bold text-emerald-600">
-                {goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length}
-              </p>
-              <p className="text-sm text-emerald-600 dark:text-emerald-400">Completed</p>
-            </div>
-            <div className="text-center p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-              <p className="text-2xl font-bold text-amber-600">
-                {formatCurrency(
-                  goals.reduce((sum, g) => sum + g.currentAmount, 0),
-                  userProfile.currency,
-                  userProfile.customCurrency
-                )}
-              </p>
-              <p className="text-sm text-amber-600 dark:text-amber-400">Total Saved</p>
-            </div>
-            <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-              <p className="text-2xl font-bold text-purple-600">
-                {Math.round(goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length) || 0}%
-              </p>
-              <p className="text-sm text-purple-600 dark:text-purple-400">Avg Progress</p>
-            </div>
-            <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-              <p className="text-2xl font-bold text-orange-600">
-                {goalProjections.filter(g => g.status === 'on-track').length}
-              </p>
-              <p className="text-sm text-orange-600 dark:text-orange-400">On Track</p>
-            </div>
-            <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-2xl font-bold text-red-600">
-                {goalProjections.filter(g => g.status === 'behind').length}
-              </p>
-              <p className="text-sm text-red-600 dark:text-red-400">Behind Schedule</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Individual Goal Progress */}
-      <div className="grid gap-6">
-        {goalProjections.map((projection) => (
-          <Card key={projection.goal.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3">
-                  {getStatusIcon(projection.status)}
-                  {projection.goal.title || projection.goal.name}
-                  <Badge className={getStatusColor(projection.status)}>
-                    {projection.status.replace('-', ' ').toUpperCase()}
-                  </Badge>
-                </CardTitle>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-primary">
-                    {projection.progress.toFixed(1)}%
-                  </p>
-                  <p className="text-sm text-muted-foreground">Complete</p>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Strategy Hub - Left Side/Top */}
+        <Card className="lg:col-span-1 border-primary/10 overflow-hidden shadow-xl bg-background/50 backdrop-blur-sm flex flex-col">
+          <CardHeader className="border-b bg-muted/30 py-3 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                <div className="p-1.5 bg-primary/10 rounded-md text-primary">
+                  <Target className="w-4 h-4" />
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <Progress value={projection.progress} className="h-3" />
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>
-                    {formatCurrency(projection.goal.currentAmount, userProfile.currency, userProfile.customCurrency)}
-                  </span>
-                  <span>
-                    {formatCurrency(projection.goal.targetAmount, userProfile.currency, userProfile.customCurrency)}
-                  </span>
+                Strategy Hub
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 flex-1 flex flex-col justify-between gap-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-muted/20 border border-muted/50 rounded-xl">
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Goals</p>
+                  <p className="text-xl font-bold font-mono text-primary">{goals.length}</p>
+                </div>
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <Target className="w-4 h-4 text-primary" />
                 </div>
               </div>
 
-              {/* Key Metrics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Remaining</p>
-                  <p className="font-semibold text-amber-600">
-                    {formatCurrency(projection.remaining, userProfile.currency, userProfile.customCurrency)}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/20 rounded-xl">
+                  <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Done</p>
+                  <p className="text-lg font-bold font-mono text-emerald-600">
+                    {goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length}
                   </p>
                 </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Monthly Needed</p>
-                  <p className="font-semibold text-blue-600">
-                    {formatCurrency(projection.monthlyNeeded, userProfile.currency, userProfile.customCurrency)}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Time to Complete</p>
-                  <p className="font-semibold text-purple-600">
-                    {formatTime(projection.timeToComplete)}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Target Date</p>
-                  <p className="font-semibold text-emerald-600">
-                    {new Date(projection.goal.targetDate).toLocaleDateString()}
+                <div className="p-3 bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 rounded-xl">
+                  <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">Lagging</p>
+                  <p className="text-lg font-bold font-mono text-amber-600">
+                    {goalProjections.filter(g => g.status === 'behind').length}
                   </p>
                 </div>
               </div>
 
-              {/* Milestones */}
-              <div className="space-y-3">
-                <h4 className="font-semibold flex items-center gap-2">
-                  <Trophy className="w-4 h-4" />
-                  Milestones
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {projection.milestones.map((milestone) => (
-                    <div
-                      key={milestone.percentage}
-                      className={`p-3 rounded-lg border-2 transition-all ${
-                        milestone.achieved
-                          ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800'
-                          : 'bg-muted/30 border-muted'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1 rounded ${
-                          milestone.achieved ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {milestone.icon}
-                        </div>
-                        <span className="text-xs font-medium">{milestone.percentage}%</span>
+              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20 rounded-xl">
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Total Savings Progress</p>
+                <div className="flex items-end justify-between mb-1">
+                  <p className="text-lg font-bold font-mono text-blue-600 truncate mr-2">
+                    {formatCurrency(goals.reduce((sum, g) => sum + g.currentAmount, 0), userProfile.currency, userProfile.customCurrency)}
+                  </p>
+                  <p className="text-xs font-bold text-blue-600/70 shrink-0">
+                    {Math.round(goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length) || 0}%
+                  </p>
+                </div>
+                <Progress
+                  value={goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length || 0}
+                  className="h-1 bg-blue-100 dark:bg-blue-900/30"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl mt-auto">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-3 h-3 text-primary" />
+                <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Intelligence</p>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground italic">
+                {goalProjections.filter(g => g.status === 'behind').length > 0
+                  ? "Your trajectory suggests focusing on 'Lagging' goals to maintain overall momentum."
+                  : "Excellent coverage! All active goals are performing within projected parameters."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Individual Goal View - Right Side/Main */}
+        <div className="lg:col-span-3 space-y-4">
+          {goalProjections.map((projection) => (
+            <Card key={projection.goal.id} className="border-primary/10 overflow-hidden shadow-lg bg-background/40 backdrop-blur-md transition-all hover:shadow-primary/5 group/card">
+              <div className="flex flex-col md:flex-row">
+                {/* Left Section: Status & Progress */}
+                <div className="flex-1 p-5 border-b md:border-b-0 md:border-r border-primary/5">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "p-2 rounded-lg text-white shadow-sm transition-transform group-hover/card:scale-110",
+                        projection.status === 'completed' ? 'bg-emerald-500' :
+                          projection.status === 'ahead' ? 'bg-blue-500' :
+                            projection.status === 'behind' ? 'bg-amber-500' : 'bg-primary'
+                      )}>
+                        {getStatusIcon(projection.status)}
                       </div>
-                      <p className="text-xs text-muted-foreground mb-1">{milestone.label}</p>
-                      <p className={`text-sm font-semibold ${
-                        milestone.achieved ? 'text-emerald-600' : 'text-muted-foreground'
-                      }`}>
-                        {formatCurrency(milestone.amount, userProfile.currency, userProfile.customCurrency)}
-                      </p>
+                      <div>
+                        <h3 className="text-base font-bold leading-none mb-1.5">
+                          {projection.goal.title || projection.goal.name}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={cn("text-[8px] font-bold uppercase tracking-widest h-3.5 px-1", getStatusColor(projection.status))}>
+                            {projection.status.replace('-', ' ')}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                            <Calendar className="w-2.5 h-2.5" /> {new Date(projection.goal.targetDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Projection Insights */}
-              {projection.status !== 'completed' && (
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
-                    <Zap className="w-4 h-4" />
-                    Projection Insights
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-blue-600 dark:text-blue-400 mb-1">Projected Completion</p>
-                      <p className="font-semibold text-blue-700 dark:text-blue-300">
-                        {projection.projectedCompletion.toLocaleDateString()}
-                      </p>
-                      <p className="text-xs text-blue-500 dark:text-blue-400">
-                        Based on current savings rate
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-blue-600 dark:text-blue-400 mb-1">Status</p>
-                      <p className={`font-semibold ${
-                        projection.status === 'ahead' ? 'text-emerald-600' :
-                        projection.status === 'behind' ? 'text-red-600' :
-                        'text-amber-600'
-                      }`}>
-                        {projection.status === 'ahead' ? 'Ahead of Schedule' :
-                         projection.status === 'behind' ? 'Behind Schedule' :
-                         'On Track'}
-                      </p>
-                      <p className="text-xs text-blue-500 dark:text-blue-400">
-                        {projection.status === 'ahead' ? 'Great progress!' :
-                         projection.status === 'behind' ? 'Consider increasing contributions' :
-                         'Keep up the good work'}
+                    <div className="text-right">
+                      <p className="text-2xl font-bold font-mono text-primary leading-none">
+                        {projection.progress.toFixed(1)}<span className="text-sm font-normal opacity-70 ml-0.5">%</span>
                       </p>
                     </div>
                   </div>
+
+                  {/* Enhanced Progress Bar with Milestones */}
+                  <div className="space-y-8">
+                    <div className="relative pt-1 px-1">
+                      {/* Milestone Markers */}
+                      <div className="absolute top-[-4px] left-0 w-full h-full pointer-events-none z-10 px-1">
+                        {[25, 50, 75].map((m) => (
+                          <div
+                            key={m}
+                            className={cn(
+                              "absolute w-[1px] h-[16px] -translate-x-1/2 transition-colors",
+                              projection.progress >= m ? "bg-primary" : "bg-muted-foreground/30"
+                            )}
+                            style={{ left: `${m}%` }}
+                          >
+                            <div className={cn(
+                              "absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full",
+                              projection.progress >= m ? "bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" : "bg-muted-foreground/30"
+                            )} />
+                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] font-bold opacity-40">{m}%</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="h-2.5 bg-muted/30 rounded-full overflow-hidden border border-primary/5 relative">
+                        <div
+                          className={cn(
+                            "h-full transition-all duration-1000 ease-out",
+                            projection.status === 'completed' ? 'bg-emerald-500' : 'bg-primary',
+                            projection.status === 'behind' && 'bg-amber-500'
+                          )}
+                          style={{ width: `${Math.min(projection.progress, 100)}%` }}
+                        />
+                        {projection.progress < 100 && (
+                          <div
+                            className="absolute top-0 right-0 h-full bg-primary/5 animate-pulse"
+                            style={{ width: `${100 - Math.min(projection.progress, 100)}%` }}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-3 bg-muted/10 rounded-xl border border-dashed border-primary/10">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Still Needed</p>
+                        <p className="text-sm font-bold font-mono text-red-500/80">
+                          {formatCurrency(projection.remaining, userProfile.currency, userProfile.customCurrency)}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-muted/10 rounded-xl border border-dashed border-primary/10">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Monthly Plan</p>
+                        <p className="text-sm font-bold font-mono text-blue-600/80">
+                          {formatCurrency(projection.monthlyNeeded, userProfile.currency, userProfile.customCurrency)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+
+                {/* Right Section: Intelligence & Projections */}
+                <div className="w-full md:w-64 lg:w-72 bg-muted/10 p-5 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-primary/10 rounded-md">
+                        <Zap className="w-3 h-3 text-primary" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Strategic Insight</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="p-3 bg-background/50 rounded-xl border border-primary/5">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase opacity-60 mb-1">Est. Completion</p>
+                        <p className="text-sm font-bold font-mono text-primary">
+                          {projection.projectedCompletion.toLocaleDateString()}
+                          <span className="text-[10px] font-normal opacity-60 ml-2">({formatTime(projection.timeToComplete)})</span>
+                        </p>
+                        <p className="text-[8px] text-muted-foreground italic mt-1 font-medium">
+                          {projection.status === 'ahead' ? 'Running ahead of original schedule' :
+                            projection.status === 'behind' ? 'Action required to meet deadline' : 'Aligned with target schedule'}
+                        </p>
+                      </div>
+
+                      <div className={cn(
+                        "p-3 rounded-xl border text-[10px] leading-relaxed font-medium",
+                        projection.status === 'ahead' ? 'bg-emerald-50/50 border-emerald-200/50 text-emerald-700/80' :
+                          projection.status === 'behind' ? 'bg-amber-50/50 border-amber-200/50 text-amber-700/80' :
+                            'bg-blue-50/50 border-blue-200/50 text-blue-700/80'
+                      )}>
+                        {projection.status === 'ahead' ? 'Velocity is high. You could potentially increase your target or complete early.' :
+                          projection.status === 'behind' ? `Warning: You need to increase monthly savings by approx 20% to hit original target.` :
+                            'Stable trajectory. Maintain current savings levels to achieve target on time.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-primary/10 mt-4 flex items-center justify-between">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Velocity Index</p>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "w-1 h-3 rounded-full transition-all duration-500",
+                            i <= (projection.progress > 0 ? Math.ceil(projection.progress / 20) : 1)
+                              ? projection.status === 'behind' ? "bg-amber-400" : "bg-primary"
+                              : "bg-muted"
+                          )}
+                          style={{ transitionDelay: `${i * 100}ms` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   )

@@ -66,6 +66,8 @@ export function PortfolioList() {
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
+    const [showAllIPOs, setShowAllIPOs] = useState(false)
+    const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
@@ -403,7 +405,7 @@ export function PortfolioList() {
                     <CardContent className="px-3 sm:px-6">
                         <div className={cn(
                             "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
-                            totalPl >= 0 ? "bg-green-500/10 text-green-600 border border-green-500/20" : "bg-red-500/10 text-red-600 border border-red-500/20"
+                            totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                         )}>
                             {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString()} ({totalPlPerc.toFixed(2)}%)
                         </div>
@@ -498,7 +500,7 @@ export function PortfolioList() {
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">Return</span>
                             <span className={cn(
                                 "text-base sm:text-lg font-black font-mono",
-                                isProfit ? "text-green-600" : "text-red-600"
+                                isProfit ? "text-success" : "text-error"
                             )}>
                                 {isProfit ? "+" : ""}{profitPerc.toFixed(1)}%
                             </span>
@@ -519,7 +521,7 @@ export function PortfolioList() {
                 </CardContent>
                 <div className="h-1.5 w-full bg-muted/20">
                     <div
-                        className={cn("h-full transition-all duration-1000", isProfit ? "bg-green-500" : "bg-red-500")}
+                        className={cn("h-full transition-all duration-1000", isProfit ? "bg-success" : "bg-error")}
                         style={{ width: `${Math.min(Math.abs(profitPerc), 100)}%` }}
                     />
                 </div>
@@ -528,6 +530,42 @@ export function PortfolioList() {
     }
 
     if (viewMode === "overview") {
+        const ipoStatusOrder: Record<string, number> = { open: 0, upcoming: 1, closed: 2 }
+        const sortedIPOs = [...upcomingIPOs].sort((a, b) => {
+            const aRank = ipoStatusOrder[a.status ?? ""] ?? 3
+            const bRank = ipoStatusOrder[b.status ?? ""] ?? 3
+            return aRank - bRank
+        })
+        const filteredIPOs = ipoFilter === "all" ? sortedIPOs : sortedIPOs.filter((ipo) => ipo.status === ipoFilter)
+        const openIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "open").length
+        const upcomingIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "upcoming").length
+        const closedIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "closed").length
+        const statusSummaryLabel = openIpoCount > 0 ? "Open Now" : upcomingIpoCount > 0 ? "Upcoming" : "Recent"
+        const displayedIPOs = showAllIPOs ? filteredIPOs : filteredIPOs.slice(0, 5)
+        const sentiment = openIpoCount >= 3
+            ? {
+                label: "Strong Bullish",
+                toneClass: "text-success",
+                description: `${openIpoCount} IPOs are open right now, showing strong current participation.`,
+            }
+            : openIpoCount > 0
+                ? {
+                    label: "Bullish",
+                    toneClass: "text-success",
+                    description: `${openIpoCount} IPO ${openIpoCount === 1 ? "is" : "are"} open now, with ${upcomingIpoCount} in the pipeline.`,
+                }
+                : upcomingIpoCount > 0
+                    ? {
+                        label: "Building Momentum",
+                        toneClass: "text-info",
+                        description: `No IPO is open today, but ${upcomingIpoCount} ${upcomingIpoCount === 1 ? "is" : "are"} upcoming soon.`,
+                    }
+                    : {
+                        label: "Calm Window",
+                        toneClass: "text-muted-foreground",
+                        description: `No open or upcoming IPOs right now. Recently closed: ${closedIpoCount}.`,
+                    }
+
         return (
             <>
                 {/* Global Modals for Overview */}
@@ -620,33 +658,69 @@ export function PortfolioList() {
                                         </div>
                                     </CardContent>
                                 </Card>
-                            ) : upcomingIPOs.length > 0 ? (
+                            ) : sortedIPOs.length > 0 ? (
                                 <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-transparent shadow-xl overflow-hidden backdrop-blur-sm text-left">
                                     <CardHeader className="pb-2 flex flex-row items-center justify-between border-b border-primary/10">
                                         <div>
-                                            <Badge className="bg-primary text-primary-foreground font-black text-[9px] uppercase tracking-widest mb-1.5 px-2">Live Now</Badge>
+                                            <Badge className="bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest mb-1.5 px-2">
+                                                {statusSummaryLabel}
+                                            </Badge>
                                             <CardTitle className="text-lg font-black flex items-center gap-2">Upcoming IPOs & Rights</CardTitle>
                                         </div>
-                                        <Button variant="ghost" size="sm" className="h-8 rounded-lg text-primary text-[10px] font-black uppercase tracking-wider">
-                                            See All
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Select
+                                                value={ipoFilter}
+                                                onValueChange={(value) => {
+                                                    setIpoFilter(value as "all" | "open" | "upcoming" | "closed")
+                                                    setShowAllIPOs(false)
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8 w-[120px] rounded-lg text-[11px] font-black uppercase tracking-wider border-primary/20 bg-card/60">
+                                                    <SelectValue placeholder="Filter" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All</SelectItem>
+                                                    <SelectItem value="open">Open</SelectItem>
+                                                    <SelectItem value="upcoming">Upcoming</SelectItem>
+                                                    <SelectItem value="closed">Closed</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {filteredIPOs.length > 5 && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 rounded-lg text-primary text-[11px] font-black uppercase tracking-wider"
+                                                    onClick={() => setShowAllIPOs((prev) => !prev)}
+                                                >
+                                                    {showAllIPOs ? "Show Less" : "See All"}
+                                                </Button>
+                                            )}
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="divide-y divide-muted/10">
-                                            {upcomingIPOs.slice(0, 5).map((ipo, i) => {
+                                            {displayedIPOs.length > 0 ? displayedIPOs.map((ipo) => {
                                                 const statusLabel = ipo.status === 'open' ? 'Closing in' :
                                                     ipo.status === 'upcoming' ? 'Opening in' :
                                                         'Closed';
 
-                                                const statusColor = ipo.status === 'open' ? 'text-green-600 bg-green-500/10 border-green-500/20' :
-                                                    ipo.status === 'upcoming' ? 'text-blue-600 bg-blue-500/10 border-blue-500/20' :
+                                                const statusColor = ipo.status === 'open' ? 'text-success bg-success/10 border-success/20' :
+                                                    ipo.status === 'upcoming' ? 'text-info bg-info/10 border-info/20' :
                                                         'text-muted-foreground bg-muted/20 border-muted/30';
 
                                                 return (
                                                     <div
-                                                        key={i}
+                                                        key={`${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`}
                                                         className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
                                                         onClick={() => handleViewIPODetail(ipo)}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === "Enter" || e.key === " ") {
+                                                                e.preventDefault()
+                                                                handleViewIPODetail(ipo)
+                                                            }
+                                                        }}
                                                     >
                                                         <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1 text-left">
                                                             <div className="flex items-center gap-2 flex-wrap">
@@ -654,12 +728,12 @@ export function PortfolioList() {
                                                                     {ipo.company}
                                                                 </span>
                                                                 {ipo.status && (
-                                                                    <Badge className={cn("text-[8px] font-black uppercase px-2 py-0 border", statusColor)}>
-                                                                        {ipo.status === 'open' ? 'Open Today' : ipo.status}
+                                                                    <Badge className={cn("text-[10px] font-black uppercase px-2 py-0 border", statusColor)}>
+                                                                        {ipo.status === 'open' ? 'Open Today' : ipo.status.charAt(0).toUpperCase() + ipo.status.slice(1)}
                                                                     </Badge>
                                                                 )}
                                                                 {ipo.status === 'open' && userProfile?.meroShare?.isAutomatedEnabled && (
-                                                                    <Badge variant="outline" className="text-[8px] font-black uppercase px-2 py-0 border-primary shadow-[0_0_10px_rgba(var(--primary),0.3)] animate-pulse bg-primary/10 text-primary">
+                                                                    <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0 border-primary shadow-[0_0_10px_rgba(var(--primary),0.3)] animate-pulse bg-primary/10 text-primary">
                                                                         <Sparkles className="w-2.5 h-2.5 mr-1" />
                                                                         Automation Ready
                                                                     </Badge>
@@ -671,13 +745,13 @@ export function PortfolioList() {
                                                                         <div className="flex flex-col gap-1 items-start">
                                                                             <div className={cn(
                                                                                 "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
-                                                                                ipo.status === 'open' ? "border-green-500/30 text-green-600 bg-green-500/5" : "border-primary/30 text-primary bg-primary/5"
+                                                                                ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
                                                                             )}>
                                                                                 <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
                                                                                 {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
                                                                             </div>
                                                                             {ipo.status === 'upcoming' && ipo.openingDay && (
-                                                                                <span className="text-[9px] font-bold text-primary/60 uppercase tracking-tighter">
+                                                                                <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
                                                                                     Starts on {ipo.openingDay}
                                                                                 </span>
                                                                             )}
@@ -689,7 +763,7 @@ export function PortfolioList() {
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
-                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0 h-auto"
+                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0 h-auto"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleViewIPODetail(ipo);
@@ -700,7 +774,11 @@ export function PortfolioList() {
                                                         <div className="absolute inset-y-0 left-0 w-1 bg-primary scale-y-0 group-hover/item:scale-y-100 transition-transform origin-center" />
                                                     </div>
                                                 )
-                                            })}
+                                            }) : (
+                                                <div className="p-6 text-center text-muted-foreground text-sm font-medium">
+                                                    No IPOs found for this filter.
+                                                </div>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -716,7 +794,7 @@ export function PortfolioList() {
                             <Card className="bg-card/40 backdrop-blur-sm border-muted/50 flex flex-col text-left">
                                 <CardHeader>
                                     <CardTitle className="text-lg font-black">Market Sentiment</CardTitle>
-                                    <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Snapshot of current performance</CardDescription>
+                                    <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Snapshot of current IPO pipeline</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1 flex flex-col justify-center items-center py-10">
                                     <div className="w-24 h-24 rounded-full border-8 border-primary/20 flex items-center justify-center mb-6">
@@ -724,13 +802,13 @@ export function PortfolioList() {
                                             <TrendingUp className="w-8 h-8 text-primary" />
                                         </div>
                                     </div>
-                                    <h4 className="text-xl font-black mb-2">Bullish Intensity</h4>
+                                    <h4 className={cn("text-xl font-black mb-2", sentiment.toneClass)}>{sentiment.label}</h4>
                                     <p className="text-xs text-muted-foreground text-center max-w-[240px] font-medium leading-relaxed italic">
-                                        Higher IPO participation often indicates strong market liquidity and positive retail sentiment.
+                                        {sentiment.description}
                                     </p>
                                 </CardContent>
                                 <div className="p-4 bg-muted/10 border-t border-muted/20 flex justify-center">
-                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">Source: Market Live Feed</Badge>
+                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">Source: Upcoming IPO Feed</Badge>
                                 </div>
                             </Card>
                         </div>
@@ -755,10 +833,10 @@ export function PortfolioList() {
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="w-fit text-xs font-black uppercase tracking-widest text-muted-foreground hover:text-primary mb-2"
+                    className="w-fit text-xs font-black uppercase tracking-widest text-primary hover:text-primary hover:bg-primary/10 mb-2 transition-all flex items-center gap-1.5"
                     onClick={() => setViewMode("overview")}
                 >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    <ChevronLeft className="w-3.5 h-3.5" />
                     Back to Portfolios
                 </Button>
                 <div className="flex flex-row items-center justify-between gap-4">
@@ -856,7 +934,7 @@ export function PortfolioList() {
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
                             <div className={cn(
                                 "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
-                                totalProfitLoss >= 0 ? "bg-green-500/10 text-green-600 border border-green-500/20" : "bg-red-500/10 text-red-600 border border-red-500/20"
+                                totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                             )}>
                                 {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
                             </div>
@@ -867,7 +945,7 @@ export function PortfolioList() {
                         <CardHeader className="pb-1 space-y-0 text-left px-2 sm:px-4 pt-2 sm:pt-4">
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Today's Move</CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
-                                <span className={todayChange >= 0 ? "text-green-600" : "text-red-600"}>
+                                <span className={todayChange >= 0 ? "text-success" : "text-error"}>
                                     {todayChange >= 0 ? "+" : ""}{todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                 </span>
                             </CardTitle>
@@ -875,11 +953,11 @@ export function PortfolioList() {
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
                             <div className="flex items-center gap-1">
                                 {todayChange >= 0 ? (
-                                    <div className="text-[8px] sm:text-[9px] font-black text-green-600 bg-green-500/10 px-1 py-0.5 rounded border border-green-500/20">
+                                    <div className="text-[8px] sm:text-[9px] font-black text-success bg-success/10 px-1 py-0.5 rounded border border-success/20">
                                         +{todayChangePercentage.toFixed(1)}%
                                     </div>
                                 ) : (
-                                    <div className="text-[8px] sm:text-[9px] font-black text-red-600 bg-red-500/10 px-1 py-0.5 rounded border border-red-500/20">
+                                    <div className="text-[8px] sm:text-[9px] font-black text-error bg-error/10 px-1 py-0.5 rounded border border-error/20">
                                         {todayChangePercentage.toFixed(1)}%
                                     </div>
                                 )}
@@ -1094,10 +1172,10 @@ export function PortfolioList() {
                                     My Holdings
                                     <Badge variant="secondary" className="rounded-full font-black">{filteredPortfolio.length}</Badge>
                                     <div className="flex gap-1 ml-1">
-                                        <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[9px] font-black py-0 px-1.5 h-4">
+                                        <Badge className="bg-success/10 text-success border-success/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItems.filter(p => (p.currentPrice || p.buyPrice) > p.buyPrice).length}↑
                                         </Badge>
-                                        <Badge className="bg-red-500/10 text-red-600 border-red-500/20 text-[9px] font-black py-0 px-1.5 h-4">
+                                        <Badge className="bg-error/10 text-error border-error/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItems.filter(p => (p.currentPrice || p.buyPrice) < p.buyPrice).length}↓
                                         </Badge>
                                     </div>
@@ -1188,7 +1266,7 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isProfit ? "bg-green-500/5 text-green-600 border-green-500/10" : "bg-red-500/5 text-red-600 border-red-500/10"
+                                                            isProfit ? "bg-success/5 text-success border-success/10" : "bg-error/5 text-error border-error/10"
                                                         )}>
                                                             {item.symbol.substring(0, 2)}
                                                         </div>
@@ -1211,7 +1289,7 @@ export function PortfolioList() {
                                                                         <span
                                                                             className={cn(
                                                                                 "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
-                                                                                isDailyProfit ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+                                                                                isDailyProfit ? "bg-success/10 text-success" : "bg-error/10 text-error"
                                                                             )}
                                                                         >
                                                                             {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%
@@ -1229,7 +1307,7 @@ export function PortfolioList() {
                                                             </div>
                                                             <div className={cn(
                                                                 "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
-                                                                isDailyProfit ? "text-green-600" : "text-red-600"
+                                                                isDailyProfit ? "text-success" : "text-error"
                                                             )}>
                                                                 <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{(dailyChange * item.units).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                                                 <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>
@@ -1384,7 +1462,7 @@ export function PortfolioList() {
                                                 </div>
                                                 <div className="flex items-center gap-3 sm:gap-6 shrink-0">
                                                     <div className="text-right">
-                                                        <div className={cn("font-extrabold text-sm sm:text-lg", isCredit ? "text-green-600" : "text-orange-600")}>
+                                                        <div className={cn("font-extrabold text-sm sm:text-lg", isCredit ? "text-success" : "text-warning")}>
                                                             {isCredit ? "+" : "-"}{tx.quantity} <span className="hidden sm:inline text-[10px] opacity-70 font-bold uppercase">Units</span>
                                                         </div>
                                                         {tx.price > 0 && (

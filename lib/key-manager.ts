@@ -21,6 +21,10 @@ export class SecureKeyManager {
   private static readonly KEY_STORAGE_PREFIX = "wallet_key_"
   private static readonly METADATA_STORAGE_PREFIX = "wallet_key_meta_"
   private static readonly MASTER_KEY_ID = "master"
+  private static readonly DEFAULT_KEY_ID = "default"
+  private static readonly DEFAULT_KEY_SECRET = "Sdskfjdsfkj()"
+  private static readonly DEFAULT_KEY_SALT_STORAGE_KEY = "wallet_default_key_salt"
+  private static readonly SESSION_PIN_KEY = "wallet_session_pin"
   private static readonly SESSION_TIMEOUT = 5 * 60 * 1000 // 5 minutes
 
   private static keyCache = new Map<string, { key: CryptoKey; expires: number }>()
@@ -75,7 +79,16 @@ export class SecureKeyManager {
       // Retrieve salt
       const saltBase64 = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${keyId}_salt`)
       if (!saltBase64) {
-        return null
+        return await this.getDefaultEncryptionKey()
+      }
+
+      // PIN-based key exists, but caller didn't provide PIN and no cache available.
+      if (!pin) {
+        const sessionPin = this.getSessionPin()
+        if (!sessionPin) {
+          return null
+        }
+        pin = sessionPin
       }
 
       const salt = new Uint8Array(
@@ -94,6 +107,98 @@ export class SecureKeyManager {
       return key
     } catch (error) {
       return null
+    }
+  }
+
+  static cacheSessionPin(pin: string): void {
+    try {
+      if (typeof window === "undefined") return
+      sessionStorage.setItem(this.SESSION_PIN_KEY, pin)
+    } catch {
+    }
+  }
+
+  static clearSessionPin(): void {
+    try {
+      if (typeof window === "undefined") return
+      sessionStorage.removeItem(this.SESSION_PIN_KEY)
+    } catch {
+    }
+  }
+
+  private static getSessionPin(): string | null {
+    try {
+      if (typeof window === "undefined") return null
+      return sessionStorage.getItem(this.SESSION_PIN_KEY)
+    } catch {
+      return null
+    }
+  }
+
+  // Retrieve or create default key used when user has not set a PIN yet.
+  static async getDefaultEncryptionKey(): Promise<CryptoKey | null> {
+    try {
+      const cached = this.keyCache.get(this.DEFAULT_KEY_ID)
+      if (cached && cached.expires > Date.now()) {
+        return cached.key
+      }
+
+      let saltBase64 = localStorage.getItem(this.DEFAULT_KEY_SALT_STORAGE_KEY)
+      if (!saltBase64) {
+        const salt = SecureWallet.generateSalt()
+        saltBase64 = btoa(String.fromCharCode(...salt))
+        localStorage.setItem(this.DEFAULT_KEY_SALT_STORAGE_KEY, saltBase64)
+      }
+
+      const salt = new Uint8Array(
+        atob(saltBase64)
+          .split("")
+          .map((char) => char.charCodeAt(0)),
+      )
+
+      const key = await SecureWallet.deriveKeyFromPin(this.DEFAULT_KEY_SECRET, salt)
+      this.cacheKey(this.DEFAULT_KEY_ID, key)
+      return key
+    } catch {
+      return null
+    }
+  }
+
+  // Re-encrypt existing encrypted payloads from default key to master PIN key.
+  static async migrateFromDefaultKeyToMasterKey(pin: string): Promise<void> {
+    try {
+      const masterKey = await this.getMasterKey(pin)
+      const defaultKey = await this.getDefaultEncryptionKey()
+      if (!masterKey || !defaultKey) return
+
+      const keys: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key) keys.push(key)
+      }
+
+      for (const key of keys) {
+        const value = localStorage.getItem(key)
+        if (!value || !value.startsWith("encrypted:")) continue
+
+        const encryptedPayload = value.substring(10)
+
+        // Already encrypted with master key.
+        try {
+          await SecureWallet.decryptData(encryptedPayload, masterKey)
+          continue
+        } catch {
+        }
+
+        // Try old default key, then re-encrypt with master key.
+        try {
+          const decrypted = await SecureWallet.decryptData(encryptedPayload, defaultKey)
+          const reEncrypted = await SecureWallet.encryptData(decrypted, masterKey)
+          localStorage.setItem(key, `encrypted:${reEncrypted}`)
+        } catch {
+        }
+      }
+    } catch {
     }
   }
 
@@ -132,6 +237,7 @@ export class SecureKeyManager {
   static clearAllKeys(): void {
     // Clear cache
     this.keyCache.clear()
+    this.clearSessionPin()
 
     // Clear localStorage keys
     const keysToRemove: string[] = []
@@ -178,6 +284,7 @@ export class SecureKeyManager {
       this.keyCache.delete(keyId)
     } else {
       this.keyCache.clear()
+      this.clearSessionPin()
     }
   }
 

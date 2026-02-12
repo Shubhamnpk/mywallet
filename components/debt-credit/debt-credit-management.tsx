@@ -1,74 +1,32 @@
 "use client"
 
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Loader2, Zap } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Zap, Banknote } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import {
+  validateAccountName,
+  validateAmount,
+  validateInterestRate,
+  calculateInterest,
+  getTimeSinceCreation,
+  calculateMinimumPayment,
+  calculatePayoffProjection,
+  getCreditUtilizationStatus,
+  getDebtPayoffStrategy
+} from "./debt-credit-utils"
+import { AddAccountDialog } from "./dialogs/add-account-dialog"
+import { PaymentDialog } from "./dialogs/payment-dialog"
+import { AddDebtDialog } from "./dialogs/add-debt-dialog"
+import { DebtDetailsDialog } from "./dialogs/debt-details-dialog"
+import { CreditDetailsDialog } from "./dialogs/credit-details-dialog"
 
-// Security and validation constants
-const SECURITY_CONSTANTS = {
-  MAX_ACCOUNT_NAME_LENGTH: 100,
-  MAX_DESCRIPTION_LENGTH: 500,
-  MAX_AMOUNT: 999999999.99,
-  MIN_AMOUNT: 0.01,
-  MAX_INTEREST_RATE: 100,
-  MIN_INTEREST_RATE: 0,
-  MAX_ARRAY_SIZE: 1000,
-} as const
-
-// Input validation helpers
-const validateAccountName = (name: string): boolean => {
-  return typeof name === 'string' &&
-    name.length > 0 &&
-    name.length <= SECURITY_CONSTANTS.MAX_ACCOUNT_NAME_LENGTH &&
-    !/<script/i.test(name) // Basic XSS prevention
-}
-
-const validateAmount = (amount: number | string): boolean => {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
-  return !isNaN(num) &&
-    isFinite(num) &&
-    num >= SECURITY_CONSTANTS.MIN_AMOUNT &&
-    num <= SECURITY_CONSTANTS.MAX_AMOUNT
-}
-
-const validateInterestRate = (rate: number | string): boolean => {
-  const num = typeof rate === 'string' ? parseFloat(rate) : rate
-  return !isNaN(num) &&
-    isFinite(num) &&
-    num >= SECURITY_CONSTANTS.MIN_INTEREST_RATE &&
-    num <= SECURITY_CONSTANTS.MAX_INTEREST_RATE
-}
-
-const sanitizeString = (str: string): string => {
-  if (typeof str !== 'string') return ''
-  return str.replace(/[<>'"&]/g, '').trim().substring(0, SECURITY_CONSTANTS.MAX_DESCRIPTION_LENGTH)
-}
-
-const validateArraySize = (arr: any[]): boolean => {
-  return Array.isArray(arr) && arr.length <= SECURITY_CONSTANTS.MAX_ARRAY_SIZE
-}
-
-// Safe calculation helpers with boundary checks
-const safeDivision = (numerator: number, denominator: number, fallback: number = 0): number => {
-  return denominator !== 0 && isFinite(denominator) ? numerator / denominator : fallback
-}
-
-const safeParseFloat = (value: any, fallback: number = 0): number => {
-  const parsed = parseFloat(value)
-  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed
-}
 
 interface DebtCreditManagementProps {
   userProfile: UserProfile
@@ -291,107 +249,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     }
   }
 
-  // Enhanced Interest calculation functions
-  const calculateInterest = (principal: number, rate: number, timeInYears: number, frequency: string, type: string) => {
-    if (rate <= 0 || principal <= 0 || timeInYears <= 0) return 0
-
-    const annualRate = rate / 100
-
-    if (type === 'simple') {
-      return principal * annualRate * timeInYears
-    } else {
-      // Compound interest with proper frequency handling
-      const periodsPerYear = frequency === 'yearly' ? 1 : frequency === 'quarterly' ? 4 : 12
-      const totalPeriods = timeInYears * periodsPerYear
-      const periodicRate = annualRate / periodsPerYear
-
-      return principal * (Math.pow(1 + periodicRate, totalPeriods) - 1)
-    }
-  }
-
-  const getTimeSinceCreation = (createdAt: string) => {
-    const created = new Date(createdAt)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - created.getTime())
-    return diffTime / (1000 * 60 * 60 * 24 * 365.25) // years
-  }
-
-  // Calculate minimum payment based on debt amount and interest rate
-  const calculateMinimumPayment = (balance: number, interestRate: number) => {
-    // Standard minimum payment is typically 2-3% of balance or $25, whichever is greater
-    const percentageBased = balance * 0.025 // 2.5% of balance
-    const fixedMinimum = 25 // Minimum payment floor
-    return Math.max(percentageBased, fixedMinimum)
-  }
-
-  // Calculate debt-to-income ratio
-  const calculateDebtToIncomeRatio = (totalDebt: number, monthlyIncome: number) => {
-    if (monthlyIncome <= 0) return 0
-    return (totalDebt / (monthlyIncome * 12)) * 100
-  }
-
-  // Get credit utilization status
-  const getCreditUtilizationStatus = (utilization: number) => {
-    if (utilization <= 10) return { status: 'Excellent', color: 'text-green-600', recommendation: 'Keep it low!', score: 850 }
-    if (utilization <= 30) return { status: 'Good', color: 'text-green-500', recommendation: 'Good utilization', score: 750 }
-    if (utilization <= 50) return { status: 'Fair', color: 'text-yellow-600', recommendation: 'Consider paying down', score: 650 }
-    if (utilization <= 70) return { status: 'Poor', color: 'text-orange-600', recommendation: 'Pay down immediately', score: 550 }
-    return { status: 'Critical', color: 'text-red-600', recommendation: 'Reduce utilization now!', score: 450 }
-  }
-
-  // Calculate debt avalanche vs snowball recommendations
-  const getDebtPayoffStrategy = (debts: any[]) => {
-    if (debts.length === 0) return null
-
-    const sortedByInterest = [...debts].sort((a, b) => ((b as any).interestRate || 0) - ((a as any).interestRate || 0))
-    const sortedByBalance = [...debts].sort((a, b) => a.balance - b.balance)
-
-    const avalancheSavings = sortedByInterest.reduce((sum, debt, index) => {
-      const rate = (debt as any).interestRate || 0
-      return sum + (rate * debt.balance * 0.01 * (debts.length - index) / 12)
-    }, 0)
-
-    return {
-      avalancheDebts: sortedByInterest,
-      snowballDebts: sortedByBalance,
-      recommendedSavings: avalancheSavings,
-      strategy: avalancheSavings > 100 ? 'avalanche' : 'snowball'
-    }
-  }
-
-  // Calculate late fee if payment is missed
-  const calculateLateFee = (balance: number, daysLate: number) => {
-    const lateFee = Math.min(balance * 0.05, 39) // 5% of balance or $39 max
-    return lateFee + (daysLate > 10 ? balance * 0.01 * (daysLate - 10) / 30 : 0) // Additional fees for very late payments
-  }
-
-  // Calculate payoff time and total interest
-  const calculatePayoffProjection = (balance: number, monthlyPayment: number, interestRate: number, frequency: string, type: string) => {
-    if (monthlyPayment <= 0 || balance <= 0) return { months: 0, totalInterest: 0, totalPaid: 0 }
-
-    let remainingBalance = balance
-    let totalInterest = 0
-    let months = 0
-    const monthlyRate = interestRate / 100 / 12
-
-    while (remainingBalance > 0 && months < 600) { // Max 50 years
-      const interestPayment = remainingBalance * monthlyRate
-      const principalPayment = Math.min(monthlyPayment - interestPayment, remainingBalance)
-
-      totalInterest += interestPayment
-      remainingBalance -= principalPayment
-      months++
-
-      if (remainingBalance <= 0.01) break
-    }
-
-    return {
-      months,
-      totalInterest,
-      totalPaid: balance + totalInterest,
-      monthlyPayment
-    }
-  }
 
   // Function to apply accrued interest to debt balance
   const applyInterestToDebt = (debtId: string) => {
@@ -438,7 +295,6 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
   // Get debt payoff strategy
   const payoffStrategy = getDebtPayoffStrategy(debtAccounts)
-
   return (
     <div className="space-y-6">
       {/* Enhanced Header with Theme Colors */}
@@ -461,33 +317,58 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
-        <Card className="border-destructive/20">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                <TrendingDown className="w-4 h-4 text-destructive" />
+      {/* Summary Cards - Portfolio Style */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-red-500/15 via-red-500/5 to-transparent border-red-500/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <div className="flex items-center justify-between mb-1">
+              <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Total Liability</CardDescription>
+              <div className="p-1 sm:p-1.5 bg-red-500/10 rounded-lg text-red-500">
+                <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground font-medium">Total Debt</p>
-                <p className="text-lg font-bold text-destructive truncate">{formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)}</p>
-              </div>
+            </div>
+            <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight text-red-600">
+              {formatCurrency(totalDebt + totalCreditUsed, userProfile.currency, userProfile.customCurrency)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm bg-red-500/10 text-red-600 border border-red-500/20">
+              High Priority
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-primary/20">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <CreditCard className="w-4 h-4 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground font-medium">Credit Used</p>
-                <p className="text-lg font-bold text-primary truncate">{formatCurrency(totalCreditUsed, userProfile.currency, userProfile.customCurrency)}</p>
-              </div>
-            </div>
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Accounts</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-black font-mono">{debtAccounts.length + creditAccounts.length}</CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <Badge variant="secondary" className="bg-primary/5 text-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wide">Active Handles</Badge>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Credit Health</CardDescription>
+            <CardTitle className={`text-xl sm:text-2xl font-black font-mono ${utilizationStatus.color}`}>
+              {overallUtilization.toFixed(1)}%
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Avg Utilization</span>
+          </CardContent>
+        </Card>
+
+        <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Accrued Interest</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-black font-mono">
+              {formatCurrency(totalAccruedInterest, userProfile.currency, userProfile.customCurrency)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-amber-600 bg-amber-50/50 border-amber-200">PROJECTED</Badge>
           </CardContent>
         </Card>
       </div>
@@ -555,54 +436,119 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                       .slice(0, 3)
 
                     return (
-                      <Card key={debt.id} className="transition border">
+                      <Card
+                        key={debt.id}
+                        className="group overflow-hidden border-muted/50 hover:border-red-500/30 transition-all duration-300 hover:shadow-2xl hover:shadow-red-500/5 bg-card/40 backdrop-blur-sm"
+                      >
                         <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(debt.id)}>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                              <CollapsibleTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer flex-1">
-                                  <TrendingDown className="w-5 h-5 text-primary" />
-                                  <CardTitle className="text-lg">{debt.name}</CardTitle>
-                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </div>
-                              </CollapsibleTrigger>
-                              <div className="flex items-center gap-2">
-                                <Badge variant={isFastDebt ? "secondary" : "destructive"} className="flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3" />
-                                  {isFastDebt ? "Fast Debt" : "Debt"}
-                                </Badge>
+                          <CardHeader className="pb-3 sm:pb-4 relative px-4 sm:px-6">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${isFastDebt
+                                  ? 'border-amber-500/20 text-amber-600 bg-amber-500/5'
+                                  : 'border-red-500/20 text-red-600 bg-red-500/5'
+                                  }`}
+                              >
+                                {isFastDebt ? 'Fast Debt' : 'Debt Account'}
+                              </Badge>
+                              <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button
                                   variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteDebtAccount(debt.id)}
-                                  className="text-muted-foreground hover:text-destructive"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-emerald-600 hover:bg-emerald-500/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentDialog({
+                                      open: true,
+                                      accountId: debt.id,
+                                      accountName: debt.name,
+                                      accountType: "debt",
+                                    })
+                                  }}
+                                  title="Quick Pay"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Banknote className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-red-500 hover:bg-red-500/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteDebtAccount(debt.id);
+                                  }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>
 
-                            <div className="space-y-2 mt-3">
-                              <div className="flex justify-between text-sm">
-                                <span className="flex items-center gap-1">
-                                  Balance: {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
-                                </span>
-                                {!isFastDebt && <span>Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</span>}
+                            <CollapsibleTrigger asChild>
+                              <div className="cursor-pointer">
+                                <CardTitle className="text-xl sm:text-2xl font-black group-hover:text-red-600 transition-colors">
+                                  {debt.name}
+                                </CardTitle>
+                                <CardDescription className="line-clamp-1 font-medium italic opacity-70 text-xs sm:text-sm mt-1">
+                                  {isFastDebt ? 'No interest accrual' : `${(debt as any).interestRate || 0}% interest rate`}
+                                </CardDescription>
                               </div>
-                              <Progress value={progress} className="h-2 rounded-full" />
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>{progress.toFixed(1)}% paid off</span>
-                                <span>
-                                  {totalPaid > 0
-                                    ? `${formatCurrency(totalPaid, userProfile.currency, userProfile.customCurrency)} paid`
-                                    : 'No payments yet'}
+                            </CollapsibleTrigger>
+                          </CardHeader>
+
+                          <CardContent className="flex-1 pb-4 sm:pb-6 space-y-3 sm:space-y-4 px-4 sm:px-6">
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Current Balance</span>
+                                <span className="text-base sm:text-lg font-black font-mono text-red-600">
+                                  {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-0.5 items-end">
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">
+                                  {isFastDebt ? 'No Interest' : 'Accrued Interest'}
+                                </span>
+                                <span className="text-base sm:text-lg font-black font-mono text-amber-600">
+                                  {isFastDebt ? 'रु 0' : formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}
                                 </span>
                               </div>
                             </div>
-                          </CardHeader>
+
+                            <div className="pt-3 sm:pt-4 border-t border-muted/20 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="bg-muted/50 font-black text-[9px] sm:text-[10px] uppercase">
+                                  {progress.toFixed(1)}% Repaid
+                                </Badge>
+                              </div>
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 sm:h-8 rounded-lg text-primary font-bold group-hover:bg-primary/5 text-xs sm:text-sm">
+                                  {isExpanded ? (
+                                    <>
+                                      <span className="hidden sm:inline">Hide Details</span>
+                                      <span className="sm:hidden">Hide</span>
+                                      <ChevronUp className="ml-1 w-3.5 h-3.5" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="hidden sm:inline">View Details</span>
+                                      <span className="sm:hidden">View</span>
+                                      <ChevronDown className="ml-1 w-3.5 h-3.5" />
+                                    </>
+                                  )}
+                                </Button>
+                              </CollapsibleTrigger>
+                            </div>
+                          </CardContent>
+
+                          <div className="h-1.5 w-full bg-muted/20">
+                            <div
+                              className={`h-full transition-all duration-1000 ${isFastDebt ? 'bg-amber-500' : 'bg-red-500'}`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
+                            />
+                          </div>
 
                           <CollapsibleContent>
-                            <CardContent className="space-y-4 pt-0">
+                            <CardContent className="space-y-4 pt-4 border-t border-muted/20 bg-muted/5 px-4 sm:px-6">
                               {/* Quick Actions */}
                               <div className="grid grid-cols-2 gap-2">
                                 <Button
@@ -634,7 +580,8 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                   }
                                   className="flex-1"
                                 >
-                                  ➕ Add Debt
+                                  <Plus className="w-3 h-3 mr-1" />
+                                  Add Debt
                                 </Button>
                                 <Button
                                   size="sm"
@@ -768,53 +715,120 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
 
 
                     return (
-                      <Card key={credit.id} className="transition border">
+                      <Card
+                        key={credit.id}
+                        className="group overflow-hidden border-muted/50 hover:border-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 bg-card/40 backdrop-blur-sm"
+                      >
                         <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(credit.id)}>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                              <CollapsibleTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer flex-1">
-                                  <CreditCard className="w-5 h-5 text-primary" />
-                                  <CardTitle className="text-lg">{credit.name}</CardTitle>
-                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </div>
-                              </CollapsibleTrigger>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={utilization > 70 ? "destructive" : utilization > 30 ? "secondary" : "default"}
-                                  className="flex items-center gap-1"
-                                >
-                                  <CreditCard className="w-3 h-3" />
-                                  Credit
-                                </Badge>
+                          <CardHeader className="pb-3 sm:pb-4 relative px-4 sm:px-6">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${utilization > 70
+                                  ? 'border-red-500/20 text-red-600 bg-red-500/5'
+                                  : utilization > 30
+                                    ? 'border-amber-500/20 text-amber-600 bg-amber-500/5'
+                                    : 'border-green-500/20 text-green-600 bg-green-500/5'
+                                  }`}
+                              >
+                                {utilization > 70 ? 'High Utilization' : utilization > 30 ? 'Moderate Use' : 'Healthy Credit'}
+                              </Badge>
+                              <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button
                                   variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteCreditAccount(credit.id)}
-                                  className="text-muted-foreground hover:text-destructive"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-emerald-600 hover:bg-emerald-500/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaymentDialog({
+                                      open: true,
+                                      accountId: credit.id,
+                                      accountName: credit.name,
+                                      accountType: "credit",
+                                    })
+                                  }}
+                                  title="Quick Pay"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Banknote className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-red-500 hover:bg-red-500/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteCreditAccount(credit.id);
+                                  }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>
 
-                            <div className="space-y-2 mt-3">
-                              <div className="flex justify-between text-sm">
-                                <span className="flex items-center gap-1">
-                                  Balance: {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)}
-                                </span>
-                                <span>Available: {formatCurrency(available, userProfile.currency, userProfile.customCurrency)}</span>
+                            <CollapsibleTrigger asChild>
+                              <div className="cursor-pointer">
+                                <CardTitle className="text-xl sm:text-2xl font-black group-hover:text-primary transition-colors">
+                                  {credit.name}
+                                </CardTitle>
+                                <CardDescription className="line-clamp-1 font-medium italic opacity-70 text-xs sm:text-sm mt-1">
+                                  {formatCurrency(credit.creditLimit, userProfile.currency, userProfile.customCurrency)} credit limit
+                                </CardDescription>
                               </div>
-                              <Progress value={utilization} className="h-2 rounded-full" />
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>{utilization.toFixed(1)}% utilized</span>
-                                <span>Limit: {formatCurrency(credit.creditLimit, userProfile.currency, userProfile.customCurrency)}</span>
-                              </div>
-                            </div>
+                            </CollapsibleTrigger>
                           </CardHeader>
 
+                          <CardContent className="flex-1 pb-4 sm:pb-6 space-y-3 sm:space-y-4 px-4 sm:px-6">
+                            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Used Balance</span>
+                                <span className="text-base sm:text-lg font-black font-mono text-primary">
+                                  {formatCurrency(credit.balance, userProfile.currency, userProfile.customCurrency)}
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-0.5 items-end">
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">Available</span>
+                                <span className="text-base sm:text-lg font-black font-mono text-green-600">
+                                  {formatCurrency(available, userProfile.currency, userProfile.customCurrency)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="pt-3 sm:pt-4 border-t border-muted/20 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="bg-muted/50 font-black text-[9px] sm:text-[10px] uppercase">
+                                  {utilization.toFixed(1)}% Used
+                                </Badge>
+                              </div>
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 sm:h-8 rounded-lg text-primary font-bold group-hover:bg-primary/5 text-xs sm:text-sm">
+                                  {isExpanded ? (
+                                    <>
+                                      <span className="hidden sm:inline">Hide Details</span>
+                                      <span className="sm:hidden">Hide</span>
+                                      <ChevronUp className="ml-1 w-3.5 h-3.5" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="hidden sm:inline">View Details</span>
+                                      <span className="sm:hidden">View</span>
+                                      <ChevronDown className="ml-1 w-3.5 h-3.5" />
+                                    </>
+                                  )}
+                                </Button>
+                              </CollapsibleTrigger>
+                            </div>
+                          </CardContent>
+
+                          <div className="h-1.5 w-full bg-muted/20">
+                            <div
+                              className={`h-full transition-all duration-1000 ${utilization > 70 ? 'bg-red-500' : utilization > 30 ? 'bg-amber-500' : 'bg-green-500'
+                                }`}
+                              style={{ width: `${Math.min(utilization, 100)}%` }}
+                            />
+                          </div>
+
                           <CollapsibleContent>
-                            <CardContent className="space-y-4 pt-0">
+                            <CardContent className="space-y-4 pt-4 border-t border-muted/20 bg-muted/5 px-4 sm:px-6">
                               {/* Quick Actions */}
                               <div className="flex items-center gap-2">
                                 <Button
@@ -953,551 +967,64 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
         </CardContent>
       </Card>
 
-      {/* Add Account Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Plus className="w-5 h-5" />
-              Add {activeTab === "debt" ? "Debt" : "Credit"} Account
-            </DialogTitle>
-          </DialogHeader>
+      <AddAccountDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        debtForm={debtForm}
+        setDebtForm={setDebtForm}
+        creditForm={creditForm}
+        setCreditForm={setCreditForm}
+        onAddDebt={handleAddDebt}
+        onAddCredit={handleAddCredit}
+        userProfile={userProfile}
+      />
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 h-10">
-              <TabsTrigger value="debt" className="text-sm">Debt Account</TabsTrigger>
-              <TabsTrigger value="credit" className="text-sm">Credit Account</TabsTrigger>
-            </TabsList>
+      <DebtDetailsDialog
+        open={debtDetailsDialog.open}
+        onOpenChange={(open) => setDebtDetailsDialog({ ...debtDetailsDialog, open })}
+        accountId={debtDetailsDialog.accountId}
+        debtAccounts={debtAccounts}
+        transactions={debtCreditTransactions}
+        userProfile={userProfile}
+      />
 
-            <TabsContent value="debt" className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label htmlFor="debt-name" className="text-sm font-medium">Account Name</Label>
-                <Input
-                  id="debt-name"
-                  value={debtForm.name}
-                  onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })}
-                  placeholder="e.g., Student Loan, Credit Card"
-                  className="h-11"
-                />
-              </div>
+      <CreditDetailsDialog
+        open={creditDetailsDialog.open}
+        onOpenChange={(open) => setCreditDetailsDialog({ ...creditDetailsDialog, open })}
+        accountId={creditDetailsDialog.accountId}
+        creditAccounts={creditAccounts}
+        transactions={debtCreditTransactions}
+        userProfile={userProfile}
+      />
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="debt-fast"
-                  checked={debtForm.isFastDebt}
-                  onCheckedChange={(checked) => setDebtForm({ ...debtForm, isFastDebt: checked as boolean })}
-                />
-                <Label htmlFor="debt-fast" className="text-sm font-medium flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-orange-500" />
-                  Fast Debt (No Interest, No Minimum Payment)
-                </Label>
-              </div>
+      <PaymentDialog
+        open={paymentDialog.open}
+        onOpenChange={(open) => setPaymentDialog(prev => ({ ...prev, open }))}
+        paymentDialog={paymentDialog}
+        setPaymentDialog={setPaymentDialog}
+        paymentAmount={paymentAmount}
+        setPaymentAmount={setPaymentAmount}
+        debtAccounts={debtAccounts}
+        creditAccounts={creditAccounts}
+        onPayment={handlePayment}
+        userProfile={userProfile}
+        balance={balance}
+      />
 
-              <div className="space-y-2">
-                <Label htmlFor="debt-balance" className="text-sm font-medium">
-                  Current Balance ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-                </Label>
-                <Input
-                  id="debt-balance"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={debtForm.balance}
-                  onChange={(e) => setDebtForm({ ...debtForm, balance: e.target.value })}
-                  placeholder="0.00"
-                  className="h-11"
-                />
-              </div>
-
-              {!debtForm.isFastDebt && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="debt-rate" className="text-sm font-medium">Interest Rate (%)</Label>
-                    <Input
-                      id="debt-rate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={debtForm.interestRate}
-                      onChange={(e) => setDebtForm({ ...debtForm, interestRate: e.target.value })}
-                      placeholder="0.00"
-                      className="h-11"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="debt-frequency" className="text-sm font-medium">Interest Frequency</Label>
-                    <select
-                      id="debt-frequency"
-                      value={debtForm.interestFrequency}
-                      onChange={(e) => setDebtForm({ ...debtForm, interestFrequency: e.target.value })}
-                      title="Interest Frequency"
-                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="yearly">Yearly</option>
-                      <option value="quarterly">Quarterly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="debt-type" className="text-sm font-medium">Interest Type</Label>
-                    <select
-                      id="debt-type"
-                      value={debtForm.interestType}
-                      onChange={(e) => setDebtForm({ ...debtForm, interestType: e.target.value })}
-                      title="Interest Type"
-                      className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="simple">Simple Interest</option>
-                      <option value="compound">Compound Interest</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="debt-payment" className="text-sm font-medium">
-                  Min Payment ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-                </Label>
-                <Input
-                  id="debt-payment"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={debtForm.minimumPayment}
-                  onChange={(e) => setDebtForm({ ...debtForm, minimumPayment: e.target.value })}
-                  placeholder="0.00"
-                  className="h-11"
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} className="flex-1 h-11">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddDebt}
-                  className="flex-1 h-11 bg-destructive hover:bg-destructive/90"
-                  disabled={!debtForm.name || !debtForm.balance || (!debtForm.isFastDebt && !debtForm.interestRate)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add {debtForm.isFastDebt ? "Fast Debt" : "Debt"} Account
-                </Button>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="credit" className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="credit-name" className="text-sm font-medium">Account Name</Label>
-                <Input
-                  id="credit-name"
-                  value={creditForm.name}
-                  onChange={(e) => setCreditForm({ ...creditForm, name: e.target.value })}
-                  placeholder="e.g., Visa Card, Mastercard"
-                  className="h-11"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="credit-balance" className="text-sm font-medium">
-                    Current Balance ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-                  </Label>
-                  <Input
-                    id="credit-balance"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={creditForm.balance}
-                    onChange={(e) => setCreditForm({ ...creditForm, balance: e.target.value })}
-                    placeholder="0.00"
-                    className="h-11"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="credit-limit" className="text-sm font-medium">
-                    Credit Limit ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-                  </Label>
-                  <Input
-                    id="credit-limit"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={creditForm.creditLimit}
-                    onChange={(e) => setCreditForm({ ...creditForm, creditLimit: e.target.value })}
-                    placeholder="0.00"
-                    className="h-11"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="credit-rate" className="text-sm font-medium">Interest Rate (%)</Label>
-                  <Input
-                    id="credit-rate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={creditForm.interestRate}
-                    onChange={(e) => setCreditForm({ ...creditForm, interestRate: e.target.value })}
-                    placeholder="0.00"
-                    className="h-11"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="credit-frequency" className="text-sm font-medium">Interest Frequency</Label>
-                  <select
-                    id="credit-frequency"
-                    value={creditForm.interestFrequency}
-                    onChange={(e) => setCreditForm({ ...creditForm, interestFrequency: e.target.value })}
-                    title="Interest Frequency"
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="yearly">Yearly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="credit-type" className="text-sm font-medium">Interest Type</Label>
-                  <select
-                    id="credit-type"
-                    value={creditForm.interestType}
-                    onChange={(e) => setCreditForm({ ...creditForm, interestType: e.target.value })}
-                    title="Interest Type"
-                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="simple">Simple Interest</option>
-                    <option value="compound">Compound Interest</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="credit-payment" className="text-sm font-medium">
-                  Min Payment ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-                </Label>
-                <Input
-                  id="credit-payment"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={creditForm.minimumPayment}
-                  onChange={(e) => setCreditForm({ ...creditForm, minimumPayment: e.target.value })}
-                  placeholder="0.00"
-                  className="h-11"
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} className="flex-1 h-11">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddCredit}
-                  className="flex-1 h-11 bg-primary hover:bg-primary/90"
-                  disabled={!creditForm.name || !creditForm.balance || !creditForm.creditLimit || !creditForm.interestRate}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Credit Account
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
-      {/* Debt Details Dialog */}
-      <Dialog open={debtDetailsDialog.open} onOpenChange={(open) => setDebtDetailsDialog({ ...debtDetailsDialog, open })}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Debt Details</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {debtDetailsDialog.accountId ? (
-              (() => {
-                const acc = debtAccounts.find((d) => d.id === debtDetailsDialog.accountId)
-                const txs = debtCreditTransactions
-                  .filter((t: any) => t.accountId === debtDetailsDialog.accountId)
-                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-                return (
-                  <div>
-                    <h4 className="font-semibold mb-2">{acc?.name}</h4>
-                    <div className="space-y-2 mb-4">
-                      <p className="text-sm text-muted-foreground">Principal: {formatCurrency(acc?.balance || 0, userProfile.currency, userProfile.customCurrency)}</p>
-                      {(() => {
-                        const isFastDebt = acc?.isFastDebt
-                        const timeElapsed = isFastDebt ? 0 : getTimeSinceCreation(acc?.createdAt || new Date().toISOString())
-                        const accruedInterest = isFastDebt ? 0 : calculateInterest(
-                          acc?.balance || 0,
-                          acc?.interestRate || 0,
-                          timeElapsed,
-                          (acc as any)?.interestFrequency || 'yearly',
-                          (acc as any)?.interestType || 'simple'
-                        )
-                        const totalWithInterest = (acc?.balance || 0) + accruedInterest
-
-                        return (
-                          <>
-                            {isFastDebt ? (
-                              <p className="text-sm text-muted-foreground">Fast Debt - No interest accrued</p>
-                            ) : (
-                              accruedInterest > 0 && (
-                                <>
-                                  <p className="text-sm text-muted-foreground">Accrued Interest: {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}</p>
-                                  <p className="text-sm font-medium text-destructive">Total Balance: {formatCurrency(totalWithInterest, userProfile.currency, userProfile.customCurrency)}</p>
-                                </>
-                              )
-                            )}
-                            {!isFastDebt && (
-                              <div className="text-xs text-muted-foreground mt-2">
-                                <p>Interest Rate: {acc?.interestRate}% ({(acc as any)?.interestFrequency || 'yearly'})</p>
-                                <p>Type: {(acc as any)?.interestType === 'simple' ? 'Simple Interest' : 'Compound Interest'}</p>
-                                <p>Time Elapsed: {timeElapsed.toFixed(2)} years</p>
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                    <div className="space-y-2">
-                      {txs.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No transactions for this debt.</p>
-                      ) : (
-                        txs.map((tx: any) => (
-                          <div key={tx.id} className="p-2 border rounded">
-                            <div className="flex justify-between">
-                              <div>
-                                <p className="font-medium">{tx.type === 'payment' ? 'Payment' : tx.type === 'charge' ? 'Charge' : 'Closed'}</p>
-                                <p className="text-xs text-muted-foreground">{new Date(tx.date).toLocaleString()}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold">{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}</p>
-                                <p className="text-xs text-muted-foreground">After: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}</p>
-                              </div>
-                            </div>
-                            {tx.description && <p className="text-sm text-muted-foreground mt-2">{tx.description}</p>}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )
-              })()
-            ) : (
-              <p>Select a debt to view details.</p>
-            )}
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setDebtDetailsDialog({ open: false, accountId: null })} className="flex-1">Close</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Credit Details Dialog */}
-      <Dialog open={creditDetailsDialog.open} onOpenChange={(open) => setCreditDetailsDialog({ ...creditDetailsDialog, open })}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Credit Details</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {creditDetailsDialog.accountId ? (
-              (() => {
-                const acc = creditAccounts.find((c) => c.id === creditDetailsDialog.accountId)
-                const txs = debtCreditTransactions
-                  .filter((t: any) => t.accountId === creditDetailsDialog.accountId)
-                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-                return (
-                  <div>
-                    <h4 className="font-semibold mb-2">{acc?.name}</h4>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Balance: {formatCurrency(acc?.balance || 0, userProfile.currency, userProfile.customCurrency)} / {formatCurrency(acc?.creditLimit || 0, userProfile.currency, userProfile.customCurrency)}
-                    </p>
-                    <div className="space-y-2">
-                      {txs.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No transactions for this credit account.</p>
-                      ) : (
-                        txs.map((tx: any) => (
-                          <div key={tx.id} className="p-2 border rounded">
-                            <div className="flex justify-between">
-                              <div>
-                                <p className="font-medium">{tx.type === 'payment' ? 'Payment' : tx.type === 'charge' ? 'Charge' : 'Purchase'}</p>
-                                <p className="text-xs text-muted-foreground">{new Date(tx.date).toLocaleString()}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold">{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}</p>
-                                <p className="text-xs text-muted-foreground">After: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}</p>
-                              </div>
-                            </div>
-                            {tx.description && <p className="text-sm text-muted-foreground mt-2">{tx.description}</p>}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )
-              })()
-            ) : (
-              <p>Select a credit account to view details.</p>
-            )}
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setCreditDetailsDialog({ open: false, accountId: null })} className="flex-1">Close</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Payment Dialog */}
-      <Dialog open={paymentDialog.open} onOpenChange={(open) => setPaymentDialog({ ...paymentDialog, open })}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <Minus className="w-5 h-5 text-primary" />
-              Make Payment
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            <div className="p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground mb-1">Payment to:</p>
-              <p className="font-semibold text-lg">{paymentDialog.accountName}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {paymentDialog.accountType === "debt" ? "Debt Account" : "Credit Account"}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">
-                Payment Amount ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                max={balance}
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="0.00"
-                className="h-12 text-lg"
-              />
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">Available balance:</span>
-                <span className="font-semibold text-chart-3">
-                  {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setPaymentDialog({ open: false, accountId: "", accountName: "", accountType: "debt" })}
-                className="flex-1 h-11"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPaymentDialog({ open: false, accountId: "", accountName: "", accountType: "debt" })
-                  setShowAddDialog(true)
-                  setActiveTab(paymentDialog.accountType)
-                }}
-                className="flex-1 h-11"
-              >
-                Add Account
-              </Button>
-              <Button
-                onClick={handlePayment}
-                disabled={
-                  !paymentAmount || Number.parseFloat(paymentAmount) <= 0 || Number.parseFloat(paymentAmount) > balance
-                }
-                className="flex-1 h-11 bg-chart-3 hover:bg-chart-3/90 text-white"
-              >
-                <Minus className="w-4 h-4 mr-2" />
-                Make Payment
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Debt Dialog */}
-      <Dialog open={addDebtDialog.open} onOpenChange={(open) => setAddDebtDialog({ ...addDebtDialog, open })}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              ➕ Add Debt
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            <div className="p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm text-muted-foreground mb-1">Add debt to:</p>
-              <p className="font-semibold text-lg">{addDebtDialog.accountName}</p>
-              <p className="text-sm text-muted-foreground mt-1">Debt Account</p>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">
-                Debt Amount ({getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={addDebtAmount}
-                onChange={(e) => setAddDebtAmount(e.target.value)}
-                placeholder="0.00"
-                className="h-12 text-lg"
-                disabled={isLoading}
-              />
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setAddDebtDialog({ open: false, accountId: "", accountName: "" })}
-                className="flex-1 h-11"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddDebtCharge}
-                disabled={!addDebtAmount || Number.parseFloat(addDebtAmount) <= 0 || isLoading}
-                className="flex-1 h-11 bg-destructive hover:bg-destructive/90 text-white"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    ➕ Add Debt
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddDebtDialog
+        open={addDebtDialog.open}
+        onOpenChange={(open) => setAddDebtDialog({ ...addDebtDialog, open })}
+        addDebtDialog={addDebtDialog}
+        setAddDebtDialog={setAddDebtDialog}
+        amount={addDebtAmount}
+        setAmount={setAddDebtAmount}
+        onAdd={handleAddDebtCharge}
+        isLoading={isLoading}
+        error={error}
+        userProfile={userProfile}
+      />
 
       <Card className="border-primary/20">
         <Collapsible open={insightsExpanded} onOpenChange={setInsightsExpanded}>

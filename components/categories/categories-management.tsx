@@ -354,7 +354,7 @@ export function CategoriesManagement({
               {categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}
             </p>
             <div className="mt-1 flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">With transactions</span>
             </div>
           </CardContent>
@@ -364,7 +364,7 @@ export function CategoriesManagement({
           <CardContent className="p-4 sm:p-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top Spender</p>
-              <BarChart3 className="w-3.5 h-3.5 text-amber-500 opacity-80" />
+              <BarChart3 className="w-3.5 h-3.5 text-warning opacity-80" />
             </div>
             <p className="text-sm font-black truncate leading-tight">
               {categoryStats.length > 0
@@ -381,30 +381,28 @@ export function CategoriesManagement({
       </div>
 
       {/* Categories Display */}
-      <Tabs defaultValue="custom" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="custom" className="flex items-center gap-2">
-            <FolderOpen className="w-4 h-4" />
-            Custom ({customCategories.filter(c => !disabledCategories.has(c.id)).length})
-          </TabsTrigger>
-          <TabsTrigger value="default" className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Default ({defaultCategories.filter(c => !disabledCategories.has(c.id)).length})
-          </TabsTrigger>
-        </TabsList>
+      <div className="space-y-8">
+        {/* Custom Categories Section */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <FolderOpen className="w-4 h-4 text-primary" />
+            <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Custom Categories</h4>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              {customCategories.filter(c => !disabledCategories.has(c.id)).length}
+            </span>
+          </div>
 
-        <TabsContent value="custom" className="space-y-4">
           {customCategories.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Custom Categories</h3>
-                <p className="text-muted-foreground text-center mb-4">
-                  Create custom categories to better organize your transactions
+            <Card className="border-dashed border-2 bg-muted/20">
+              <CardContent className="flex flex-col items-center justify-center py-8">
+                <FolderOpen className="w-10 h-10 text-muted-foreground/50 mb-3" />
+                <h3 className="text-base font-medium mb-1">No Custom Categories</h3>
+                <p className="text-sm text-muted-foreground text-center mb-4 max-w-xs">
+                  Create your own to organize transactions exactly how you want.
                 </p>
-                <Button onClick={() => setIsAddDialogOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Your First Category
+                <Button onClick={() => setIsAddDialogOpen(true)} variant="outline" size="sm">
+                  <Plus className="w-3.5 h-3.5 mr-2" />
+                  Create Category
                 </Button>
               </CardContent>
             </Card>
@@ -430,9 +428,18 @@ export function CategoriesManagement({
               ))}
             </div>
           )}
-        </TabsContent>
+        </div>
 
-        <TabsContent value="default" className="space-y-4">
+        {/* Default Categories Section */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Default Categories</h4>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              {defaultCategories.filter(c => !disabledCategories.has(c.id)).length}
+            </span>
+          </div>
+
           <div className="space-y-3">
             {defaultCategories.map((category) => (
               <CategoryProgressCard
@@ -450,8 +457,8 @@ export function CategoriesManagement({
               />
             ))}
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
 
       {/* Edit Category Modal */}
       {

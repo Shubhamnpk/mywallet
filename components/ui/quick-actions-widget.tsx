@@ -41,7 +41,7 @@ export function QuickActionsWidget() {
         console.log('Add transaction')
         setIsExpanded(false)
       },
-      color: 'bg-blue-500 hover:bg-blue-600'
+      color: 'bg-primary hover:bg-primary/90'
     },
     {
       id: 'scan-receipt',
@@ -52,7 +52,7 @@ export function QuickActionsWidget() {
         console.log('Scan receipt')
         setIsExpanded(false)
       },
-      color: 'bg-green-500 hover:bg-green-600'
+      color: 'bg-success hover:bg-success/90'
     },
     {
       id: 'voice-command',
@@ -63,7 +63,7 @@ export function QuickActionsWidget() {
         console.log('Voice command')
         setIsExpanded(false)
       },
-      color: 'bg-purple-500 hover:bg-purple-600'
+      color: 'bg-info hover:bg-info/90'
     },
     {
       id: 'quick-calc',
@@ -74,7 +74,7 @@ export function QuickActionsWidget() {
         console.log('Quick calculator')
         setIsExpanded(false)
       },
-      color: 'bg-orange-500 hover:bg-orange-600'
+      color: 'bg-warning hover:bg-warning/90'
     },
     {
       id: 'gaming-place',
@@ -84,8 +84,8 @@ export function QuickActionsWidget() {
         setShowGamingPlace(true)
         setIsExpanded(false)
       },
-      color: 'bg-pink-500 hover:bg-pink-600'
-    }
+      color: 'bg-destructive hover:bg-destructive/90'
+    },
   ]
 
   return (
@@ -118,9 +118,8 @@ export function QuickActionsWidget() {
         {/* Main FAB */}
         <Button
           onClick={() => setIsExpanded(!isExpanded)}
-          className={`h-14 w-14 rounded-full shadow-lg transition-all duration-300 ${
-            isExpanded ? 'rotate-45' : ''
-          }`}
+          className={`h-14 w-14 rounded-full shadow-lg transition-all duration-300 ${isExpanded ? 'rotate-45' : ''
+            }`}
           size="lg"
         >
           {isExpanded ? (

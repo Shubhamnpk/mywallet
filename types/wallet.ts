@@ -21,6 +21,7 @@ export interface UserProfile {
     password?: string
     crn?: string
     pin?: string
+    preferredKitta?: number
     isAutomatedEnabled: boolean
   }
 }

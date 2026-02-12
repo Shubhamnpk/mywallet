@@ -54,6 +54,7 @@ export function MeroShareSettings() {
         password: userProfile?.meroShare?.password || "",
         crn: userProfile?.meroShare?.crn || "",
         pin: userProfile?.meroShare?.pin || "",
+        preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
         isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false
     })
 
@@ -168,7 +169,7 @@ export function MeroShareSettings() {
             body: JSON.stringify({
                 credentials: formData,
                 ipoName: ipoToTest,
-                kitta: 10
+                kitta: formData.preferredKitta || 0
             })
         }).then(async (res) => {
             const data = await res.json()
@@ -358,6 +359,23 @@ export function MeroShareSettings() {
                                 className="h-11 border-primary/20 bg-primary/5"
                             />
                         </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <Rocket className="w-3 h-3" /> Preferred Kitta (Optional)
+                            </Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                placeholder="0 = Auto-detect minimum"
+                                value={formData.preferredKitta || ""}
+                                onChange={(e) => updateField("preferredKitta", parseInt(e.target.value) || 0)}
+                                className="h-11 bg-background/50"
+                            />
+                            <p className="text-[10px] text-muted-foreground italic">
+                                Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount.
+                            </p>
+                        </div>
                     </div>
 
                     <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 flex gap-3">
@@ -390,15 +408,15 @@ export function MeroShareSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="border-indigo-500/20 bg-indigo-500/5">
+            <Card className="border-info/20 bg-info/5">
                 <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                        <div className="w-8 h-8 bg-info/20 rounded-lg flex items-center justify-center text-info">
                             <RefreshCw className={cn("w-5 h-5", isSyncing && "animate-spin")} />
                         </div>
                         <div>
                             <CardTitle className="text-base">Portfolio Sync</CardTitle>
-                            <CardDescription className="text-xs text-indigo-600/60 dark:text-indigo-400/60">Automatically import your current holdings from Mero Share</CardDescription>
+                            <CardDescription className="text-xs text-info/60">Automatically import your current holdings from Mero Share</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
@@ -408,7 +426,7 @@ export function MeroShareSettings() {
                             <div className="space-y-2">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Target Portfolio</Label>
                                 <Select value={targetPortfolio} onValueChange={setTargetPortfolio}>
-                                    <SelectTrigger className="w-full sm:w-[240px] h-10 rounded-xl bg-background/50 border-indigo-500/20">
+                                    <SelectTrigger className="w-full sm:w-[240px] h-10 rounded-xl bg-background/50 border-info/20">
                                         <SelectValue placeholder="Select Portfolio" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -424,12 +442,12 @@ export function MeroShareSettings() {
                             <div className="text-xs text-muted-foreground leading-relaxed max-w-sm">
                                 This will fetch your latest scrips and units.
                                 Existing scrips will have their units updated, while new ones will be added to
-                                <span className="font-bold text-indigo-600 dark:text-indigo-400"> {portfolios.find(p => p.id === targetPortfolio)?.name || "your portfolio"}</span>.
+                                <span className="font-bold text-info"> {portfolios.find(p => p.id === targetPortfolio)?.name || "your portfolio"}</span>.
                             </div>
                             <Button
                                 onClick={handleSyncPortfolio}
                                 disabled={isSyncing || !targetPortfolio}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 px-8 rounded-xl font-bold h-11 shrink-0 w-full sm:w-auto"
+                                className="bg-info hover:bg-info/90 text-white shadow-lg shadow-info/20 px-8 rounded-xl font-bold h-11 shrink-0 w-full sm:w-auto border-0"
                             >
                                 {isSyncing ? "Syncing..." : "Sync Now"}
                             </Button>
@@ -437,7 +455,7 @@ export function MeroShareSettings() {
                     </div>
 
                     <p className="text-[10px] text-muted-foreground mt-2 italic flex items-center gap-1.5 opacity-60">
-                        <AlertCircle className="w-3 h-3" />
+                        <AlertCircle className="w-3 h-3 text-warning" />
                         Cost price (Buy Price) won't be updated automatically. You may need to update them manually.
                     </p>
                 </CardContent>

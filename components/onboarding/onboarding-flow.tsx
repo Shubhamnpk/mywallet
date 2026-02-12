@@ -535,8 +535,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     <button
                       onClick={() => setFormData({ ...formData, walletType: 'timed' })}
                       className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${formData.walletType === 'timed'
-                          ? 'border-primary bg-primary/10 shadow-md'
-                          : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
+                        ? 'border-primary bg-primary/10 shadow-md'
+                        : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
                         }`}
                     >
                       <div className="flex flex-col items-center gap-2">
@@ -553,8 +553,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     <button
                       onClick={() => setFormData({ ...formData, walletType: 'normal' })}
                       className={`p-4 rounded-lg border-2 transition-all duration-300 text-center ${formData.walletType === 'normal'
-                          ? 'border-primary bg-primary/10 shadow-md'
-                          : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
+                        ? 'border-primary bg-primary/10 shadow-md'
+                        : 'border-border/20 bg-background-secondary hover:border-primary/50 hover:bg-primary/5'
                         }`}
                     >
                       <div className="flex flex-col items-center gap-2">
@@ -811,10 +811,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 <div
                   key={stepNum}
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${isActive
-                      ? 'bg-primary scale-125'
-                      : isCompleted
-                        ? 'bg-primary/70'
-                        : 'bg-muted-foreground/30'
+                    ? 'bg-primary scale-125'
+                    : isCompleted
+                      ? 'bg-primary/70'
+                      : 'bg-muted-foreground/30'
                     }`}
                 />
               );

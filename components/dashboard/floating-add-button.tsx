@@ -404,7 +404,7 @@ export function FloatingAddButton({
           "bg-primary text-white shadow-2xl backdrop-blur-sm",
           "transition-all duration-300 ease-out",
           "hover:scale-110 hover:shadow-primary/40 active:scale-95",
-          isMobile ? "bottom-16" : "bottom-6",
+          isMobile ? "bottom-20" : "bottom-6",
           className
         )}
       >

@@ -2,6 +2,26 @@ import { DataIntegrityManager } from "@/lib/data-integrity"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
 
+const ALWAYS_ENCRYPT_KEYS = new Set([
+  "userProfile",
+  "transactions",
+  "budgets",
+  "goals",
+  "debtAccounts",
+  "creditAccounts",
+  "debtCreditTransactions",
+  "categories",
+  "emergencyFund",
+  "portfolio",
+  "shareTransactions",
+  "portfolios",
+  "celebratedAchievements",
+])
+
+export function shouldEncryptStorageKey(key: string): boolean {
+  return ALWAYS_ENCRYPT_KEYS.has(key)
+}
+
 export async function loadFromLocalStorage(keys: string[]) {
   if (typeof window === 'undefined') return {}
 
@@ -9,17 +29,24 @@ export async function loadFromLocalStorage(keys: string[]) {
   for (const key of keys) {
     const value = localStorage.getItem(key)
     if (value !== null) {
-      try {
-        // Check if data is encrypted (starts with encrypted marker)
-        if (value.startsWith("encrypted:")) {
+      if (value.startsWith("encrypted:")) {
+        try {
           const encryptedData = value.substring(10) // Remove "encrypted:" prefix
           result[key] = await decryptData(encryptedData)
-        } else {
-          result[key] = JSON.parse(value)
+        } catch (decryptError) {
+          const message = decryptError instanceof Error ? decryptError.message : String(decryptError)
+          if (!message.includes("No master key available for decryption")) {
+            console.error(`Failed to decrypt key ${key}`, decryptError)
+          }
+          result[key] = null
         }
-      } catch (e) {
-        // fallback to raw string for numbers like emergencyFund
-        result[key] = value
+      } else {
+        try {
+          result[key] = JSON.parse(value)
+        } catch (jsonError) {
+          // fallback to raw string for simple values
+          result[key] = value
+        }
       }
     } else {
       result[key] = null
@@ -32,14 +59,20 @@ export async function saveToLocalStorage(key: string, data: any, encrypt: boolea
   if (typeof window === 'undefined') return
 
   try {
-    if (encrypt && SecureKeyManager.hasMasterKey()) {
-      // Encrypt sensitive data
+    const shouldEncrypt = encrypt || shouldEncryptStorageKey(key)
+    if (shouldEncrypt) {
+      // Encrypt using active key:
+      // - default key when no PIN exists
+      // - master key when PIN is configured and authenticated
       const masterKey = await SecureKeyManager.getMasterKey("")
       if (masterKey) {
         const encryptedData = await SecureWallet.encryptData(JSON.stringify(data), masterKey)
         localStorage.setItem(key, `encrypted:${encryptedData}`)
         return
       }
+
+      // Never fall back to plaintext for sensitive keys.
+      throw new Error(`No encryption key available for sensitive key: ${key}`)
     }
 
     // Save unencrypted if encryption not available or not requested

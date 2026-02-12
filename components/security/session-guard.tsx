@@ -387,6 +387,17 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
                 value={newPinStep === "new" ? newRegularPin : confirmNewRegularPin}
                 onChange={newPinStep === "new" ? setNewRegularPin : setConfirmNewRegularPin}
                 disabled={isSettingNewPin}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (newPinStep === "new" && newRegularPin.length === 6) {
+                      e.preventDefault()
+                      document.getElementById("new-pin-submit-btn")?.click() || handleNewPinSetup()
+                    } else if (newPinStep === "confirm" && confirmNewRegularPin.length === 6) {
+                      e.preventDefault()
+                      handleNewPinSetup()
+                    }
+                  }
+                }}
               >
                 <InputOTPGroup>
                   <InputOTPSlot index={0} />
@@ -477,6 +488,12 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
                   onChange={setPin}
                   disabled={isSubmitting}
                   className={pinError ? "animate-shake" : ""}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && pin.length === 6) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
                 >
                   <InputOTPGroup className={pinError ? "border-destructive/60 bg-destructive/5 shadow-lg shadow-destructive/20" : ""}>
                     <InputOTPSlot

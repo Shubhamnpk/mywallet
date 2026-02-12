@@ -25,6 +25,35 @@ import { SessionManager } from "@/lib/session-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
 import { toast } from "sonner"
 
+const REMINDER_CACHE_KEY = "wallet_reminder_cache_v1"
+const HOUR_MS = 60 * 60 * 1000
+const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
+
+const readReminderCache = (): Record<string, number> => {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(REMINDER_CACHE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const saveReminderCache = (cache: Record<string, number>) => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(REMINDER_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+  }
+}
+
+const shouldSendReminder = (cache: Record<string, number>, key: string, cooldownMs: number) => {
+  const lastSentAt = cache[key] ?? 0
+  return Date.now() - lastSentAt >= cooldownMs
+}
+
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -49,6 +78,174 @@ export function useWalletData() {
   const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+
+  // Reminder engine: budgets, goals, and IPO windows.
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return
+
+    const runReminderScan = () => {
+      const cache = readReminderCache()
+      const now = new Date()
+      let emittedCount = 0
+      const maxPerScan = 3
+
+      const emitReminder = (
+        key: string,
+        title: string,
+        description: string,
+        cooldownMs: number,
+      ) => {
+        if (emittedCount >= maxPerScan) return
+        if (!shouldSendReminder(cache, key, cooldownMs)) return
+
+        toast(title, { description, duration: 9000 })
+
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(title, {
+              body: description,
+              tag: key,
+            })
+          } catch {
+          }
+        }
+
+        cache[key] = Date.now()
+        emittedCount += 1
+      }
+
+      // Nudge once a week to enable browser notifications.
+      if ("Notification" in window && Notification.permission === "default") {
+        const permissionNudgeKey = "notification-permission-nudge"
+        if (shouldSendReminder(cache, permissionNudgeKey, 7 * 24 * HOUR_MS)) {
+          toast("Enable browser reminders", {
+            description: "Get alerts for budgets, goals, and IPO opening/closing windows.",
+            action: {
+              label: "Enable",
+              onClick: () => {
+                Notification.requestPermission().catch(() => {})
+              },
+            },
+            duration: 10000,
+          })
+          cache[permissionNudgeKey] = Date.now()
+          emittedCount += 1
+        }
+      }
+
+      // Budget reminders.
+      budgets
+        .filter((b) => b.limit > 0)
+        .forEach((budget) => {
+          const usage = (budget.spent / budget.limit) * 100
+          const budgetLabel = budget.name || budget.category || "Budget"
+
+          if (usage >= 100) {
+            emitReminder(
+              `budget-over-${budget.id}`,
+              `${budgetLabel} is over budget`,
+              `Spent ${usage.toFixed(0)}% of limit. Review this budget to prevent further overspending.`,
+              12 * HOUR_MS,
+            )
+          } else if (usage >= 90) {
+            emitReminder(
+              `budget-critical-${budget.id}`,
+              `${budgetLabel} is near limit`,
+              `You've used ${usage.toFixed(0)}% of this budget. Slow spending to stay on track.`,
+              24 * HOUR_MS,
+            )
+          } else if (usage >= 80) {
+            emitReminder(
+              `budget-warning-${budget.id}`,
+              `${budgetLabel} crossed 80%`,
+              `You've used ${usage.toFixed(0)}% of this budget.`,
+              24 * HOUR_MS,
+            )
+          }
+        })
+
+      // Goal reminders.
+      goals
+        .filter((g) => g.targetAmount > 0 && g.currentAmount < g.targetAmount)
+        .forEach((goal) => {
+          const progress = (goal.currentAmount / goal.targetAmount) * 100
+          const date = new Date(goal.targetDate)
+          if (Number.isNaN(date.getTime())) return
+
+          const daysRemaining = Math.ceil((date.getTime() - now.getTime()) / (24 * HOUR_MS))
+          const goalLabel = goal.title || goal.name || "Goal"
+
+          if (daysRemaining < 0) {
+            emitReminder(
+              `goal-overdue-${goal.id}`,
+              `Goal overdue: ${goalLabel}`,
+              `This goal is past target date and is ${progress.toFixed(0)}% complete.`,
+              24 * HOUR_MS,
+            )
+          } else if (daysRemaining <= 3) {
+            emitReminder(
+              `goal-due-soon-${goal.id}`,
+              `Goal due soon: ${goalLabel}`,
+              `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left. Progress: ${progress.toFixed(0)}%.`,
+              12 * HOUR_MS,
+            )
+          } else if (daysRemaining <= 7) {
+            emitReminder(
+              `goal-week-left-${goal.id}`,
+              `Goal deadline in ${daysRemaining} days`,
+              `${goalLabel} is ${progress.toFixed(0)}% complete.`,
+              24 * HOUR_MS,
+            )
+          }
+        })
+
+      // IPO reminders only when automation is enabled.
+      if (userProfile?.meroShare?.isAutomatedEnabled) {
+        upcomingIPOs.forEach((ipo) => {
+          const company = ipo.company || "IPO"
+          const daysRemaining =
+            ipo.daysRemaining ??
+            (ipo.closingDate
+              ? Math.ceil((new Date(ipo.closingDate).getTime() - now.getTime()) / (24 * HOUR_MS))
+              : undefined)
+
+          if (ipo.status === "open") {
+            if (typeof daysRemaining === "number" && daysRemaining <= 1) {
+              emitReminder(
+                `ipo-closing-soon-${company}`,
+                `IPO closing soon: ${company}`,
+                `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+                6 * HOUR_MS,
+              )
+            } else {
+              emitReminder(
+                `ipo-open-${company}`,
+                `IPO is open: ${company}`,
+                "You can apply from the Portfolio section.",
+                24 * HOUR_MS,
+              )
+            }
+          } else if (ipo.status === "upcoming" && typeof daysRemaining === "number" && daysRemaining <= 1) {
+            emitReminder(
+              `ipo-opening-soon-${company}`,
+              `IPO opening soon: ${company}`,
+              `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+              24 * HOUR_MS,
+            )
+          }
+        })
+      }
+
+      saveReminderCache(cache)
+    }
+
+    runReminderScan()
+    const intervalId = window.setInterval(runReminderScan, REMINDER_SCAN_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [isLoaded, budgets, goals, upcomingIPOs, userProfile?.meroShare?.isAutomatedEnabled])
 
   useEffect(() => {
     if (isLoaded) return
@@ -145,7 +342,7 @@ export function useWalletData() {
 
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
-    if (isLoaded && portfolio.length > 0 && Object.keys(sectorsMap).length > 0) {
+    if (isLoaded && sectorsMap && portfolio.length > 0) {
       const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
       if (needsUpdate) {
         setPortfolio(prev => prev.map(p => ({
@@ -156,10 +353,76 @@ export function useWalletData() {
     }
   }, [isLoaded, sectorsMap, portfolio.length])
 
+  // Migration to encrypted storage (legacy plaintext -> encrypted)
+  useEffect(() => {
+    if (isLoaded && !localStorage.getItem("encryption_v2_migrated")) {
+      const migrateToEncrypted = async () => {
+        try {
+          const key = await SecureKeyManager.getMasterKey("")
+          if (!key) {
+            // If locked, wait until session/PIN makes key available.
+            return
+          }
+
+          console.log("[Migration] Re-encrypting legacy plaintext keys...")
+
+          const sensitiveKeys = [
+            "userProfile",
+            "transactions",
+            "budgets",
+            "goals",
+            "debtAccounts",
+            "creditAccounts",
+            "debtCreditTransactions",
+            "categories",
+            "emergencyFund",
+            "portfolio",
+            "shareTransactions",
+            "portfolios",
+            "celebratedAchievements",
+          ]
+
+          for (const storageKey of sensitiveKeys) {
+            const raw = localStorage.getItem(storageKey)
+            if (!raw || raw.startsWith("encrypted:")) continue
+
+            let parsed: any = raw
+            try {
+              parsed = JSON.parse(raw)
+            } catch {
+            }
+
+            await saveToLocalStorage(storageKey, parsed, true)
+          }
+
+          localStorage.setItem("encryption_v2_migrated", "true")
+          console.log("[Migration] Encryption migration complete")
+        } catch (error) {
+          console.error("[Migration] Failed to encrypt data:", error)
+        }
+      }
+      migrateToEncrypted()
+    }
+  }, [isLoaded])
+
   // Hoisted function so it can be used during initial load before
   async function saveDataWithIntegrity(key: string, data: any) {
+    const sensitiveKeys = [
+      "userProfile",
+      "transactions",
+      "budgets",
+      "goals",
+      "debtAccounts",
+      "creditAccounts",
+      "debtCreditTransactions",
+      "portfolio",
+      "shareTransactions",
+      "emergencyFund"
+    ];
+    const shouldEncrypt = sensitiveKeys.includes(key);
+
     try {
-      await saveToLocalStorage(key, data)
+      await saveToLocalStorage(key, data, shouldEncrypt)
 
       const allData = {
         userProfile,
@@ -179,7 +442,7 @@ export function useWalletData() {
       await DataIntegrityManager.updateIntegrityRecord(allData)
     } catch (error) {
       try {
-        await saveToLocalStorage(key, data)
+        await saveToLocalStorage(key, data, shouldEncrypt)
       } catch (e) {
       }
     }
@@ -195,34 +458,51 @@ export function useWalletData() {
         return
       }
 
-      const savedProfile = localStorage.getItem("userProfile")
-      const savedTransactions = localStorage.getItem("transactions")
-      const savedBudgets = localStorage.getItem("budgets")
-      const savedGoals = localStorage.getItem("goals")
-      const savedDebtAccounts = localStorage.getItem("debtAccounts")
-      const savedCreditAccounts = localStorage.getItem("creditAccounts")
-      const savedEmergencyFund = localStorage.getItem("emergencyFund")
-      const savedDebtCreditTransactions = localStorage.getItem("debtCreditTransactions")
-      const savedCategories = localStorage.getItem("categories")
-      const savedPortfolio = localStorage.getItem("portfolio")
-      const savedShareTransactions = localStorage.getItem("shareTransactions")
+      const storedData = await loadFromLocalStorage([
+        "userProfile",
+        "transactions",
+        "budgets",
+        "goals",
+        "debtAccounts",
+        "creditAccounts",
+        "debtCreditTransactions",
+        "categories",
+        "emergencyFund",
+        "portfolio",
+        "shareTransactions",
+        "portfolios",
+      ])
 
+      const parseLocalJson = <T>(key: string, fallback: T): T => {
+        const raw = localStorage.getItem(key)
+        if (!raw) return fallback
+        try {
+          return JSON.parse(raw) as T
+        } catch {
+          return fallback
+        }
+      }
+
+      const emergencyFundRaw = storedData.emergencyFund
       const parsedData = {
-        userProfile: savedProfile ? JSON.parse(savedProfile) : null,
-        transactions: savedTransactions ? JSON.parse(savedTransactions) : [],
-        budgets: savedBudgets ? JSON.parse(savedBudgets) : [],
-        goals: savedGoals ? JSON.parse(savedGoals) : [],
-        debtAccounts: savedDebtAccounts ? JSON.parse(savedDebtAccounts) : [],
-        creditAccounts: savedCreditAccounts ? JSON.parse(savedCreditAccounts) : [],
-        debtCreditTransactions: savedDebtCreditTransactions ? JSON.parse(savedDebtCreditTransactions) : [],
-        categories: savedCategories ? JSON.parse(savedCategories) : [],
-        emergencyFund: savedEmergencyFund ? Number.parseFloat(savedEmergencyFund) : 0,
-        portfolio: savedPortfolio ? JSON.parse(savedPortfolio) : [],
-        shareTransactions: savedShareTransactions ? JSON.parse(savedShareTransactions) : [],
-        portfolios: localStorage.getItem("portfolios") ? JSON.parse(localStorage.getItem("portfolios")!) : [],
+        userProfile: storedData.userProfile ?? null,
+        transactions: Array.isArray(storedData.transactions) ? storedData.transactions : [],
+        budgets: Array.isArray(storedData.budgets) ? storedData.budgets : [],
+        goals: Array.isArray(storedData.goals) ? storedData.goals : [],
+        debtAccounts: Array.isArray(storedData.debtAccounts) ? storedData.debtAccounts : [],
+        creditAccounts: Array.isArray(storedData.creditAccounts) ? storedData.creditAccounts : [],
+        debtCreditTransactions: Array.isArray(storedData.debtCreditTransactions) ? storedData.debtCreditTransactions : [],
+        categories: Array.isArray(storedData.categories) ? storedData.categories : [],
+        emergencyFund:
+          typeof emergencyFundRaw === "number"
+            ? emergencyFundRaw
+            : Number.parseFloat(String(emergencyFundRaw ?? 0)) || 0,
+        portfolio: Array.isArray(storedData.portfolio) ? storedData.portfolio : [],
+        shareTransactions: Array.isArray(storedData.shareTransactions) ? storedData.shareTransactions : [],
+        portfolios: Array.isArray(storedData.portfolios) ? storedData.portfolios : [],
         activePortfolioId: localStorage.getItem("activePortfolioId") || null,
-        sectorsMap: localStorage.getItem("sectorsMap") ? JSON.parse(localStorage.getItem("sectorsMap")!) : {},
-        scripNamesMap: localStorage.getItem("scripNamesMap") ? JSON.parse(localStorage.getItem("scripNamesMap")!) : {},
+        sectorsMap: parseLocalJson("sectorsMap", {} as Record<string, string>),
+        scripNamesMap: parseLocalJson("scripNamesMap", {} as Record<string, string>),
       }
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
@@ -359,6 +639,37 @@ export function useWalletData() {
 
     // Handle expense transactions
     const transactionAmount = transaction.amount
+    const isExternalFundedExpense =
+      transaction.allocationType === "credit" ||
+      (transaction.allocationType === "debt" && (transaction.status === "debt" || (transaction.actual ?? 0) === 0))
+
+    if (isExternalFundedExpense) {
+      const newTransaction: Transaction = {
+        ...transaction,
+        id: generateId('tx'),
+        timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
+        total: transactionAmount,
+        actual: transaction.actual ?? 0,
+        debtUsed: transaction.debtUsed ?? transactionAmount,
+        debtAccountId: transaction.debtAccountId ?? null,
+        status: transaction.status ?? "debt",
+      }
+
+      const updatedTransactions = [...transactions, newTransaction]
+      setTransactions(updatedTransactions)
+      await saveDataWithIntegrity("transactions", updatedTransactions)
+
+      if (newTransaction.category) {
+        const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
+      }
+
+      return {
+        transaction: newTransaction,
+        budgetWarnings: [],
+        needsDebtCreation: false,
+        debtAmount: 0
+      }
+    }
 
     // Check if balance is sufficient
     if (balance >= transactionAmount) {
@@ -411,20 +722,20 @@ export function useWalletData() {
   const updateBudgetSpending = (category: string, amount: number) => {
     const { updatedBudgets, warnings } = updateBudgetSpendingHelper(budgets, category, amount, userProfile?.currency)
     setBudgets(updatedBudgets)
-    saveToLocalStorage("budgets", updatedBudgets)
+    saveToLocalStorage("budgets", updatedBudgets, true)
     return warnings
   }
 
   const updateGoalContribution = (goalId: string, amount: number) => {
     const updatedGoals = updateGoalContributionHelper(goals, goalId, amount)
     setGoals(updatedGoals)
-    saveToLocalStorage("goals", updatedGoals)
+    saveToLocalStorage("goals", updatedGoals, true)
   }
 
   const addToEmergencyFund = (amount: number) => {
     const newEmergencyFund = emergencyFund + amount
     setEmergencyFund(newEmergencyFund)
-    saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
+    saveToLocalStorage("emergencyFund", newEmergencyFund.toString(), true)
   }
 
   const transferToGoal = async (goalId: string, amount: number) => {
@@ -508,7 +819,7 @@ export function useWalletData() {
 
     const updatedDebts = [...debtAccounts, newDebt]
     setDebtAccounts(updatedDebts)
-    saveToLocalStorage("debtAccounts", updatedDebts)
+    saveToLocalStorage("debtAccounts", updatedDebts, true)
     return newDebt
   }
 
@@ -516,7 +827,7 @@ export function useWalletData() {
     return { debtAmount, transactionDescription }
   }
 
-  const addDebtToAccount = async (debtId: string, amount: number, description?: string) => {
+  const addDebtToAccount = async (debtId: string, amount: number, description?: string, category?: string) => {
     const debt = debtAccounts.find((d) => d.id === debtId)
     if (!debt) return { success: false, error: 'Debt account not found' }
 
@@ -528,7 +839,7 @@ export function useWalletData() {
     })
 
     setDebtAccounts(updatedDebts)
-    saveToLocalStorage('debtAccounts', updatedDebts)
+    saveToLocalStorage('debtAccounts', updatedDebts, true)
 
     const debtCharge: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -543,7 +854,7 @@ export function useWalletData() {
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
     setDebtCreditTransactions(updatedDebtTransactions)
-    saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions)
+    saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions, true)
 
     // Also create a regular transaction for main transactions list
     const debtAdditionTransaction: Transaction = {
@@ -551,7 +862,7 @@ export function useWalletData() {
       type: "expense",
       amount,
       description: `Added to debt: ${debt?.name || 'debt'}`,
-      category: "Debt",
+      category: category || "Debt",
       date: new Date().toISOString(),
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
       total: amount,
@@ -623,7 +934,7 @@ export function useWalletData() {
 
     const updatedCredits = [...creditAccounts, newCredit]
     setCreditAccounts(updatedCredits)
-    saveToLocalStorage("creditAccounts", updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits, true)
     return newCredit
   }
 
@@ -641,7 +952,7 @@ export function useWalletData() {
     })
 
     setCreditAccounts(updatedCredits)
-    saveToLocalStorage("creditAccounts", updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits, true)
   }
 
   const makeDebtPayment = async (debtId: string, paymentAmount: number) => {
@@ -702,7 +1013,7 @@ export function useWalletData() {
     const debtsAfterCleanup = updatedDebts.filter((d) => d.balance > 0)
 
     setDebtAccounts(debtsAfterCleanup)
-    saveToLocalStorage("debtAccounts", debtsAfterCleanup)
+    saveToLocalStorage("debtAccounts", debtsAfterCleanup, true)
 
     const debtTransaction: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -717,7 +1028,7 @@ export function useWalletData() {
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
     setDebtCreditTransactions(updatedDebtTransactions)
-    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions)
+    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions, true)
 
     // If balanceAfter is zero, add a congratulatory transaction note and remove account already handled above
     if (debtTransaction.balanceAfter === 0) {
@@ -734,7 +1045,7 @@ export function useWalletData() {
 
       const withCongrats = [...updatedDebtTransactions, congrats]
       setDebtCreditTransactions(withCongrats)
-      saveToLocalStorage('debtCreditTransactions', withCongrats)
+      saveToLocalStorage('debtCreditTransactions', withCongrats, true)
     }
 
     return {
@@ -793,7 +1104,7 @@ export function useWalletData() {
 
     const updatedGoals = [...goals, newGoal]
     setGoals(updatedGoals)
-    saveToLocalStorage("goals", updatedGoals)
+    saveToLocalStorage("goals", updatedGoals, true)
     return newGoal
   }
 
@@ -1031,51 +1342,47 @@ export function useWalletData() {
   }
 
   const refreshData = () => {
-    try {
-      if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return
 
-      const savedBudgets = localStorage.getItem("budgets")
-      const savedGoals = localStorage.getItem("goals")
-      const savedTransactions = localStorage.getItem("transactions")
-      const savedCategories = localStorage.getItem("categories")
+    void (async () => {
+      try {
+        const latest = await loadFromLocalStorage(["budgets", "goals", "transactions", "categories"])
 
-      if (savedBudgets) {
-        const parsedBudgets = JSON.parse(savedBudgets)
-        setBudgets(parsedBudgets)
-      }
+        if (Array.isArray(latest.budgets)) {
+          setBudgets(latest.budgets)
+        }
 
-      if (savedGoals) {
-        const parsedGoals = JSON.parse(savedGoals)
-        setGoals(parsedGoals)
-      }
+        if (Array.isArray(latest.goals)) {
+          setGoals(latest.goals)
+        }
 
-      if (savedTransactions) {
-        const parsedTransactions = JSON.parse(savedTransactions)
-        setTransactions(parsedTransactions)
-        // Calculate balance based on actual cash flow
-        const actualBalance = parsedTransactions.reduce((sum: number, tx: Transaction) => {
-          if (tx.type === "income") {
-            return sum + (tx.actual ?? tx.amount)
-          } else {
-            return sum - (tx.actual ?? tx.amount)
-          }
-        }, 0)
-        setBalance(actualBalance)
-      }
+        if (Array.isArray(latest.transactions)) {
+          const parsedTransactions = latest.transactions
+          setTransactions(parsedTransactions)
+          // Calculate balance based on actual cash flow
+          const actualBalance = parsedTransactions.reduce((sum: number, tx: Transaction) => {
+            if (tx.type === "income") {
+              return sum + (tx.actual ?? tx.amount)
+            } else {
+              return sum - (tx.actual ?? tx.amount)
+            }
+          }, 0)
+          setBalance(actualBalance)
+        }
 
-      if (savedCategories) {
-        const parsedCategories = JSON.parse(savedCategories)
-        setCategories(parsedCategories)
-      }
+        if (Array.isArray(latest.categories)) {
+          setCategories(latest.categories)
+        }
 
-      const savedSectors = localStorage.getItem("sectorsMap")
-      const savedNames = localStorage.getItem("scripNamesMap")
-      if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
-      if (savedNames) setScripNamesMap(JSON.parse(savedNames))
-    } catch (error) { }
+        const savedSectors = localStorage.getItem("sectorsMap")
+        const savedNames = localStorage.getItem("scripNamesMap")
+        if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
+        if (savedNames) setScripNamesMap(JSON.parse(savedNames))
+      } catch (error) { }
+    })()
   }
 
-  const spendFromGoal = async (goalId: string, amount: number, description: string) => {
+  const spendFromGoal = async (goalId: string, amount: number, description: string, category?: string) => {
     if (amount <= 0) {
       return {
         error: "Spend amount must be greater than zero",
@@ -1103,13 +1410,15 @@ export function useWalletData() {
       type: "expense",
       amount: amount,
       description: `Goal spending: ${goal.title} - ${description}`,
-      category: "Goal Spending",
+      category: category || "Goal Spending",
       date: new Date().toISOString(),
       allocationType: "goal",
       allocationTarget: goalId,
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
       total: amount,
-      actual: amount,
+      // Spending from a goal should not reduce wallet cash again.
+      // Goal contributions already moved money out of wallet.
+      actual: 0,
       debtUsed: 0,
       debtAccountId: null,
       status: "normal",
@@ -1229,7 +1538,7 @@ export function useWalletData() {
     }
     const updated = [...portfolios, newPortfolio]
     setPortfolios(updated)
-    await saveToLocalStorage("portfolios", updated)
+    await saveToLocalStorage("portfolios", updated, true)
     if (updated.length === 1) {
       setActivePortfolioId(newPortfolio.id)
       saveToLocalStorage("activePortfolioId", newPortfolio.id)
@@ -1247,7 +1556,7 @@ export function useWalletData() {
 
 
     setPortfolios(updatedPortfolios)
-    await saveToLocalStorage("portfolios", updatedPortfolios)
+    await saveToLocalStorage("portfolios", updatedPortfolios, true)
 
     // Delete all associated items and transactions
     const updatedItems = portfolio.filter(p => p.portfolioId !== id)
@@ -1274,7 +1583,7 @@ export function useWalletData() {
   const updatePortfolio = async (id: string, updates: Partial<Portfolio>) => {
     const updated = portfolios.map(p => p.id === id ? { ...p, ...updates } : p)
     setPortfolios(updated)
-    await saveToLocalStorage("portfolios", updated)
+    await saveToLocalStorage("portfolios", updated, true)
   }
 
   // Module-level cache (resets on browser reload)

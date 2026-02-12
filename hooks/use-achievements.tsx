@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import type { Goal, Achievement, UserProfile, Transaction, Budget, DebtAccount } from "@/types/wallet"
+import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import {
   Trophy,
   Star,
@@ -9,14 +10,15 @@ import {
   Target,
   Zap,
   Crown,
+  Gem,
   Medal,
-  Gift,
-  Sparkles,
-  CheckCircle2,
+  Shield,
+  AlertTriangle,
   Flame,
   TrendingUp,
-  Shield,
-  AlertTriangle
+  CheckCircle2,
+  Sparkles,
+  Gift
 } from "lucide-react"
 
 interface UseAchievementsProps {
@@ -80,12 +82,13 @@ export function useAchievements({
     })
 
     // Global goal achievements
+    // Global goal achievements
     const totalGoals = goals.length
     const completedGoals = goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length
     const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0)
     const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0)
 
-    const globalAchievements = [
+    const globalAchievements: Partial<Achievement>[] = [
       {
         id: "first_goal",
         title: "Goal Setter",
@@ -170,15 +173,18 @@ export function useAchievements({
       newAchievements.push({
         ...achievement,
         unlockedAt: achievement.unlocked ? new Date() : undefined
-      })
+      } as Achievement)
     })
 
     // Transaction-based achievements
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
     const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
-    const netIncome = totalIncome - totalExpenses
 
-    const transactionAchievements = [
+    // Streak calculation (days with transactions)
+    const transactionDates = new Set(transactions.map(t => new Date(t.date).toDateString()))
+    const transactionStreak = transactionDates.size
+
+    const transactionAchievements: Partial<Achievement>[] = [
       {
         id: "first_income",
         title: "Income Earner",
@@ -188,8 +194,20 @@ export function useAchievements({
         unlocked: totalIncome > 0,
         progress: Math.min(totalIncome, 1),
         maxProgress: 1,
-        category: "Transactions",
+        category: "Economy",
         rarity: "common" as const
+      },
+      {
+        id: "data_enthusiast",
+        title: "Data Enthusiast",
+        description: "Recorded transactions on 7 different days",
+        icon: <Zap className="w-5 h-5" />,
+        color: "text-yellow-600 bg-yellow-50",
+        unlocked: transactionStreak >= 7,
+        progress: Math.min(transactionStreak, 7),
+        maxProgress: 7,
+        category: "Activity",
+        rarity: "rare" as const
       },
       {
         id: "budget_keeper",
@@ -210,7 +228,7 @@ export function useAchievements({
           return spent <= budget.limit
         }).length,
         maxProgress: budgets.length || 1,
-        category: "Budgeting",
+        category: "Discipline",
         rarity: "rare" as const
       },
       {
@@ -221,21 +239,9 @@ export function useAchievements({
         color: "text-emerald-600 bg-emerald-50",
         unlocked: debtAccounts.length > 0 && debtAccounts.every(d => d.balance === 0),
         progress: debtAccounts.filter(d => d.balance === 0).length,
-        maxProgress: debtAccounts.length || 1,
-        category: "Debt Management",
+        maxProgress: Math.max(debtAccounts.length, 1),
+        category: "Freedom",
         rarity: "epic" as const
-      },
-      {
-        id: "transaction_novice",
-        title: "Transaction Novice",
-        description: "Recorded 10 transactions",
-        icon: <TrendingUp className="w-5 h-5" />,
-        color: "text-green-600 bg-green-50",
-        unlocked: transactions.length >= 10,
-        progress: Math.min(transactions.length, 10),
-        maxProgress: 10,
-        category: "Transactions",
-        rarity: "common" as const
       },
       {
         id: "transaction_expert",
@@ -246,7 +252,7 @@ export function useAchievements({
         unlocked: transactions.length >= 100,
         progress: Math.min(transactions.length, 100),
         maxProgress: 100,
-        category: "Transactions",
+        category: "Activity",
         rarity: "rare" as const
       },
       {
@@ -258,7 +264,7 @@ export function useAchievements({
         unlocked: transactions.length >= 1000,
         progress: Math.min(transactions.length, 1000),
         maxProgress: 1000,
-        category: "Transactions",
+        category: "Activity",
         rarity: "legendary" as const
       },
       {
@@ -294,8 +300,32 @@ export function useAchievements({
         unlocked: totalIncome >= 100000,
         progress: Math.min(totalIncome, 100000),
         maxProgress: 100000,
-        category: "Income",
+        category: "Economy",
         rarity: "epic" as const
+      },
+      {
+        id: "six_figure_club",
+        title: "Six-Figure Club",
+        description: "Reach a net worth of $100,000",
+        icon: <Gem className="w-5 h-5" />,
+        color: "text-amber-600 bg-amber-50",
+        unlocked: (totalIncome - totalExpenses) >= 100000,
+        progress: Math.min(Math.max(totalIncome - totalExpenses, 0), 100000),
+        maxProgress: 100000,
+        category: "Wealth",
+        rarity: "legendary" as const
+      },
+      {
+        id: "emergency_ready",
+        title: "Emergency Ready",
+        description: "Saved 3 months of expenses ($15,000 estimate)",
+        icon: <Shield className="w-5 h-5" />,
+        color: "text-sky-600 bg-sky-50",
+        unlocked: totalSaved >= 15000,
+        progress: Math.min(totalSaved, 15000),
+        maxProgress: 15000,
+        category: "Discipline",
+        rarity: "rare" as const
       }
     ]
 
@@ -303,27 +333,55 @@ export function useAchievements({
       newAchievements.push({
         ...achievement,
         unlockedAt: achievement.unlocked ? new Date() : undefined
-      })
+      } as Achievement)
     })
 
     return newAchievements
   }, [goals, transactions, budgets, debtAccounts])
 
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  // Load celebrated achievements from local storage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      void (async () => {
+        try {
+          const stored = await loadFromLocalStorage(["celebratedAchievements"])
+          const ids = stored.celebratedAchievements
+          if (Array.isArray(ids)) {
+            ids.forEach((id: string) => celebratedAchievements.current.add(id))
+          }
+        } catch (e) {
+          console.error("Failed to load celebrated achievements", e)
+        } finally {
+          setIsLoaded(true)
+        }
+      })()
+    }
+  }, [])
+
   // Trigger celebrations for newly unlocked achievements
   useEffect(() => {
+    if (!isLoaded) return
+
     const unlockedAchievements = achievements.filter(a => a.unlocked && !celebratedAchievements.current.has(a.id))
+
     if (unlockedAchievements.length > 0 && !celebration.show) {
       const achievement = unlockedAchievements[0] // Celebrate the first new achievement
+
+      // Update local storage immediately to prevent double celebration if component re-renders
+      celebratedAchievements.current.add(achievement.id)
+      void saveToLocalStorage('celebratedAchievements', Array.from(celebratedAchievements.current), true)
+
       setTimeout(() => {
         setCelebration({
           show: true,
           achievement,
           goal: achievement.goalId ? goals.find(g => g.id === achievement.goalId) : undefined
         })
-        celebratedAchievements.current.add(achievement.id)
       }, 1000)
     }
-  }, [achievements, celebration.show, goals])
+  }, [achievements, celebration.show, goals, isLoaded])
 
 
   const unlockedAchievements = achievements.filter(a => a.unlocked)
@@ -332,6 +390,9 @@ export function useAchievements({
   const dismissCelebration = () => {
     if (celebration.achievement) {
       celebratedAchievements.current.add(celebration.achievement.id)
+      if (typeof window !== 'undefined') {
+        void saveToLocalStorage('celebratedAchievements', Array.from(celebratedAchievements.current), true)
+      }
     }
     setCelebration({ show: false, achievement: null })
   }

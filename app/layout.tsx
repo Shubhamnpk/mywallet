@@ -150,18 +150,20 @@ export default function RootLayout({
           }}
         />
       </head>
-  <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-    <RegisterSW />
-    <UpdateNotification />
-    <UpdateSuccess />
-    <ThemeProviderWrapper>
-      <PrivacyModeProvider>
-        <WalletDataProvider>
-            <SessionGuard>{children}</SessionGuard>
-        </WalletDataProvider>
-      </PrivacyModeProvider>
-      <Toaster />
-    </ThemeProviderWrapper>
+      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+        <RegisterSW />
+        <UpdateNotification />
+        <UpdateSuccess />
+        <ThemeProviderWrapper>
+          <PrivacyModeProvider>
+            <SessionGuard>
+              <WalletDataProvider>
+                {children}
+              </WalletDataProvider>
+            </SessionGuard>
+          </PrivacyModeProvider>
+          <Toaster />
+        </ThemeProviderWrapper>
       </body>
     </html>
   )

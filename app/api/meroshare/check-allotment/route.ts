@@ -15,27 +15,60 @@ export async function POST(req: Request) {
             const page = await browser.newPage();
 
             // 1. Login
-            await page.goto('https://meroshare.cdsc.com.np/#/login', { waitUntil: 'networkidle2' });
+            await page.goto('https://meroshare.cdsc.com.np/#/login', { waitUntil: 'domcontentloaded' });
 
-            await page.waitForSelector('.select2-selection', { timeout: 15000 });
-            await page.click('.select2-selection');
-            await page.type('.select2-search__field', credentials.dpId);
-            await page.keyboard.press('Enter');
+            // Search and select DP (Robust Method)
+            try {
+                // Wait for the dropdown trigger
+                await page.waitForSelector('.select2-selection', { timeout: 20000 });
+                await page.click('.select2-selection');
 
-            await page.type('#username', credentials.username);
-            await page.type('#password', credentials.password);
+                // Type DP ID and wait for results
+                await page.waitForSelector('.select2-search__field', { visible: true });
+                await page.type('.select2-search__field', credentials.dpId, { delay: 100 });
 
-            await page.click('button[type="submit"]');
+                // Wait for the specific result to appear in the dropdown
+                await page.waitForSelector('.select2-results__option', { visible: true, timeout: 10000 });
+                await page.keyboard.press('Enter');
+            } catch (dpError) {
+                console.error("DP Selection failed:", dpError);
+                // Fallback: try pressing Enter blindly if selector wait failed
+                await page.keyboard.press('Enter');
+            }
 
-            await page.waitForFunction(() => {
-                return window.location.href.includes('/dashboard') ||
-                    document.querySelector('.toast-error') !== null;
-            }, { timeout: 30000 });
+            // Fill Username & Password with delay to ensure Angular binding
+            await page.waitForSelector('#username', { visible: true });
+            await page.type('#username', credentials.username, { delay: 50 });
+            await page.type('#password', credentials.password, { delay: 50 });
+
+            // Click Login
+            const loginBtn = await page.$('button[type="submit"]');
+            if (loginBtn) {
+                await loginBtn.click();
+            } else {
+                await page.keyboard.press('Enter');
+            }
+
+            // Wait for dashboard or error
+            try {
+                await page.waitForFunction(() => {
+                    const isDashboard = window.location.href.includes('/dashboard');
+                    const hasError = document.querySelector('.toast-error') !== null;
+                    const hasAuthError = document.body.textContent?.includes('Attempts remaining');
+                    return isDashboard || hasError || hasAuthError;
+                }, { timeout: 30000 });
+            } catch (waitError) {
+                // Timeout handled below
+            }
 
             if (!page.url().includes('/dashboard')) {
-                const errorMsg = await page.evaluate(() => document.querySelector('.toast-error')?.textContent?.trim());
+                const errorMsg = await page.evaluate(() => {
+                    const toast = document.querySelector('.toast-error, .toast-message');
+                    return toast?.textContent?.trim() ||
+                        (document.body.textContent?.includes('Attempts remaining') ? "Invalid Credentials" : null);
+                });
                 await browser.close();
-                return NextResponse.json({ error: errorMsg || "Login failed" }, { status: 401 });
+                return NextResponse.json({ error: errorMsg || "Login failed or timed out. Check credentials." }, { status: 401 });
             }
 
             // 2. Navigate to My ASBA
@@ -85,16 +118,32 @@ export async function POST(req: Request) {
                 await page.waitForSelector('.asba-table, .company-list', { timeout: 20000 });
 
                 foundReport = await page.evaluate((targetIpo: string) => {
-                    const nameToMatch = targetIpo.toLowerCase().trim();
+                    // Helper: Normalize name for fuzzy matching
+                    const normalize = (name: string) => {
+                        return name.toLowerCase()
+                            .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, '') // Remove suffixes
+                            .replace(/[().,-]/g, '') // Remove punctuation
+                            .replace(/\s+/g, ' ') // Collapse spaces
+                            .trim();
+                    };
+
+                    const targetNormalized = normalize(targetIpo);
+
+                    // Helper: Check match (Exact OR Fuzzy)
+                    const isMatch = (candidate: string) => {
+                        if (!candidate) return false;
+                        const candNorm = normalize(candidate);
+                        return candNorm.includes(targetNormalized) || targetNormalized.includes(candNorm);
+                    };
 
                     // Try Card-based layout (.company-list)
                     const cards = Array.from(document.querySelectorAll('.company-list'));
                     if (cards.length > 0) {
                         for (const card of cards) {
                             const nameEl = card.querySelector('.company-name span[tooltip="Company Name"]') || card.querySelector('.company-name');
-                            const cardText = nameEl?.textContent?.toLowerCase().trim() || "";
+                            const cardText = nameEl?.textContent?.trim() || "";
 
-                            if (cardText.includes(nameToMatch)) {
+                            if (isMatch(cardText)) {
                                 // Find the specific button that has "report" icon or text inside action-buttons
                                 const buttons = Array.from(card.querySelectorAll('.action-buttons button'));
                                 const reportBtn = buttons.find(btn => btn.textContent?.toLowerCase().includes('report')) || card.querySelector('.btn-issue');
@@ -110,9 +159,14 @@ export async function POST(req: Request) {
                     // Try Table-based layout (.asba-table)
                     const rows = Array.from(document.querySelectorAll('.asba-table tbody tr'));
                     for (const row of rows) {
-                        const rowText = row.textContent?.toLowerCase().trim() || "";
-                        if (rowText.includes(nameToMatch)) {
-                            const reportBtn = row.querySelector('.btn-report, .ca-report, .ca.report, i.report');
+                        const rowText = row.textContent?.trim() || "";
+                        const companyName = rowText.split('\n')[0].trim();
+
+                        if (isMatch(companyName)) {
+                            // Find report button/icon
+                            const reportBtn = row.querySelector('.btn-report, .ca-report, .ca.report, i.mdi-file-document') ||
+                                Array.from(row.querySelectorAll('button')).find(btn => btn.innerHTML.includes('mdi-file-document'));
+
                             if (reportBtn) {
                                 (reportBtn as HTMLElement).click();
                                 return true;
@@ -168,7 +222,7 @@ export async function POST(req: Request) {
                 // "Verified" means application is success but result is not yet published
                 const isAllotted = lowerStatus.includes('alloted') && !lowerStatus.includes('not');
                 const isVerified = lowerStatus === 'verified';
-                const isNotAllotted = lowerStatus.includes('not alloted');
+                const isNotAllotted = lowerStatus.includes('..');
 
                 let finalStatus = statusValue;
                 if (isVerified) {

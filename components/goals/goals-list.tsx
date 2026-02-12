@@ -35,11 +35,14 @@ import {
   Briefcase,
   Zap,
   Trophy,
+  Star,
+  Clock,
+  Sparkles,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, UserProfile } from "@/types/wallet"
-import { formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"

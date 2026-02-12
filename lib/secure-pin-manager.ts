@@ -124,6 +124,9 @@ export class SecurePinManager {
 
       // Create master key for wallet encryption
       await SecureKeyManager.createMasterKey(pin)
+      SecureKeyManager.cacheSessionPin(pin)
+      // Move existing encrypted data from default key to new PIN key.
+      await SecureKeyManager.migrateFromDefaultKeyToMasterKey(pin)
 
       // Reset attempt counters
       console.log(`[Progressive] Setup PIN - calling resetAttempts()`)
@@ -426,6 +429,7 @@ export class SecurePinManager {
       // Store securely (without creating new master key)
       localStorage.setItem(this.PIN_HASH_KEY, hash)
       localStorage.setItem(this.PIN_SALT_KEY, btoa(String.fromCharCode(...salt)))
+      SecureKeyManager.cacheSessionPin(newPin)
 
       // Reset attempt counters only
       console.log(`[Progressive] PIN recovery update - resetting attempts only`)
@@ -646,6 +650,7 @@ export class SecurePinManager {
 
     // Clear authentication timestamp
     localStorage.removeItem('wallet_last_auth')
+    SecureKeyManager.clearSessionPin()
 
     console.log('[SecurePinManager] All security data cleared completely')
   }
