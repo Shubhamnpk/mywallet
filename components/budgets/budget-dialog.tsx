@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useMemo, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -183,7 +183,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Target className="w-5 h-5 text-primary" />
@@ -191,8 +191,9 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
+            <Card>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="budget-name" className="flex items-center gap-2">
@@ -287,8 +288,8 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                 </div>
               </div>
             </CardContent>
-          </Card>
-          <Card>
+            </Card>
+            <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Tag className="w-5 h-5 text-primary" />
@@ -363,9 +364,10 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                 <p className="text-sm text-destructive">{errors.categories}</p>
               )}
             </CardContent>
-          </Card>
+            </Card>
+          </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 pt-4">
+          <DialogFooter className="mt-4 flex flex-row gap-2 border-t bg-background pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] justify-end">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
             </Button>
@@ -376,7 +378,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
             >
               {editingBudget ? "Update Budget" : "Create Budget"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

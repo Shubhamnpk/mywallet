@@ -130,29 +130,25 @@ export function useAuthentication(): AuthState & AuthActions {
                   isAuthenticated: true,
                   masterKey: masterKey,
                 }))
-                console.log('[useAuthentication] Auto-authentication successful')
                 return
               }
-            } catch (error) {
-              console.log('[useAuthentication] Auto-authentication failed:', error)
+            } catch {
             }
           }
 
           // No valid session or auto-auth failed, stay unauthenticated
-          console.log('[useAuthentication] No valid session, staying unauthenticated')
           setAuthState(prev => ({
             ...prev,
             isAuthenticated: false,
           }))
         }
-      } catch (error) {
+      } catch {
         setAuthState(prev => ({ ...prev, isLoading: false }))
       }
     }
 
     // Listen for session expiry events
 	    const handleSessionExpiry = () => {
-	      console.log('[useAuthentication] Session expired, updating auth state')
 	      SecureKeyManager.expireKeyCache()
 	      setAuthState(prev => ({
 	        ...prev,
@@ -213,7 +209,6 @@ export function useAuthentication(): AuthState & AuthActions {
         return false
       }
     } catch (error) {
-      console.error("[v0] PIN setup error:", error)
       setAuthState(prev => ({ ...prev, isLoading: false }))
       toast({
         title: "Setup Error",
@@ -341,7 +336,6 @@ export function useAuthentication(): AuthState & AuthActions {
     try {
       // Handle biometric authentication (empty PIN)
       if (pin === "") {
-        console.log('[useAuthentication] Biometric authentication detected')
         // For biometric auth, we don't validate PIN but create session directly
         // This assumes biometric validation has already happened
 

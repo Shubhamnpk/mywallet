@@ -183,7 +183,7 @@ export function AddAccountDialog({
                                 </div>
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                            <div className="flex flex-row gap-3 pt-4">
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1 h-11 font-medium">
                                     Cancel
                                 </Button>
@@ -324,7 +324,7 @@ export function AddAccountDialog({
                                 </div>
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                            <div className="flex flex-row gap-3 pt-4">
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1 h-11 font-medium">
                                     Cancel
                                 </Button>

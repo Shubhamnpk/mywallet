@@ -41,17 +41,6 @@ export class SecurePinManager {
   private static readonly SECURITY_LEVEL_KEY = "wallet_security_level"
   private static readonly EMERGENCY_SECURITY_LEVEL_KEY = "wallet_emergency_security_level"
 
-  // Debug method to check all localStorage keys
-  private static debugLocalStorage(): void {
-    console.log(`[Progressive] All localStorage keys:`)
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      const value = localStorage.getItem(key!)
-      console.log(`  ${key}: ${value}`)
-    }
-  }
-
-  
   // Progressive security levels configuration
   private static readonly PROGRESSIVE_LEVELS: ProgressiveLevelConfig[] = [
     { attempts: 3, timeout: 0 },
@@ -101,7 +90,6 @@ export class SecurePinManager {
   // Set up initial PIN
   static async setupPin(pin: string): Promise<boolean> {
     try {
-      console.log(`[Progressive] Setting up new PIN`)
       const config = this.getConfig()
 
       // Validate PIN length
@@ -129,12 +117,10 @@ export class SecurePinManager {
       await SecureKeyManager.migrateFromDefaultKeyToMasterKey(pin)
 
       // Reset attempt counters
-      console.log(`[Progressive] Setup PIN - calling resetAttempts()`)
       this.resetAttempts()
 
       return true
     } catch (error) {
-      console.log(`[Progressive] Setup PIN failed:`, error)
       return false
     }
   }
@@ -179,7 +165,6 @@ export class SecurePinManager {
       const attempts = this.getAttempts()
       const lockoutTime = this.getLockoutTime()
 
-      console.log(`[Progressive] Validating PIN - Level: ${securityLevel}, Attempts: ${attempts}, Lockout: ${lockoutTime}`)
 
       // Check if currently locked out
       if (lockoutTime > Date.now()) {
@@ -205,7 +190,6 @@ export class SecurePinManager {
       if (attempts >= levelConfig.attempts) {
         // Increment security level and set lockout
         const newLevel = securityLevel + 1
-        console.log(`[Progressive] Escalating from level ${securityLevel} to level ${newLevel}`)
         this.setSecurityLevel(newLevel)
         const newLevelConfig = this.getCurrentLevelConfig(newLevel)
         this.setProgressiveLockout(newLevelConfig.timeout)
@@ -236,7 +220,6 @@ export class SecurePinManager {
       if (isValid) {
         // Success - reset attempts and security level
         this.resetAttempts()
-        console.log("[Progressive] PIN validation successful - reset to level 0")
         return {
           success: true,
           attemptsRemaining: this.PROGRESSIVE_LEVELS[0].attempts,
@@ -339,7 +322,6 @@ export class SecurePinManager {
       if (isValid) {
         // Success - reset attempts and security level
         this.resetEmergencyAttempts()
-        console.log("[Progressive] Emergency PIN validation successful - reset to level 0")
         return {
           success: true,
           attemptsRemaining: 3, // Emergency always starts with 3 attempts
@@ -383,25 +365,19 @@ export class SecurePinManager {
   // Change PIN securely
   static async changePin(oldPin: string, newPin: string): Promise<boolean> {
     try {
-      console.log(`[Progressive] Starting PIN change process`)
       // First validate old PIN
       const validation = await this.validatePin(oldPin)
       if (!validation.success) {
-        console.log(`[Progressive] PIN change failed - old PIN validation failed`)
         return false
       }
 
-      console.log(`[Progressive] PIN change - old PIN validated, setting up new PIN`)
       // Setup new PIN
       const success = await this.setupPin(newPin)
       if (success) {
-        console.log(`[Progressive] PIN change successful`)
       } else {
-        console.log(`[Progressive] PIN change failed - new PIN setup failed`)
       }
       return success
     } catch (error) {
-      console.log(`[Progressive] PIN change error:`, error)
       return false
     }
   }
@@ -409,7 +385,6 @@ export class SecurePinManager {
   // Update PIN without clearing security data (for emergency PIN recovery)
   static async updatePinForRecovery(newPin: string): Promise<boolean> {
     try {
-      console.log(`[Progressive] Starting PIN recovery update process`)
       const config = this.getConfig()
 
       // Validate PIN length
@@ -432,13 +407,10 @@ export class SecurePinManager {
       SecureKeyManager.cacheSessionPin(newPin)
 
       // Reset attempt counters only
-      console.log(`[Progressive] PIN recovery update - resetting attempts only`)
       this.resetAttemptsOnly()
 
-      console.log(`[Progressive] PIN recovery update successful`)
       return true
     } catch (error) {
-      console.log(`[Progressive] PIN recovery update failed:`, error)
       return false
     }
   }
@@ -530,7 +502,6 @@ export class SecurePinManager {
 
     // If lockout period has expired, give user attempts based on current level
     if (lockoutTime > 0 && lockoutTime <= Date.now()) {
-      console.log(`[Progressive] Lockout expired in getAuthStatus(), resetting attempts only`)
       this.resetAttemptsOnly() // Don't reset security level
       const levelConfig = this.getCurrentLevelConfig(securityLevel)
       return {
@@ -574,7 +545,6 @@ export class SecurePinManager {
   }
 
   private static resetAttemptsOnly(): void {
-    console.log(`[Progressive] Resetting attempts only (keeping security level: ${this.getSecurityLevel()})`)
     localStorage.removeItem(this.PIN_ATTEMPTS_KEY)
     localStorage.removeItem(this.PIN_LOCKOUT_KEY)
     // Don't reset security level - keep current level
@@ -652,34 +622,23 @@ export class SecurePinManager {
     localStorage.removeItem('wallet_last_auth')
     SecureKeyManager.clearSessionPin()
 
-    console.log('[SecurePinManager] All security data cleared completely')
   }
 
   // Progressive security level helper methods
   private static getSecurityLevel(): number {
     const stored = localStorage.getItem(this.SECURITY_LEVEL_KEY)
     const level = stored ? parseInt(stored, 10) : 0
-    console.log(`[Progressive] Retrieved security level: ${level} (stored: ${stored})`)
-    console.log(`[Progressive] localStorage length: ${localStorage.length}`)
-
-    // If stored is null, debug the localStorage
-    if (stored === null) {
-      this.debugLocalStorage()
-    }
 
     return level
   }
 
   private static setSecurityLevel(level: number): void {
-    console.log(`[Progressive] Setting security level to: ${level} (key: ${this.SECURITY_LEVEL_KEY})`)
     localStorage.setItem(this.SECURITY_LEVEL_KEY, level.toString())
     // Verify it was stored
     const stored = localStorage.getItem(this.SECURITY_LEVEL_KEY)
-    console.log(`[Progressive] Verification - stored value: ${stored}`)
   }
 
   private static resetSecurityLevel(): void {
-    console.log(`[Progressive] Resetting security level to 0`)
     localStorage.removeItem(this.SECURITY_LEVEL_KEY)
   }
 

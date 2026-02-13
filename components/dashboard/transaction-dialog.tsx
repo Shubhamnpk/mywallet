@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { MobileNativeModal } from "@/components/dashboard/mobile-native-modal"
 
 interface FormData {
   amount: string
@@ -989,14 +990,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   return (
     <TooltipProvider>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto", isMobile && "w-full h-full max-w-none fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 rounded-none border-none shadow-none p-4 z-[60]")}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Add New Transaction
-            </DialogTitle>
-          </DialogHeader>
-
+      <MobileNativeModal
+        open={open}
+        onOpenChange={handleOpenChange}
+        isMobile={isMobile}
+        title="Add New Transaction"
+      >
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Transaction Type Tabs */}
             {!isExpenseFundingOnlyView && (
@@ -1183,7 +1182,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       ? "Step 2: Choose Payment Method"
                       : "Step 2: Choose Quick Action"}
                   </Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {formData.expenseMode === "payment_source" && (
                       <button
                         type="button"
@@ -1490,23 +1489,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       formData.description.trim() ? "border-green-300 focus:border-green-500" : ""
                   )}
                   disabled={isSubmitting}
-                  aria-describedby={errors.description ? "description-error" : "description-help"}
                 />
-                {errors.description ? (
-                  <p id="description-error" className="text-sm text-red-600 flex items-center gap-1" role="alert">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.description}
-                  </p>
-                ) : (
-                  <p id="description-help" className="text-xs text-muted-foreground">
-                    Add a note to help you remember this transaction later
-                  </p>
-                )}
-                {type === "expense" && !showExpenseFundingStep && (
-                  <p className="text-xs text-muted-foreground">
-                    Enter amount and category, then click Proceed. Description is optional.
-                  </p>
-                )}
                 </div>
               )}
 
@@ -1550,12 +1533,19 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 pt-2">
+            <div
+              className={cn(
+                "sticky bottom-0 z-20 mt-2 flex gap-3 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                isMobile
+                  ? "-mx-4 px-4 py-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
+                  : "-mx-6 px-6"
+              )}
+            >
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => handleOpenChange(false)}
-                className="flex-1"
+                className={cn("flex-1", isMobile && "h-11")}
                 disabled={isSubmitting}
               >
                 Cancel
@@ -1563,7 +1553,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               {type === "expense" && !showExpenseFundingStep ? (
                 <Button
                   type="button"
-                  className="flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus:ring-red-500"
+                  className={cn("flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus:ring-red-500", isMobile && "h-11")}
                   disabled={isSubmitting || !canProceedToFundingStep}
                   onClick={() => {
                     setFormData((prev) => ({ ...prev, expenseMode: "payment_source", allocationType: "", allocationTarget: "" }))
@@ -1577,6 +1567,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   type="submit"
                   className={cn(
                     "flex-1 transition-colors duration-200",
+                    isMobile && "h-11",
                     type === "income"
                       ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 focus:ring-green-500"
                       : "bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus:ring-red-500"
@@ -1595,8 +1586,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               )}
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
+      </MobileNativeModal>
 
       {/* Goal Shortfall Resolution Dialog */}
       <Dialog open={showGoalShortfallDialog} onOpenChange={setShowGoalShortfallDialog}>
@@ -1646,52 +1636,59 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 </div>
               )}
 
-              <div className="grid gap-2">
-                {balance >= goalShortfallData.remainingAmount && (
-                  <Button
-                    type="button"
-                    onClick={() => handleResolveGoalShortfall("wallet")}
-                    disabled={isSubmitting}
-                  >
-                    Use Goal + Wallet
-                  </Button>
+              <div
+                className={cn(
+                "sticky bottom-0 z-20 mt-2 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                  isMobile ? "-mx-4 px-4 py-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]" : "-mx-6 px-6"
                 )}
-
-                {debtAccounts.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleResolveGoalShortfall("debt")}
-                    disabled={isSubmitting || !goalShortfallDebtAccountId}
-                  >
-                    Use Goal + Debt
-                  </Button>
-                )}
-
-                {debtAccounts.length > 0 && goalShortfallData.remainingAmount > balance && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleResolveGoalShortfall("wallet_debt")}
-                    disabled={isSubmitting || !goalShortfallDebtAccountId}
-                  >
-                    Use Goal + Wallet + Debt
-                  </Button>
-                )}
-              </div>
-
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setShowGoalShortfallDialog(false)
-                  setGoalShortfallData(null)
-                }}
-                disabled={isSubmitting}
-                className="w-full"
               >
-                Cancel
-              </Button>
+                <div className="grid gap-2">
+                  {balance >= goalShortfallData.remainingAmount && (
+                    <Button
+                      type="button"
+                      onClick={() => handleResolveGoalShortfall("wallet")}
+                      disabled={isSubmitting}
+                    >
+                      Use Goal + Wallet
+                    </Button>
+                  )}
+
+                  {debtAccounts.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleResolveGoalShortfall("debt")}
+                      disabled={isSubmitting || !goalShortfallDebtAccountId}
+                    >
+                      Use Goal + Debt
+                    </Button>
+                  )}
+
+                  {debtAccounts.length > 0 && goalShortfallData.remainingAmount > balance && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleResolveGoalShortfall("wallet_debt")}
+                      disabled={isSubmitting || !goalShortfallDebtAccountId}
+                    >
+                      Use Goal + Wallet + Debt
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowGoalShortfallDialog(false)
+                      setGoalShortfallData(null)
+                    }}
+                    disabled={isSubmitting}
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </DialogContent>
@@ -1818,73 +1815,80 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               )}
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowDebtDialog(false)
-                  setPendingTransactionResult(null)
-                  setDebtFormData({
-                    name: "",
-                    minimumPayment: "",
-                    interestRate: "",
-                    startDate: new Date().toISOString().split('T')[0]
-                  })
-                }}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={async () => {
-                  const debtAmount = pendingTransactionResult?.debtAmount
-                  const availableBalance = pendingTransactionResult?.availableBalance
-                  if (!pendingTransaction || !pendingTransactionResult) return
+            <div
+              className={cn(
+                "sticky bottom-0 z-20 mt-2 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                isMobile ? "-mx-4 px-4 py-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]" : "-mx-6 px-6"
+              )}
+            >
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowDebtDialog(false)
+                    setPendingTransactionResult(null)
+                    setDebtFormData({
+                      name: "",
+                      minimumPayment: "",
+                      interestRate: "",
+                      startDate: new Date().toISOString().split('T')[0]
+                    })
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    const debtAmount = pendingTransactionResult?.debtAmount
+                    const availableBalance = pendingTransactionResult?.availableBalance
+                    if (!pendingTransaction || !pendingTransactionResult) return
 
-                  const existingDebt = debtAccounts.find(d => d.id === debtFormData.name)
-                  if (existingDebt) {
-                    if (typeof addDebtToAccount === 'function') {
-                      await addDebtToAccount(existingDebt.id, debtAmount, `Charge from transaction: ${pendingTransaction.description || pendingTransaction.category}`)
-                      await completeTransactionWithDebt(pendingTransaction, existingDebt.name, existingDebt.id, availableBalance, debtAmount)
+                    const existingDebt = debtAccounts.find(d => d.id === debtFormData.name)
+                    if (existingDebt) {
+                      if (typeof addDebtToAccount === 'function') {
+                        await addDebtToAccount(existingDebt.id, debtAmount, `Charge from transaction: ${pendingTransaction.description || pendingTransaction.category}`)
+                        await completeTransactionWithDebt(pendingTransaction, existingDebt.name, existingDebt.id, availableBalance, debtAmount)
+                      } else {
+                        const newDebt = addDebtAccount({
+                          name: existingDebt.name + " (from transaction)",
+                          balance: debtAmount,
+                          interestRate: existingDebt.interestRate || 0,
+                          minimumPayment: existingDebt.minimumPayment || 0,
+                          dueDate: existingDebt.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                          createdAt: new Date().toISOString(),
+                        })
+                        await completeTransactionWithDebt(pendingTransaction, newDebt.name, newDebt.id, availableBalance, debtAmount)
+                      }
                     } else {
-                      const newDebt = addDebtAccount({
-                        name: existingDebt.name + " (from transaction)",
-                        balance: debtAmount,
-                        interestRate: existingDebt.interestRate || 0,
-                        minimumPayment: existingDebt.minimumPayment || 0,
-                        dueDate: existingDebt.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                        createdAt: new Date().toISOString(),
-                      })
-                      await completeTransactionWithDebt(pendingTransaction, newDebt.name, newDebt.id, availableBalance, debtAmount)
+                      await handleCreateDebt()
+                      return
                     }
-                  } else {
-                    await handleCreateDebt()
-                    return
-                  }
 
-                  toast.success('Transaction completed with debt!', {
-                    description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
-                    duration: 3000,
-                  })
+                    toast.success('Transaction completed with debt!', {
+                      description: `${currencySymbol}${availableBalance.toFixed(2)} from balance + ${currencySymbol}${debtAmount.toFixed(2)} as debt`,
+                      duration: 3000,
+                    })
 
-                  // Reset and close
-                  setShowDebtDialog(false)
-                  setPendingTransactionResult(null)
-                  setPendingTransaction(null)
-                  setDebtFormData({ name: "", minimumPayment: "", interestRate: "", startDate: new Date().toISOString().split('T')[0] })
+                    // Reset and close
+                    setShowDebtDialog(false)
+                    setPendingTransactionResult(null)
+                    setPendingTransaction(null)
+                    setDebtFormData({ name: "", minimumPayment: "", interestRate: "", startDate: new Date().toISOString().split('T')[0] })
 
-                  setTimeout(() => {
-                    resetForm()
-                    handleOpenChange(false)
-                  }, 1000)
-                }}
-                disabled={!((debtAccounts.length > 0 && debtAccounts.some(d => d.id === debtFormData.name)) || debtFormData.name.trim())}
-                className="flex-1"
-              >
-                Use Selected / Create Debt
-              </Button>
+                    setTimeout(() => {
+                      resetForm()
+                      handleOpenChange(false)
+                    }, 1000)
+                  }}
+                  disabled={!((debtAccounts.length > 0 && debtAccounts.some(d => d.id === debtFormData.name)) || debtFormData.name.trim())}
+                  className="flex-1"
+                >
+                  Use Selected / Create Debt
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

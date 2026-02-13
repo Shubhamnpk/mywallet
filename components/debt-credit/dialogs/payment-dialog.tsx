@@ -158,7 +158,7 @@ export function PaymentDialog({
                         </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                     <div className="flex flex-row gap-3 pt-2">
                         <Button
                             type="button"
                             variant="outline"

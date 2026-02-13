@@ -199,6 +199,8 @@ const GOAL_TEMPLATES = [
 
 export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDialogProps) {
   const { addGoal, updateGoal } = useWalletData()
+  type GoalCreationMode = "template" | "custom"
+
   const [formData, setFormData] = useState({
     title: "",
     targetAmount: "",
@@ -211,7 +213,8 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
     contributionFrequency: "monthly" as "daily" | "weekly" | "monthly",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [showTemplates, setShowTemplates] = useState(!editingGoal)
+  const [goalCreationMode, setGoalCreationMode] = useState<GoalCreationMode>(editingGoal ? "custom" : "template")
+  const [selectedTemplateName, setSelectedTemplateName] = useState("")
 
   const applyTemplate = (template: typeof GOAL_TEMPLATES[0]) => {
     const oneYearFromNow = new Date()
@@ -226,7 +229,8 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
       category: template.category,
       priority: template.priority,
     })
-    setShowTemplates(false)
+    setSelectedTemplateName(template.name)
+    setGoalCreationMode("custom")
   }
 
   const currencySymbol = useMemo(
@@ -269,6 +273,8 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
         contributionAmount: editingGoal.contributionAmount?.toString() || "",
         contributionFrequency: editingGoal.contributionFrequency || "monthly",
       })
+      setGoalCreationMode("custom")
+      setSelectedTemplateName("")
     } else {
       setFormData({
         title: "",
@@ -281,6 +287,8 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
         contributionAmount: "",
         contributionFrequency: "monthly",
       })
+      setGoalCreationMode("template")
+      setSelectedTemplateName("")
     }
     setErrors({})
   }, [editingGoal, isOpen])
@@ -360,6 +368,9 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
     onClose()
   }
 
+  const isTemplateMode = !editingGoal && goalCreationMode === "template"
+  const isFormMode = !!editingGoal || goalCreationMode === "custom"
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-background/95 backdrop-blur-3xl border-primary/20 rounded-[32px] p-6 shadow-2xl">
@@ -368,37 +379,64 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
             <div className="p-2.5 bg-primary/10 rounded-xl text-primary glow-primary">
               <Target className="w-5 h-5" />
             </div>
-            {editingGoal ? "Calibrate Goal" : "Initialize Goal"}
+            {editingGoal ? "Edit Goal" : "Create Goal"}
           </DialogTitle>
           <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mt-1.5 ml-12">
-            {editingGoal ? "Updating manifestation parameters" : "Configuring accumulation vector"}
+            {editingGoal ? "Update your goal details" : "Choose a template or create your own goal"}
           </p>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {!editingGoal && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-tight">How would you like to start?</h3>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 mt-1">
+                      Templates are faster. Custom gives full control.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant={goalCreationMode === "template" ? "default" : "outline"}
+                      className="rounded-xl text-[11px] font-black uppercase tracking-widest"
+                      onClick={() => setGoalCreationMode("template")}
+                    >
+                      Templates
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={goalCreationMode === "custom" ? "default" : "outline"}
+                      className="rounded-xl text-[11px] font-black uppercase tracking-widest"
+                      onClick={() => setGoalCreationMode("custom")}
+                    >
+                      Custom
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Goal Templates Selection Digital Showroom */}
-          {showTemplates && !editingGoal && (
+          {!editingGoal && goalCreationMode === "template" && (
             <Card className="glass-card border-primary/20 bg-primary/5 overflow-hidden group/templates">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
                       <Star className="w-5 h-5 text-warning animate-pulse" />
-                      Digital Goal Blueprint
+                      Goal Templates
                     </h3>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mt-1">Accelerate your journey with curated templates</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mt-1">Pick one and customize it in seconds</p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowTemplates(false)}
-                    className="rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-primary/10"
-                  >
-                    Custom Build
-                  </Button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Tap any template to auto-fill the form, then adjust anything you want.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {GOAL_TEMPLATES.map((template, index) => {
                     const category = GOAL_CATEGORIES.find(c => c.id === template.category)
                     const IconComponent = category?.icon || Target
@@ -432,6 +470,14 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
             </Card>
           )}
 
+          {!editingGoal && goalCreationMode === "custom" && selectedTemplateName && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary">
+              Using template: {selectedTemplateName}
+            </div>
+          )}
+
+          {isFormMode && (
+            <>
           {/* Core Configuration Panels */}
           <div className="grid grid-cols-1 gap-6">
             <Card className="glass-card border-primary/5">
@@ -439,13 +485,13 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label htmlFor="title" className="text-[11px] font-black uppercase tracking-widest ml-1 flex items-center gap-2">
-                      <Target className="w-3.5 h-3.5" /> Goal Identity
+                      <Target className="w-3.5 h-3.5" /> Goal Name
                     </Label>
                     <Input
                       id="title"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="e.g., Tesla Roadster fund"
+                      placeholder="e.g., New bike, emergency fund, vacation"
                       className={cn("h-10 rounded-xl bg-muted/30 border-primary/10 font-black", errors.title && "border-error ring-1 ring-error/20")}
                     />
                     {errors.title && <p className="text-[10px] font-black uppercase text-error ml-1">{errors.title}</p>}
@@ -453,7 +499,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
 
                   <div className="space-y-3">
                     <Label htmlFor="targetAmount" className="text-[11px] font-black uppercase tracking-widest ml-1 flex items-center gap-2">
-                      <DollarSign className="w-3.5 h-3.5" /> Capital Target
+                      <DollarSign className="w-3.5 h-3.5" /> Target Amount
                     </Label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-primary/40">{currencySymbol}</div>
@@ -475,7 +521,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label htmlFor="targetDate" className="text-[11px] font-black uppercase tracking-widest ml-1 flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5" /> Maturity Date
+                      <Calendar className="w-3.5 h-3.5" /> Target Date
                     </Label>
                     <Input
                       id="targetDate"
@@ -489,10 +535,10 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   </div>
 
                   <div className="space-y-3">
-                    <Label htmlFor="category" className="text-[11px] font-black uppercase tracking-widest ml-1">Asset Category</Label>
+                    <Label htmlFor="category" className="text-[11px] font-black uppercase tracking-widest ml-1">Category</Label>
                     <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
                       <SelectTrigger className="h-10 rounded-xl bg-muted/30 border-primary/10 font-black">
-                        <SelectValue placeholder="Select class" />
+                        <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent className="rounded-2xl border-primary/10">
                         {GOAL_CATEGORIES.map((category) => (
@@ -513,7 +559,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                     id="description"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Describe your vision for this goal..."
+                    placeholder="Optional note: why this goal matters to you"
                     rows={2}
                     className="rounded-2xl bg-muted/30 border-primary/10 font-medium min-h-[80px]"
                   />
@@ -534,7 +580,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                         {PRIORITY_LEVELS.map((priority) => (
                           <SelectItem key={priority.id} value={priority.id}>
                             <div className="flex items-center gap-2">
-                              {priority.name} Vision
+                              {priority.name}
                             </div>
                           </SelectItem>
                         ))}
@@ -552,7 +598,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-[11px] font-black uppercase tracking-widest ml-1">Auto-Stream</Label>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mt-0.5">Automated capital flow</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mt-0.5">Automatic contributions</p>
                     </div>
                     <button
                       title="Toggle Auto-Contribute"
@@ -597,9 +643,9 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="rounded-xl">
-                          <SelectItem value="daily">Daily Stream</SelectItem>
-                          <SelectItem value="weekly">Weekly Injection</SelectItem>
-                          <SelectItem value="monthly">Monthly Allocation</SelectItem>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -619,41 +665,53 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   </div>
                   <div>
                     <h4 className="text-[11px] font-black uppercase tracking-widest">Financial Projection Insight</h4>
-                    <p className="text-[9px] font-bold text-primary opacity-60 uppercase">Dynamic AI estimation</p>
+                    <p className="text-[9px] font-bold text-primary opacity-60 uppercase">Suggested saving pace</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex flex-col p-3 bg-background/60 rounded-2xl border border-primary/5 items-center justify-center transition-all hover:bg-primary/5">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Duration</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Time Left</span>
                     <p className="text-xl font-black font-mono tracking-tighter text-primary">{goalInsights.monthsToGoal}m</p>
-                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Timeline</p>
+                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Until deadline</p>
                   </div>
                   <div className="flex flex-col p-3 bg-background/60 rounded-2xl border border-primary/5 items-center justify-center transition-all hover:bg-success/5">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Monthly</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Per Month</span>
                     <p className="text-xl font-black font-mono tracking-tighter text-success">
                       {currencySymbol}{Math.round(goalInsights.monthlyContribution).toLocaleString()}
                     </p>
-                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Injection</p>
+                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Suggested</p>
                   </div>
                   <div className="flex flex-col p-3 bg-background/60 rounded-2xl border border-primary/5 items-center justify-center transition-all hover:bg-info/5">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Weekly</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Per Week</span>
                     <p className="text-xl font-black font-mono tracking-tighter text-info">
                       {currencySymbol}{Math.round(goalInsights.weeklyContribution).toLocaleString()}
                     </p>
-                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Pace</p>
+                    <p className="text-[8px] font-bold text-muted-foreground/40 uppercase mt-0.5">Suggested</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           )}
+            </>
+          )}
 
           <div className="flex gap-4 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-[11px] border-primary/10 hover:bg-primary/5">
-              Discard
+              Cancel
             </Button>
-            <Button type="submit" className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-primary/20 glow-primary">
-              {editingGoal ? "Save Manifestation" : "Initialize Goal"}
-            </Button>
+            {isTemplateMode ? (
+              <Button
+                type="button"
+                className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-primary/20 glow-primary"
+                onClick={() => setGoalCreationMode("custom")}
+              >
+                Create Custom Goal
+              </Button>
+            ) : (
+              <Button type="submit" className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-primary/20 glow-primary">
+                {editingGoal ? "Save Changes" : "Create Goal"}
+              </Button>
+            )}
           </div>
         </form>
       </DialogContent>

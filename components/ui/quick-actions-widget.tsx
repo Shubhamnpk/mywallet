@@ -38,7 +38,6 @@ export function QuickActionsWidget() {
       icon: <Plus className="w-4 h-4" />,
       action: () => {
         // Trigger transaction dialog
-        console.log('Add transaction')
         setIsExpanded(false)
       },
       color: 'bg-primary hover:bg-primary/90'
@@ -49,7 +48,6 @@ export function QuickActionsWidget() {
       icon: <Camera className="w-4 h-4" />,
       action: () => {
         // Trigger receipt scanning
-        console.log('Scan receipt')
         setIsExpanded(false)
       },
       color: 'bg-success hover:bg-success/90'
@@ -60,7 +58,6 @@ export function QuickActionsWidget() {
       icon: <Mic className="w-4 h-4" />,
       action: () => {
         // Trigger voice command
-        console.log('Voice command')
         setIsExpanded(false)
       },
       color: 'bg-info hover:bg-info/90'
@@ -71,7 +68,6 @@ export function QuickActionsWidget() {
       icon: <Calculator className="w-4 h-4" />,
       action: () => {
         // Open calculator
-        console.log('Quick calculator')
         setIsExpanded(false)
       },
       color: 'bg-warning hover:bg-warning/90'

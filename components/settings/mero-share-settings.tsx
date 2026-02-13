@@ -78,7 +78,6 @@ export function MeroShareSettings() {
                     ])
                 }
             } catch (error) {
-                console.error("Failed to fetch DPs:", error)
                 setDps([
                     { id: "13100", name: "NIC ASIA Bank Limited", code: "NIC" },
                     { id: "10200", name: "Nabil Bank Limited", code: "NABIL" },

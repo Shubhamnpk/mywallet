@@ -79,9 +79,7 @@ export class DataIntegrityManager {
         // This might not be a critical issue, just a warning
       }
 
-      console.log("[v0] Data integrity verification completed:", isValid ? "PASSED" : "FAILED")
       if (issues.length > 0) {
-        console.log("[v0] Integrity issues found:", issues)
       }
 
       return {
@@ -90,7 +88,6 @@ export class DataIntegrityManager {
         lastVerified: storedIntegrity.timestamp,
       }
     } catch (error) {
-      console.error("[v0] Data integrity verification error:", error)
       issues.push("Failed to verify data integrity")
       return { isValid: false, issues, lastVerified: null }
     }
@@ -100,16 +97,13 @@ export class DataIntegrityManager {
   static async updateIntegrityRecord(data: any): Promise<void> {
     try {
       await this.createIntegrityRecord(data)
-      console.log("[v0] Data integrity record updated")
     } catch (error) {
-      console.error("[v0] Failed to update integrity record:", error)
     }
   }
 
   // Clear integrity records (for data reset)
   static clearIntegrityRecords(): void {
     localStorage.removeItem(this.INTEGRITY_KEY)
-    console.log("[v0] Data integrity records cleared")
   }
 
   // Get integrity status
@@ -136,7 +130,6 @@ export class DataIntegrityManager {
         version: storedIntegrity.version,
       }
     } catch (error) {
-      console.error("[v0] Failed to parse integrity record:", error)
       return {
         hasIntegrityRecord: false,
         lastVerified: null,
@@ -251,9 +244,7 @@ export class DataIntegrityManager {
       }
 
       localStorage.setItem(`${this.INTEGRITY_KEY}_secure`, JSON.stringify(secureIntegrityInfo))
-      console.log("[v0] Secure integrity record created")
     } catch (error) {
-      console.error("[v0] Failed to create secure integrity record:", error)
       throw error
     }
   }
@@ -315,9 +306,7 @@ export class DataIntegrityManager {
         issues.push(`Version mismatch: expected ${this.VERSION}, found ${secureIntegrity.version}`)
       }
 
-      console.log("[v0] Secure integrity verification completed:", isValid ? "PASSED" : "FAILED")
       if (issues.length > 0) {
-        console.log("[v0] Secure integrity issues found:", issues)
       }
 
       return {
@@ -327,7 +316,6 @@ export class DataIntegrityManager {
         keyValid,
       }
     } catch (error) {
-      console.error("[v0] Secure integrity verification error:", error)
       issues.push("Failed to verify secure data integrity")
       return { isValid: false, issues, lastVerified: null, keyValid: false }
     }

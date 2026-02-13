@@ -23,6 +23,7 @@ import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
+import { requestBrowserNotificationPermission, showAppNotification } from "@/lib/notifications"
 import { toast } from "sonner"
 
 const REMINDER_CACHE_KEY = "wallet_reminder_cache_v1"
@@ -101,13 +102,11 @@ export function useWalletData() {
         toast(title, { description, duration: 9000 })
 
         if ("Notification" in window && Notification.permission === "granted") {
-          try {
-            new Notification(title, {
-              body: description,
-              tag: key,
-            })
-          } catch {
-          }
+          void showAppNotification({
+            title,
+            body: description,
+            tag: key,
+          })
         }
 
         cache[key] = Date.now()
@@ -123,7 +122,7 @@ export function useWalletData() {
             action: {
               label: "Enable",
               onClick: () => {
-                Notification.requestPermission().catch(() => {})
+                void requestBrowserNotificationPermission()
               },
             },
             duration: 10000,
@@ -250,7 +249,6 @@ export function useWalletData() {
   useEffect(() => {
     if (isLoaded) return
 
-    console.log('[HYDRATION] Starting to load wallet data from localStorage')
     loadDataWithIntegrityCheck()
   }, [isLoaded])
   // Fetch sectors and upcoming IPOs once on load
@@ -364,7 +362,6 @@ export function useWalletData() {
             return
           }
 
-          console.log("[Migration] Re-encrypting legacy plaintext keys...")
 
           const sensitiveKeys = [
             "userProfile",
@@ -396,9 +393,7 @@ export function useWalletData() {
           }
 
           localStorage.setItem("encryption_v2_migrated", "true")
-          console.log("[Migration] Encryption migration complete")
         } catch (error) {
-          console.error("[Migration] Failed to encrypt data:", error)
         }
       }
       migrateToEncrypted()
@@ -440,7 +435,7 @@ export function useWalletData() {
       }
 
       await DataIntegrityManager.updateIntegrityRecord(allData)
-    } catch (error) {
+    } catch {
       try {
         await saveToLocalStorage(key, data, shouldEncrypt)
       } catch (e) {
@@ -589,7 +584,7 @@ export function useWalletData() {
       }
 
       setIsLoaded(true)
-    } catch (error) {
+    } catch {
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
@@ -1232,7 +1227,6 @@ export function useWalletData() {
 
   const importData = async (dataOrJson: string | any) => {
     try {
-      console.log("[v0] Starting data import...")
       const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
       // Validate data structure
@@ -1242,14 +1236,12 @@ export function useWalletData() {
 
       // Import user profile (only if selected)
       if (data.userProfile) {
-        console.log("[v0] Importing user profile...")
         setUserProfile(data.userProfile)
         await saveDataWithIntegrity("userProfile", data.userProfile)
       }
 
       // Import transactions (only if selected)
       if (data.transactions && Array.isArray(data.transactions)) {
-        console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
         await saveDataWithIntegrity("transactions", data.transactions)
         // Calculate balance based on actual cash flow
@@ -1265,56 +1257,48 @@ export function useWalletData() {
 
       // Import portfolio (only if selected)
       if (data.portfolio && Array.isArray(data.portfolio)) {
-        console.log(`[v0] Importing ${data.portfolio.length} portfolio items...`)
         setPortfolio(data.portfolio)
         await saveDataWithIntegrity("portfolio", data.portfolio)
       }
 
       // Import share transactions
       if (data.shareTransactions && Array.isArray(data.shareTransactions)) {
-        console.log(`[v0] Importing ${data.shareTransactions.length} share transactions...`)
         setShareTransactions(data.shareTransactions)
         await saveDataWithIntegrity("shareTransactions", data.shareTransactions)
       }
 
       // Import budgets (only if selected)
       if (data.budgets && Array.isArray(data.budgets)) {
-        console.log(`[v0] Importing ${data.budgets.length} budgets...`)
         setBudgets(data.budgets)
         await saveDataWithIntegrity("budgets", data.budgets)
       }
 
       // Import goals (only if selected)
       if (data.goals && Array.isArray(data.goals)) {
-        console.log(`[v0] Importing ${data.goals.length} goals...`)
         setGoals(data.goals)
         await saveDataWithIntegrity("goals", data.goals)
       }
 
       // Import debt accounts (only if selected)
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
-        console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
         setDebtAccounts(data.debtAccounts)
         await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
       }
 
       // Import credit accounts (only if selected)
       if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
-        console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
         setCreditAccounts(data.creditAccounts)
         await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
       }
 
       // Import debt/credit transactions (only if debt or credit accounts are imported)
       if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions) && (data.debtAccounts || data.creditAccounts)) {
-        console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
         setDebtCreditTransactions(data.debtCreditTransactions)
         await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
       }
 
       // Import categories (only if selected)
       if (data.categories && Array.isArray(data.categories)) {
-        console.log(`[v0] Importing ${data.categories.length} categories...`)
         setCategories(data.categories)
         await saveDataWithIntegrity("categories", data.categories)
       }
@@ -1322,21 +1306,18 @@ export function useWalletData() {
       // Import emergency fund (only if selected)
       if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
         const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
-        console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
         setEmergencyFund(emergencyFundValue)
         await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
       }
 
       // Import scrollbar setting (only if userProfile is imported)
       if (data.settings?.showScrollbars !== undefined && data.userProfile && typeof window !== 'undefined') {
-        console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
-      console.log("[v0] Selective data import completed successfully")
       return true
     } catch (error) {
-      console.error("[v0] Error importing data:", error)
+      toast.error("[v0] Error importing data:", error)
       return false
     }
   }
@@ -1438,7 +1419,6 @@ export function useWalletData() {
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
 
-    console.log("[v0] Goal spending completed successfully")
 
     return {
       success: true,
@@ -1607,7 +1587,6 @@ export function useWalletData() {
 
       // If cache is valid and not forcing refresh, use cached data
       if (isCacheValid && !forceRefresh && globalPortfolioCache) {
-        console.log('Using cached portfolio prices (memory cache)')
         const { priceData, sectorData } = globalPortfolioCache
 
         // Process cached data same way as fresh data
@@ -1672,7 +1651,6 @@ export function useWalletData() {
       }
 
       // Fetch fresh data from API
-      console.log('Fetching fresh portfolio prices from API')
       const [priceRes, sectorRes] = await Promise.all([
         fetch("/api/nepse/today"),
         fetch("/api/nepse/sectors")
@@ -1686,7 +1664,6 @@ export function useWalletData() {
           sectorData = await sectorRes.json()
         }
       } catch (e) {
-        console.warn("Could not fetch sectors, continuing with prices only")
       }
 
       if (!priceRes.ok) {
@@ -1768,7 +1745,6 @@ export function useWalletData() {
       await saveDataWithIntegrity("portfolio", updatedPortfolio)
       return updatedPortfolio
     } catch (error: any) {
-      console.error("Error fetching prices:", error)
       throw error // Propagate specialized error
     }
   }
@@ -2125,7 +2101,6 @@ export function useWalletData() {
 
       return { updatedCount, addedCount }
     } catch (error: any) {
-      console.error("Portfolio Sync Error:", error)
       throw error
     }
   }

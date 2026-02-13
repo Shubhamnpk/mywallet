@@ -120,7 +120,6 @@ export function BackupModal({
       onClose()
       onBackupComplete()
     } catch (error) {
-      console.error("Backup creation failed:", error)
       toast({
         title: "Backup Failed",
         description: "Failed to create encrypted backup. Please try again.",

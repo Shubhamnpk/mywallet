@@ -32,6 +32,7 @@ const runtimeCaching = [
 const pwa = withPWA({
   dest: 'public',
   disable: process.env.NODE_ENV === 'development',
+  customWorkerDir: 'worker',
   register: true,
   skipWaiting: false,
   fallbacks: { document: '/offline.html', image: '/image.png' },

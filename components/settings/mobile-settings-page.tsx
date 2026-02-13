@@ -17,6 +17,7 @@ import { MeroShareSettings } from "./mero-share-settings"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
+import { requestBrowserNotificationPermission } from "@/lib/notifications"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -76,6 +77,12 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
   const isSecurityEnabled = () => {
     return false
   }
+
+  const isNotificationEnabled = () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return true
+    return Notification.permission === "granted"
+  }
+
   const suggestions: Suggestion[] = [
     {
       id: 'download',
@@ -102,6 +109,18 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       description: 'Protect your data with PIN or biometric',
       action: () => setCurrentView('security'),
       condition: !isSecurityEnabled()
+    },
+    {
+      id: 'notifications',
+      title: 'Turn On Notifications',
+      description: 'Get budget and goal reminders',
+      action: async () => {
+        const permission = await requestBrowserNotificationPermission()
+        if (permission !== "granted") {
+          alert("Notification permission is still blocked. Please allow notifications in browser settings.")
+        }
+      },
+      condition: !isNotificationEnabled()
     },
     {
       id: 'backup',

@@ -352,7 +352,6 @@ export function useAchievements({
             ids.forEach((id: string) => celebratedAchievements.current.add(id))
           }
         } catch (e) {
-          console.error("Failed to load celebrated achievements", e)
         } finally {
           setIsLoaded(true)
         }

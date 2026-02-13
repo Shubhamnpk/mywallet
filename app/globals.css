@@ -403,27 +403,77 @@ h6 {
 }
 
 /* Show scrollbars with primary color */
-.show-scrollbars::-webkit-scrollbar {
+html.show-scrollbars *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.show-scrollbars::-webkit-scrollbar-track {
+html.show-scrollbars *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.show-scrollbars::-webkit-scrollbar-thumb {
+html.show-scrollbars *::-webkit-scrollbar-thumb {
   background: var(--primary);
   border-radius: 3px;
 }
 
-.show-scrollbars::-webkit-scrollbar-thumb:hover {
+html.show-scrollbars *::-webkit-scrollbar-thumb:hover {
   background: var(--primary);
   opacity: 0.8;
 }
 
-.show-scrollbars::-webkit-scrollbar-corner {
+html.show-scrollbars *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Firefox scrollbar styling (applies to all descendants when enabled) */
+html.show-scrollbars * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) transparent;
+}
+
+/* Always let explicit hide utility win over global show rules */
+.hide-scrollbars,
+.hide-scrollbars * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.hide-scrollbars::-webkit-scrollbar,
+.hide-scrollbars *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Mobile modals: allow scroll but hide visible scrollbars across all modal content */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  [data-slot="dialog-content"],
+  [data-slot="dialog-content"] *,
+  [data-slot="alert-dialog-content"],
+  [data-slot="alert-dialog-content"] *,
+  [data-slot="sheet-content"],
+  [data-slot="sheet-content"] * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  [data-slot="dialog-content"]::-webkit-scrollbar,
+  [data-slot="dialog-content"] *::-webkit-scrollbar,
+  [data-slot="alert-dialog-content"]::-webkit-scrollbar,
+  [data-slot="alert-dialog-content"] *::-webkit-scrollbar,
+  [data-slot="sheet-content"]::-webkit-scrollbar,
+  [data-slot="sheet-content"] *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  [data-slot="dialog-content"] [data-slot="scroll-area-scrollbar"],
+  [data-slot="alert-dialog-content"] [data-slot="scroll-area-scrollbar"],
+  [data-slot="sheet-content"] [data-slot="scroll-area-scrollbar"] {
+    display: none !important;
+  }
 }
 
 /* Compact mode styles */

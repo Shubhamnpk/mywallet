@@ -26,15 +26,12 @@ export class SessionManager {
       expiresAt: now + this.SESSION_TIMEOUT
     }
 
-    console.log('[SessionManager] Creating session:', sessionData)
-
     // Store session data in cookie
     this.setSessionCookie(sessionData)
 
     // Start activity tracking
     this.startActivityTracking()
 
-    console.log('[SessionManager] Session created successfully:', sessionId)
   }
 
   /**
@@ -94,7 +91,6 @@ export class SessionManager {
     // Stop activity tracking
     this.stopActivityTracking()
 
-    console.log('[SessionManager] Session cleared')
   }
 
   /**
@@ -103,13 +99,10 @@ export class SessionManager {
   private static getSessionData(): SessionData | null {
     try {
       const cookies = document.cookie.split(';')
-      console.log('[SessionManager] All cookies:', cookies)
 
       const sessionCookie = cookies.find(cookie =>
         cookie.trim().startsWith(`${this.SESSION_COOKIE}=`)
       )
-
-      console.log('[SessionManager] Session cookie found:', !!sessionCookie)
 
       if (!sessionCookie) {
         return null
@@ -119,10 +112,8 @@ export class SessionManager {
       const decodedData = decodeURIComponent(sessionValue)
       const parsedData = JSON.parse(decodedData)
 
-      console.log('[SessionManager] Parsed session data:', parsedData)
       return parsedData
     } catch (error) {
-      console.error('[SessionManager] Error parsing session data:', error)
       return null
     }
   }
@@ -173,11 +164,7 @@ export class SessionManager {
 
     // Set up periodic session validation
     this.activityTimer = setInterval(() => {
-      const sessionStatus = this.getSessionStatus()
-      console.log('[SessionManager] Periodic check:', sessionStatus)
-
       if (!this.isSessionValid()) {
-        console.log('[SessionManager] Session expired due to inactivity')
         // Session expired, trigger PIN screen
         this.handleSessionExpiry()
       }
@@ -209,13 +196,11 @@ export class SessionManager {
    * Handle session expiry
    */
   private static handleSessionExpiry(): void {
-    console.log('[SessionManager] Handling session expiry')
     this.clearSession()
 
     // Dispatch custom event to notify app of session expiry
     const event = new CustomEvent('wallet-session-expired')
     window.dispatchEvent(event)
-    console.log('[SessionManager] Session expiry event dispatched')
   }
 
   /**
