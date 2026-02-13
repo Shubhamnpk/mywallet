@@ -620,38 +620,54 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Image Selection */}
+       {/* Image Selection */}
       {!selectedImage && !isCameraActive && !isInitializingCamera && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">
-              QR Code Scanner
+        <Card className="border-0 sm:border shadow-lg">
+          <CardHeader className="pb-3 sm:pb-6 text-center">
+            <CardTitle className="text-lg sm:text-xl">
+              <div className="flex items-center justify-center gap-2">
+                <QrCode className="w-5 h-5 sm:w-6 sm:h-6" />
+                QR Code Scanner
+              </div>
             </CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Choose how you want to scan the QR code
+            </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <Button
                 onClick={() => qrFileInputRef.current?.click()}
                 variant="outline"
-                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
+                className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
               >
-                <Upload className="w-5 h-5 sm:w-6 sm:h-6" />
-                <span className="text-xs sm:text-sm">Upload</span>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-full">
+                  <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="text-base sm:text-lg font-semibold">Upload File</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">
+                  Select from your device
+                </span>
               </Button>
 
               <Button
                 onClick={startQRCamera}
                 variant="outline"
-                className="h-20 sm:h-24 flex flex-col gap-1 sm:gap-2 p-3 sm:p-4"
+                className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
                 disabled={isInitializingCamera}
               >
-                {isInitializingCamera ? (
-                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
-                ) : (
-                  <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
-                )}
-                <span className="text-xs sm:text-sm">
-                  {isInitializingCamera ? 'Starting...' : 'Take Photo'}
+                <div className="p-3 bg-purple-50 dark:bg-purple-950/20 rounded-full">
+                  {isInitializingCamera ? (
+                    <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin text-purple-600 dark:text-purple-400" />
+                  ) : (
+                    <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600 dark:text-purple-400" />
+                  )}
+                </div>
+                <span className="text-base sm:text-lg font-semibold">
+                  {isInitializingCamera ? 'Starting Camera...' : 'Scan with Camera'}
+                </span>
+                <span className="text-xs sm:text-sm text-muted-foreground">
+                  Use your device camera
                 </span>
               </Button>
             </div>

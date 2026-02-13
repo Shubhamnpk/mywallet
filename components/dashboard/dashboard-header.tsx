@@ -151,7 +151,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
 
   return (
     <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="container mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
             <img src="/image.png" alt="MyWallet Logo" width={34} height={34} />

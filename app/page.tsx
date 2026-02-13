@@ -1,19 +1,23 @@
 "use client"
 
-import OnboardingFlow from "@/components/onboarding/onboarding-flow"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { CombinedBalanceCard } from "@/components/dashboard/balance-card"
 import { FloatingAddButton } from "@/components/dashboard/floating-add-button"
 import { MainTabs } from "@/components/dashboard/main-tabs"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 export default function MyWallet() {
+  const router = useRouter()
   const walletData = useWalletData()
-  const { userProfile, showOnboarding, handleOnboardingComplete } = walletData
+  const { userProfile } = walletData
 
-  if (showOnboarding) {
-    return <OnboardingFlow onComplete={handleOnboardingComplete} />
-  }
+  useEffect(() => {
+    if (!userProfile) {
+      router.replace("/welcome")
+    }
+  }, [userProfile, router])
 
   if (!userProfile) {
     return (
@@ -29,7 +33,7 @@ export default function MyWallet() {
     <div className="min-h-screen bg-background">
       <DashboardHeader userProfile={userProfile} />
 
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="container mx-auto max-w-7xl px-4 py-6 space-y-6">
         <CombinedBalanceCard />
 
         <FloatingAddButton />

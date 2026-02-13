@@ -12,19 +12,19 @@
   "scope": "/",
   "icons": [
     {
-      "src": "/image.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/image.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/image.png",
+      "src": "/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -41,21 +41,21 @@
       "short_name": "Dashboard",
       "description": "Open your financial dashboard",
       "url": "/",
-      "icons": [{ "src": "/image.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Add Transaction",
       "short_name": "Add",
       "description": "Quickly add a new transaction",
       "url": "/",
-      "icons": [{ "src": "/image.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Open Settings",
       "short_name": "Settings",
       "description": "Jump to app settings",
       "url": "/settings",
-      "icons": [{ "src": "/image.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

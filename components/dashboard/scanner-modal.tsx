@@ -12,6 +12,8 @@ import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, 
 import { toast } from "sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import QRCodeScanner from "./qr-code-scanner"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { MobileNativeModal } from "@/components/dashboard/mobile-native-modal"
 
 interface TransactionData {
   amount: string
@@ -119,6 +121,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   qrFileInputRef,
   qrVideoRef
 }) => {
+  const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("receipt")
   const [videoElementReady, setVideoElementReady] = useState(false)
   const [qrScanning, setQrScanning] = useState(false)
@@ -333,16 +336,16 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   }, [scanHistory, localQrHistory, historySearch, historyFilter])
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full h-full max-w-none max-h-none overflow-y-auto p-3 sm:p-4 md:p-6 sm:max-w-2xl sm:max-h-[90vh] md:max-w-4xl">
-        <DialogHeader className="pb-2 sm:pb-4">
+      <DialogContent className="w-full h-full max-w-none max-h-none p-3 sm:p-4 md:p-6 sm:max-w-2xl sm:max-h-[70vh] md:max-w-4xl flex flex-col">
+        <DialogHeader className="pb-2 sm:pb-4 flex-shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <Scan className="w-5 h-5 sm:w-6 sm:h-6" />
             Multi-Scanner
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-12 sm:h-10 md:h-11">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full flex flex-col flex-1">
+          <TabsList className="grid w-full grid-cols-3 h-12 sm:h-10 md:h-11 flex-shrink-0">
             <TabsTrigger value="receipt" className="flex items-center gap-2 text-sm sm:text-sm px-3 sm:px-3 py-2 sm:py-1">
               <Scan className="w-4 h-4 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Receipt</span>
@@ -360,50 +363,66 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="receipt" className="space-y-4 sm:space-y-6">
-           {/* Image Selection */}
-           {!selectedImage && !isCameraActive && !isInitializingCamera && (
-             <Card className="border-0 sm:border">
-               <CardHeader className="pb-3 sm:pb-6">
-                 <CardTitle className="text-lg sm:text-xl">
-                   Receipt Scanner
-                 </CardTitle>
-               </CardHeader>
-               <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
-                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                   <Button
-                     onClick={() => fileInputRef.current?.click()}
-                     variant="outline"
-                     className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
-                   >
-                     <Upload className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
-                     <span className="text-sm sm:text-base md:text-sm font-medium">Upload</span>
-                   </Button>
+           <TabsContent value="receipt" className="mt-4 space-y-4 sm:space-y-6 flex-1 min-h-0 overflow-y-auto pr-1">
+            {/* Image Selection */}
+            {!selectedImage && !isCameraActive && !isInitializingCamera && (
+              <Card className="border-0 sm:border shadow-lg">
+                <CardHeader className="pb-3 sm:pb-6 text-center">
+                  <CardTitle className="text-lg sm:text-xl">
+                    <div className="flex items-center justify-center gap-2">
+                      <Scan className="w-5 h-5 sm:w-6 sm:h-6" />
+                      Receipt Scanner
+                    </div>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Choose how you want to scan your receipt
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      variant="outline"
+                      className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
+                    >
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-full">
+                        <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <span className="text-base sm:text-lg font-semibold">Upload File</span>
+                      <span className="text-xs sm:text-sm text-muted-foreground">
+                        Select from your device
+                      </span>
+                    </Button>
 
-                   <Button
-                     onClick={onStartCamera}
-                     variant="outline"
-                     className="h-24 sm:h-28 md:h-24 flex flex-col gap-2 sm:gap-3 p-4 sm:p-4 md:p-3"
-                     disabled={isInitializingCamera}
-                   >
-                     {isInitializingCamera ? (
-                       <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6 animate-spin" />
-                     ) : (
-                       <Camera className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6" />
-                     )}
-                     <span className="text-sm sm:text-base md:text-sm font-medium">
-                       {isInitializingCamera ? 'Starting...' : 'Take Photo'}
-                     </span>
-                   </Button>
-                 </div>
+                    <Button
+                      onClick={onStartCamera}
+                      variant="outline"
+                      className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
+                      disabled={isInitializingCamera}
+                    >
+                      <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-full">
+                        {isInitializingCamera ? (
+                          <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin text-green-600 dark:text-green-400" />
+                        ) : (
+                          <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-green-600 dark:text-green-400" />
+                        )}
+                      </div>
+                      <span className="text-base sm:text-lg font-semibold">
+                        {isInitializingCamera ? 'Starting Camera...' : 'Take Photo'}
+                      </span>
+                      <span className="text-xs sm:text-sm text-muted-foreground">
+                        Use your device camera
+                      </span>
+                    </Button>
+                  </div>
 
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={onFileUpload}
-                  className="hidden"
-                />
+                 <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={onFileUpload}
+                    className="hidden"
+                  />
               </CardContent>
             </Card>
           )}
@@ -459,13 +478,13 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
                 <div className="relative">
-                  <video
+                   <video
                     ref={videoRef}
                     autoPlay
                     playsInline
                     muted
                     controls={false}
-                    className="w-full h-72 sm:h-80 md:h-96 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
+                    className="w-full h-64 sm:h-72 md:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600"
                     style={{
                       transform: cameraFacingMode === 'user' ? 'scaleX(-1)' : 'none',
                       backgroundColor: '#000'
@@ -740,7 +759,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
           )}
           </TabsContent>
 
-          <TabsContent value="qr" className="space-y-6">
+          <TabsContent value="qr" className="mt-4 space-y-6 flex-1 min-h-0 overflow-y-auto pr-1">
             <QRCodeScanner
               isScanning={qrScanning}
               onScanResult={(result: QRScanResult) => {
@@ -762,12 +781,12 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
             />
           </TabsContent>
 
-          <TabsContent value="history" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <History className="w-5 h-5" />
+           <TabsContent value="history" className="mt-4 space-y-6 flex-1 min-h-0 overflow-y-auto pr-1">
+            <Card className="border-0 sm:border shadow-lg">
+              <CardHeader className="pb-3 sm:pb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+                    <History className="w-5 h-5 sm:w-6 sm:h-6" />
                     Scan History
                   </CardTitle>
                   <div className="flex gap-2">
@@ -776,6 +795,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                      className="h-9 px-3 text-xs sm:text-sm"
                     >
                       <Download className="w-4 h-4 mr-1" />
                       JSON
@@ -785,6 +805,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                      className="h-9 px-3 text-xs sm:text-sm"
                     >
                       <Download className="w-4 h-4 mr-1" />
                       CSV
@@ -794,6 +815,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={scanHistory.length === 0 && localQrHistory.length === 0}
+                      className="h-9 px-3 text-xs sm:text-sm"
                     >
                       Clear All
                     </Button>
@@ -802,20 +824,20 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Search and Filter */}
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Search scans..."
                       value={historySearch}
                       onChange={(e) => setHistorySearch(e.target.value)}
-                      className="pl-9"
+                      className="pl-9 h-9 text-sm"
                     />
                   </div>
                   <select
                     value={historyFilter}
                     onChange={(e) => setHistoryFilter(e.target.value)}
-                    className="px-3 py-2 border rounded-md text-sm"
+                    className="px-3 py-2 border rounded-md text-sm h-9"
                     title="Filter scan history"
                   >
                     <option value="all">All Types</option>
@@ -825,25 +847,29 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                 </div>
 
                 {filteredHistory().length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No scan history yet</p>
+                  <div className="text-center py-12 text-muted-foreground">
+                    <div className="p-4 bg-muted/50 rounded-full inline-block mb-4">
+                      <History className="w-10 h-10 mx-auto opacity-50" />
+                    </div>
+                    <p className="text-lg font-medium mb-2">No scan history yet</p>
                     <p className="text-sm">Your recent scans will appear here</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                  <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
                     {filteredHistory().map((item) => (
-                      <Card key={item.id} className="p-4">
+                      <Card key={item.id} className="p-4 border hover:shadow-md transition-shadow">
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-3">
-                            {item.scanType === 'receipt' ? (
-                              <Scan className="w-5 h-5 text-blue-500 mt-0.5" />
-                            ) : (
-                              <QrCode className="w-5 h-5 text-green-500 mt-0.5" />
-                            )}
+                            <div className={`p-2 rounded-full ${item.scanType === 'receipt' ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400' : 'bg-purple-50 text-purple-600 dark:bg-purple-950/20 dark:text-purple-400'}`}>
+                              {item.scanType === 'receipt' ? (
+                                <Scan className="w-5 h-5" />
+                              ) : (
+                                <QrCode className="w-5 h-5" />
+                              )}
+                            </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
-                                <Badge variant="secondary">
+                                <Badge variant={item.scanType === 'receipt' ? 'secondary' : 'outline'} className={item.scanType === 'receipt' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'}>
                                   {item.scanType === 'receipt' ? 'Receipt' : 'QR Code'}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
@@ -878,6 +904,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                               onClick={() => handleQRAction(item.data.beautified)}
                               variant="ghost"
                               size="sm"
+                              className="h-8 w-8 p-0"
                             >
                               <ExternalLink className="w-4 h-4" />
                             </Button>

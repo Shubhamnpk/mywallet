@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
 import packageJson from '../../package.json'
+import Link from "next/link"
 
 export function AboutSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -199,6 +200,11 @@ export function AboutSettings() {
                 {clearingCache ? 'Clearing caches...' : 'Clear caches'}
               </Button>
             </div>
+              <Button variant="secondary" className="w-full" asChild>
+                <Link href="/releases">
+                  View Release Notes
+                </Link>
+              </Button>
               {isUpdateAvailable && (
                 <div className="flex gap-2">
                   <Button onClick={applyUpdate} className="flex-1">
@@ -225,6 +231,15 @@ export function AboutSettings() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Button variant="outline" className="justify-start h-auto p-4" asChild>
+              <Link href="/releases">
+                <div className="text-left">
+                  <div className="font-medium">Release Notes</div>
+                  <div className="text-sm text-muted-foreground">See shipped versions and changes</div>
+                </div>
+                <ExternalLink className="w-4 h-4 ml-auto" />
+              </Link>
+            </Button>
             <Button variant="outline" className="justify-start h-auto p-4" onClick={handleFeaturesGuide}>
               <div className="text-left">
                 <div className="font-medium">Features Guide</div>

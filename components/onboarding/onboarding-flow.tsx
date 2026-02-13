@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 import {
   Wallet,
   Clock,
@@ -63,17 +64,17 @@ const steps = [
   },
   {
     id: 3,
-    title: "What's your monthly income?",
-    subtitle: "Your earnings",
+    title: "How are you paid?",
+    subtitle: "Your pay details",
     icon: DollarSign,
-    description: "This helps us show you the real value of your time"
+    description: "Enter monthly or hourly pay to personalize time-based insights"
   },
   {
     id: 4,
     title: "Tell us about your work schedule",
-    subtitle: "Your daily routine",
+    subtitle: "Daily and weekly routine",
     icon: Calendar,
-    description: "How many hours do you work each day?"
+    description: "How many hours per day and days per week do you work?"
   },
   {
     id: 5,
@@ -123,16 +124,19 @@ const features = [
 ];
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     avatar: null as string | null,
     walletType: 'timed' as 'timed' | 'normal',
+    payInputMode: 'monthly' as 'monthly' | 'hourly',
     monthlyEarning: '',
+    hourlyEarning: '',
     currency: 'NPR',
     workingHoursPerDay: '',
-    workingDaysPerMonth: '',
+    workingDaysPerWeek: '',
     enableSecurity: true,
     pin: '',
     confirmPin: '',
@@ -155,16 +159,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       case 2:
         break;
       case 3:
-        if (!formData.monthlyEarning || parseFloat(formData.monthlyEarning) <= 0) {
-          toast.error('Please enter a valid monthly earning');
-          return false;
+        if (formData.payInputMode === 'monthly') {
+          const monthly = parseFloat(formData.monthlyEarning);
+          if (!Number.isFinite(monthly) || monthly <= 0) {
+            toast.error('Please enter a valid monthly earning');
+            return false;
+          }
+        } else {
+          const hourly = parseFloat(formData.hourlyEarning);
+          if (!Number.isFinite(hourly) || hourly <= 0) {
+            toast.error('Please enter a valid hourly earning');
+            return false;
+          }
         }
         break;
       case 4:
         const hours = parseFloat(formData.workingHoursPerDay);
-        const days = parseFloat(formData.workingDaysPerMonth);
-        if (hours <= 0 || hours > 24 || days <= 0 || days > 31) {
-          toast.error('Please enter valid working hours and days');
+        const daysPerWeek = parseFloat(formData.workingDaysPerWeek);
+        if (
+          !Number.isFinite(hours) ||
+          hours <= 0 ||
+          hours > 24 ||
+          !Number.isFinite(daysPerWeek) ||
+          daysPerWeek <= 0 ||
+          daysPerWeek > 7
+        ) {
+          toast.error('Please enter valid working hours and days per week');
           return false;
         }
         break;
@@ -298,14 +318,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         }
       }
 
+      const parsedHoursPerDay = parseFloat(formData.workingHoursPerDay) || 0;
+      const parsedDaysPerWeek = parseFloat(formData.workingDaysPerWeek) || 0;
+      const parsedDaysPerMonth = parsedDaysPerWeek > 0 ? parsedDaysPerWeek * 4.333 : 0;
+      const parsedHourly = parseFloat(formData.hourlyEarning) || 0;
+      const parsedMonthly = parseFloat(formData.monthlyEarning) || 0;
+      const resolvedMonthly = formData.payInputMode === 'hourly'
+        ? parsedHourly * parsedHoursPerDay * parsedDaysPerMonth
+        : parsedMonthly;
+      const resolvedHourly = formData.payInputMode === 'hourly'
+        ? parsedHourly
+        : (parsedHoursPerDay > 0 && parsedDaysPerMonth > 0 ? resolvedMonthly / (parsedHoursPerDay * parsedDaysPerMonth) : 0);
+
       const userProfile: UserProfile = {
         name: formData.name.trim(),
-        monthlyEarning: parseFloat(formData.monthlyEarning),
+        monthlyEarning: resolvedMonthly,
         currency: formData.currency,
-        workingHoursPerDay: parseFloat(formData.workingHoursPerDay),
-        workingDaysPerMonth: parseFloat(formData.workingDaysPerMonth),
+        workingHoursPerDay: parsedHoursPerDay,
+        workingDaysPerMonth: parsedDaysPerMonth,
         createdAt: new Date().toISOString(),
-        hourlyRate: 0,
+        hourlyRate: resolvedHourly,
         securityEnabled: formData.enableSecurity,
         avatar: formData.avatar || undefined,
         ...pinData
@@ -336,9 +368,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     toast.info("Welcome! You can complete your profile later in Settings.");
   };
 
-  const hourlyRate = formData.monthlyEarning && formData.workingHoursPerDay && formData.workingDaysPerMonth
-    ? (parseFloat(formData.monthlyEarning) / (parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth))).toFixed(2)
-    : '0.00';
+  const parsedHoursPerDay = parseFloat(formData.workingHoursPerDay) || 0;
+  const parsedDaysPerWeek = parseFloat(formData.workingDaysPerWeek) || 0;
+  const parsedDaysPerMonth = parsedDaysPerWeek > 0 ? parsedDaysPerWeek * 4.333 : 0;
+  const parsedMonthly = parseFloat(formData.monthlyEarning) || 0;
+  const parsedHourly = parseFloat(formData.hourlyEarning) || 0;
+  const derivedHourlyRate = parsedMonthly > 0 && parsedHoursPerDay > 0 && parsedDaysPerMonth > 0
+    ? parsedMonthly / (parsedHoursPerDay * parsedDaysPerMonth)
+    : 0;
+  const resolvedHourlyRate = formData.payInputMode === 'hourly' ? parsedHourly : derivedHourlyRate;
+  const resolvedMonthlyEarning = formData.payInputMode === 'hourly'
+    ? parsedHourly * parsedHoursPerDay * parsedDaysPerMonth
+    : parsedMonthly;
+  const hourlyRate = resolvedHourlyRate.toFixed(2);
 
   const progress = (step / maxStep) * 100;
 
@@ -349,6 +391,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         {/* Main Card */}
         <Card className="border-0 shadow-xl bg-card/600 backdrop-blur-sm border border-border/60 relative overflow-hidden">
           <CardHeader className="text-center pb-3">
+            {step === 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute left-2 top-2 text-muted-foreground hover:text-foreground z-10"
+                onClick={() => router.push('/welcome')}
+                disabled={isLoading}
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+            )}
             {step < maxStep && (
               <Button
                 variant="ghost"
@@ -577,8 +631,35 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {step === 3 && (
               <div className="space-y-4">
                 <div className="space-y-3">
+                  <Label className="text-sm font-medium">How do you want to enter your pay?</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, payInputMode: 'monthly' })}
+                      className={`p-3 rounded-lg border text-sm font-medium transition-colors ${formData.payInputMode === 'monthly'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border/40 bg-background-secondary text-foreground/80'
+                        }`}
+                    >
+                      Monthly pay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, payInputMode: 'hourly' })}
+                      className={`p-3 rounded-lg border text-sm font-medium transition-colors ${formData.payInputMode === 'hourly'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border/40 bg-background-secondary text-foreground/80'
+                        }`}
+                    >
+                      Hourly pay
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-3">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Monthly Income</Label>
+                    <Label className="text-sm font-medium">
+                      {formData.payInputMode === 'hourly' ? 'Hourly Income' : 'Monthly Income'}
+                    </Label>
                     <div className="flex gap-2">
                       <Select value={formData.currency} onValueChange={(value) => setFormData({ ...formData, currency: value })}>
                         <SelectTrigger className="w-20 h-10">
@@ -595,11 +676,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       <Input
                         type="number"
                         placeholder="5000"
-                        value={formData.monthlyEarning}
-                        onChange={(e) => setFormData({ ...formData, monthlyEarning: e.target.value })}
+                        value={formData.payInputMode === 'hourly' ? formData.hourlyEarning : formData.monthlyEarning}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          ...(formData.payInputMode === 'hourly'
+                            ? { hourlyEarning: e.target.value }
+                            : { monthlyEarning: e.target.value })
+                        })}
                         className="flex-1 h-10"
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formData.payInputMode === 'hourly'
+                        ? 'Enter your pay per hour. Monthly earnings will be estimated from your schedule.'
+                        : 'Enter your monthly income. Hourly rate will be derived from your schedule.'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -610,7 +701,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               <div className="space-y-4">
                 <div className="text-center space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    This helps us calculate your hourly rate for time-aware spending insights
+                    Tell us your daily and weekly work schedule for better pay calculations
                   </p>
                 </div>
 
@@ -631,33 +722,33 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">How many days do you work per month?</Label>
+                    <Label className="text-sm font-medium">How many days do you work per week?</Label>
                     <Input
                       type="number"
                       min="1"
-                      max="31"
-                      placeholder="e.g., 22"
-                      value={formData.workingDaysPerMonth}
-                      onChange={(e) => setFormData({ ...formData, workingDaysPerMonth: e.target.value })}
+                      max="7"
+                      placeholder="e.g., 5"
+                      value={formData.workingDaysPerWeek}
+                      onChange={(e) => setFormData({ ...formData, workingDaysPerWeek: e.target.value })}
                       className="h-12 text-base"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Working days in a typical month (e.g., 22 excluding weekends)
+                      Working days in a typical week (e.g., 5 excluding weekends)
                     </p>
                   </div>
                 </div>
 
-                {(formData.workingHoursPerDay && formData.workingDaysPerMonth) && (
+                {(formData.workingHoursPerDay && formData.workingDaysPerWeek) && (
                   <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                     <div className="text-center space-y-2">
                       <div className="text-lg font-bold text-primary">
                         Your hourly rate: {formData.currency} {hourlyRate}/hr
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Based on {parseFloat(formData.workingHoursPerDay) * parseFloat(formData.workingDaysPerMonth)} working hours per month
+                        Based on {(parsedHoursPerDay * parsedDaysPerMonth).toFixed(1)} working hours per month
                       </div>
                       <div className="text-xs text-muted-foreground/80">
-                        This shows how much each hour of your work is worth
+                        Estimated monthly income: {formData.currency} {resolvedMonthlyEarning.toFixed(2)}
                       </div>
                     </div>
                   </div>

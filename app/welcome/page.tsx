@@ -1,13 +1,26 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Wallet, TrendingUp, Target, Shield, Smartphone, Brain, Check, Sparkles, Clock, DollarSign, Monitor, Tablet, Download } from 'lucide-react';
+import OnboardingFlow from '@/components/onboarding/onboarding-flow';
+import { useWalletData } from '@/contexts/wallet-data-context';
 
 export default function WelcomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { userProfile, handleOnboardingComplete, setShowOnboarding } = useWalletData();
+  const isStartMode = searchParams.get('start') === '1';
   const [scrollY, setScrollY] = useState(0);
   const [activeFeature, setActiveFeature] = useState(0);
+
+  useEffect(() => {
+    if (isStartMode) {
+      setShowOnboarding(true);
+    }
+  }, [isStartMode, setShowOnboarding]);
 
   // SEO metadata for welcome page
   const pageMetadata = {
@@ -90,6 +103,17 @@ export default function WelcomePage() {
     "24/7 customer support"
   ];
 
+  if (isStartMode && !userProfile) {
+    return (
+      <OnboardingFlow
+        onComplete={(profile) => {
+          handleOnboardingComplete(profile);
+          router.replace('/');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden">
       {/* Animated background elements */}
@@ -103,8 +127,36 @@ export default function WelcomePage() {
       </div>
 
       <main className="relative z-10">
+        {/* Navigation */}
+        <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+          <div className="container mx-auto px-4">
+            <div className="h-16 flex items-center justify-between">
+              <Link href="/welcome" className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                  <Wallet className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <span className="text-lg font-bold">MyWallet</span>
+              </Link>
+
+              <nav className="hidden md:flex items-center gap-6 text-sm">
+                <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
+                <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How it works</a>
+                <a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors">FAQ</a>
+                <Link href="/releases" className="text-muted-foreground hover:text-foreground transition-colors">Releases</Link>
+              </nav>
+
+              <Link
+                href="/welcome?start=1"
+                className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Start
+              </Link>
+            </div>
+          </div>
+        </header>
+
         {/* Hero Section */}
-        <section className="container mx-auto px-4 pt-23 pb-32">
+        <section className="container mx-auto px-4 pt-12 pb-32">
           <div className="max-w-7xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="text-center lg:text-left">
@@ -140,7 +192,7 @@ export default function WelcomePage() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-start items-center mb-16">
-                  <Link href="/" className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
+                  <Link href="/welcome?start=1" className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
                     Get Started Free
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
@@ -160,7 +212,7 @@ export default function WelcomePage() {
                     <span>10k+ active users</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex text-primary">★★★★★</div>
+                    <div className="flex text-primary">â˜…â˜…â˜…â˜…â˜…</div>
                     <span>4.9/5 rating</span>
                   </div>
                 </div>
@@ -191,7 +243,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Features Grid */}
-        <section className="container mx-auto px-4 py-20">
+        <section id="features" className="container mx-auto px-4 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -231,7 +283,7 @@ export default function WelcomePage() {
           </div>
         </section>
         {/* Time-Based Wallet Feature Highlight */}
-        <section className="container mx-auto px-4 py-20">
+        <section id="how-it-works" className="container mx-auto px-4 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
@@ -338,7 +390,7 @@ export default function WelcomePage() {
         </section>
 
         {/* PWA Cross-Device Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section id="faq" className="container mx-auto px-4 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -474,7 +526,7 @@ export default function WelcomePage() {
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">★★★★★</div>
+                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "MyWallet completely changed how I manage my money. I've saved over $2,000 in the last 6 months thanks to the smart budgeting features."
@@ -492,7 +544,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">★★★★★</div>
+                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "The offline functionality is a game-changer. I can track expenses anywhere, even without internet. Perfect for travel!"
@@ -510,7 +562,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">★★★★★</div>
+                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "Finally achieved my dream vacation goal! The goal tracking and progress visualization kept me motivated every step of the way."
@@ -596,7 +648,7 @@ export default function WelcomePage() {
                   <div className="text-muted-foreground">Money Saved</div>
                 </div>
                 <div>
-                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9★</div>
+                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9â˜…</div>
                   <div className="text-muted-foreground">App Rating</div>
                 </div>
                 <div>
@@ -656,7 +708,7 @@ export default function WelcomePage() {
                   Join over 100,000 users who have transformed their financial lives with MyWallet. Start your journey today.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
+                  <Link href="/welcome?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
                     Try Web Version
                   </Link>
                   <button className="px-10 py-5 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300">
@@ -664,7 +716,7 @@ export default function WelcomePage() {
                   </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-6">
-                  No credit card required • Free forever • Cancel anytime
+                  No credit card required â€¢ Free forever â€¢ Cancel anytime
                 </p>
               </div>
             </div>
@@ -673,23 +725,43 @@ export default function WelcomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-20 bg-gradient-to-r from-card/80 to-card/60 backdrop-blur-xl border-t border-border/50 shadow-lg">
-        <div className="container mx-auto px-12 py-16">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-4 mb-6">
-              <div className="p-3 bg-gradient-to-br from-primary/10 to-accent/10 rounded-2xl">
-                <Wallet className="w-10 h-10 text-primary" />
+      <footer className="relative z-20 border-t border-border/60 bg-card/70 backdrop-blur-xl">
+        <div className="container mx-auto px-4 py-14">
+          <div className="grid gap-10 md:grid-cols-4">
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/15 to-accent/15">
+                  <Wallet className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-2xl font-bold">MyWallet</span>
               </div>
-              <span className="text-3xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">MyWallet</span>
-            </div>
-            <div className="space-y-2">
-              <p className="text-lg text-muted-foreground font-medium">
-                Made with ❤️ in Nepal
-              </p>
-              <p className="text-sm text-muted-foreground">
-                © 2025 MyWallet. All rights reserved.
+              <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+                Time-aware personal finance app to track spending, manage budgets, and stay in control across devices.
               </p>
             </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide mb-3">Product</h3>
+              <div className="space-y-2 text-sm">
+                <a href="#features" className="block text-muted-foreground hover:text-foreground transition-colors">Features</a>
+                <a href="#how-it-works" className="block text-muted-foreground hover:text-foreground transition-colors">How it works</a>
+                <Link href="/releases" className="block text-muted-foreground hover:text-foreground transition-colors">Release notes</Link>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide mb-3">Start</h3>
+              <div className="space-y-2 text-sm">
+                <Link href="/welcome?start=1" className="block text-muted-foreground hover:text-foreground transition-colors">Start onboarding</Link>
+                <Link href="/settings?tab=about" className="block text-muted-foreground hover:text-foreground transition-colors">About</Link>
+                <Link href="/" className="block text-muted-foreground hover:text-foreground transition-colors">Dashboard</Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 pt-6 border-t border-border/60 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">Made in Nepal.</p>
+            <p className="text-sm text-muted-foreground">© 2026 MyWallet. All rights reserved.</p>
           </div>
         </div>
       </footer>
@@ -714,3 +786,4 @@ export default function WelcomePage() {
     </div>
   );
 }
+

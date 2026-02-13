@@ -16,6 +16,7 @@ import { Toaster } from "@/components/ui/sonner"
 
 
 export const metadata: Metadata = {
+  applicationName: "MyWallet",
   title: "MyWallet - Smart Financial Tracking App | Free Personal Finance Manager",
   description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Track budgets, achieve goals, and grow wealth with smart insights. Free forever, works offline.",
   keywords: "personal finance app, budget tracker, expense manager, financial planning, money management, savings app, financial goals, time-based budgeting, offline finance app, PWA",
@@ -33,11 +34,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/image.png', sizes: 'any' },
-      { url: '/image.png', sizes: '16x16', type: 'image/png' },
-      { url: '/image.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/image.png',
+    apple: '/icon-180.png',
   },
   manifest: '/manifest.json',
   openGraph: {
@@ -78,7 +78,7 @@ export const metadata: Metadata = {
   },
   other: {
     'google-site-verification': 'sbInOUmzo4b091hxSKQiABNP9QYXpwYKIMlzfKyavQE',
-    'msapplication-TileImage': '/image.png',
+    'msapplication-TileImage': '/icon-192.png',
     'msapplication-TileColor': '#000000',
     'theme-color': '#000000',
   },
