@@ -137,6 +137,7 @@ export function AddAccountDialog({
                                         <Label htmlFor="debt-frequency" className="text-sm font-medium">Frequency</Label>
                                         <select
                                             id="debt-frequency"
+                                            title="debt-frequncy"
                                             value={debtForm.interestFrequency}
                                             onChange={(e) => setDebtForm({ ...debtForm, interestFrequency: e.target.value })}
                                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
@@ -151,6 +152,7 @@ export function AddAccountDialog({
                                         <Label htmlFor="debt-type" className="text-sm font-medium">Type</Label>
                                         <select
                                             id="debt-type"
+                                            title="dept-type"
                                             value={debtForm.interestType}
                                             onChange={(e) => setDebtForm({ ...debtForm, interestType: e.target.value })}
                                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
@@ -279,6 +281,7 @@ export function AddAccountDialog({
                                     <Label htmlFor="credit-frequency" className="text-sm font-medium">Frequency</Label>
                                     <select
                                         id="credit-frequency"
+                                        title="Interest compounding frequency"
                                         value={creditForm.interestFrequency}
                                         onChange={(e) => setCreditForm({ ...creditForm, interestFrequency: e.target.value })}
                                         className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
@@ -293,6 +296,7 @@ export function AddAccountDialog({
                                     <Label htmlFor="credit-type" className="text-sm font-medium">Type</Label>
                                     <select
                                         id="credit-type"
+                                        title="credit-type"
                                         value={creditForm.interestType}
                                         onChange={(e) => setCreditForm({ ...creditForm, interestType: e.target.value })}
                                         className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"

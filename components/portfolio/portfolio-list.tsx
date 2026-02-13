@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react"
 import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,10 +44,12 @@ export function PortfolioList() {
         deletePortfolio,
         updatePortfolio,
         clearPortfolioHistory,
+        updateUserProfile,
         getFaceValue,
         upcomingIPOs,
         isIPOsLoading,
     } = useWalletData()
+    const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
 
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -74,8 +76,16 @@ export function PortfolioList() {
         color: "#3b82f6"
     })
 
+    useEffect(() => {
+        if (!isShareFeaturesEnabled && viewMode !== "overview") {
+            setViewMode("overview")
+        }
+    }, [isShareFeaturesEnabled, viewMode])
+
     // Auto-refresh data on mount and every 2 minutes
     useEffect(() => {
+        if (!isShareFeaturesEnabled) return
+
         // Initial fetch
         fetchPortfolioPrices()
 
@@ -85,7 +95,27 @@ export function PortfolioList() {
         }, 2 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [])
+    }, [isShareFeaturesEnabled])
+
+    const enableShareFeatures = () => {
+        updateUserProfile({
+            meroShare: {
+                dpId: userProfile?.meroShare?.dpId || "",
+                username: userProfile?.meroShare?.username || "",
+                password: userProfile?.meroShare?.password || "",
+                crn: userProfile?.meroShare?.crn || "",
+                pin: userProfile?.meroShare?.pin || "",
+                preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
+                applyMode: userProfile?.meroShare?.applyMode || "on-demand",
+                showLiveBrowser: userProfile?.meroShare?.showLiveBrowser || false,
+                isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false,
+                applicationLogs: userProfile?.meroShare?.applicationLogs || [],
+                shareFeaturesEnabled: true,
+                shareNotificationsEnabled: true,
+            }
+        })
+        toast.success("Share features enabled")
+    }
 
     const handleViewStockDetail = (item: PortfolioItem) => {
         setSelectedStock(item)
@@ -106,15 +136,29 @@ export function PortfolioList() {
         description: ""
     })
 
-    const filteredPortfolio = portfolio.filter(item =>
-        item.portfolioId === activePortfolioId &&
-        item.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+    const deferredSearchQuery = useDeferredValue(searchQuery)
+
+    const filteredPortfolio = useMemo(
+        () =>
+            portfolio.filter(
+                (item) =>
+                    item.portfolioId === activePortfolioId &&
+                    item.symbol.toLowerCase().includes(deferredSearchQuery.toLowerCase()),
+            ),
+        [portfolio, activePortfolioId, deferredSearchQuery],
     )
 
-    const portfolioTransactions = shareTransactions.filter(t => t.portfolioId === activePortfolioId)
+    const portfolioTransactions = useMemo(
+        () => shareTransactions.filter((t) => t.portfolioId === activePortfolioId),
+        [shareTransactions, activePortfolioId],
+    )
 
-    const sortedTransactions = [...portfolioTransactions].sort((a, b) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
+    const sortedTransactions = useMemo(
+        () =>
+            [...portfolioTransactions].sort(
+                (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+            ),
+        [portfolioTransactions],
     )
 
     const handleRefresh = async () => {
@@ -324,69 +368,184 @@ export function PortfolioList() {
     }
 
     // Calculations
-    const activePortfolioItems = portfolio.filter(p => p.portfolioId === activePortfolioId)
-    const totalInvestment = activePortfolioItems.reduce((sum, item) => sum + (item.units * item.buyPrice), 0)
-    const currentValue = activePortfolioItems.reduce((sum, item) => sum + (item.units * (item.currentPrice || item.buyPrice)), 0)
-    const totalProfitLoss = currentValue - totalInvestment
-    const totalProfitLossPercentage = totalInvestment > 0 ? (totalProfitLoss / totalInvestment) * 100 : 0
+    const activePortfolioItems = useMemo(
+        () => portfolio.filter((p) => p.portfolioId === activePortfolioId),
+        [portfolio, activePortfolioId],
+    )
 
-    const todayChange = activePortfolioItems.reduce((sum, item) => {
-        if (item.currentPrice && item.previousClose) {
-            return sum + (item.units * (item.currentPrice - item.previousClose))
+    const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
+        const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * item.buyPrice, 0)
+        const current = activePortfolioItems.reduce(
+            (sum, item) => sum + item.units * (item.currentPrice || item.buyPrice),
+            0,
+        )
+        const profitLoss = current - investment
+        const today = activePortfolioItems.reduce((sum, item) => {
+            if (item.currentPrice && item.previousClose) {
+                return sum + item.units * (item.currentPrice - item.previousClose)
+            }
+            return sum
+        }, 0)
+
+        return {
+            totalInvestment: investment,
+            currentValue: current,
+            totalProfitLoss: profitLoss,
+            totalProfitLossPercentage: investment > 0 ? (profitLoss / investment) * 100 : 0,
+            todayChange: today,
+            todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
         }
-        return sum
-    }, 0)
-    const todayChangePercentage = (currentValue - todayChange) > 0 ? (todayChange / (currentValue - todayChange)) * 100 : 0
+    }, [activePortfolioItems])
 
-    // Distribution Calculations
-    const sectorMap = new Map<string, { value: number; count: number }>()
-    const scripMap = new Map<string, number>()
+    const { sectorData, scripData } = useMemo(() => {
+        const sectorMap = new Map<string, { value: number; count: number }>()
+        const scripMap = new Map<string, number>()
 
-    activePortfolioItems.forEach(item => {
-        const sector = item.sector || "Others"
-        const value = item.units * (item.currentPrice || item.buyPrice)
+        activePortfolioItems.forEach((item) => {
+            const sector = item.sector || "Others"
+            const value = item.units * (item.currentPrice || item.buyPrice)
+            const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
 
-        // Sector
-        const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
-        sectorMap.set(sector, {
-            value: currentSector.value + value,
-            count: currentSector.count + 1
+            sectorMap.set(sector, {
+                value: currentSector.value + value,
+                count: currentSector.count + 1,
+            })
+            scripMap.set(item.symbol, (scripMap.get(item.symbol) || 0) + value)
         })
 
-        // Scrip
-        scripMap.set(item.symbol, (scripMap.get(item.symbol) || 0) + value)
-    })
+        const memoSectorData = Array.from(sectorMap.entries())
+            .map(([name, data]) => ({
+                name,
+                value: data.value,
+                count: data.count,
+                percentage: currentValue > 0 ? (data.value / currentValue) * 100 : 0,
+            }))
+            .sort((a, b) => b.value - a.value)
 
-    const sectorData = Array.from(sectorMap.entries())
-        .map(([name, data]) => ({
-            name,
-            value: data.value,
-            count: data.count,
-            percentage: currentValue > 0 ? (data.value / currentValue) * 100 : 0
-        }))
-        .sort((a, b) => b.value - a.value)
+        const memoScripData = Array.from(scripMap.entries())
+            .map(([name, value]) => ({
+                name,
+                value,
+                percentage: currentValue > 0 ? (value / currentValue) * 100 : 0,
+            }))
+            .sort((a, b) => b.value - a.value)
 
-    const scripData = Array.from(scripMap.entries())
-        .map(([name, value]) => ({
-            name,
-            value,
-            percentage: currentValue > 0 ? (value / currentValue) * 100 : 0
-        }))
-        .sort((a, b) => b.value - a.value)
+        return { sectorData: memoSectorData, scripData: memoScripData }
+    }, [activePortfolioItems, currentValue])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
     const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
 
-    const getPortfolioSummary = (pid: string) => {
-        const items = portfolio.filter(p => p.portfolioId === pid)
-        const investment = items.reduce((sum, item) => sum + (item.units * item.buyPrice), 0)
-        const current = items.reduce((sum, item) => sum + (item.units * (item.currentPrice || item.buyPrice)), 0)
-        return { investment, current, count: items.length }
-    }
+    const portfolioSummaryById = useMemo(() => {
+        const summaries = new Map<string, { investment: number; current: number; count: number }>()
+        portfolios.forEach((p) => summaries.set(p.id, { investment: 0, current: 0, count: 0 }))
+
+        portfolio.forEach((item) => {
+            const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0 }
+            summaries.set(item.portfolioId, {
+                investment: prev.investment + item.units * item.buyPrice,
+                current: prev.current + item.units * (item.currentPrice || item.buyPrice),
+                count: prev.count + 1,
+            })
+        })
+
+        return summaries
+    }, [portfolio, portfolios])
+
+    const ipoInsights = useMemo(() => {
+        const normalizeIpoName = (value?: string) =>
+            (value || "")
+                .toLowerCase()
+                .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, "")
+                .replace(/[().,-]/g, "")
+                .replace(/\s+/g, " ")
+                .trim()
+
+        const isIpoApplied = (ipo: UpcomingIPO) =>
+            Boolean(
+                userProfile?.meroShare?.applicationLogs?.some(
+                    (log) =>
+                        log.action === "apply" &&
+                        log.status === "success" &&
+                        normalizeIpoName(log.ipoName) === normalizeIpoName(ipo.company),
+                ),
+            )
+
+        const ipoStatusOrder: Record<string, number> = { open: 0, upcoming: 1, closed: 2 }
+        const sortedIPOs = [...upcomingIPOs].sort((a, b) => {
+            const aRank = ipoStatusOrder[a.status ?? ""] ?? 3
+            const bRank = ipoStatusOrder[b.status ?? ""] ?? 3
+            if (aRank !== bRank) return aRank - bRank
+
+            if (a.status === "open" && b.status === "open") {
+                const aApplied = isIpoApplied(a)
+                const bApplied = isIpoApplied(b)
+                if (aApplied !== bApplied) return aApplied ? 1 : -1
+            }
+            return 0
+        })
+
+        const filteredIPOs =
+            ipoFilter === "all" ? sortedIPOs : sortedIPOs.filter((ipo) => ipo.status === ipoFilter)
+        const openIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "open").length
+        const upcomingIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "upcoming").length
+        const closedIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "closed").length
+        const statusSummaryLabel =
+            openIpoCount > 0 ? "Open Now" : upcomingIpoCount > 0 ? "Upcoming" : "Recent"
+        const displayedIPOs = showAllIPOs ? filteredIPOs : filteredIPOs.slice(0, 5)
+        const sentiment =
+            openIpoCount >= 3
+                ? {
+                    label: "Strong Bullish",
+                    toneClass: "text-success",
+                    description: `${openIpoCount} IPOs are open right now, showing strong current participation.`,
+                }
+                : openIpoCount > 0
+                    ? {
+                        label: "Bullish",
+                        toneClass: "text-success",
+                        description: `${openIpoCount} IPO ${openIpoCount === 1 ? "is" : "are"} open now, with ${upcomingIpoCount} in the pipeline.`,
+                    }
+                    : upcomingIpoCount > 0
+                        ? {
+                            label: "Building Momentum",
+                            toneClass: "text-info",
+                            description: `No IPO is open today, but ${upcomingIpoCount} ${upcomingIpoCount === 1 ? "is" : "are"} upcoming soon.`,
+                        }
+                        : {
+                            label: "Calm Window",
+                            toneClass: "text-muted-foreground",
+                            description: `No open or upcoming IPOs right now. Recently closed: ${closedIpoCount}.`,
+                        }
+
+        const appliedIpoKeys = new Set(
+            sortedIPOs
+                .filter((ipo) => isIpoApplied(ipo))
+                .map((ipo) => `${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`),
+        )
+
+        return {
+            sortedIPOsCount: sortedIPOs.length,
+            filteredIPOsCount: filteredIPOs.length,
+            openIpoCount,
+            upcomingIpoCount,
+            closedIpoCount,
+            statusSummaryLabel,
+            displayedIPOs,
+            sentiment,
+            appliedIpoKeys,
+        }
+    }, [ipoFilter, showAllIPOs, upcomingIPOs, userProfile?.meroShare?.applicationLogs])
 
     const renderOverviewHeader = () => {
-        const totalInvest = portfolios.reduce((sum, p) => sum + getPortfolioSummary(p.id).investment, 0)
-        const totalCurrent = portfolios.reduce((sum, p) => sum + getPortfolioSummary(p.id).current, 0)
+        const totalInvest = portfolios.reduce(
+            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.investment || 0),
+            0,
+        )
+        const totalCurrent = portfolios.reduce(
+            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.current || 0),
+            0,
+        )
         const totalPl = totalCurrent - totalInvest
         const totalPlPerc = totalInvest > 0 ? (totalPl / totalInvest) * 100 : 0
 
@@ -452,7 +611,7 @@ export function PortfolioList() {
     }
 
     const renderPortfolioCard = (p: Portfolio) => {
-        const summary = getPortfolioSummary(p.id);
+        const summary = portfolioSummaryById.get(p.id) || { investment: 0, current: 0, count: 0 };
         const profitLoss = summary.current - summary.investment;
         const profitPerc = summary.investment > 0 ? (profitLoss / summary.investment) * 100 : 0;
         const isProfit = profitLoss >= 0;
@@ -530,41 +689,52 @@ export function PortfolioList() {
     }
 
     if (viewMode === "overview") {
-        const ipoStatusOrder: Record<string, number> = { open: 0, upcoming: 1, closed: 2 }
-        const sortedIPOs = [...upcomingIPOs].sort((a, b) => {
-            const aRank = ipoStatusOrder[a.status ?? ""] ?? 3
-            const bRank = ipoStatusOrder[b.status ?? ""] ?? 3
-            return aRank - bRank
-        })
-        const filteredIPOs = ipoFilter === "all" ? sortedIPOs : sortedIPOs.filter((ipo) => ipo.status === ipoFilter)
-        const openIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "open").length
-        const upcomingIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "upcoming").length
-        const closedIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "closed").length
-        const statusSummaryLabel = openIpoCount > 0 ? "Open Now" : upcomingIpoCount > 0 ? "Upcoming" : "Recent"
-        const displayedIPOs = showAllIPOs ? filteredIPOs : filteredIPOs.slice(0, 5)
-        const sentiment = openIpoCount >= 3
-            ? {
-                label: "Strong Bullish",
-                toneClass: "text-success",
-                description: `${openIpoCount} IPOs are open right now, showing strong current participation.`,
-            }
-            : openIpoCount > 0
-                ? {
-                    label: "Bullish",
-                    toneClass: "text-success",
-                    description: `${openIpoCount} IPO ${openIpoCount === 1 ? "is" : "are"} open now, with ${upcomingIpoCount} in the pipeline.`,
-                }
-                : upcomingIpoCount > 0
-                    ? {
-                        label: "Building Momentum",
-                        toneClass: "text-info",
-                        description: `No IPO is open today, but ${upcomingIpoCount} ${upcomingIpoCount === 1 ? "is" : "are"} upcoming soon.`,
-                    }
-                    : {
-                        label: "Calm Window",
-                        toneClass: "text-muted-foreground",
-                        description: `No open or upcoming IPOs right now. Recently closed: ${closedIpoCount}.`,
-                    }
+        if (!isShareFeaturesEnabled) {
+            return (
+                <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-card via-primary/5 to-card shadow-xl">
+                    <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-primary/10 blur-2xl" />
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
+                                <Sparkles className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-left text-xl font-black tracking-tight">
+                                    Share Features Disabled
+                                </CardTitle>
+                                <CardDescription className="text-left text-xs uppercase tracking-widest text-muted-foreground/80">
+                                    Portfolio Mode
+                                </CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                        <p className="max-w-xl text-left text-sm leading-relaxed text-muted-foreground">
+                            Enable share features to unlock portfolio tracking, IPO actions, and share insights from this section.
+                        </p>
+                        <Button
+                            onClick={enableShareFeatures}
+                            className="h-11 rounded-xl bg-gradient-to-r from-primary to-primary/80 px-6 font-bold shadow-lg shadow-primary/20 hover:from-primary/90 hover:to-primary/70"
+                        >
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Turn On Share Features
+                        </Button>
+                    </CardContent>
+                </Card>
+            )
+        }
+
+        const {
+            sortedIPOsCount,
+            filteredIPOsCount,
+            openIpoCount,
+            upcomingIpoCount,
+            closedIpoCount,
+            statusSummaryLabel,
+            displayedIPOs,
+            sentiment,
+            appliedIpoKeys,
+        } = ipoInsights
 
         return (
             <>
@@ -658,7 +828,7 @@ export function PortfolioList() {
                                         </div>
                                     </CardContent>
                                 </Card>
-                            ) : sortedIPOs.length > 0 ? (
+                            ) : sortedIPOsCount > 0 ? (
                                 <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-transparent shadow-xl overflow-hidden backdrop-blur-sm text-left">
                                     <CardHeader className="pb-2 flex flex-row items-center justify-between border-b border-primary/10">
                                         <div>
@@ -685,7 +855,7 @@ export function PortfolioList() {
                                                     <SelectItem value="closed">Closed</SelectItem>
                                                 </SelectContent>
                                             </Select>
-                                            {filteredIPOs.length > 5 && (
+                                            {filteredIPOsCount > 5 && (
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
@@ -700,6 +870,8 @@ export function PortfolioList() {
                                     <CardContent className="p-0">
                                         <div className="divide-y divide-muted/10">
                                             {displayedIPOs.length > 0 ? displayedIPOs.map((ipo) => {
+                                                const ipoKey = `${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`
+                                                const isApplied = appliedIpoKeys.has(ipoKey)
                                                 const statusLabel = ipo.status === 'open' ? 'Closing in' :
                                                     ipo.status === 'upcoming' ? 'Opening in' :
                                                         'Closed';
@@ -710,7 +882,7 @@ export function PortfolioList() {
 
                                                 return (
                                                     <div
-                                                        key={`${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`}
+                                                        key={ipoKey}
                                                         className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
                                                         onClick={() => handleViewIPODetail(ipo)}
                                                         role="button"
@@ -732,10 +904,9 @@ export function PortfolioList() {
                                                                         {ipo.status === 'open' ? 'Open Today' : ipo.status.charAt(0).toUpperCase() + ipo.status.slice(1)}
                                                                     </Badge>
                                                                 )}
-                                                                {ipo.status === 'open' && userProfile?.meroShare?.isAutomatedEnabled && (
-                                                                    <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0 border-primary shadow-[0_0_10px_rgba(var(--primary),0.3)] animate-pulse bg-primary/10 text-primary">
-                                                                        <Sparkles className="w-2.5 h-2.5 mr-1" />
-                                                                        Automation Ready
+                                                                {isApplied && (
+                                                                    <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0 border-success/30 bg-success/10 text-success">
+                                                                        Applied
                                                                     </Badge>
                                                                 )}
                                                             </div>

@@ -3,7 +3,8 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 
 // Define extraction logic outside the handler for clarity
-async function getBrowser() {
+async function getBrowser(showBrowser = false) {
+    const isVisibleDebug = process.env.MEROSHARE_VISIBLE_BROWSER === '1' || showBrowser;
     if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
         return await puppeteer.launch({
             args: chromium.args,
@@ -30,7 +31,7 @@ async function getBrowser() {
 
         return await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            headless: false,
+            headless: !isVisibleDebug,
             executablePath: executablePath || undefined,
         });
     }
@@ -39,14 +40,15 @@ async function getBrowser() {
 export async function POST(req: Request) {
     let browser: any = null;
     try {
-        const { credentials, ipoName, kitta = 10 } = await req.json();
+        const { credentials, ipoName, kitta = 10, options } = await req.json();
+        const showBrowser = Boolean(options?.showBrowser);
 
         if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
             return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
         }
 
         try {
-            browser = await getBrowser();
+            browser = await getBrowser(showBrowser);
             const page = await browser.newPage();
 
             // 1. Login
@@ -399,7 +401,6 @@ export async function POST(req: Request) {
             }
 
         } catch (innerError: any) {
-            console.error("Puppeteer Error:", innerError);
             if (browser) await browser.close();
             return NextResponse.json({ error: innerError.message || "An error occurred during automation." }, { status: 500 });
         }

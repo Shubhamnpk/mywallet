@@ -1,51 +1,17 @@
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
-
-export async function getBrowser() {
-    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
-        return await puppeteer.launch({
-            args: chromium.args,
-            defaultViewport: (chromium as any).defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: (chromium as any).headless,
-        });
-    } else {
-        // Common paths for Chrome/Edge on Windows
-        const executablePaths = [
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-            process.env.CHROME_PATH
-        ].filter(Boolean) as string[];
-
-        let executablePath = '';
-        for (const path of executablePaths) {
-            if (require('fs').existsSync(path)) {
-                executablePath = path;
-                break;
-            }
-        }
-
-        return await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            headless: false,
-            executablePath: executablePath || undefined,
-        });
-    }
-}
+import { getMeroShareBrowser } from "../_lib/browser";
 
 export async function POST(req: Request) {
     let browser: any = null;
     try {
-        const { credentials } = await req.json();
+        const { credentials, options } = await req.json();
 
         if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
             return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
         }
 
         try {
-            browser = await getBrowser();
+            browser = await getMeroShareBrowser({ showBrowser: Boolean(options?.showBrowser) });
             const page = await browser.newPage();
 
             // 1. Attempt Login

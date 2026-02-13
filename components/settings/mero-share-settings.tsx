@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { Shield, Lock, User, Key, Building2, Save, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, Wand2, RefreshCw, Sparkles } from "lucide-react"
+import { Shield, Lock, User, Key, Building2, Save, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
-import { Check, ChevronsUpDown, Search } from "lucide-react"
+import { Check, ChevronsUpDown } from "lucide-react"
 import {
     Command,
     CommandEmpty,
@@ -32,8 +33,10 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
+const MEROSHARE_DEV_MODE_KEY = "wallet_meroshare_dev_mode"
+
 export function MeroShareSettings() {
-    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, portfolios, activePortfolioId, checkIPOAllotment } = useWalletData()
+    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
     const [showPassword, setShowPassword] = useState(false)
     const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
     const [isLoadingDps, setIsLoadingDps] = useState(false)
@@ -47,6 +50,8 @@ export function MeroShareSettings() {
     const [targetPortfolio, setTargetPortfolio] = useState(activePortfolioId || (portfolios.length > 0 ? portfolios[0].id : ""))
     const [customIpoName, setCustomIpoName] = useState("")
     const [isCustomMode, setIsCustomMode] = useState(false)
+    const [showLiveBrowserForTest, setShowLiveBrowserForTest] = useState(false)
+    const [isDevMode, setIsDevMode] = useState(false)
 
     const [formData, setFormData] = useState({
         dpId: userProfile?.meroShare?.dpId || "",
@@ -54,8 +59,47 @@ export function MeroShareSettings() {
         password: userProfile?.meroShare?.password || "",
         crn: userProfile?.meroShare?.crn || "",
         pin: userProfile?.meroShare?.pin || "",
+        shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
+        shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
         preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
+        applyMode: userProfile?.meroShare?.applyMode || "on-demand",
+        showLiveBrowser: userProfile?.meroShare?.showLiveBrowser || false,
         isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false
+    })
+    const openIpos = upcomingIPOs.filter(ipo => ipo.status === 'open')
+    const recentApplicationLogs = (userProfile?.meroShare?.applicationLogs ?? []).slice(0, 10)
+    const requiredFields: Array<keyof typeof formData> = ["dpId", "username", "password", "crn", "pin"]
+    const missingRequiredFields = requiredFields.filter((key) => {
+        const value = formData[key]
+        return typeof value !== "string" || value.trim().length === 0
+    })
+    const isCredentialComplete = missingRequiredFields.length === 0
+    const isAutomationReady = formData.isAutomatedEnabled && isCredentialComplete
+    const savedMeroShare = userProfile?.meroShare
+    const hasUnsavedChanges = JSON.stringify({
+        dpId: formData.dpId,
+        username: formData.username,
+        password: formData.password,
+        crn: formData.crn,
+        pin: formData.pin,
+        shareFeaturesEnabled: formData.shareFeaturesEnabled,
+        shareNotificationsEnabled: formData.shareNotificationsEnabled,
+        preferredKitta: formData.preferredKitta,
+        applyMode: formData.applyMode,
+        showLiveBrowser: formData.showLiveBrowser,
+        isAutomatedEnabled: formData.isAutomatedEnabled,
+    }) !== JSON.stringify({
+        dpId: savedMeroShare?.dpId || "",
+        username: savedMeroShare?.username || "",
+        password: savedMeroShare?.password || "",
+        crn: savedMeroShare?.crn || "",
+        pin: savedMeroShare?.pin || "",
+        shareFeaturesEnabled: savedMeroShare?.shareFeaturesEnabled || false,
+        shareNotificationsEnabled: savedMeroShare?.shareNotificationsEnabled || false,
+        preferredKitta: savedMeroShare?.preferredKitta || 0,
+        applyMode: savedMeroShare?.applyMode || "on-demand",
+        showLiveBrowser: savedMeroShare?.showLiveBrowser || false,
+        isAutomatedEnabled: savedMeroShare?.isAutomatedEnabled || false,
     })
 
     useEffect(() => {
@@ -90,9 +134,50 @@ export function MeroShareSettings() {
         fetchDps()
     }, [])
 
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const stored = localStorage.getItem(MEROSHARE_DEV_MODE_KEY)
+        setIsDevMode(stored === "true")
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            const isToggle = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d"
+            if (!isToggle) return
+
+            event.preventDefault()
+            setIsDevMode((prev) => {
+                const next = !prev
+                localStorage.setItem(MEROSHARE_DEV_MODE_KEY, String(next))
+                toast(next ? "Developer mode enabled" : "Developer mode disabled", {
+                    description: "Automation Tools visibility updated."
+                })
+                return next
+            })
+        }
+
+        window.addEventListener("keydown", onKeyDown)
+        return () => window.removeEventListener("keydown", onKeyDown)
+    }, [])
+
+    useEffect(() => {
+        setFormData({
+            dpId: userProfile?.meroShare?.dpId || "",
+            username: userProfile?.meroShare?.username || "",
+            password: userProfile?.meroShare?.password || "",
+            crn: userProfile?.meroShare?.crn || "",
+            pin: userProfile?.meroShare?.pin || "",
+            shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
+            shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
+            preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
+            applyMode: userProfile?.meroShare?.applyMode || "on-demand",
+            showLiveBrowser: userProfile?.meroShare?.showLiveBrowser || false,
+            isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false,
+        })
+    }, [userProfile?.meroShare])
+
     const handleSave = () => {
         updateUserProfile({
             meroShare: {
+                ...(userProfile?.meroShare || {}),
                 ...formData
             }
         })
@@ -113,7 +198,10 @@ export function MeroShareSettings() {
         const promise = fetch('/api/meroshare/test-login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ credentials: formData })
+            body: JSON.stringify({
+                credentials: formData,
+                options: { showBrowser: Boolean(formData.showLiveBrowser) }
+            })
         }).then(async (res) => {
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "Login Failed")
@@ -137,6 +225,15 @@ export function MeroShareSettings() {
         setFormData(prev => ({ ...prev, [key]: value }))
     }
 
+    const toggleShareFeatures = (enabled: boolean) => {
+        setFormData(prev => ({
+            ...prev,
+            shareFeaturesEnabled: enabled,
+            shareNotificationsEnabled: enabled,
+            isAutomatedEnabled: enabled ? prev.isAutomatedEnabled : false,
+        }))
+    }
+
     const testApplication = async () => {
         const ipoToTest = isCustomMode ? customIpoName : selectedTestIpo
         if (!ipoToTest) {
@@ -146,7 +243,7 @@ export function MeroShareSettings() {
 
         if (testMode === 'result') {
             setIsCheckingResult(true)
-            const promise = checkIPOAllotment(formData, ipoToTest)
+            const promise = checkIPOAllotment(formData, ipoToTest, "settings-check")
             toast.promise(promise, {
                 loading: `Testing allotment check for ${ipoToTest}...`,
                 success: (data) => {
@@ -162,24 +259,21 @@ export function MeroShareSettings() {
         }
 
         setIsApplying(true)
-        const promise = fetch('/api/meroshare/apply', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                credentials: formData,
-                ipoName: ipoToTest,
-                kitta: formData.preferredKitta || 0
-            })
-        }).then(async (res) => {
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || "Application Failed")
-            return data
-        })
+        const promise = applyMeroShareIPO(
+            formData,
+            ipoToTest,
+            formData.preferredKitta || 0,
+            "settings-test",
+            { showBrowser: showLiveBrowserForTest || Boolean(formData.showLiveBrowser) }
+        )
 
         toast.promise(promise, {
             loading: `Testing automation for ${ipoToTest}...`,
             success: (data: any) => {
                 setIsApplying(false)
+                if (data?.alreadyApplied) {
+                    return data.message || "Already applied earlier. No new apply action was submitted."
+                }
                 return data.message || "Automation Success!"
             },
             error: (err: any) => {
@@ -188,8 +282,6 @@ export function MeroShareSettings() {
             }
         })
     }
-
-    const openIpos = upcomingIPOs.filter(ipo => ipo.status === 'open')
 
     const handleSyncPortfolio = async () => {
         if (!formData.dpId || !formData.username || !formData.password) {
@@ -231,6 +323,21 @@ export function MeroShareSettings() {
                     <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
                         <div className="space-y-1">
                             <Label className="text-sm font-bold flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-primary" />
+                                Enable Share Features
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Master switch for Portfolio section and share-related notifications.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={formData.shareFeaturesEnabled}
+                            onCheckedChange={toggleShareFeatures}
+                        />
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <div className="space-y-1">
+                            <Label className="text-sm font-bold flex items-center gap-2">
                                 <Fingerprint className="w-4 h-4 text-primary" />
                                 Automated IPO Application
                             </Label>
@@ -239,7 +346,61 @@ export function MeroShareSettings() {
                         <Switch
                             checked={formData.isAutomatedEnabled}
                             onCheckedChange={(checked) => updateField("isAutomatedEnabled", checked)}
+                            disabled={!formData.shareFeaturesEnabled}
                         />
+                    </div>
+                    <div className="p-4 rounded-xl bg-background/60 border border-border space-y-2">
+                        <Label className="text-sm font-bold">Apply Mode</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Choose whether user-triggered applies run on demand only, or auto-run when opening an IPO modal.
+                        </p>
+                        <Select
+                            value={formData.applyMode}
+                            onValueChange={(value) => updateField("applyMode", value)}
+                            disabled={!formData.shareFeaturesEnabled}
+                        >
+                            <SelectTrigger className="h-10 bg-background/80">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="on-demand">On Demand</SelectItem>
+                                <SelectItem value="automatic">Automatic</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-background/60 border border-border">
+                        <div className="space-y-1">
+                            <Label className="text-sm font-bold">Show Browser While Automating</Label>
+                            <p className="text-xs text-muted-foreground">On-demand visual mode. Useful for debugging or trust checks.</p>
+                        </div>
+                        <Switch
+                            checked={Boolean(formData.showLiveBrowser)}
+                            onCheckedChange={(checked) => updateField("showLiveBrowser", checked)}
+                            disabled={!formData.shareFeaturesEnabled}
+                        />
+                    </div>
+                    <div className={cn(
+                        "p-4 rounded-xl border flex flex-col gap-2",
+                        isAutomationReady ? "bg-success/5 border-success/20" : "bg-muted/40 border-muted"
+                    )}>
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold">Integration Status</div>
+                            <Badge variant={isAutomationReady ? "default" : "secondary"}>
+                                {isAutomationReady ? "Ready" : "Needs Setup"}
+                            </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            {!formData.shareFeaturesEnabled
+                                ? "Share features are disabled. Turn on 'Enable Share Features' to use Portfolio and share notifications."
+                                : formData.isAutomatedEnabled
+                                ? isCredentialComplete
+                                    ? "Automation is enabled and credentials are complete."
+                                    : `Automation is enabled, but ${missingRequiredFields.length} required field(s) are missing.`
+                                : "Automation is disabled. Enable it to apply/check directly from IPO cards."}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Open IPOs detected: <span className="font-semibold text-foreground">{openIpos.length}</span>
+                        </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -398,10 +559,11 @@ export function MeroShareSettings() {
                         </Button>
                         <Button
                             onClick={handleSave}
+                            disabled={!hasUnsavedChanges}
                             className="h-12 rounded-xl font-bold bg-primary shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all"
                         >
                             <Save className="w-4 h-4 mr-2" />
-                            Save Settings
+                            {hasUnsavedChanges ? "Save Settings" : "Saved"}
                         </Button>
                     </div>
                 </CardContent>
@@ -460,95 +622,138 @@ export function MeroShareSettings() {
                 </CardContent>
             </Card>
 
-            <Card className="border-dashed border-primary/40 bg-primary/5">
+            {isDevMode && (
+                <Card className="border-dashed border-primary/40 bg-primary/5">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center text-primary">
+                                <Rocket className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-base">Automation Tools</CardTitle>
+                                <CardDescription className="text-xs text-primary/60">Run a safe test before using live IPO actions</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex p-1 bg-muted rounded-xl gap-1">
+                                <Button
+                                    size="sm"
+                                    variant={testMode === 'apply' ? 'secondary' : 'ghost'}
+                                    onClick={() => setTestMode('apply')}
+                                    className="text-[10px] font-black uppercase tracking-widest h-8"
+                                >
+                                    Apply Test
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={testMode === 'result' ? 'secondary' : 'ghost'}
+                                    onClick={() => setTestMode('result')}
+                                    className="text-[10px] font-black uppercase tracking-widest h-8"
+                                >
+                                    Result Test
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Force Manual</Label>
+                                <Switch
+                                    checked={isCustomMode}
+                                    onCheckedChange={setIsCustomMode}
+                                />
+                            </div>
+                        </div>
+                        {testMode === "apply" && (
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-background/70 border">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Watch Browser For This Test</Label>
+                                <Switch
+                                    checked={showLiveBrowserForTest}
+                                    onCheckedChange={setShowLiveBrowserForTest}
+                                />
+                            </div>
+                        )}
+
+                        <div className="space-y-4 pt-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                {isCustomMode ? "Enter Custom IPO Name" : "Select IPO to Test"}
+                            </Label>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                {isCustomMode ? (
+                                    <Input
+                                        placeholder="Enter exact name as in MeroShare"
+                                        value={customIpoName}
+                                        onChange={(e) => setCustomIpoName(e.target.value)}
+                                        className="bg-background/80 h-11"
+                                    />
+                                ) : (
+                                    <Select
+                                        value={selectedTestIpo}
+                                        onValueChange={setSelectedTestIpo}
+                                    >
+                                        <SelectTrigger className="bg-background/80 h-11 flex-1">
+                                            <SelectValue placeholder={testMode === 'apply' ? (openIpos.length > 0 ? "Select an open IPO" : "No open IPOs found") : "Select a closed IPO"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {(testMode === 'apply' ? openIpos : upcomingIPOs.filter(i => i.status === 'closed')).map((ipo) => (
+                                                <SelectItem key={ipo.company} value={ipo.company}>
+                                                    {ipo.company}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                                <Button
+                                    onClick={testApplication}
+                                    disabled={isApplying || isCheckingResult || (isCustomMode ? !customIpoName : !selectedTestIpo)}
+                                    className={cn(
+                                        "h-11 px-8 gap-2 shrink-0 font-bold shadow-lg transition-all",
+                                        testMode === 'apply' ? "bg-primary hover:bg-primary/90 shadow-primary/20" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 text-white"
+                                    )}
+                                >
+                                    {testMode === 'apply' ? <Rocket className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                                    {testMode === 'apply' ? (isApplying ? "Running..." : "Run Apply Test") : (isCheckingResult ? "Checking..." : "Check Result")}
+                                </Button>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-2 italic flex items-center gap-1.5">
+                                <AlertCircle className="w-3 h-3" />
+                                {isCustomMode
+                                    ? `Careful: Enter the EXACT name as shown in MeroShare ${testMode === 'apply' ? "'Apply'" : "'Report'"} list.`
+                                    : `This runs automation in the background and attempts to ${testMode === 'apply' ? "apply for the share" : "check allotment results"}.`}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            <Card className="border-muted bg-muted/20">
                 <CardHeader className="pb-3">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center text-primary">
-                            <Rocket className="w-5 h-5" />
-                        </div>
+                    <div className="flex items-center justify-between gap-3">
                         <div>
-                            <CardTitle className="text-base">Developer Tools</CardTitle>
-                            <CardDescription className="text-xs text-primary/60">Manually trigger and verify the application automation</CardDescription>
+                            <CardTitle className="text-base">Application Logs</CardTitle>
+                            <CardDescription className="text-xs">Latest IPO apply and report-check attempts</CardDescription>
                         </div>
+                        <Badge variant="secondary">{recentApplicationLogs.length}</Badge>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex p-1 bg-muted rounded-xl gap-1">
-                            <Button
-                                size="sm"
-                                variant={testMode === 'apply' ? 'secondary' : 'ghost'}
-                                onClick={() => setTestMode('apply')}
-                                className="text-[10px] font-black uppercase tracking-widest h-8"
-                            >
-                                Apply Test
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant={testMode === 'result' ? 'secondary' : 'ghost'}
-                                onClick={() => setTestMode('result')}
-                                className="text-[10px] font-black uppercase tracking-widest h-8"
-                            >
-                                Result Test
-                            </Button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Force Manual</Label>
-                            <Switch
-                                checked={isCustomMode}
-                                onCheckedChange={setIsCustomMode}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-4 pt-2">
-                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {isCustomMode ? "Enter Custom IPO Name" : "Select IPO to Test"}
-                        </Label>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            {isCustomMode ? (
-                                <Input
-                                    placeholder="Enter exact name as in MeroShare"
-                                    value={customIpoName}
-                                    onChange={(e) => setCustomIpoName(e.target.value)}
-                                    className="bg-background/80 h-11"
-                                />
-                            ) : (
-                                <Select
-                                    value={selectedTestIpo}
-                                    onValueChange={setSelectedTestIpo}
-                                >
-                                    <SelectTrigger className="bg-background/80 h-11 flex-1">
-                                        <SelectValue placeholder={testMode === 'apply' ? (openIpos.length > 0 ? "Select an open IPO" : "No open IPOs found") : "Select a closed IPO"} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {(testMode === 'apply' ? openIpos : upcomingIPOs.filter(i => i.status === 'closed')).map((ipo) => (
-                                            <SelectItem key={ipo.company} value={ipo.company}>
-                                                {ipo.company}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-                            <Button
-                                onClick={testApplication}
-                                disabled={isApplying || isCheckingResult || (isCustomMode ? !customIpoName : !selectedTestIpo)}
-                                className={cn(
-                                    "h-11 px-8 gap-2 shrink-0 font-bold shadow-lg transition-all",
-                                    testMode === 'apply' ? "bg-primary hover:bg-primary/90 shadow-primary/20" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 text-white"
-                                )}
-                            >
-                                {testMode === 'apply' ? <Rocket className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-                                {testMode === 'apply' ? (isApplying ? "Running..." : "Run Apply Test") : (isCheckingResult ? "Checking..." : "Check Result")}
-                            </Button>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-2 italic flex items-center gap-1.5">
-                            <AlertCircle className="w-3 h-3" />
-                            {isCustomMode
-                                ? `Careful: Enter the EXACT name as shown in MeroShare ${testMode === 'apply' ? "'Apply'" : "'Report'"} list.`
-                                : `This will launch the browser and attempt to ${testMode === 'apply' ? "apply for the share" : "check for allotment results"}.`}
-                        </p>
-                    </div>
+                <CardContent className="space-y-3">
+                    {recentApplicationLogs.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No application attempts logged yet.</p>
+                    ) : (
+                        recentApplicationLogs.map((log) => (
+                            <div key={log.id} className="rounded-xl border bg-background/70 p-3 flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                    <div className="text-sm font-semibold">{log.ipoName}</div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        {new Date(log.createdAt).toLocaleString()} | Action: {log.action === "apply" ? "Apply" : "Report Check"}{typeof log.requestedKitta === "number" ? ` | Kitta: ${log.requestedKitta}` : ""} | Source: {log.source === "live-apply" ? "Live Apply" : log.source === "live-auto" ? "Live Auto" : log.source === "settings-test" ? "Settings Test" : log.source === "live-check" ? "Live Check" : "Settings Check"}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{log.message}</div>
+                                </div>
+                                <Badge variant={log.status === "success" ? "default" : "destructive"} className="shrink-0">
+                                    {log.status === "success" ? "Success" : "Failed"}
+                                </Badge>
+                            </div>
+                        ))
+                    )}
                 </CardContent>
             </Card>
         </div>

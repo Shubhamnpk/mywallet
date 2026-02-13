@@ -22,6 +22,17 @@ export function useServiceWorker() {
   })
 
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => {
+            void registration.unregister()
+          })
+        }).catch(() => {})
+      }
+      return
+    }
+
     if (!('serviceWorker' in navigator)) {
       return
     }

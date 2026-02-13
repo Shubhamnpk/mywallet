@@ -86,7 +86,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
 
-    if (userProfile.meroShare?.isAutomatedEnabled) {
+    if (userProfile.meroShare?.shareFeaturesEnabled && userProfile.meroShare?.shareNotificationsEnabled) {
       upcomingIPOs.forEach((ipo) => {
         const ipoId = ipo.company || ipo.url || ipo.date_range
         if (ipo.status === "open") {
@@ -111,7 +111,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     }
 
     return items.slice(0, 15)
-  }, [budgets, goals, upcomingIPOs, userProfile.meroShare?.isAutomatedEnabled])
+  }, [budgets, goals, upcomingIPOs, userProfile.meroShare?.shareFeaturesEnabled, userProfile.meroShare?.shareNotificationsEnabled])
 
   const unreadCount = notifications.filter((n) => !readMap[n.id]).length
 
@@ -213,7 +213,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
               </div>
               <DropdownMenuSeparator />
               <div className="p-2">
-                <Button variant="outline" size="sm" className="w-full" onClick={() => router.push("/settings")}>
+                <Button variant="outline" size="sm" className="w-full" onClick={() => router.push("/settings?tab=notifications")}>
                   Notification Settings
                 </Button>
               </div>

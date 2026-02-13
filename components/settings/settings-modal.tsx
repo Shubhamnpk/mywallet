@@ -12,7 +12,8 @@ import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { MeroShareSettings } from "./mero-share-settings"
-import { User, Shield, Palette, Database, Accessibility, Info, ArrowLeft, Share2 } from "lucide-react"
+import { NotificationSettings } from "./notification-settings"
+import { User, Shield, Palette, Database, Accessibility, Info, ArrowLeft, Share2, Bell } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 interface SettingsModalProps {
@@ -50,7 +51,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
                 {currentView === "main" ? (
                     <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); if (isMobile) setCurrentView(value); }} className="flex-1 overflow-hidden">
-                        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7">
+                        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
                             <TabsTrigger value="profile" className="flex items-center gap-2">
                                 <User className="w-4 h-4" />
                                 <span className="hidden sm:inline">Profile</span>
@@ -58,6 +59,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                             <TabsTrigger value="security" className="flex items-center gap-2">
                                 <Shield className="w-4 h-4" />
                                 <span className="hidden sm:inline">Security</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="notifications" className="flex items-center gap-2">
+                                <Bell className="w-4 h-4" />
+                                <span className="hidden sm:inline">Notify</span>
                             </TabsTrigger>
                             <TabsTrigger value="meroshare" className="flex items-center gap-2">
                                 <Share2 className="w-4 h-4" />
@@ -90,6 +95,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                                 <SecuritySettings onLock={() => onOpenChange(false)} />
                             </TabsContent>
 
+                            <TabsContent value="notifications" className="space-y-6">
+                                <NotificationSettings />
+                            </TabsContent>
+
                             <TabsContent value="meroshare" className="space-y-6">
                                 <MeroShareSettings />
                             </TabsContent>
@@ -115,6 +124,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                     <div className="flex-1 overflow-y-auto">
                         {currentView === "profile" && <UserProfileSettings />}
                         {currentView === "security" && <SecuritySettings onLock={() => onOpenChange(false)} />}
+                        {currentView === "notifications" && <NotificationSettings />}
                         {currentView === "meroshare" && <MeroShareSettings />}
                         {currentView === "theme" && <ThemeSettings />}
                         {currentView === "data" && <DataSettings />}

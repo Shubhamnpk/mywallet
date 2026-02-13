@@ -1,4 +1,17 @@
+import type { NotificationSettings } from "@/types/wallet"
+
 const DEFAULT_NOTIFICATION_ICON = "/image.png"
+export const REMINDER_CACHE_KEY = "wallet_reminder_cache_v1"
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  inAppToasts: true,
+  browserNotifications: true,
+  permissionNudges: true,
+  budgetReminders: true,
+  goalReminders: true,
+  ipoReminders: true,
+}
 
 export type AppNotificationInput = {
   title: string
@@ -9,6 +22,17 @@ export type AppNotificationInput = {
 
 export const isBrowserNotificationSupported = () =>
   typeof window !== "undefined" && "Notification" in window
+
+export const getDefaultNotificationSettings = (): NotificationSettings => ({
+  ...DEFAULT_NOTIFICATION_SETTINGS,
+})
+
+export const normalizeNotificationSettings = (
+  settings?: Partial<NotificationSettings> | null,
+): NotificationSettings => ({
+  ...DEFAULT_NOTIFICATION_SETTINGS,
+  ...(settings || {}),
+})
 
 export const requestBrowserNotificationPermission = async (): Promise<NotificationPermission> => {
   if (!isBrowserNotificationSupported()) return "denied"

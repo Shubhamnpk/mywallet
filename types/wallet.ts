@@ -15,15 +15,42 @@ export interface UserProfile {
     name: string
   }
   avatar?: string
+  notificationSettings?: NotificationSettings
   meroShare?: {
     dpId: string
     username: string
     password?: string
     crn?: string
     pin?: string
+    shareFeaturesEnabled?: boolean
+    shareNotificationsEnabled?: boolean
     preferredKitta?: number
+    applyMode?: "on-demand" | "automatic"
+    showLiveBrowser?: boolean
     isAutomatedEnabled: boolean
+    applicationLogs?: MeroShareApplicationLog[]
   }
+}
+
+export interface NotificationSettings {
+  enabled: boolean
+  inAppToasts: boolean
+  browserNotifications: boolean
+  permissionNudges: boolean
+  budgetReminders: boolean
+  goalReminders: boolean
+  ipoReminders: boolean
+}
+
+export interface MeroShareApplicationLog {
+  id: string
+  ipoName: string
+  action: "apply" | "report-check"
+  requestedKitta?: number
+  status: "success" | "failed"
+  message: string
+  source: "live-apply" | "live-auto" | "settings-test" | "live-check" | "settings-check"
+  createdAt: string
 }
 
 export interface Transaction {
@@ -43,13 +70,12 @@ export interface Transaction {
   allocationTarget?: string
   subcategory?: string
   // Enhanced debt transaction fields
-  total: number
-  actual: number
-  debtUsed: number
+  total?: number
+  actual?: number
+  debtUsed?: number
   debtAccountId?: string | null
-  status: "normal" | "debt" | "repayment"
+  status?: "normal" | "debt" | "repayment"
 }
-
 export interface Achievement {
   id: string
   title: string

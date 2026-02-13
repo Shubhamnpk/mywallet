@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useMemo, useEffect, useRef } from "react"
-import type { TouchEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,10 +13,10 @@ import { DataSettings } from "./data-settings"
 import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { MeroShareSettings } from "./mero-share-settings"
+import { NotificationSettings } from "./notification-settings"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
-import { requestBrowserNotificationPermission } from "@/lib/notifications"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -37,23 +36,29 @@ import {
   Star,
   ChevronRight,
   Home,
-  Share2
+  Share2,
+  Bell
 } from "lucide-react"
 
 interface MobileSettingsPageProps {
   onClose: () => void
+  initialView?: SettingsView
 }
 
-type SettingsView = "main" | "profile" | "security" | "meroshare" | "theme" | "data" | "accessibility" | "about"
+type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about"
 
-export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
-  const [currentView, setCurrentView] = useState<SettingsView>("main")
+export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSettingsPageProps) {
+  const [currentView, setCurrentView] = useState<SettingsView>(initialView)
   const [searchQuery, setSearchQuery] = useState("")
   const [highlightQuery, setHighlightQuery] = useState("")
   const { userProfile } = useWalletData()
   const router = useRouter()
 
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([])
+  useEffect(() => {
+    setCurrentView(initialView)
+  }, [initialView])
+
   useEffect(() => {
     const dismissed = localStorage.getItem('dismissedSuggestions')
     if (dismissed) {
@@ -114,12 +119,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       id: 'notifications',
       title: 'Turn On Notifications',
       description: 'Get budget and goal reminders',
-      action: async () => {
-        const permission = await requestBrowserNotificationPermission()
-        if (permission !== "granted") {
-          alert("Notification permission is still blocked. Please allow notifications in browser settings.")
-        }
-      },
+      action: () => setCurrentView('notifications'),
       condition: !isNotificationEnabled()
     },
     {
@@ -165,6 +165,15 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       subtitle: "PIN • Biometric • Emergency access",
       category: "account",
       keywords: ["security", "pin", "biometric", "emergency", "access", "password", "lock"]
+    },
+    {
+      id: "notifications",
+      icon: <Bell className="w-6 h-6" />,
+      iconBg: "bg-amber-600",
+      title: "Notifications",
+      subtitle: "Reminders • Browser permission • Delivery",
+      category: "account",
+      keywords: ["notifications", "alerts", "reminders", "budget alerts", "goals", "permission"]
     },
     {
       id: "meroshare",
@@ -310,7 +319,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
                 subtitle={item.subtitle}
                 onClick={() => {
                   if (item.id === "profile" || item.id === "security" || item.id === "meroshare" || item.id === "theme" ||
-                    item.id === "data" || item.id === "accessibility" || item.id === "about") {
+                    item.id === "notifications" || item.id === "data" || item.id === "accessibility" || item.id === "about") {
                     setCurrentView(item.id as SettingsView)
                     setHighlightQuery(searchQuery)
                   }
@@ -346,6 +355,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       switch (currentView) {
         case "profile": return "Profile"
         case "security": return "Security"
+        case "notifications": return "Notifications"
         case "meroshare": return "MeroShare"
         case "theme": return "Theme"
         case "data": return "Data"
@@ -359,6 +369,7 @@ export function MobileSettingsPage({ onClose }: MobileSettingsPageProps) {
       switch (currentView) {
         case "profile": return <UserProfileSettings highlightQuery={highlightQuery} />
         case "security": return <SecuritySettings />
+        case "notifications": return <NotificationSettings />
         case "meroshare": return <MeroShareSettings />
         case "theme": return <ThemeSettings />
         case "data": return <DataSettings />

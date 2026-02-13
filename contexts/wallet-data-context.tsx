@@ -73,7 +73,14 @@ type WalletDataContextType = {
   clearPortfolioHistory: () => Promise<void>
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
   syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
-  checkIPOAllotment: (credentials: any, ipoName: string) => Promise<any>
+  applyMeroShareIPO: (
+    credentials: any,
+    ipoName: string,
+    kitta?: number,
+    source?: "live-apply" | "live-auto" | "settings-test",
+    options?: { showBrowser?: boolean }
+  ) => Promise<any>
+  checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>

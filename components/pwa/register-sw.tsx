@@ -4,6 +4,18 @@ import { useEffect } from 'react'
 
 export default function RegisterSW() {
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      // Prevent stale production precache from breaking local dev.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => {
+            void registration.unregister()
+          })
+        }).catch(() => {})
+      }
+      return
+    }
+
     // capture beforeinstallprompt so other UI can trigger the install prompt
     function onBeforeInstall(e: any) {
       e.preventDefault()

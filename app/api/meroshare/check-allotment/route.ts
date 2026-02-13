@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBrowser } from "../test-login/route";
+import { getMeroShareBrowser } from "../_lib/browser";
 
 export async function POST(req: Request) {
     let browser: any = null;
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
         }
 
         try {
-            browser = await getBrowser();
+            browser = await getMeroShareBrowser();
             const page = await browser.newPage();
 
             // 1. Login
