@@ -32,6 +32,7 @@ const runtimeCaching = [
 const pwa = withPWA({
   dest: 'public',
   disable: process.env.NODE_ENV === 'development',
+  customWorkerDir: 'worker',
   register: true,
   skipWaiting: false,
   fallbacks: { document: '/offline.html', image: '/image.png' },
@@ -42,8 +43,6 @@ const pwa = withPWA({
   { url: '/settings/', revision: null },
   { url: '/offline.html', revision: null }
   ],
-  // exclude server-only manifests that are not available under /_next at runtime
-  buildExcludes: [/app-build-manifest.json$/],
   runtimeCaching
 })
 

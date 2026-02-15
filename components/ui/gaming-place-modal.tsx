@@ -89,7 +89,7 @@ export function GamingPlaceModal({ isOpen, onClose }: GamingPlaceModalProps) {
                     className="h-auto p-4 flex items-center gap-3 hover:bg-primary/5"
                     onClick={() => handleGameSelect(game.id)}
                   >
-                    <div className="text-blue-500">
+                    <div className="text-info">
                       {game.icon}
                     </div>
                     <div className="text-left">

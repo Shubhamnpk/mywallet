@@ -28,9 +28,9 @@ export function OfflineModal({ isOpen, onClose, offlineMode, serviceWorker }: Of
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {offlineMode.isOnline ? (
-              <Wifi className="w-5 h-5 text-green-600" />
+              <Wifi className="w-5 h-5 text-success" />
             ) : (
-              <WifiOff className="w-5 h-5 text-orange-600" />
+              <WifiOff className="w-5 h-5 text-warning" />
             )}
             {offlineMode.isOnline ? 'Back Online' : 'Offline Mode'}
           </DialogTitle>
@@ -38,11 +38,10 @@ export function OfflineModal({ isOpen, onClose, offlineMode, serviceWorker }: Of
 
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${
-              offlineMode.isOnline
-                ? 'bg-green-100 text-green-600'
-                : 'bg-orange-100 text-orange-600'
-            }`}>
+            <div className={`p-2 rounded-full ${offlineMode.isOnline
+                ? 'bg-success/10 text-success'
+                : 'bg-warning/10 text-warning'
+              }`}>
               {offlineMode.isOnline ? (
                 <Wifi className="w-4 h-4" />
               ) : (
@@ -105,12 +104,12 @@ export function OfflineModal({ isOpen, onClose, offlineMode, serviceWorker }: Of
                   <p className="font-medium flex items-center gap-1">
                     {serviceWorker.isRegistered ? (
                       <>
-                        <CheckCircle2 className="w-3 h-3 text-green-600" />
+                        <CheckCircle2 className="w-3 h-3 text-success" />
                         Ready
                       </>
                     ) : (
                       <>
-                        <AlertCircle className="w-3 h-3 text-orange-600" />
+                        <AlertCircle className="w-3 h-3 text-warning" />
                         Installing
                       </>
                     )}

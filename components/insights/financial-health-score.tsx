@@ -5,17 +5,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, CheckCircle } from "lucide-react"
+import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, CheckCircle, Sparkles, PlusCircle, HelpCircle, BarChart3 } from "lucide-react"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { Button } from "../ui/button"
 
 interface HealthMetric {
+  id: string
   name: string
   score: number
   maxScore: number
-  status: 'excellent' | 'good' | 'fair' | 'poor'
+  status: 'excellent' | 'good' | 'fair' | 'poor' | 'setup'
   description: string
+  details: string
+  actionTip: string
   icon: React.ReactNode
+  isOptional?: boolean
+  isSetupRequired?: boolean
 }
 
 export function useFinancialHealthScore(
@@ -23,70 +30,175 @@ export function useFinancialHealthScore(
   userProfile: UserProfile,
   budgets: Budget[],
   goals: Goal[],
-  debtAccounts: DebtAccount[]
+  debtAccounts: DebtAccount[],
+  balance: number = 0
 ) {
   const healthMetrics = useMemo(() => {
-    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
-    const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
-    const netIncome = totalIncome - totalExpenses
-    const savingsRate = totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0
+    // Basic Aggregates
+    const now = new Date()
+    const last30Days = transactions.filter(t => {
+      const d = new Date(t.date)
+      return (now.getTime() - d.getTime()) <= (30 * 24 * 60 * 60 * 1000)
+    })
 
-    const totalDebt = debtAccounts.reduce((sum, debt) => sum + debt.balance, 0)
-    const totalGoalSavings = goals.reduce((sum, goal) => sum + goal.currentAmount, 0)
-    const totalGoalTargets = goals.reduce((sum, goal) => sum + goal.targetAmount, 0)
-    const goalProgress = totalGoalTargets > 0 ? (totalGoalSavings / totalGoalTargets) * 100 : 0
+    const monthlyIncome = last30Days.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0) || userProfile.monthlyEarning || 1
+    const monthlyExpenses = last30Days.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
 
-    // Budget adherence calculation
-    const budgetAdherence = budgets.length > 0
-      ? budgets.reduce((sum, budget) => {
-          const spent = transactions
-            .filter(t => t.type === 'expense' && t.category === budget.category)
-            .reduce((s, t) => s + t.amount, 0)
-          const adherence = Math.max(0, Math.min(100, 100 - ((spent - budget.limit) / budget.limit) * 100))
-          return sum + adherence
-        }, 0) / budgets.length
-      : 100
+    // 50/30/20 Classification
+    const needsCategories = ["Housing", "Bills & Utilities", "Transportation", "Healthcare", "Groceries", "Education", "Insurance"]
+    const wantsCategories = ["Food & Dining", "Shopping", "Entertainment", "Travel", "Other"]
+
+    const needsSpending = last30Days.filter(t => t.type === 'expense' && needsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
+    const wantsSpending = last30Days.filter(t => t.type === 'expense' && wantsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
+    const savingsAndDebt = Math.max(0, monthlyIncome - monthlyExpenses)
+
+    const needsRatio = (needsSpending / monthlyIncome) * 100
+    const wantsRatio = (wantsSpending / monthlyIncome) * 100
+    const savingsRatio = (savingsAndDebt / monthlyIncome) * 100
+
+    // 1. Metric: Survival Buffer (Liquidity)
+    const emergencyGoals = goals.filter(g => {
+      const searchStr = `${g.title || ""} ${g.name || ""} ${g.category || ""}`.toLowerCase()
+      return searchStr.includes('emergency') ||
+        searchStr.includes('emanergency') ||
+        searchStr.includes('safety fund') ||
+        searchStr.includes('safety') ||
+        searchStr.includes('buffer')
+    })
+    const hasEmergencyGoal = emergencyGoals.length > 0
+
+    // We count ALL goal savings + main balance as liquid assets for the buffer, 
+    // but we still require an explicit 'Emergency' goal to be defined to satisfy the metric.
+    const totalLiquidAssets = goals.reduce((sum, g) => sum + g.currentAmount, 0) + balance
+    const monthsOfBuffer = needsSpending > 0
+      ? totalLiquidAssets / needsSpending
+      : (totalLiquidAssets / (monthlyIncome * 0.5))
+
+    const survivalScore = hasEmergencyGoal ? Math.min(100, (monthsOfBuffer / 6) * 100) : 0
+
+    // 2. Metric: 50/30/20 Hygiene
+    // Add logic to penalize if there are very few transactions (lack of data)
+    const categorizedTransactions = last30Days.filter(t => t.category && t.category !== 'Other').length
+    const dataDensityScore = Math.min(100, (categorizedTransactions / 15) * 100) // Target 15+ categorized tx/month
+
+    const needsScore = needsRatio <= 50 ? 100 : Math.max(0, 100 - (needsRatio - 50) * 4)
+    const wantsScore = wantsRatio <= 30 ? 100 : Math.max(0, 100 - (wantsRatio - 30) * 4)
+    const savingsGoalScore = savingsRatio >= 20 ? 100 : (savingsRatio / 20) * 100
+
+    const allocationScore = (needsScore + wantsScore + savingsGoalScore) / 3
+    // Weighted: 20% Data quality, 80% Allocation quality
+    const ruleScore = (dataDensityScore * 0.2) + (allocationScore * 0.8)
+
+    // 3. Metric: Debt Health
+    const totalDebt = debtAccounts.reduce((sum, d) => sum + d.balance, 0)
+    const annualIncome = monthlyIncome * 12
+    const dtiRatio = annualIncome > 0 ? (totalDebt / annualIncome) * 100 : 0
+    // Standard DTI Rating: < 20% is excellent, 20-36% is good, 36-43% is manageable, > 43% is critical
+    let debtScore = 100
+    if (totalDebt > 0) {
+      if (dtiRatio <= 20) debtScore = 100
+      else if (dtiRatio <= 36) debtScore = 80 + (1 - (dtiRatio - 20) / 16) * 10
+      else if (dtiRatio <= 43) debtScore = 50 + (1 - (dtiRatio - 36) / 7) * 30
+      else debtScore = Math.max(0, 50 - (dtiRatio - 43) * 2)
+    }
+
+    // 4. Metric: Budget Discipline
+    const hasBudgets = budgets.length >= 3
+    const overBudgetCount = budgets.filter(b => b.spent > b.limit).length
+    const adherenceRate = budgets.length > 0 ? ((budgets.length - overBudgetCount) / budgets.length) : 0
+
+    // Logic: 20pts for having 3+ budgets, 80pts for adherence
+    const budgetBaseScore = hasBudgets ? 20 : (budgets.length / 3) * 20
+    const budgetPerformanceScore = adherenceRate * 80
+    const budgetScore = budgets.length > 0 ? budgetBaseScore + budgetPerformanceScore : 0
+
+    // 5. Metric: Goal Momentum
+    // Logic: 20pts for setup, 40pts for consistency (last 30d funding), 40pts for progress
+    const hasGoals = goals.length > 0
+    const goalBaseScore = hasGoals ? 20 : 0
+
+    // Approximate funding activity from transaction descriptions or metadata
+    const recentlyFundedGoalsCount = goals.filter(g => {
+      const gTitle = (g.title || g.name || "").toLowerCase()
+      return transactions.some(t => {
+        const isRecent = (now.getTime() - new Date(t.date).getTime()) <= (30 * 24 * 60 * 60 * 1000)
+        const isForGoal = t.allocationType === 'goal' && t.allocationTarget === g.id
+        const matchesName = t.description.toLowerCase().includes(gTitle) && gTitle.length > 3
+        return isRecent && (isForGoal || matchesName)
+      })
+    }).length
+
+    const averageProgress = goals.length > 0
+      ? goals.reduce((sum, g) => {
+        const target = g.targetAmount || 1
+        const current = g.currentAmount || 0
+        return sum + Math.min(100, (current / target) * 100)
+      }, 0) / goals.length
+      : 0
+
+    const goalConsistencyScore = goals.length > 0 ? (recentlyFundedGoalsCount / goals.length) * 40 : 0
+    const goalProgressScore = (averageProgress / 100) * 40
+
+    const goalScore = hasGoals ? goalBaseScore + goalConsistencyScore + goalProgressScore : 0
 
     const metrics: HealthMetric[] = [
       {
-        name: "Savings Rate",
-        score: Math.min(100, savingsRate * 2), // Scale to 0-100
+        id: "liquidity",
+        name: "Emergency Fund",
+        score: survivalScore,
         maxScore: 100,
-        status: savingsRate >= 20 ? 'excellent' : savingsRate >= 15 ? 'good' : savingsRate >= 10 ? 'fair' : 'poor',
-        description: `${savingsRate.toFixed(1)}% of income saved`,
+        status: hasEmergencyGoal ? (survivalScore >= 80 ? 'excellent' : survivalScore >= 50 ? 'good' : survivalScore >= 20 ? 'fair' : 'poor') : 'setup',
+        description: hasEmergencyGoal ? `${monthsOfBuffer.toFixed(1)} months of absolute needs covered` : "Safety net not established",
+        details: "Checks your ability to survive a financial shock without income. We calculate this by comparing your liquid savings (Goals) against your essential monthly expenses (Housing, Utilities, Groceries, etc.).",
+        actionTip: hasEmergencyGoal ? "Target 6 months of absolute needs. Keep this in a liquid, low-risk account." : "Establish an explicit 'Emergency Fund' goal to start tracking your safety net.",
+        icon: <Shield className="w-4 h-4" />,
+        isSetupRequired: !hasEmergencyGoal
+      },
+      {
+        id: "hygiene",
+        name: "50/30/20 Balance",
+        score: ruleScore,
+        maxScore: 100,
+        status: ruleScore >= 85 ? 'excellent' : ruleScore >= 70 ? 'good' : ruleScore >= 50 ? 'fair' : 'poor',
+        description: `Needs: ${needsRatio.toFixed(0)}%, Wants: ${wantsRatio.toFixed(0)}%, Save: ${savingsRatio.toFixed(0)}%`,
+        details: "Evaluates your income allocation (80%) and data quality (20%). The score rewards categorizing at least 15 transactions monthly using the 50% Needs, 30% Wants, and 20% Savings framework.",
+        actionTip: categorizedTransactions < 15 ? "Categorize at least 15 transactions this month to improve the accuracy of this score." : "If 'Needs' are over 50%, look for ways to reduce fixed costs like rent or utilities.",
         icon: <TrendingUp className="w-4 h-4" />
       },
       {
-        name: "Goal Progress",
-        score: goalProgress,
+        id: "debt",
+        name: "Debt Ceiling",
+        score: debtScore,
         maxScore: 100,
-        status: goalProgress >= 75 ? 'excellent' : goalProgress >= 50 ? 'good' : goalProgress >= 25 ? 'fair' : 'poor',
-        description: `${goalProgress.toFixed(1)}% towards financial goals`,
-        icon: <Target className="w-4 h-4" />
-      },
-      {
-        name: "Budget Adherence",
-        score: budgetAdherence,
-        maxScore: 100,
-        status: budgetAdherence >= 90 ? 'excellent' : budgetAdherence >= 75 ? 'good' : budgetAdherence >= 60 ? 'fair' : 'poor',
-        description: `${budgetAdherence.toFixed(1)}% budget compliance`,
-        icon: <Shield className="w-4 h-4" />
-      },
-      {
-        name: "Debt Management",
-        score: Math.max(0, 100 - (totalDebt / (totalIncome * 12)) * 100), // Lower debt = higher score
-        maxScore: 100,
-        status: totalDebt === 0 ? 'excellent' : (totalDebt / totalIncome) < 1 ? 'good' : (totalDebt / totalIncome) < 3 ? 'fair' : 'poor',
-        description: totalDebt > 0 ? `${formatCurrency(totalDebt, userProfile.currency, userProfile.customCurrency)} total debt` : 'Debt-free!',
+        status: debtScore >= 90 ? 'excellent' : debtScore >= 70 ? 'good' : debtScore >= 40 ? 'fair' : 'poor',
+        description: totalDebt > 0 ? `Debt is ${dtiRatio.toFixed(1)}% of annual income` : "Debt-free",
+        details: "Measures your total debt relative to your annual income. A high ratio indicates that a large portion of your future earnings is already committed elsewhere.",
+        actionTip: "Focus on high-interest debt first (the Avalanche method) to increase your score.",
         icon: <AlertTriangle className="w-4 h-4" />
       },
       {
-        name: "Expense Control",
-        score: Math.max(0, 100 - (totalExpenses / (totalIncome || 1)) * 50), // Lower expense ratio = higher score
+        id: "budget",
+        name: "Budget Integrity",
+        score: budgetScore,
         maxScore: 100,
-        status: (totalExpenses / (totalIncome || 1)) < 0.8 ? 'excellent' : (totalExpenses / (totalIncome || 1)) < 0.9 ? 'good' : (totalExpenses / (totalIncome || 1)) < 1.0 ? 'fair' : 'poor',
-        description: `${((totalExpenses / (totalIncome || 1)) * 100).toFixed(1)}% expense ratio`,
-        icon: <CheckCircle className="w-4 h-4" />
+        status: budgets.length > 0 ? (budgetScore >= 90 ? 'excellent' : budgetScore >= 70 ? 'good' : budgetScore >= 50 ? 'fair' : 'poor') : 'setup',
+        description: budgets.length > 0 ? `${overBudgetCount} budgets exceeded this period` : "No active budgets set",
+        details: "Analyzes how well you stick to your limits. Score is based on having at least 3 active categories (20%) and staying within those limits (80%).",
+        actionTip: budgets.length >= 3 ? (overBudgetCount > 0 ? "Review your over-budget categories. Are the limits too low, or is the spending too high?" : "Perfect discipline! Consider lowering your limits to save even more.") : "Create at least 3 budget categories to fully track your financial discipline.",
+        icon: <Target className="w-4 h-4" />,
+        isSetupRequired: budgets.length === 0
+      },
+      {
+        id: "momentum",
+        name: "Goal Momentum",
+        score: goalScore,
+        maxScore: 100,
+        status: goals.length > 0 ? (goalScore >= 90 ? 'excellent' : goalScore >= 70 ? 'good' : goalScore >= 40 ? 'fair' : 'poor') : 'setup',
+        description: goals.length > 0 ? `${(averageProgress).toFixed(0)}% average progress across ${goals.length} goals` : "No financial goals established",
+        details: "Measures progress toward your dreams. Score factors in setup (20%), consistent monthly funding (40%), and overall target completion (40%).",
+        actionTip: recentlyFundedGoalsCount < goals.length ? "You have stagnant goals. Try to contribute something every month to keep the momentum alive." : "Great job! You are consistently funding all your goals.",
+        icon: <Trophy className="w-4 h-4" />,
+        isSetupRequired: goals.length === 0
       }
     ]
 
@@ -104,27 +216,27 @@ export function useFinancialHealthScore(
 
     if (averageScore >= 90) {
       grade = "A+"
-      description = "Excellent financial health!"
+      description = "Peak Financial Performance"
       color = "text-emerald-600 bg-emerald-50 border-emerald-200"
       icon = <Trophy className="w-6 h-6" />
     } else if (averageScore >= 80) {
       grade = "A"
-      description = "Very good financial standing"
+      description = "Solid Financial Foundation"
       color = "text-emerald-600 bg-emerald-50 border-emerald-200"
       icon = <Award className="w-6 h-6" />
     } else if (averageScore >= 70) {
       grade = "B"
-      description = "Good financial health with room for improvement"
+      description = "Health Stability - Minor Gaps"
       color = "text-blue-600 bg-blue-50 border-blue-200"
       icon = <Star className="w-6 h-6" />
-    } else if (averageScore >= 60) {
+    } else if (averageScore >= 55) {
       grade = "C"
-      description = "Fair financial health - focus on key areas"
+      description = "Average - Vulnerable to Shocks"
       color = "text-amber-600 bg-amber-50 border-amber-200"
       icon = <Target className="w-6 h-6" />
     } else {
       grade = "D"
-      description = "Needs attention - review spending and savings"
+      description = "Critical - Needs Restructuring"
       color = "text-red-600 bg-red-50 border-red-200"
       icon = <AlertTriangle className="w-6 h-6" />
     }
@@ -138,6 +250,7 @@ export function useFinancialHealthScore(
       case 'good': return 'text-blue-600 bg-blue-50 border-blue-200'
       case 'fair': return 'text-amber-600 bg-amber-50 border-amber-200'
       case 'poor': return 'text-red-600 bg-red-50 border-red-200'
+      case 'setup': return 'text-slate-500 bg-slate-50 border-slate-200'
     }
   }
 
@@ -147,6 +260,7 @@ export function useFinancialHealthScore(
       case 'good': return <Star className="w-4 h-4" />
       case 'fair': return <Target className="w-4 h-4" />
       case 'poor': return <AlertTriangle className="w-4 h-4" />
+      case 'setup': return <PlusCircle className="w-4 h-4" />
     }
   }
 
@@ -159,7 +273,9 @@ interface FinancialHealthScoreProps {
   budgets: Budget[]
   goals: Goal[]
   debtAccounts: DebtAccount[]
+  balance: number
   compact?: boolean
+  onNavigate?: (tab: string) => void
 }
 
 export function FinancialHealthScore({
@@ -168,14 +284,17 @@ export function FinancialHealthScore({
   budgets,
   goals,
   debtAccounts,
-  compact = false
+  balance,
+  compact = false,
+  onNavigate
 }: FinancialHealthScoreProps) {
   const { healthMetrics, overallScore, getStatusColor, getStatusIcon } = useFinancialHealthScore(
     transactions,
     userProfile,
     budgets,
     goals,
-    debtAccounts
+    debtAccounts,
+    balance
   )
 
   const content = (
@@ -212,68 +331,99 @@ export function FinancialHealthScore({
           </div>
         </TooltipProvider>
       </div>
-      {/* Recommendations */}
-      <div className="p-4 bg-muted/50 border rounded-lg">
-        <h4 className="font-semibold mb-3">💡 Recommendations</h4>
-        <div className="space-y-2 text-sm">
-          {overallScore.score >= 80 && (
-            <p className="text-emerald-700 dark:text-emerald-300">
-              🎉 Excellent work! Consider advanced strategies like investment planning or debt payoff acceleration.
-            </p>
-          )}
-          {overallScore.score >= 60 && overallScore.score < 80 && (
-            <p className="text-blue-700 dark:text-blue-300">
-              📈 Good progress! Focus on increasing your savings rate and building an emergency fund.
-            </p>
-          )}
-          {overallScore.score >= 40 && overallScore.score < 60 && (
-            <p className="text-amber-700 dark:text-amber-300">
-              🎯 Making progress! Review your budget categories and look for areas to reduce discretionary spending.
-            </p>
-          )}
-          {overallScore.score < 40 && (
-            <p className="text-red-700 dark:text-red-300">
-              🚨 Time to take action! Create a strict budget, cut unnecessary expenses, and focus on building savings.
-            </p>
-          )}
+      {/* Smart Recommendations: Finding the Lowest Metric */}
+      <div className="p-4 bg-muted/30 border-dashed border-2 rounded-2xl">
+        <h4 className="font-bold flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-primary" />
+          Personalized Action Plan
+        </h4>
+        <div className="space-y-4">
+          {healthMetrics
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 2)
+            .map((metric) => (
+              <div key={metric.name} className="flex gap-3">
+                <div className="mt-1">{getStatusIcon(metric.status)}</div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold">Focus: {metric.name}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {metric.name === "Emergency Fund" && metric.score < 80 ? "Your safety net is thin. Try to set aside 10% of every paycheck into your emergency goal until you have 6 months of expenses covered." : ""}
+                    {metric.name === "50/30/20 Balance" && metric.score < 80 ? "Your ratios are off. Review your 'Wants' categories and try to redirect that spending toward debt or savings." : ""}
+                    {metric.name === "Debt Ceiling" && metric.score < 70 ? "Your debt load is relatively high. Look into a 'Debt Snowball' or 'Avalanche' method to speed up repayment." : ""}
+                    {metric.name === "Budget Integrity" && metric.score < 70 ? "Multiple budgets are bleeding over. Set up push notifications for category limits and check them before every purchase." : ""}
+                    {metric.name === "Goal Momentum" && metric.score < 70 ? "Some goals are stagnant. It's better to fund one goal perfectly than five goals poorly. Consolidate your efforts." : ""}
+                    {metric.score >= 80 ? "You're excelling here! Maintain this discipline to reach financial independence faster." : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
         </div>
       </div>
 
-      {/* Health Metrics */}
-      <div className="space-y-2">
-        <h4 className="font-semibold">Health Metrics Breakdown</h4>
+      {/* Health Metrics Breakdown with Accordion */}
+      <div className="space-y-4">
+        <h4 className="font-bold flex items-center gap-2 text-sm">
+          <BarChart3 className="w-4 h-4 text-primary" />
+          Heuristic Breakdown
+        </h4>
 
-        {healthMetrics.map((metric, index) => (
-          <div key={metric.name} className="p-4 border rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${getStatusColor(metric.status)}`}>
-                  {getStatusIcon(metric.status)}
+        <Accordion type="single" collapsible className="space-y-3">
+          {healthMetrics.map((metric) => (
+            <AccordionItem key={metric.id} value={metric.id} className="border border-border/50 rounded-2xl px-4 overflow-hidden bg-card/50">
+              <AccordionTrigger className="hover:no-underline py-4">
+                <div className="flex items-center justify-between w-full pr-4 text-left">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-xl border ${getStatusColor(metric.status)}`}>
+                      {getStatusIcon(metric.status)}
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-sm leading-none mb-1">{metric.name}</h5>
+                      <p className="text-[10px] text-muted-foreground uppercase font-black">{metric.isSetupRequired ? 'Action Required' : metric.status}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-lg font-black font-mono leading-none">
+                      {metric.isSetupRequired ? "--" : metric.score.toFixed(0)}
+                    </span>
+                    {!metric.isSetupRequired && <Progress value={metric.score} className="w-16 h-1 mt-1" />}
+                  </div>
                 </div>
-                <div>
-                  <h5 className="font-medium">{metric.name}</h5>
-                  <p className="text-sm text-muted-foreground">{metric.description}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-primary">
-                  {metric.score.toFixed(0)}/{metric.maxScore}
-                </div>
-                <Badge variant="outline" className={getStatusColor(metric.status)}>
-                  {metric.status}
-                </Badge>
-              </div>
-            </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-4 pt-2 border-t border-dashed">
+                <div className="space-y-4">
+                  <div className="bg-muted/30 p-3 rounded-xl border border-border/50">
+                    <p className="text-xs leading-relaxed font-medium">
+                      <HelpCircle className="w-3 h-3 inline mr-1 text-primary" />
+                      {metric.details}
+                    </p>
+                  </div>
 
-            <Progress value={metric.score} className="h-2" />
-            <p className="text-xs text-muted-foreground mt-1">
-              {metric.score.toFixed(1)}% score
-            </p>
-          </div>
-        ))}
+                  <div className="flex items-start gap-2 text-sm">
+                    <div className="p-1.5 bg-primary/10 rounded-lg shrink-0 mt-0.5">
+                      <Sparkles className="w-3 h-3 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-xs uppercase tracking-tight text-primary">Pro Tip</p>
+                      <p className="text-xs text-muted-foreground leading-snug">{metric.actionTip}</p>
+                      {metric.isSetupRequired && onNavigate && (
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto text-xs mt-1 text-primary font-bold"
+                          onClick={() => onNavigate(metric.name.toLowerCase().includes('budget') ? 'budgets' : 'goals')}
+                        >
+                          Go to {metric.name.toLowerCase().includes('budget') ? 'Budgets' : 'Goals'} →
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
 
-      
+
 
     </div>
   )

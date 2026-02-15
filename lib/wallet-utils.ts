@@ -179,6 +179,7 @@ Time Equivalent Breakdown:
 // Backup and restore helpers
 import { createEncryptedBackup, restoreEncryptedBackup } from "./backup"
 import { DataIntegrityManager } from "./data-integrity"
+import { saveToLocalStorage } from "./storage"
 
 /**
  * Create an encrypted backup string for all wallet data using a user-provided PIN.
@@ -211,7 +212,7 @@ export async function restoreWalletBackup(backupJson: string, pin: string, overw
   if (overwriteExisting && typeof data === "object") {
     for (const [k, v] of Object.entries(data)) {
       try {
-        localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v))
+        await saveToLocalStorage(k, v)
       } catch (e) {
       }
     }

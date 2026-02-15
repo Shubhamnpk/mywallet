@@ -9,8 +9,11 @@ import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
 import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
 import { AboutSettings } from "@/components/settings/about-settings"
+import { MeroShareSettings } from "@/components/settings/mero-share-settings"
+import { NotificationSettings } from "@/components/settings/notification-settings"
 import { MobileSettingsPage } from "@/components/settings/mobile-settings-page"
-import { useRouter } from "next/navigation"
+import { Share2 } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState } from "react"
 import { SessionManager } from "@/lib/session-manager"
@@ -18,9 +21,11 @@ import { useIsMobile } from "@/hooks/use-mobile"
 
 export default function SettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { userProfile, showOnboarding } = useWalletData()
   const isMobile = useIsMobile()
   const [showMobileSettings, setShowMobileSettings] = useState(false)
+  const [activeSettingsTab, setActiveSettingsTab] = useState("profile")
 
   // SEO metadata for settings page
   const pageMetadata = {
@@ -62,6 +67,14 @@ export default function SettingsPage() {
     }
   }, [isMobile, userProfile, showOnboarding])
 
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "accessibility", "about"])
+    if (tab && validTabs.has(tab)) {
+      setActiveSettingsTab(tab)
+    }
+  }, [searchParams])
+
   // Show loading while redirecting
   if (!userProfile || showOnboarding) {
     return (
@@ -73,14 +86,26 @@ export default function SettingsPage() {
 
   // Show mobile settings page
   if (showMobileSettings) {
-    return <MobileSettingsPage onClose={() => router.push('/')} />
+    const mobileInitialView =
+      activeSettingsTab === "profile" ||
+      activeSettingsTab === "security" ||
+      activeSettingsTab === "notifications" ||
+      activeSettingsTab === "meroshare" ||
+      activeSettingsTab === "theme" ||
+      activeSettingsTab === "data" ||
+      activeSettingsTab === "accessibility" ||
+      activeSettingsTab === "about"
+        ? activeSettingsTab
+        : "main"
+
+    return <MobileSettingsPage onClose={() => router.push('/')} initialView={mobileInitialView} />
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className=" border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()} className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>
@@ -93,10 +118,12 @@ export default function SettingsPage() {
           <p className="text-muted-foreground mt-2">Manage your account, security, and preferences</p>
         </div>
 
-        <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+        <Tabs value={activeSettingsTab} onValueChange={setActiveSettingsTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
             <TabsTrigger value="theme">Theme</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="accessibility">A11y</TabsTrigger>
@@ -109,6 +136,14 @@ export default function SettingsPage() {
 
           <TabsContent value="security">
             <SecuritySettings />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationSettings />
+          </TabsContent>
+
+          <TabsContent value="meroshare">
+            <MeroShareSettings />
           </TabsContent>
 
           <TabsContent value="theme">

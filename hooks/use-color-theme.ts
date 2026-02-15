@@ -6,7 +6,7 @@ const colorThemes = [
   {
     id: "emerald",
     name: "Emerald",
-    primary: "hsl(142, 76%, 36%)",
+    primary: "oklch(0.58 0.18 160)",
     description: "Fresh and natural",
     gradient: "from-emerald-600 via-emerald-500 to-green-400",
     solid: "bg-emerald-600"
@@ -14,7 +14,7 @@ const colorThemes = [
   {
     id: "blue",
     name: "Ocean Blue",
-    primary: "hsl(221, 83%, 53%)",
+    primary: "oklch(0.58 0.2 250)",
     description: "Professional and trustworthy",
     gradient: "from-blue-600 via-blue-500 to-indigo-400",
     solid: "bg-blue-600"
@@ -22,7 +22,7 @@ const colorThemes = [
   {
     id: "purple",
     name: "Royal Purple",
-    primary: "hsl(262, 83%, 58%)",
+    primary: "oklch(0.58 0.22 290)",
     description: "Creative and modern",
     gradient: "from-purple-600 via-purple-500 to-pink-400",
     solid: "bg-purple-600"
@@ -30,7 +30,7 @@ const colorThemes = [
   {
     id: "orange",
     name: "Sunset Orange",
-    primary: "hsl(25, 95%, 53%)",
+    primary: "oklch(0.65 0.2 65)",
     description: "Energetic and warm",
     gradient: "from-orange-600 via-orange-500 to-red-400",
     solid: "bg-orange-600"
@@ -38,7 +38,7 @@ const colorThemes = [
   {
     id: "rose",
     name: "Rose Pink",
-    primary: "hsl(330, 81%, 60%)",
+    primary: "oklch(0.6 0.2 0)",
     description: "Elegant and sophisticated",
     gradient: "from-rose-600 via-rose-500 to-pink-400",
     solid: "bg-rose-600"
@@ -46,7 +46,7 @@ const colorThemes = [
   {
     id: "custom",
     name: "Custom",
-    primary: "hsl(142, 76%, 36%)", // Default, will be overridden by custom
+    primary: "oklch(0.58 0.18 160)", // Default, will be overridden by custom
     description: "Choose your own colors",
     gradient: "from-primary via-primary to-primary",
     solid: "bg-primary"

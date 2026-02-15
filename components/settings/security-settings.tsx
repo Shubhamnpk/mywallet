@@ -180,7 +180,6 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
         }
       }
     } catch (error) {
-      console.error("[v0] PIN operation failed:", error)
       toast({
         title: "Security Error",
         description: "Failed to process PIN. Please try again.",
@@ -268,7 +267,6 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
         }
       }
     } catch (error) {
-      console.error("[Emergency PIN] Setup failed:", error)
       toast({
         title: "Emergency PIN Error",
         description: "Failed to process emergency PIN. Please try again.",

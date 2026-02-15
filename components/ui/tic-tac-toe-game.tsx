@@ -213,7 +213,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Users className="w-5 h-5 text-green-500" />
+            <Users className="w-5 h-5 text-success" />
             Tic Tac Toe
           </CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -260,15 +260,15 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
         {/* Scores */}
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>
-            <div className="text-lg font-bold text-blue-600">{gameState.scores.X}</div>
+            <div className="text-lg font-bold text-info">{gameState.scores.X}</div>
             <div className="text-xs text-muted-foreground">Player X</div>
           </div>
           <div>
-            <div className="text-lg font-bold text-gray-600">{gameState.scores.draws}</div>
+            <div className="text-lg font-bold text-muted-foreground">{gameState.scores.draws}</div>
             <div className="text-xs text-muted-foreground">Draws</div>
           </div>
           <div>
-            <div className="text-lg font-bold text-red-600">{gameState.scores.O}</div>
+            <div className="text-lg font-bold text-error">{gameState.scores.O}</div>
             <div className="text-xs text-muted-foreground">
               {gameState.gameMode === 'ai' ? 'AI' : 'Player O'}
             </div>
@@ -286,8 +286,8 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
                   "aspect-square text-4xl font-bold h-full rounded-xl transition-all duration-200",
                   "hover:bg-white/80 hover:scale-105 active:scale-95",
                   "border-2 border-border/80 hover:border-primary/20",
-                  cell === 'X' && "text-blue-600 hover:text-blue-700",
-                  cell === 'O' && "text-red-600 hover:text-red-700",
+                  cell === 'X' && "text-info hover:text-info/90",
+                  cell === 'O' && "text-error hover:text-error/90",
                   "disabled:cursor-not-allowed disabled:hover:scale-100"
                 )}
                 onClick={() => makeMove(index)}
@@ -296,8 +296,8 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
                 {cell && (
                   <span className={cn(
                     "drop-shadow-sm",
-                    cell === 'X' && "text-blue-600",
-                    cell === 'O' && "text-red-600"
+                    cell === 'X' && "text-info",
+                    cell === 'O' && "text-error"
                   )}>
                     {cell}
                   </span>
@@ -312,7 +312,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
           {gameState.winner ? (
             <div className="space-y-2">
               <div className="text-2xl">🎉</div>
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-xl font-bold text-success">
                 {gameState.winner === 'X' ? 'Player X' : gameState.gameMode === 'ai' && gameState.winner === 'O' ? 'AI' : 'Player O'} Wins!
               </div>
               <div className="text-sm text-muted-foreground">
@@ -322,7 +322,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
           ) : gameState.isDraw ? (
             <div className="space-y-2">
               <div className="text-2xl">🤝</div>
-              <div className="text-xl font-bold text-yellow-600">
+              <div className="text-xl font-bold text-warning">
                 It's a Draw!
               </div>
               <div className="text-sm text-muted-foreground">
@@ -343,7 +343,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
                   </div>
                   <div className={cn(
                     "inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium",
-                    gameState.currentPlayer === 'X' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                    gameState.currentPlayer === 'X' ? "bg-info/10 text-info" : "bg-error/10 text-error"
                   )}>
                     <span className="text-lg">{gameState.currentPlayer}</span>
                     <span>Turn</span>

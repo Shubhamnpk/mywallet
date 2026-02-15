@@ -237,11 +237,11 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   const getInitials = () => {
     return formData.name
       ? formData.name
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
       : "U"
   }
 
@@ -375,23 +375,23 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                 {/* Profile Stats - Only show if time wallet is enabled */}
                 {isTimeWalletEnabled && (
                   <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-info/5 to-info/10 dark:from-info/20 dark:to-info/30 border border-info/20 dark:border-info/80">
+                      <div className="text-xl font-bold text-info">
                         {getCurrentCurrencySymbol}{hourlyRate.toFixed(2)}
                       </div>
-                      <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hourly Rate</div>
+                      <div className="text-sm text-info/70">Hourly Rate</div>
                     </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800">
-                      <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-success/5 to-success/10 dark:from-success/20 dark:to-success/30 border border-success/20 dark:border-success/80">
+                      <div className="text-xl font-bold text-success">
                         {formData.workingHoursPerDay}h
                       </div>
-                      <div className="text-sm text-green-600/70 dark:text-green-400/70">Daily Hours</div>
+                      <div className="text-sm text-success/70">Daily Hours</div>
                     </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800">
-                      <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                    <div className="p-4 rounded-lg bg-gradient-to-br from-warning/5 to-warning/10 dark:from-warning/20 dark:to-warning/30 border border-warning/20 dark:border-warning/80">
+                      <div className="text-xl font-bold text-warning">
                         {formData.workingDaysPerMonth}
                       </div>
-                      <div className="text-sm text-purple-600/70 dark:text-purple-400/70">Work Days</div>
+                      <div className="text-sm text-warning/70">Work Days</div>
                     </div>
                   </div>
                 )}
@@ -522,23 +522,23 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
           {!editMode ? (
             isTimeWalletEnabled ? (
               <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/20 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                  <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-success/5 to-success/10 dark:from-success/20 dark:to-success/30 border border-success/20 dark:border-success/80">
+                  <div className="text-lg font-bold text-success">
                     {getCurrentCurrencySymbol}{(formData.monthlyEarning || 0).toLocaleString()}
                   </div>
-                  <div className="text-sm text-emerald-600/70 dark:text-emerald-400/70">Monthly Earning</div>
+                  <div className="text-sm text-success/70">Monthly Earning</div>
                 </div>
-                <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-400">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-info/5 to-info/10 dark:from-info/20 dark:to-info/30 border border-info/20 dark:border-info/80">
+                  <div className="text-lg font-bold text-info">
                     {formData.workingHoursPerDay}h
                   </div>
-                  <div className="text-sm text-blue-600/70 dark:text-blue-400/70">Hours per Day</div>
+                  <div className="text-sm text-info/70">Hours per Day</div>
                 </div>
-                <div className="p-4 rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/20 dark:to-orange-900/20 border border-orange-200 dark:border-orange-800">
-                  <div className="text-lg font-bold text-orange-700 dark:text-orange-400">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-warning/5 to-warning/10 dark:from-warning/20 dark:to-warning/30 border border-warning/20 dark:border-warning/80">
+                  <div className="text-lg font-bold text-warning">
                     {formData.workingDaysPerMonth}
                   </div>
-                  <div className="text-sm text-orange-600/70 dark:text-orange-400/70">Days per Month</div>
+                  <div className="text-sm text-warning/70">Days per Month</div>
                 </div>
               </div>
             ) : (

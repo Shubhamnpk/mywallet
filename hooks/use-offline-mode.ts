@@ -82,21 +82,18 @@ export function useOfflineMode() {
       if (pendingTransactions) {
         const transactions = JSON.parse(pendingTransactions)
         // Here you would sync with your backend
-        console.log('Syncing transactions:', transactions)
         localStorage.removeItem('wallet_pending_transactions')
       }
 
       // Sync goals
       if (pendingGoals) {
         const goals = JSON.parse(pendingGoals)
-        console.log('Syncing goals:', goals)
         localStorage.removeItem('wallet_pending_goals')
       }
 
       // Sync budgets
       if (pendingBudgets) {
         const budgets = JSON.parse(pendingBudgets)
-        console.log('Syncing budgets:', budgets)
         localStorage.removeItem('wallet_pending_budgets')
       }
 
@@ -108,7 +105,6 @@ export function useOfflineMode() {
       }))
 
     } catch (error) {
-      console.error('Sync failed:', error)
     }
   }
 

@@ -57,12 +57,12 @@ type WalletDataContextType = {
   addToEmergencyFund: (amount: number) => void
   updateGoalContribution: (goalId: string, amount: number) => void
   transferToGoal: (goalId: string, amount: number) => Promise<any>
-  spendFromGoal: (goalId: string, amount: number, description: string) => Promise<any>
+  spendFromGoal: (goalId: string, amount: number, description: string, category?: string) => Promise<any>
   makeDebtPayment: (debtId: string, paymentAmount: number) => Promise<any>
   updateCreditBalance: (creditId: string, newBalance: number) => void
   createDebtForTransaction: (debtAmount: number, transactionDescription: string) => Promise<any>
   completeTransactionWithDebt: (pendingTransaction: any, debtAccountName: string, debtAccountId: string, availableBalance: number, debtAmount: number) => Promise<any>
-  addDebtToAccount: (debtId: string, amount: number, description?: string) => Promise<any>
+  addDebtToAccount: (debtId: string, amount: number, description?: string, category?: string) => Promise<any>
   addPortfolioItem: (item: Omit<PortfolioItem, "id">) => Promise<PortfolioItem>
   updatePortfolioItem: (id: string, updates: Partial<PortfolioItem>) => Promise<void>
   deletePortfolioItem: (id: string) => Promise<void>
@@ -72,6 +72,15 @@ type WalletDataContextType = {
   updatePortfolio: (id: string, updates: Partial<Portfolio>) => Promise<void>
   clearPortfolioHistory: () => Promise<void>
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
+  syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
+  applyMeroShareIPO: (
+    credentials: any,
+    ipoName: string,
+    kitta?: number,
+    source?: "live-apply" | "live-auto" | "settings-test",
+    options?: { showBrowser?: boolean }
+  ) => Promise<any>
+  checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>

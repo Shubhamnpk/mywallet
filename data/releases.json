@@ -1,0 +1,76 @@
+{
+  "currentBuild": "2026.02.13",
+  "releases": [
+    {
+      "version": "1.3.3",
+      "date": "2026-02-13",
+      "status": "current",
+      "title": "Major UX, Scanner, and PWA Update",
+      "highlights": [
+        "Introduced native modal support for smoother in-app flows.",
+        "Redesigned receipt and QR scanner flows with better mobile-first UI and clearer actions.",
+        "Added richer scan history UX with improved filtering, exports, and visual states.",
+        "Delivered broad UI enhancements across dashboard, container layouts, and settings navigation.",
+        "Added payment method integration for faster transactions.",
+        "Upgraded PWA metadata and manifest icons (192/512/maskable and Apple icon) for better install experience.",
+        "Added a dedicated Release Notes page and linked it from About settings.",
+        "Shipped additional quality, stability, and performance improvements."
+      ]
+    },
+    {
+      "version": "1.3.2",
+      "date": "2026-02-04",
+      "status": "stable",
+      "title": "Stability and Performance Improvements",
+      "highlights": [
+        "Improved offline behavior and service worker reliability.",
+        "Polished core dashboard interactions.",
+        "Fixed minor bugs across settings and transaction flows."
+      ]
+    },
+    {
+      "version": "1.1.3",
+      "date": "2025-11-10",
+      "status": "stable",
+      "title": "Feature Expansion Release",
+      "highlights": [
+        "Expanded wallet management capabilities.",
+        "Improved responsiveness and overall app polish.",
+        "General stability improvements across modules."
+      ]
+    },
+    {
+      "version": "1.1.1",
+      "date": "2025-10-05",
+      "status": "stable",
+      "title": "Core UX Refinement",
+      "highlights": [
+        "Improved primary flows for daily use.",
+        "Refined key screens and interactions.",
+        "Applied reliability and quality fixes."
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "date": "2025-09-20",
+      "status": "stable",
+      "title": "Early Improvements Patch",
+      "highlights": [
+        "Patched initial release bugs and edge cases.",
+        "Improved onboarding and data handling basics.",
+        "Minor UI and performance improvements."
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2025-09-01",
+      "status": "stable",
+      "title": "Initial Public Release",
+      "highlights": [
+        "Launched MyWallet with core personal finance tracking.",
+        "Introduced transactions, categories, and dashboard foundations.",
+        "Delivered first stable web app experience."
+      ]
+    }
+  ]
+}

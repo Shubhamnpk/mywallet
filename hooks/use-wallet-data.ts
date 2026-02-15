@@ -5,6 +5,7 @@ import { DataIntegrityManager } from "@/lib/data-integrity"
 import { SecureKeyManager } from "@/lib/key-manager"
 import type {
   UserProfile,
+  MeroShareApplicationLog,
   Transaction,
   Budget,
   Goal,
@@ -22,6 +23,43 @@ import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent,
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
+import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
+import {
+  getDefaultNotificationSettings,
+  normalizeNotificationSettings,
+  requestBrowserNotificationPermission,
+  REMINDER_CACHE_KEY,
+  showAppNotification,
+} from "@/lib/notifications"
+import { toast } from "sonner"
+
+const HOUR_MS = 60 * 60 * 1000
+const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
+
+const readReminderCache = (): Record<string, number> => {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(REMINDER_CACHE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const saveReminderCache = (cache: Record<string, number>) => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(REMINDER_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+  }
+}
+
+const shouldSendReminder = (cache: Record<string, number>, key: string, cooldownMs: number) => {
+  const lastSentAt = cache[key] ?? 0
+  return Date.now() - lastSentAt >= cooldownMs
+}
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -48,10 +86,208 @@ export function useWalletData() {
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
 
+  // Reminder engine: budgets, goals, and IPO windows.
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return
+
+    const notificationSettings = normalizeNotificationSettings(userProfile?.notificationSettings)
+
+    if (!notificationSettings.enabled) {
+      return
+    }
+
+    const runReminderScan = () => {
+      const cache = readReminderCache()
+      const now = new Date()
+      let emittedCount = 0
+      const maxPerScan = 3
+
+      const emitReminder = (
+        key: string,
+        title: string,
+        description: string,
+        cooldownMs: number,
+      ) => {
+        if (emittedCount >= maxPerScan) return
+        if (!shouldSendReminder(cache, key, cooldownMs)) return
+
+        if (notificationSettings.inAppToasts) {
+          toast(title, { description, duration: 9000 })
+        }
+
+        if (
+          notificationSettings.browserNotifications &&
+          "Notification" in window &&
+          Notification.permission === "granted"
+        ) {
+          void showAppNotification({
+            title,
+            body: description,
+            tag: key,
+          })
+        }
+
+        cache[key] = Date.now()
+        emittedCount += 1
+      }
+
+      // Nudge once a week to enable browser notifications.
+      if (
+        notificationSettings.browserNotifications &&
+        notificationSettings.permissionNudges &&
+        "Notification" in window &&
+        Notification.permission === "default"
+      ) {
+        const permissionNudgeKey = "notification-permission-nudge"
+        if (shouldSendReminder(cache, permissionNudgeKey, 7 * 24 * HOUR_MS)) {
+          toast("Enable browser reminders", {
+            description: "Get alerts for budgets, goals, and IPO opening/closing windows.",
+            action: {
+              label: "Enable",
+              onClick: () => {
+                void requestBrowserNotificationPermission()
+              },
+            },
+            duration: 10000,
+          })
+          cache[permissionNudgeKey] = Date.now()
+          emittedCount += 1
+        }
+      }
+
+      // Budget reminders.
+      if (notificationSettings.budgetReminders) {
+        budgets
+          .filter((b) => b.limit > 0)
+          .forEach((budget) => {
+            const usage = (budget.spent / budget.limit) * 100
+            const budgetLabel = budget.name || budget.category || "Budget"
+
+            if (usage >= 100) {
+              emitReminder(
+                `budget-over-${budget.id}`,
+                `${budgetLabel} is over budget`,
+                `Spent ${usage.toFixed(0)}% of limit. Review this budget to prevent further overspending.`,
+                12 * HOUR_MS,
+              )
+            } else if (usage >= 90) {
+              emitReminder(
+                `budget-critical-${budget.id}`,
+                `${budgetLabel} is near limit`,
+                `You've used ${usage.toFixed(0)}% of this budget. Slow spending to stay on track.`,
+                24 * HOUR_MS,
+              )
+            } else if (usage >= 80) {
+              emitReminder(
+                `budget-warning-${budget.id}`,
+                `${budgetLabel} crossed 80%`,
+                `You've used ${usage.toFixed(0)}% of this budget.`,
+                24 * HOUR_MS,
+              )
+            }
+          })
+      }
+
+      // Goal reminders.
+      if (notificationSettings.goalReminders) {
+        goals
+          .filter((g) => g.targetAmount > 0 && g.currentAmount < g.targetAmount)
+          .forEach((goal) => {
+            const progress = (goal.currentAmount / goal.targetAmount) * 100
+            const date = new Date(goal.targetDate)
+            if (Number.isNaN(date.getTime())) return
+
+            const daysRemaining = Math.ceil((date.getTime() - now.getTime()) / (24 * HOUR_MS))
+            const goalLabel = goal.title || goal.name || "Goal"
+
+            if (daysRemaining < 0) {
+              emitReminder(
+                `goal-overdue-${goal.id}`,
+                `Goal overdue: ${goalLabel}`,
+                `This goal is past target date and is ${progress.toFixed(0)}% complete.`,
+                24 * HOUR_MS,
+              )
+            } else if (daysRemaining <= 3) {
+              emitReminder(
+                `goal-due-soon-${goal.id}`,
+                `Goal due soon: ${goalLabel}`,
+                `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left. Progress: ${progress.toFixed(0)}%.`,
+                12 * HOUR_MS,
+              )
+            } else if (daysRemaining <= 7) {
+              emitReminder(
+                `goal-week-left-${goal.id}`,
+                `Goal deadline in ${daysRemaining} days`,
+                `${goalLabel} is ${progress.toFixed(0)}% complete.`,
+                24 * HOUR_MS,
+              )
+            }
+          })
+      }
+
+      // IPO reminders only when share notifications are enabled.
+      if (
+        notificationSettings.ipoReminders &&
+        userProfile?.meroShare?.shareFeaturesEnabled &&
+        userProfile?.meroShare?.shareNotificationsEnabled
+      ) {
+        upcomingIPOs.forEach((ipo) => {
+          const company = ipo.company || "IPO"
+          const daysRemaining =
+            ipo.daysRemaining ??
+            (ipo.closingDate
+              ? Math.ceil((new Date(ipo.closingDate).getTime() - now.getTime()) / (24 * HOUR_MS))
+              : undefined)
+
+          if (ipo.status === "open") {
+            if (typeof daysRemaining === "number" && daysRemaining <= 1) {
+              emitReminder(
+                `ipo-closing-soon-${company}`,
+                `IPO closing soon: ${company}`,
+                `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+                6 * HOUR_MS,
+              )
+            } else {
+              emitReminder(
+                `ipo-open-${company}`,
+                `IPO is open: ${company}`,
+                "You can apply from the Portfolio section.",
+                24 * HOUR_MS,
+              )
+            }
+          } else if (ipo.status === "upcoming" && typeof daysRemaining === "number" && daysRemaining <= 1) {
+            emitReminder(
+              `ipo-opening-soon-${company}`,
+              `IPO opening soon: ${company}`,
+              `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+              24 * HOUR_MS,
+            )
+          }
+        })
+      }
+
+      saveReminderCache(cache)
+    }
+
+    runReminderScan()
+    const intervalId = window.setInterval(runReminderScan, REMINDER_SCAN_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [
+    isLoaded,
+    budgets,
+    goals,
+    upcomingIPOs,
+    userProfile?.notificationSettings,
+    userProfile?.meroShare?.shareFeaturesEnabled,
+    userProfile?.meroShare?.shareNotificationsEnabled,
+  ])
+
   useEffect(() => {
     if (isLoaded) return
 
-    console.log('[HYDRATION] Starting to load wallet data from localStorage')
     loadDataWithIntegrityCheck()
   }, [isLoaded])
   // Fetch sectors and upcoming IPOs once on load
@@ -103,7 +339,23 @@ export function useWalletData() {
       fetch("/api/nepse/upcoming")
         .then(res => res.json())
         .then(data => {
-          if (Array.isArray(data)) setUpcomingIPOs(data)
+          if (Array.isArray(data)) {
+            const processedIPOs: UpcomingIPO[] = data.map(ipo => {
+              const dates = parseNepaliDateRange(ipo.date_range)
+              if (dates) {
+                const statusInfo = getIPOStatus(dates.start, dates.end)
+                return {
+                  ...ipo,
+                  ...statusInfo,
+                  openingDate: dates.start.toISOString(),
+                  closingDate: dates.end.toISOString()
+                }
+              }
+              return ipo
+            })
+            setUpcomingIPOs(processedIPOs)
+
+          }
         })
         .catch(err => console.error("Error fetching upcoming IPOs:", err))
         .finally(() => setIsIPOsLoading(false))
@@ -112,7 +364,7 @@ export function useWalletData() {
 
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
-    if (isLoaded && portfolio.length > 0 && Object.keys(sectorsMap).length > 0) {
+    if (isLoaded && sectorsMap && portfolio.length > 0) {
       const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
       if (needsUpdate) {
         setPortfolio(prev => prev.map(p => ({
@@ -123,10 +375,68 @@ export function useWalletData() {
     }
   }, [isLoaded, sectorsMap, portfolio.length])
 
-  // Hoisted function so it can be used during initial load before
+  // Migration to encrypted storage (legacy plaintext -> encrypted)
+  useEffect(() => {
+    if (isLoaded && !localStorage.getItem("encryption_v2_migrated")) {
+      const migrateToEncrypted = async () => {
+        try {
+          const key = await SecureKeyManager.getMasterKey("")
+          if (!key) {
+            return
+          }
+          const sensitiveKeys = [
+            "userProfile",
+            "transactions",
+            "budgets",
+            "goals",
+            "debtAccounts",
+            "creditAccounts",
+            "debtCreditTransactions",
+            "categories",
+            "emergencyFund",
+            "portfolio",
+            "shareTransactions",
+            "portfolios",
+            "celebratedAchievements",
+          ]
+
+          for (const storageKey of sensitiveKeys) {
+            const raw = localStorage.getItem(storageKey)
+            if (!raw || raw.startsWith("encrypted:")) continue
+
+            let parsed: any = raw
+            try {
+              parsed = JSON.parse(raw)
+            } catch {
+            }
+
+            await saveToLocalStorage(storageKey, parsed, true)
+          }
+
+          localStorage.setItem("encryption_v2_migrated", "true")
+        } catch (error) {
+        }
+      }
+      migrateToEncrypted()
+    }
+  }, [isLoaded])
   async function saveDataWithIntegrity(key: string, data: any) {
+    const sensitiveKeys = [
+      "userProfile",
+      "transactions",
+      "budgets",
+      "goals",
+      "debtAccounts",
+      "creditAccounts",
+      "debtCreditTransactions",
+      "portfolio",
+      "shareTransactions",
+      "emergencyFund"
+    ];
+    const shouldEncrypt = sensitiveKeys.includes(key);
+
     try {
-      await saveToLocalStorage(key, data)
+      await saveToLocalStorage(key, data, shouldEncrypt)
 
       const allData = {
         userProfile,
@@ -144,9 +454,9 @@ export function useWalletData() {
       }
 
       await DataIntegrityManager.updateIntegrityRecord(allData)
-    } catch (error) {
+    } catch {
       try {
-        await saveToLocalStorage(key, data)
+        await saveToLocalStorage(key, data, shouldEncrypt)
       } catch (e) {
       }
     }
@@ -154,7 +464,6 @@ export function useWalletData() {
 
   const loadDataWithIntegrityCheck = async () => {
     try {
-      // Skip localStorage access during SSR
       if (typeof window === 'undefined') {
         setShowOnboarding(true)
         setIsAuthenticated(true)
@@ -162,34 +471,51 @@ export function useWalletData() {
         return
       }
 
-      const savedProfile = localStorage.getItem("userProfile")
-      const savedTransactions = localStorage.getItem("transactions")
-      const savedBudgets = localStorage.getItem("budgets")
-      const savedGoals = localStorage.getItem("goals")
-      const savedDebtAccounts = localStorage.getItem("debtAccounts")
-      const savedCreditAccounts = localStorage.getItem("creditAccounts")
-      const savedEmergencyFund = localStorage.getItem("emergencyFund")
-      const savedDebtCreditTransactions = localStorage.getItem("debtCreditTransactions")
-      const savedCategories = localStorage.getItem("categories")
-      const savedPortfolio = localStorage.getItem("portfolio")
-      const savedShareTransactions = localStorage.getItem("shareTransactions")
+      const storedData = await loadFromLocalStorage([
+        "userProfile",
+        "transactions",
+        "budgets",
+        "goals",
+        "debtAccounts",
+        "creditAccounts",
+        "debtCreditTransactions",
+        "categories",
+        "emergencyFund",
+        "portfolio",
+        "shareTransactions",
+        "portfolios",
+      ])
 
+      const parseLocalJson = <T>(key: string, fallback: T): T => {
+        const raw = localStorage.getItem(key)
+        if (!raw) return fallback
+        try {
+          return JSON.parse(raw) as T
+        } catch {
+          return fallback
+        }
+      }
+
+      const emergencyFundRaw = storedData.emergencyFund
       const parsedData = {
-        userProfile: savedProfile ? JSON.parse(savedProfile) : null,
-        transactions: savedTransactions ? JSON.parse(savedTransactions) : [],
-        budgets: savedBudgets ? JSON.parse(savedBudgets) : [],
-        goals: savedGoals ? JSON.parse(savedGoals) : [],
-        debtAccounts: savedDebtAccounts ? JSON.parse(savedDebtAccounts) : [],
-        creditAccounts: savedCreditAccounts ? JSON.parse(savedCreditAccounts) : [],
-        debtCreditTransactions: savedDebtCreditTransactions ? JSON.parse(savedDebtCreditTransactions) : [],
-        categories: savedCategories ? JSON.parse(savedCategories) : [],
-        emergencyFund: savedEmergencyFund ? Number.parseFloat(savedEmergencyFund) : 0,
-        portfolio: savedPortfolio ? JSON.parse(savedPortfolio) : [],
-        shareTransactions: savedShareTransactions ? JSON.parse(savedShareTransactions) : [],
-        portfolios: localStorage.getItem("portfolios") ? JSON.parse(localStorage.getItem("portfolios")!) : [],
+        userProfile: storedData.userProfile ?? null,
+        transactions: Array.isArray(storedData.transactions) ? storedData.transactions : [],
+        budgets: Array.isArray(storedData.budgets) ? storedData.budgets : [],
+        goals: Array.isArray(storedData.goals) ? storedData.goals : [],
+        debtAccounts: Array.isArray(storedData.debtAccounts) ? storedData.debtAccounts : [],
+        creditAccounts: Array.isArray(storedData.creditAccounts) ? storedData.creditAccounts : [],
+        debtCreditTransactions: Array.isArray(storedData.debtCreditTransactions) ? storedData.debtCreditTransactions : [],
+        categories: Array.isArray(storedData.categories) ? storedData.categories : [],
+        emergencyFund:
+          typeof emergencyFundRaw === "number"
+            ? emergencyFundRaw
+            : Number.parseFloat(String(emergencyFundRaw ?? 0)) || 0,
+        portfolio: Array.isArray(storedData.portfolio) ? storedData.portfolio : [],
+        shareTransactions: Array.isArray(storedData.shareTransactions) ? storedData.shareTransactions : [],
+        portfolios: Array.isArray(storedData.portfolios) ? storedData.portfolios : [],
         activePortfolioId: localStorage.getItem("activePortfolioId") || null,
-        sectorsMap: localStorage.getItem("sectorsMap") ? JSON.parse(localStorage.getItem("sectorsMap")!) : {},
-        scripNamesMap: localStorage.getItem("scripNamesMap") ? JSON.parse(localStorage.getItem("scripNamesMap")!) : {},
+        sectorsMap: parseLocalJson("sectorsMap", {} as Record<string, string>),
+        scripNamesMap: parseLocalJson("scripNamesMap", {} as Record<string, string>),
       }
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
@@ -201,13 +527,24 @@ export function useWalletData() {
       }
 
       if (parsedData.userProfile) {
-        setUserProfile(parsedData.userProfile)
+        const normalizedProfile: UserProfile = {
+          ...parsedData.userProfile,
+          notificationSettings: normalizeNotificationSettings(parsedData.userProfile.notificationSettings),
+        }
+        setUserProfile(normalizedProfile)
         setIsFirstTime(false)
 
-        if (parsedData.userProfile.securityEnabled && parsedData.userProfile.pin) {
+        if (normalizedProfile.securityEnabled && normalizedProfile.pin) {
           setIsAuthenticated(true)
         } else {
           setIsAuthenticated(true)
+        }
+
+        if (
+          JSON.stringify(parsedData.userProfile.notificationSettings || null) !==
+          JSON.stringify(normalizedProfile.notificationSettings)
+        ) {
+          await saveDataWithIntegrity("userProfile", normalizedProfile)
         }
       } else {
         setShowOnboarding(true)
@@ -216,7 +553,6 @@ export function useWalletData() {
 
       if (parsedData.transactions.length > 0) {
         setTransactions(parsedData.transactions)
-        // Calculate balance based on actual cash flow (not including debt amounts)
         const actualBalance = parsedData.transactions.reduce((sum: number, tx: Transaction) => {
           if (tx.type === "income") {
             return sum + (tx.actual ?? tx.amount)
@@ -276,7 +612,7 @@ export function useWalletData() {
       }
 
       setIsLoaded(true)
-    } catch (error) {
+    } catch {
       setShowOnboarding(true)
       setIsAuthenticated(true)
       setIsLoaded(true)
@@ -288,6 +624,7 @@ export function useWalletData() {
     const completeProfile = {
       ...profileData,
       securityEnabled: profileData.securityEnabled,
+      notificationSettings: normalizeNotificationSettings(profileData.notificationSettings ?? getDefaultNotificationSettings()),
       createdAt: new Date().toISOString(),
     }
 
@@ -326,6 +663,37 @@ export function useWalletData() {
 
     // Handle expense transactions
     const transactionAmount = transaction.amount
+    const isExternalFundedExpense =
+      transaction.allocationType === "credit" ||
+      (transaction.allocationType === "debt" && (transaction.status === "debt" || (transaction.actual ?? 0) === 0))
+
+    if (isExternalFundedExpense) {
+      const newTransaction: Transaction = {
+        ...transaction,
+        id: generateId('tx'),
+        timeEquivalent: userProfile ? calculateTimeEquivalent(transactionAmount, userProfile) : undefined,
+        total: transactionAmount,
+        actual: transaction.actual ?? 0,
+        debtUsed: transaction.debtUsed ?? transactionAmount,
+        debtAccountId: transaction.debtAccountId ?? null,
+        status: transaction.status ?? "debt",
+      }
+
+      const updatedTransactions = [...transactions, newTransaction]
+      setTransactions(updatedTransactions)
+      await saveDataWithIntegrity("transactions", updatedTransactions)
+
+      if (newTransaction.category) {
+        const budgetResults = updateBudgetSpending(newTransaction.category, newTransaction.amount)
+      }
+
+      return {
+        transaction: newTransaction,
+        budgetWarnings: [],
+        needsDebtCreation: false,
+        debtAmount: 0
+      }
+    }
 
     // Check if balance is sufficient
     if (balance >= transactionAmount) {
@@ -378,20 +746,20 @@ export function useWalletData() {
   const updateBudgetSpending = (category: string, amount: number) => {
     const { updatedBudgets, warnings } = updateBudgetSpendingHelper(budgets, category, amount, userProfile?.currency)
     setBudgets(updatedBudgets)
-    saveToLocalStorage("budgets", updatedBudgets)
+    saveToLocalStorage("budgets", updatedBudgets, true)
     return warnings
   }
 
   const updateGoalContribution = (goalId: string, amount: number) => {
     const updatedGoals = updateGoalContributionHelper(goals, goalId, amount)
     setGoals(updatedGoals)
-    saveToLocalStorage("goals", updatedGoals)
+    saveToLocalStorage("goals", updatedGoals, true)
   }
 
   const addToEmergencyFund = (amount: number) => {
     const newEmergencyFund = emergencyFund + amount
     setEmergencyFund(newEmergencyFund)
-    saveToLocalStorage("emergencyFund", newEmergencyFund.toString())
+    saveToLocalStorage("emergencyFund", newEmergencyFund.toString(), true)
   }
 
   const transferToGoal = async (goalId: string, amount: number) => {
@@ -458,7 +826,14 @@ export function useWalletData() {
   const updateUserProfile = (updates: Partial<UserProfile>) => {
     if (!userProfile) return
 
-    const updatedProfile = { ...userProfile, ...updates }
+    const updatedProfile = {
+      ...userProfile,
+      ...updates,
+      notificationSettings: normalizeNotificationSettings({
+        ...userProfile.notificationSettings,
+        ...(updates.notificationSettings || {}),
+      }),
+    }
     setUserProfile(updatedProfile)
     saveDataWithIntegrity("userProfile", updatedProfile)
   }
@@ -475,7 +850,7 @@ export function useWalletData() {
 
     const updatedDebts = [...debtAccounts, newDebt]
     setDebtAccounts(updatedDebts)
-    saveToLocalStorage("debtAccounts", updatedDebts)
+    saveToLocalStorage("debtAccounts", updatedDebts, true)
     return newDebt
   }
 
@@ -483,7 +858,7 @@ export function useWalletData() {
     return { debtAmount, transactionDescription }
   }
 
-  const addDebtToAccount = async (debtId: string, amount: number, description?: string) => {
+  const addDebtToAccount = async (debtId: string, amount: number, description?: string, category?: string) => {
     const debt = debtAccounts.find((d) => d.id === debtId)
     if (!debt) return { success: false, error: 'Debt account not found' }
 
@@ -495,7 +870,7 @@ export function useWalletData() {
     })
 
     setDebtAccounts(updatedDebts)
-    saveToLocalStorage('debtAccounts', updatedDebts)
+    saveToLocalStorage('debtAccounts', updatedDebts, true)
 
     const debtCharge: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -510,7 +885,7 @@ export function useWalletData() {
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
     setDebtCreditTransactions(updatedDebtTransactions)
-    saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions)
+    saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions, true)
 
     // Also create a regular transaction for main transactions list
     const debtAdditionTransaction: Transaction = {
@@ -518,7 +893,7 @@ export function useWalletData() {
       type: "expense",
       amount,
       description: `Added to debt: ${debt?.name || 'debt'}`,
-      category: "Debt",
+      category: category || "Debt",
       date: new Date().toISOString(),
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
       total: amount,
@@ -590,7 +965,7 @@ export function useWalletData() {
 
     const updatedCredits = [...creditAccounts, newCredit]
     setCreditAccounts(updatedCredits)
-    saveToLocalStorage("creditAccounts", updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits, true)
     return newCredit
   }
 
@@ -608,7 +983,7 @@ export function useWalletData() {
     })
 
     setCreditAccounts(updatedCredits)
-    saveToLocalStorage("creditAccounts", updatedCredits)
+    saveToLocalStorage("creditAccounts", updatedCredits, true)
   }
 
   const makeDebtPayment = async (debtId: string, paymentAmount: number) => {
@@ -669,7 +1044,7 @@ export function useWalletData() {
     const debtsAfterCleanup = updatedDebts.filter((d) => d.balance > 0)
 
     setDebtAccounts(debtsAfterCleanup)
-    saveToLocalStorage("debtAccounts", debtsAfterCleanup)
+    saveToLocalStorage("debtAccounts", debtsAfterCleanup, true)
 
     const debtTransaction: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -684,7 +1059,7 @@ export function useWalletData() {
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
     setDebtCreditTransactions(updatedDebtTransactions)
-    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions)
+    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions, true)
 
     // If balanceAfter is zero, add a congratulatory transaction note and remove account already handled above
     if (debtTransaction.balanceAfter === 0) {
@@ -701,7 +1076,7 @@ export function useWalletData() {
 
       const withCongrats = [...updatedDebtTransactions, congrats]
       setDebtCreditTransactions(withCongrats)
-      saveToLocalStorage('debtCreditTransactions', withCongrats)
+      saveToLocalStorage('debtCreditTransactions', withCongrats, true)
     }
 
     return {
@@ -760,7 +1135,7 @@ export function useWalletData() {
 
     const updatedGoals = [...goals, newGoal]
     setGoals(updatedGoals)
-    saveToLocalStorage("goals", updatedGoals)
+    saveToLocalStorage("goals", updatedGoals, true)
     return newGoal
   }
 
@@ -836,8 +1211,6 @@ export function useWalletData() {
         }
       }
     }
-
-    // Reset all state to completely empty (no default data)
     setUserProfile(null)
     setTransactions([])
     setBudgets([])
@@ -853,11 +1226,21 @@ export function useWalletData() {
     setIsAuthenticated(false)
     setShowOnboarding(true)
     setIsFirstTime(true)
-
   }
 
   const exportData = () => {
     if (typeof window === 'undefined') return
+
+    const parseLocalJson = <T,>(key: string, fallback: T): T => {
+      try {
+        const raw = localStorage.getItem(key)
+        if (!raw) return fallback
+        return JSON.parse(raw) as T
+      } catch {
+        return fallback
+      }
+    }
+    const customCategoriesOnly = categories.filter((category) => !category.isDefault)
 
     const data = {
       userProfile,
@@ -867,12 +1250,23 @@ export function useWalletData() {
       debtAccounts,
       creditAccounts,
       debtCreditTransactions,
-      categories,
+      categories: customCategoriesOnly,
       emergencyFund,
       portfolio,
       shareTransactions,
+      portfolios,
+      activePortfolioId,
+      sectorsMap: parseLocalJson("sectorsMap", {} as Record<string, string>),
+      scripNamesMap: parseLocalJson("scripNamesMap", {} as Record<string, string>),
+      settings: {
+        showScrollbars: localStorage.getItem("wallet_show_scrollbars") !== "false",
+      },
+      meta: {
+        exportedAt: new Date().toISOString(),
+        app: "mywallet",
+      },
       exportDate: new Date().toISOString(),
-      version: "1.0",
+      version: "2.0",
     }
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
@@ -888,24 +1282,38 @@ export function useWalletData() {
 
   const importData = async (dataOrJson: string | any) => {
     try {
-      console.log("[v0] Starting data import...")
       const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
       // Validate data structure
-      if (!data.userProfile && !Array.isArray(data.transactions) && !data.budgets && !data.goals && !data.debtAccounts && !data.creditAccounts && !data.categories && typeof data.emergencyFund !== 'number') {
+      const hasImportableData =
+        !!data.userProfile ||
+        Array.isArray(data.transactions) ||
+        Array.isArray(data.budgets) ||
+        Array.isArray(data.goals) ||
+        Array.isArray(data.debtAccounts) ||
+        Array.isArray(data.creditAccounts) ||
+        Array.isArray(data.debtCreditTransactions) ||
+        Array.isArray(data.categories) ||
+        Array.isArray(data.portfolio) ||
+        Array.isArray(data.shareTransactions) ||
+        Array.isArray(data.portfolios) ||
+        typeof data.activePortfolioId === "string" ||
+        typeof data.activePortfolioId === "object" ||
+        typeof data.emergencyFund === 'number' ||
+        typeof data.emergencyFund === 'string'
+
+      if (!hasImportableData) {
         throw new Error("Invalid backup file format - no valid data to import")
       }
 
       // Import user profile (only if selected)
       if (data.userProfile) {
-        console.log("[v0] Importing user profile...")
         setUserProfile(data.userProfile)
         await saveDataWithIntegrity("userProfile", data.userProfile)
       }
 
       // Import transactions (only if selected)
       if (data.transactions && Array.isArray(data.transactions)) {
-        console.log(`[v0] Importing ${data.transactions.length} transactions...`)
         setTransactions(data.transactions)
         await saveDataWithIntegrity("transactions", data.transactions)
         // Calculate balance based on actual cash flow
@@ -921,128 +1329,133 @@ export function useWalletData() {
 
       // Import portfolio (only if selected)
       if (data.portfolio && Array.isArray(data.portfolio)) {
-        console.log(`[v0] Importing ${data.portfolio.length} portfolio items...`)
         setPortfolio(data.portfolio)
         await saveDataWithIntegrity("portfolio", data.portfolio)
       }
 
       // Import share transactions
       if (data.shareTransactions && Array.isArray(data.shareTransactions)) {
-        console.log(`[v0] Importing ${data.shareTransactions.length} share transactions...`)
         setShareTransactions(data.shareTransactions)
         await saveDataWithIntegrity("shareTransactions", data.shareTransactions)
       }
 
+      if (data.portfolios && Array.isArray(data.portfolios)) {
+        setPortfolios(data.portfolios)
+        await saveToLocalStorage("portfolios", data.portfolios, true)
+      }
+
+      if (Object.prototype.hasOwnProperty.call(data, "activePortfolioId")) {
+        const importedActiveId = data.activePortfolioId ?? null
+        setActivePortfolioId(importedActiveId)
+        await saveToLocalStorage("activePortfolioId", importedActiveId)
+      }
+
       // Import budgets (only if selected)
       if (data.budgets && Array.isArray(data.budgets)) {
-        console.log(`[v0] Importing ${data.budgets.length} budgets...`)
         setBudgets(data.budgets)
         await saveDataWithIntegrity("budgets", data.budgets)
       }
 
       // Import goals (only if selected)
       if (data.goals && Array.isArray(data.goals)) {
-        console.log(`[v0] Importing ${data.goals.length} goals...`)
         setGoals(data.goals)
         await saveDataWithIntegrity("goals", data.goals)
       }
 
       // Import debt accounts (only if selected)
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
-        console.log(`[v0] Importing ${data.debtAccounts.length} debt accounts...`)
         setDebtAccounts(data.debtAccounts)
         await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
       }
 
       // Import credit accounts (only if selected)
       if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
-        console.log(`[v0] Importing ${data.creditAccounts.length} credit accounts...`)
         setCreditAccounts(data.creditAccounts)
         await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
       }
 
-      // Import debt/credit transactions (only if debt or credit accounts are imported)
-      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions) && (data.debtAccounts || data.creditAccounts)) {
-        console.log(`[v0] Importing ${data.debtCreditTransactions.length} debt/credit transactions...`)
+      // Import debt/credit transactions
+      if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
         setDebtCreditTransactions(data.debtCreditTransactions)
         await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
       }
 
       // Import categories (only if selected)
       if (data.categories && Array.isArray(data.categories)) {
-        console.log(`[v0] Importing ${data.categories.length} categories...`)
-        setCategories(data.categories)
-        await saveDataWithIntegrity("categories", data.categories)
+        const importedCustomCategories = data.categories.filter((category: any) => !category?.isDefault)
+        setCategories(importedCustomCategories)
+        await saveDataWithIntegrity("categories", importedCustomCategories)
       }
 
       // Import emergency fund (only if selected)
       if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
         const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
-        console.log(`[v0] Importing emergency fund: ${emergencyFundValue}`)
         setEmergencyFund(emergencyFundValue)
-        await saveDataWithIntegrity("emergencyFund", emergencyFundValue.toString())
+        await saveDataWithIntegrity("emergencyFund", emergencyFundValue)
       }
 
       // Import scrollbar setting (only if userProfile is imported)
       if (data.settings?.showScrollbars !== undefined && data.userProfile && typeof window !== 'undefined') {
-        console.log(`[v0] Importing scrollbar setting: ${data.settings.showScrollbars}`)
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
       }
 
-      console.log("[v0] Selective data import completed successfully")
+      if (data.sectorsMap && typeof data.sectorsMap === "object") {
+        setSectorsMap(data.sectorsMap)
+        await saveToLocalStorage("sectorsMap", data.sectorsMap)
+      }
+
+      if (data.scripNamesMap && typeof data.scripNamesMap === "object") {
+        setScripNamesMap(data.scripNamesMap)
+        await saveToLocalStorage("scripNamesMap", data.scripNamesMap)
+      }
+
       return true
     } catch (error) {
-      console.error("[v0] Error importing data:", error)
       return false
     }
   }
 
   const refreshData = () => {
-    try {
-      if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return
 
-      const savedBudgets = localStorage.getItem("budgets")
-      const savedGoals = localStorage.getItem("goals")
-      const savedTransactions = localStorage.getItem("transactions")
-      const savedCategories = localStorage.getItem("categories")
+    void (async () => {
+      try {
+        const latest = await loadFromLocalStorage(["budgets", "goals", "transactions", "categories"])
 
-      if (savedBudgets) {
-        const parsedBudgets = JSON.parse(savedBudgets)
-        setBudgets(parsedBudgets)
-      }
+        if (Array.isArray(latest.budgets)) {
+          setBudgets(latest.budgets)
+        }
 
-      if (savedGoals) {
-        const parsedGoals = JSON.parse(savedGoals)
-        setGoals(parsedGoals)
-      }
+        if (Array.isArray(latest.goals)) {
+          setGoals(latest.goals)
+        }
 
-      if (savedTransactions) {
-        const parsedTransactions = JSON.parse(savedTransactions)
-        setTransactions(parsedTransactions)
-        // Calculate balance based on actual cash flow
-        const actualBalance = parsedTransactions.reduce((sum: number, tx: Transaction) => {
-          if (tx.type === "income") {
-            return sum + (tx.actual ?? tx.amount)
-          } else {
-            return sum - (tx.actual ?? tx.amount)
-          }
-        }, 0)
-        setBalance(actualBalance)
-      }
+        if (Array.isArray(latest.transactions)) {
+          const parsedTransactions = latest.transactions
+          setTransactions(parsedTransactions)
+          const actualBalance = parsedTransactions.reduce((sum: number, tx: Transaction) => {
+            if (tx.type === "income") {
+              return sum + (tx.actual ?? tx.amount)
+            } else {
+              return sum - (tx.actual ?? tx.amount)
+            }
+          }, 0)
+          setBalance(actualBalance)
+        }
 
-      if (savedCategories) {
-        const parsedCategories = JSON.parse(savedCategories)
-        setCategories(parsedCategories)
-      }
+        if (Array.isArray(latest.categories)) {
+          setCategories(latest.categories)
+        }
 
-      const savedSectors = localStorage.getItem("sectorsMap")
-      const savedNames = localStorage.getItem("scripNamesMap")
-      if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
-      if (savedNames) setScripNamesMap(JSON.parse(savedNames))
-    } catch (error) { }
+        const savedSectors = localStorage.getItem("sectorsMap")
+        const savedNames = localStorage.getItem("scripNamesMap")
+        if (savedSectors) setSectorsMap(JSON.parse(savedSectors))
+        if (savedNames) setScripNamesMap(JSON.parse(savedNames))
+      } catch (error) { }
+    })()
   }
 
-  const spendFromGoal = async (goalId: string, amount: number, description: string) => {
+  const spendFromGoal = async (goalId: string, amount: number, description: string, category?: string) => {
     if (amount <= 0) {
       return {
         error: "Spend amount must be greater than zero",
@@ -1070,13 +1483,13 @@ export function useWalletData() {
       type: "expense",
       amount: amount,
       description: `Goal spending: ${goal.title} - ${description}`,
-      category: "Goal Spending",
+      category: category || "Goal Spending",
       date: new Date().toISOString(),
       allocationType: "goal",
       allocationTarget: goalId,
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
       total: amount,
-      actual: amount,
+      actual: 0,
       debtUsed: 0,
       debtAccountId: null,
       status: "normal",
@@ -1096,7 +1509,6 @@ export function useWalletData() {
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
 
-    console.log("[v0] Goal spending completed successfully")
 
     return {
       success: true,
@@ -1196,7 +1608,7 @@ export function useWalletData() {
     }
     const updated = [...portfolios, newPortfolio]
     setPortfolios(updated)
-    await saveToLocalStorage("portfolios", updated)
+    await saveToLocalStorage("portfolios", updated, true)
     if (updated.length === 1) {
       setActivePortfolioId(newPortfolio.id)
       saveToLocalStorage("activePortfolioId", newPortfolio.id)
@@ -1214,7 +1626,7 @@ export function useWalletData() {
 
 
     setPortfolios(updatedPortfolios)
-    await saveToLocalStorage("portfolios", updatedPortfolios)
+    await saveToLocalStorage("portfolios", updatedPortfolios, true)
 
     // Delete all associated items and transactions
     const updatedItems = portfolio.filter(p => p.portfolioId !== id)
@@ -1241,7 +1653,7 @@ export function useWalletData() {
   const updatePortfolio = async (id: string, updates: Partial<Portfolio>) => {
     const updated = portfolios.map(p => p.id === id ? { ...p, ...updates } : p)
     setPortfolios(updated)
-    await saveToLocalStorage("portfolios", updated)
+    await saveToLocalStorage("portfolios", updated, true)
   }
 
   // Module-level cache (resets on browser reload)
@@ -1265,7 +1677,6 @@ export function useWalletData() {
 
       // If cache is valid and not forcing refresh, use cached data
       if (isCacheValid && !forceRefresh && globalPortfolioCache) {
-        console.log('Using cached portfolio prices (memory cache)')
         const { priceData, sectorData } = globalPortfolioCache
 
         // Process cached data same way as fresh data
@@ -1330,7 +1741,6 @@ export function useWalletData() {
       }
 
       // Fetch fresh data from API
-      console.log('Fetching fresh portfolio prices from API')
       const [priceRes, sectorRes] = await Promise.all([
         fetch("/api/nepse/today"),
         fetch("/api/nepse/sectors")
@@ -1344,7 +1754,6 @@ export function useWalletData() {
           sectorData = await sectorRes.json()
         }
       } catch (e) {
-        console.warn("Could not fetch sectors, continuing with prices only")
       }
 
       if (!priceRes.ok) {
@@ -1426,7 +1835,6 @@ export function useWalletData() {
       await saveDataWithIntegrity("portfolio", updatedPortfolio)
       return updatedPortfolio
     } catch (error: any) {
-      console.error("Error fetching prices:", error)
       throw error // Propagate specialized error
     }
   }
@@ -1552,8 +1960,6 @@ export function useWalletData() {
     const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-
-    // Recalculate portfolio for all affected pairs
     let updatedPortfolio = [...portfolio]
 
     for (const pair of affectedPairs) {
@@ -1616,7 +2022,6 @@ export function useWalletData() {
     const updatedTransactions = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-
     const updatedPortfolio = portfolio.filter(p => p.portfolioId !== activePortfolioId)
     setPortfolio(updatedPortfolio)
     await saveDataWithIntegrity("portfolio", updatedPortfolio)
@@ -1720,6 +2125,186 @@ export function useWalletData() {
     }
   }
 
+  const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
+    const portId = targetPortfolioId || activePortfolioId
+    if (!portId) {
+      throw new Error("No target portfolio selected")
+    }
+
+    try {
+      const response = await fetch('/api/meroshare/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentials })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to sync portfolio")
+
+      const meroPortfolio = data.portfolio as any[]
+      let updatedCount = 0
+      let addedCount = 0
+
+      // Get current portfolio items for comparison
+      const currentPortfolio = [...portfolio]
+      const updatedPortfolio = [...currentPortfolio]
+
+      for (const item of meroPortfolio) {
+        const existingIdx = updatedPortfolio.findIndex(
+          p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
+        )
+
+        if (existingIdx > -1) {
+          updatedPortfolio[existingIdx] = {
+            ...updatedPortfolio[existingIdx],
+            units: item.units,
+            currentPrice: item.currentPrice,
+            lastUpdated: new Date().toISOString()
+          }
+          updatedCount++
+        } else {
+          const newItem: PortfolioItem = {
+            id: generateId('port_item'),
+            portfolioId: portId,
+            symbol: item.symbol,
+            units: item.units,
+            buyPrice: 0, // Users will need to update cost manually or it stays 0
+            currentPrice: item.currentPrice,
+            lastUpdated: new Date().toISOString(),
+            sector: "Others"
+          }
+          updatedPortfolio.push(newItem)
+          addedCount++
+        }
+      }
+
+      setPortfolio(updatedPortfolio)
+      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+
+      // Trigger a price refresh to update sectors and other metadata
+      await fetchPortfolioPrices(updatedPortfolio)
+      return { updatedCount, addedCount }
+    } catch (error: any) {
+      throw error
+    }
+  }
+
+  const logMeroShareApplication = async (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => {
+    if (!userProfile) return null
+
+    const nextLog: MeroShareApplicationLog = {
+      id: generateId("ipo_log"),
+      createdAt: new Date().toISOString(),
+      ...entry,
+    }
+
+    const existingMeroShare = userProfile.meroShare ?? {
+      dpId: "",
+      username: "",
+      shareFeaturesEnabled: false,
+      shareNotificationsEnabled: false,
+      isAutomatedEnabled: false,
+    }
+
+    const updatedProfile: UserProfile = {
+      ...userProfile,
+      meroShare: {
+        ...existingMeroShare,
+        applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
+      },
+    }
+
+    setUserProfile(updatedProfile)
+    await saveDataWithIntegrity("userProfile", updatedProfile)
+    return nextLog
+  }
+
+  const applyMeroShareIPO = async (
+    credentials: any,
+    ipoName: string,
+    kitta = 10,
+    source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
+    options?: { showBrowser?: boolean }
+  ) => {
+    try {
+      const response = await fetch('/api/meroshare/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentials, ipoName, kitta, options })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to apply")
+      }
+
+      await logMeroShareApplication({
+        ipoName,
+        action: "apply",
+        requestedKitta: kitta,
+        status: "success",
+        message: data.alreadyApplied
+          ? (data.message || "Already applied earlier; no new application was submitted.")
+          : (data.message || "Applied successfully"),
+        source,
+      })
+
+      return data
+    } catch (error: any) {
+      const message = error?.message || "Failed to apply"
+      await logMeroShareApplication({
+        ipoName,
+        action: "apply",
+        requestedKitta: kitta,
+        status: "failed",
+        message,
+        source,
+      })
+      throw error
+    }
+  }
+
+  const checkIPOAllotmentWithLog = async (
+    credentials: any,
+    ipoName: string,
+    source: "live-check" | "settings-check" = "live-check"
+  ) => {
+    try {
+      const response = await fetch('/api/meroshare/check-allotment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentials, ipoName })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to check allotment")
+
+      const statusMessage = data?.status
+        ? `Allotment check: ${data.status}`
+        : "Allotment check completed."
+
+      await logMeroShareApplication({
+        ipoName,
+        action: "report-check",
+        status: "success",
+        message: statusMessage,
+        source,
+      })
+
+      return data
+    } catch (error: any) {
+      const message = error?.message || "Failed to check allotment"
+      await logMeroShareApplication({
+        ipoName,
+        action: "report-check",
+        status: "failed",
+        message,
+        source,
+      })
+      throw error
+    }
+  }
+
   return {
     userProfile,
     transactions,
@@ -1773,6 +2358,9 @@ export function useWalletData() {
     updatePortfolio,
     clearPortfolioHistory,
     fetchPortfolioPrices,
+    syncMeroSharePortfolio,
+    applyMeroShareIPO,
+    checkIPOAllotment: checkIPOAllotmentWithLog,
     upcomingIPOs,
     scripNamesMap,
     isIPOsLoading,

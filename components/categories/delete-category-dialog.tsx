@@ -53,48 +53,47 @@ export function DeleteCategoryDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
+      <DialogContent className="sm:max-w-md bg-card/95 backdrop-blur-md border border-primary/20 shadow-2xl rounded-3xl overflow-hidden p-0">
+        <DialogHeader className="p-6 pb-2 border-b border-border/40">
+          <div className="flex items-center gap-4">
             <div className={cn(
-              "p-3 rounded-xl",
-              riskLevel === "medium" ? "bg-amber-100 dark:bg-amber-900/20" :
-              "bg-blue-100 dark:bg-blue-900/20"
+              "p-3 rounded-2xl shadow-inner border border-white/10",
+              riskLevel === "medium"
+                ? "bg-gradient-to-br from-amber-500/20 to-amber-600/5 text-amber-600"
+                : "bg-gradient-to-br from-red-500/20 to-red-600/5 text-red-600"
             )}>
               {riskLevel === "medium" ? (
-                <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                <AlertCircle className="w-6 h-6" />
               ) : (
-                <Trash2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <Trash2 className="w-6 h-6" />
               )}
             </div>
             <div>
-              <DialogTitle className="text-xl font-semibold">
-                Delete Category
-              </DialogTitle>
-              <DialogDescription className="text-muted-foreground">
-                Are you sure you want to delete this category?
+              <DialogTitle className="text-xl font-black text-foreground">Delete Category</DialogTitle>
+              <DialogDescription className="text-sm font-medium text-muted-foreground">
+                This action requires your confirmation
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="p-6 space-y-6">
           {/* Category Preview */}
-          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-4 p-4 bg-muted/30 border border-border/50 rounded-2xl">
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-lg shadow-sm"
+              className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm border border-black/5"
               style={{ backgroundColor: category.color }}
             >
-              {category.icon || "📦"}
+              <span className="drop-shadow-sm">{category.icon || "📦"}</span>
             </div>
             <div className="flex-1">
-              <p className="font-medium">{category.name}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className="text-xs">
+              <h4 className="font-bold text-lg leading-none mb-1">{category.name}</h4>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px] font-bold uppercase tracking-widest bg-background/50 border border-border/50">
                   {category.type}
                 </Badge>
                 {category.isDefault && (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-widest opacity-70">
                     Default
                   </Badge>
                 )}
@@ -103,45 +102,52 @@ export function DeleteCategoryDialog({
           </div>
 
           {/* Risk Assessment */}
-          {riskLevel === "medium" && (
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-                <div>
-                  <p className="font-medium text-amber-800 dark:text-amber-200">
-                    Category In Use
-                  </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                    This category is used in <strong>{categoryTransactions.length}</strong> transaction{categoryTransactions.length !== 1 ? 's' : ''}.
-                    Deleting it will not remove the transactions, but they will be categorized as "Uncategorized".
-                  </p>
+          <div className="space-y-3">
+            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground/80 ml-1">Impact Analysis</label>
+
+            {riskLevel === "medium" && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-700 text-sm">
+                      Category In Use
+                    </p>
+                    <p className="text-xs text-amber-600/90 leading-relaxed font-medium">
+                      This category is currently linked to <span className="font-black">{categoryTransactions.length}</span> transaction{categoryTransactions.length !== 1 ? 's' : ''}.
+                      <br />
+                      <span className="opacity-80">Deleting it will not remove the transactions, but they will become "Uncategorized".</span>
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {riskLevel === "low" && (
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                <div>
-                  <p className="font-medium text-blue-800 dark:text-blue-200">
-                    Safe to Delete
-                  </p>
-                  <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                    This category is not being used in any transactions and can be safely deleted.
-                  </p>
+            {riskLevel === "low" && (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-blue-700 text-sm">
+                      Safe to Delete
+                    </p>
+                    <p className="text-xs text-blue-600/90 leading-relaxed font-medium">
+                      This category has no associated transactions and can be safely removed from your wallet.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-4">
+        {/* Action Buttons */}
+        <div className="p-6 pt-2 border-t border-border/40 bg-muted/20">
+          <div className="flex gap-3">
             <Button
               variant="outline"
               onClick={onClose}
-              className="flex-1"
+              className="flex-1 h-11 rounded-xl font-bold border-border/60 hover:bg-background"
               disabled={isDeleting}
             >
               Cancel
@@ -150,17 +156,17 @@ export function DeleteCategoryDialog({
               variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="flex-1"
+              className="flex-1 h-11 rounded-xl font-bold shadow-lg shadow-destructive/20 hover:bg-destructive/90 active:scale-[0.98] transition-all"
             >
               {isDeleting ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
                   Deleting...
                 </div>
               ) : (
                 <>
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Category
+                  Confirm Delete
                 </>
               )}
             </Button>

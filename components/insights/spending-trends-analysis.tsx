@@ -20,6 +20,8 @@ interface TrendData {
   net: number
   trend: 'up' | 'down' | 'stable'
   percentageChange: number
+  volatility: number
+  weekendVsWeekdayRatio: number
 }
 
 interface TrendCardProps {
@@ -66,18 +68,34 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
     // Convert to array and sort by date
     const sortedMonths = Object.keys(monthlyData)
       .sort()
-      .slice(-12) // Last 12 months
+      .slice(-12)
 
     const trends: TrendData[] = sortedMonths.map((monthKey, index) => {
       const [year, month] = monthKey.split('-')
-      const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', {
-        month: 'short',
-        year: 'numeric'
-      })
+      const monthDate = new Date(parseInt(year), parseInt(month) - 1)
+      const monthName = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 
       const current = monthlyData[monthKey]
-      const previous = index > 0 ? monthlyData[sortedMonths[index - 1]] : null
+      const prevMonthsKey = sortedMonths.slice(0, index)
+      const prevNetValues = prevMonthsKey.map(k => monthlyData[k].income - monthlyData[k].expenses)
 
+      // Calculate Volatility (Standard Deviation of Net over time - simplified)
+      const avgNet = prevNetValues.length > 0 ? prevNetValues.reduce((a, b) => a + b, 0) / prevNetValues.length : (current.income - current.expenses)
+      const variance = prevNetValues.length > 0
+        ? prevNetValues.reduce((a, b) => a + Math.pow(b - avgNet, 2), 0) / prevNetValues.length
+        : 0
+      const volatility = Math.sqrt(variance)
+
+      // Calculate Weekend vs Weekday Ratio
+      const monthTransactions = transactions.filter(t => {
+        const d = new Date(t.date)
+        return d.getMonth() === monthDate.getMonth() && d.getFullYear() === monthDate.getFullYear()
+      })
+      const weekendSpending = monthTransactions.filter(t => [0, 6].includes(new Date(t.date).getDay())).reduce((s, t) => s + t.amount, 0)
+      const weekdaySpending = monthTransactions.filter(t => ![0, 6].includes(new Date(t.date).getDay())).reduce((s, t) => s + t.amount, 0)
+      const ratio = weekdaySpending > 0 ? (weekendSpending / weekdaySpending) * 100 : 0
+
+      const previous = index > 0 ? monthlyData[sortedMonths[index - 1]] : null
       const net = current.income - current.expenses
       let trend: 'up' | 'down' | 'stable' = 'stable'
       let percentageChange = 0
@@ -97,18 +115,21 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
         expenses: current.expenses,
         net,
         trend,
-        percentageChange
+        percentageChange,
+        volatility: Math.round(volatility / 100), // Scaled
+        weekendVsWeekdayRatio: ratio
       }
     })
 
-    // Precompute summary data
     const totalIncome = trends.reduce((sum, d) => sum + d.income, 0)
     const totalExpenses = trends.reduce((sum, d) => sum + d.expenses, 0)
     const averageMonthlyNet = trends.length > 0 ? trends.reduce((sum, d) => sum + d.net, 0) / trends.length : 0
     const bestMonth = trends.length > 0 ? trends.reduce((best, current) => current.net > best.net ? current : best, trends[0]) : null
     const worstMonth = trends.length > 0 ? trends.reduce((worst, current) => current.net < worst.net ? current : worst, trends[0]) : null
     const averageExpenses = trends.length > 0 ? totalExpenses / trends.length : 0
-    const highExpenseMonths = trends.filter(d => d.expenses > averageExpenses * 1.1)
+
+    // Pattern: Excessive Weekend Spending
+    const highWeekendMonths = trends.filter(d => d.weekendVsWeekdayRatio > 60)
 
     const summary = {
       totalIncome,
@@ -116,7 +137,8 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
       averageMonthlyNet,
       bestMonth,
       worstMonth,
-      highExpenseMonths
+      highWeekendMonths,
+      averageExpenses
     }
 
     return { trends, summary }
@@ -390,7 +412,7 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
                       </div>
                       <p className="text-lg sm:text-2xl font-bold text-purple-600 dark:text-purple-400 mb-1">
                         {overallTrend.direction === 'up' ? '↗️ Improving' :
-                         overallTrend.direction === 'down' ? '↘️ Declining' : '➡️ Stable'}
+                          overallTrend.direction === 'down' ? '↘️ Declining' : '➡️ Stable'}
                       </p>
                       <p className="text-xs sm:text-sm text-purple-600 dark:text-purple-400 font-medium">Financial trajectory</p>
                     </div>
@@ -398,26 +420,49 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
                 </div>
               </div>
 
-              {/* Insights and Recommendations */}
-              {summary.highExpenseMonths.length > 0 && (
+              {/* High Intensity Spending Patterns */}
+              {summary.highWeekendMonths.length > 0 && (
                 <div className="relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 via-orange-500/10 to-red-500/10 rounded-lg sm:rounded-xl"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-yellow-500/10 rounded-lg sm:rounded-xl"></div>
                   <div className="relative p-3 sm:p-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-white/20 dark:border-gray-700/20 rounded-lg sm:rounded-xl shadow-sm">
                     <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
-                      <div className="p-2 sm:p-3 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg sm:rounded-xl shadow-md animate-pulse">
+                      <div className="p-2 sm:p-3 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg sm:rounded-xl shadow-md">
+                        <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-lg sm:text-xl text-orange-700 dark:text-orange-300">Weekend Burn Pattern</h4>
+                        <p className="text-xs sm:text-sm text-orange-600 dark:text-orange-400 font-medium">Spotted in {summary.highWeekendMonths.length} months</p>
+                      </div>
+                    </div>
+                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3 sm:p-4">
+                      <p className="text-orange-800 dark:text-orange-200 text-xs sm:text-sm font-medium mb-1">
+                        In <span className="font-bold">{summary.highWeekendMonths.map(m => m.period).join(', ')}</span>, your weekend spending was significantly higher than weekdays.
+                      </p>
+                      <p className="text-orange-700 dark:text-orange-300 text-[10px] sm:text-xs">
+                        💡 Suggestion: Try setting a "Weekend Cap" to prevent impulse spending during leisure time.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* High Expense Alert */}
+              {trends.some(t => t.expenses > summary.averageExpenses * 1.25) && (
+                <div className="relative overflow-hidden mt-4">
+                  <div className="absolute inset-0 bg-gradient-to-r from-rose-500/10 via-red-500/10 to-orange-500/10 rounded-lg sm:rounded-xl"></div>
+                  <div className="relative p-3 sm:p-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-white/20 dark:border-gray-700/20 rounded-lg sm:rounded-xl shadow-sm">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
+                      <div className="p-2 sm:p-3 bg-gradient-to-br from-rose-500 to-red-600 rounded-lg sm:rounded-xl shadow-md animate-pulse">
                         <AlertTriangle className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-lg sm:text-xl text-yellow-700 dark:text-yellow-300">⚠️ Spending Alert</h4>
-                        <p className="text-xs sm:text-sm text-yellow-600 dark:text-yellow-400 font-medium">Action required</p>
+                        <h4 className="font-bold text-lg sm:text-xl text-rose-700 dark:text-rose-300">Volatility Spike</h4>
+                        <p className="text-xs sm:text-sm text-rose-600 dark:text-rose-400 font-medium">Abnormal spending detected</p>
                       </div>
                     </div>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 sm:p-4">
-                      <p className="text-yellow-800 dark:text-yellow-200 text-xs sm:text-sm font-medium mb-2">
-                        High expense months: <span className="font-bold">{summary.highExpenseMonths.map(m => m.period).join(', ')}</span>
-                      </p>
-                      <p className="text-yellow-700 dark:text-yellow-300 text-xs sm:text-sm">
-                        💡 Consider reviewing expenses in these months to optimize your spending patterns.
+                    <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-3 sm:p-4">
+                      <p className="text-rose-800 dark:text-rose-200 text-xs sm:text-sm font-medium">
+                        One or more months saw spending exceed your average by over 25%. Check if these were one-time emergencies or habitual drift.
                       </p>
                     </div>
                   </div>

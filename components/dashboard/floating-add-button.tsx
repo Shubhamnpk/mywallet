@@ -13,10 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { getDefaultCategories, ALL_DEFAULT_CATEGORIES } from "@/lib/categories"
+import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScanner from "./receipt-scanner"
 import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
 
@@ -404,7 +402,7 @@ export function FloatingAddButton({
           "bg-primary text-white shadow-2xl backdrop-blur-sm",
           "transition-all duration-300 ease-out",
           "hover:scale-110 hover:shadow-primary/40 active:scale-95",
-          isMobile ? "bottom-16" : "bottom-6",
+          isMobile ? "bottom-20" : "bottom-6",
           className
         )}
       >

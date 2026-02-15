@@ -68,7 +68,7 @@ export class MigrationManager {
     }
 
     try {
-      console.log("[v0] Starting wallet migration to version", this.MIGRATION_VERSION)
+      
 
       // Phase 1: Migrate PIN security
       await this.migratePinSecurity(result)
@@ -90,10 +90,8 @@ export class MigrationManager {
         success: result.success,
       }))
 
-      console.log("[v0] Migration completed:", result.success ? "SUCCESS" : "FAILED")
 
     } catch (error) {
-      console.error("[v0] Migration failed:", error)
       result.success = false
       result.errors.push(`Migration failed: ${error}`)
     }
@@ -119,7 +117,6 @@ export class MigrationManager {
           const setupSuccess = await SecurePinManager.setupPin(oldPin)
           if (setupSuccess) {
             result.migratedItems.push("PIN security system")
-            console.log("[v0] PIN security migrated successfully")
           } else {
             result.errors.push("Failed to migrate PIN security")
           }
@@ -195,7 +192,6 @@ export class MigrationManager {
           result.migratedItems.push("Basic integrity records")
         }
 
-        console.log("[v0] Integrity records migrated")
       }
     } catch (error) {
       result.errors.push(`Integrity migration error: ${error}`)
@@ -227,7 +223,6 @@ export class MigrationManager {
 
       if (cleanedCount > 0) {
         result.migratedItems.push(`Cleaned up ${cleanedCount} old data entries`)
-        console.log("[v0] Old data cleaned up:", cleanedCount, "entries")
       }
     } catch (error) {
       result.errors.push(`Cleanup error: ${error}`)
@@ -262,7 +257,6 @@ export class MigrationManager {
   // Rollback migration in case of failure
   static async rollbackMigration(): Promise<boolean> {
     try {
-      console.log("[v0] Rolling back migration...")
 
       // Remove new data
       const newKeys = [
@@ -286,10 +280,8 @@ export class MigrationManager {
       // Clear security data
       SecurePinManager.resetPin()
 
-      console.log("[v0] Migration rollback completed")
       return true
     } catch (error) {
-      console.error("[v0] Migration rollback failed:", error)
       return false
     }
   }
