@@ -86,9 +86,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
 
-    if (userProfile.meroShare?.shareFeaturesEnabled && userProfile.meroShare?.shareNotificationsEnabled) {
+    if (userProfile.meroShare?.isAutomatedEnabled) {
       upcomingIPOs.forEach((ipo) => {
-        const ipoId = ipo.company || ipo.url || ipo.date_range
+        const ipoId = ipo.company || ipo.url || ipo.date_range || `ipo-${upcomingIPOs.indexOf(ipo)}`
         if (ipo.status === "open") {
           const isClosingSoon = typeof ipo.daysRemaining === "number" && ipo.daysRemaining <= 1
           items.push({
@@ -109,7 +109,6 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
     }
-
     return items.slice(0, 15)
   }, [budgets, goals, upcomingIPOs, userProfile.meroShare?.shareFeaturesEnabled, userProfile.meroShare?.shareNotificationsEnabled])
 
