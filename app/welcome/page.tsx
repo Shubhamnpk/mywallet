@@ -115,11 +115,11 @@ export default function WelcomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       {/* Animated background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse -translate-x-1/2" />
+        <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse translate-x-1/2" style={{ animationDelay: '1s' }} />
         <div
           className="absolute top-1/2 left-1/2 w-[600px] h-[600px] bg-primary/3 rounded-full blur-3xl"
           style={{ transform: `translate(-50%, -50%) scale(${1 + scrollY * 0.0005})` }}
@@ -128,9 +128,9 @@ export default function WelcomePage() {
 
       <main className="relative z-10">
         {/* Navigation */}
-        <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-          <div className="container mx-auto px-4">
-            <div className="h-16 flex items-center justify-between">
+        <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl w-full">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="h-16 flex items-center justify-between max-w-7xl mx-auto">
               <Link href="/welcome" className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                   <Wallet className="w-4 h-4 text-primary-foreground" />
@@ -156,7 +156,7 @@ export default function WelcomePage() {
         </header>
 
         {/* Hero Section */}
-        <section className="container mx-auto px-4 pt-12 pb-32">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-12 pb-32">
           <div className="max-w-7xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="text-center lg:text-left">
@@ -173,7 +173,7 @@ export default function WelcomePage() {
                   </span>
                   <br />
                   <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                    Simplified mywallet 
+                    Simplified
                   </span>
                 </h1>
 
@@ -212,7 +212,7 @@ export default function WelcomePage() {
                     <span>10k+ active users</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex text-primary">â˜…â˜…â˜…â˜…â˜…</div>
+                    <div className="flex text-primary">★★★★★</div>
                     <span>4.9/5 rating</span>
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Features Grid */}
-        <section id="features" className="container mx-auto px-4 py-20">
+        <section id="features" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -283,7 +283,7 @@ export default function WelcomePage() {
           </div>
         </section>
         {/* Time-Based Wallet Feature Highlight */}
-        <section id="how-it-works" className="container mx-auto px-4 py-20">
+        <section id="how-it-works" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
@@ -390,7 +390,7 @@ export default function WelcomePage() {
         </section>
 
         {/* PWA Cross-Device Section */}
-        <section id="faq" className="container mx-auto px-4 py-20">
+        <section id="faq" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -462,7 +462,7 @@ export default function WelcomePage() {
 
 
         {/* Benefits Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-4xl mx-auto bg-card backdrop-blur-xl rounded-2xl p-12 border border-border shadow-xl">
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
@@ -514,7 +514,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Testimonials Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -526,7 +526,7 @@ export default function WelcomePage() {
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">★★★★★</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "MyWallet completely changed how I manage my money. I've saved over $2,000 in the last 6 months thanks to the smart budgeting features."
@@ -544,7 +544,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">★★★★★</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "The offline functionality is a game-changer. I can track expenses anywhere, even without internet. Perfect for travel!"
@@ -562,7 +562,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">★★★★★</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "Finally achieved my dream vacation goal! The goal tracking and progress visualization kept me motivated every step of the way."
@@ -582,7 +582,7 @@ export default function WelcomePage() {
         </section>
 
         {/* How It Works Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -635,7 +635,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Stats Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-6xl mx-auto">
             <div className="bg-gradient-to-r from-card/80 to-card/60 backdrop-blur-xl rounded-2xl p-12 border border-border shadow-xl">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
@@ -648,7 +648,7 @@ export default function WelcomePage() {
                   <div className="text-muted-foreground">Money Saved</div>
                 </div>
                 <div>
-                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9â˜…</div>
+                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9★</div>
                   <div className="text-muted-foreground">App Rating</div>
                 </div>
                 <div>
@@ -661,7 +661,7 @@ export default function WelcomePage() {
         </section>
 
         {/* FAQ Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4">
@@ -696,7 +696,7 @@ export default function WelcomePage() {
         </section>
 
         {/* Final CTA */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
           <div className="max-w-4xl mx-auto text-center">
             <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 backdrop-blur-xl rounded-2xl p-12 border border-border overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5" />
@@ -716,7 +716,7 @@ export default function WelcomePage() {
                   </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-6">
-                  No credit card required â€¢ Free forever â€¢ Cancel anytime
+                  No credit card required • Free forever • Cancel anytime
                 </p>
               </div>
             </div>
@@ -725,9 +725,9 @@ export default function WelcomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-20 border-t border-border/60 bg-card/70 backdrop-blur-xl">
-        <div className="container mx-auto px-4 py-14">
-          <div className="grid gap-10 md:grid-cols-4">
+      <footer className="relative z-20 border-t border-border/60 bg-card/70 backdrop-blur-xl w-full">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-14">
+          <div className="grid gap-10 md:grid-cols-4 max-w-7xl mx-auto">
             <div className="md:col-span-2">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/15 to-accent/15">
@@ -759,7 +759,7 @@ export default function WelcomePage() {
             </div>
           </div>
 
-          <div className="mt-10 pt-6 border-t border-border/60 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-10 pt-6 border-t border-border/60 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between max-w-7xl mx-auto">
             <p className="text-sm text-muted-foreground">Made in Nepal.</p>
             <p className="text-sm text-muted-foreground">© 2026 MyWallet. All rights reserved.</p>
           </div>

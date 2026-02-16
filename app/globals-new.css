@@ -403,26 +403,26 @@ h6 {
 }
 
 /* Show scrollbars with primary color */
-.show-scrollbars::-webkit-scrollbar {
+html.show-scrollbars *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.show-scrollbars::-webkit-scrollbar-track {
+html.show-scrollbars *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.show-scrollbars::-webkit-scrollbar-thumb {
+html.show-scrollbars *::-webkit-scrollbar-thumb {
   background: var(--primary);
   border-radius: 3px;
 }
 
-.show-scrollbars::-webkit-scrollbar-thumb:hover {
+html.show-scrollbars *::-webkit-scrollbar-thumb:hover {
   background: var(--primary);
   opacity: 0.8;
 }
 
-.show-scrollbars::-webkit-scrollbar-corner {
+html.show-scrollbars *::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -513,45 +513,4 @@ html.show-scrollbars * {
 /* Custom background support */
 body {
   background-color: var(--custom-bg, var(--background));
-}
-
-/* Ensure container classes don't cause overflow and have consistent padding */
-.container {
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  /* Ensure container doesn't overflow due to scrollbar */
-  max-width: calc(100vw - 2rem);
-}
-
-@media (min-width: 640px) {
-  .container {
-    max-width: 640px;
-  }
-}
-
-@media (min-width: 768px) {
-  .container {
-    max-width: 768px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .container {
-    max-width: 1024px;
-  }
-}
-
-@media (min-width: 1280px) {
-  .container {
-    max-width: 1280px;
-  }
-}
-
-@media (min-width: 1536px) {
-  .container {
-    max-width: 1536px;
-  }
 }

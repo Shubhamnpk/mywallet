@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { MobileNativeModal } from "@/components/dashboard/mobile-native-modal"
 
 interface FormData {
   amount: string
@@ -990,13 +989,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   return (
     <TooltipProvider>
-      <MobileNativeModal
-        open={open}
-        onOpenChange={handleOpenChange}
-        isMobile={isMobile}
-        title="Add New Transaction"
-      >
-          <form onSubmit={handleSubmit} className="space-y-6">
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">Add New Transaction</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col space-y-6">
             {/* Transaction Type Tabs */}
             {!isExpenseFundingOnlyView && (
               <Tabs value={type} onValueChange={handleTypeChange}>
@@ -1019,7 +1017,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               </Tabs>
             )}
 
-            <div className="space-y-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
               {!isExpenseFundingOnlyView && (
                 <div className="space-y-2">
                 <Label htmlFor="amount" className="text-sm font-medium flex items-center gap-1">
@@ -1533,14 +1531,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             </div>
 
             {/* Action Buttons */}
-            <div
-              className={cn(
-                "sticky bottom-0 z-20 mt-2 flex gap-3 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
-                isMobile
-                  ? "-mx-4 px-4 py-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
-                  : "-mx-6 px-6"
-              )}
-            >
+            <div className="mt-4 flex gap-3">
               <Button
                 type="button"
                 variant="outline"
@@ -1586,7 +1577,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               )}
             </div>
           </form>
-      </MobileNativeModal>
+        </DialogContent>
+      </Dialog>
 
       {/* Goal Shortfall Resolution Dialog */}
       <Dialog open={showGoalShortfallDialog} onOpenChange={setShowGoalShortfallDialog}>

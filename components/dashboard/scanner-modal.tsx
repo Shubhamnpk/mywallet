@@ -776,7 +776,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
               onScanningChange={setQrScanning}
               cameraFacingMode={qrCameraFacingMode}
               isFlashlightOn={qrFlashlightOn}
-              onFlashlightToggle={() => setQrFlashlightOn(!qrFlashlightOn)}
+              onFlashlightToggle={setQrFlashlightOn}
               onSwitchCamera={() => setQrCameraFacingMode(qrCameraFacingMode === 'environment' ? 'user' : 'environment')}
             />
           </TabsContent>

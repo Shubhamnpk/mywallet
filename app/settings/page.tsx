@@ -103,8 +103,8 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className=" border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 py-4">
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4">
           <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -112,7 +112,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground mt-2">Manage your account, security, and preferences</p>
