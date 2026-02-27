@@ -170,8 +170,8 @@ export function TransactionsList({
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               Recent Transactions
             </CardTitle>
             <div className="flex items-center gap-2">

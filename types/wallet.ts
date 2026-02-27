@@ -199,6 +199,7 @@ export interface DebtCreditTransaction {
   description: string
   date: string
   balanceAfter: number
+  sourceTransactionId?: string
 }
 
 export interface Portfolio {

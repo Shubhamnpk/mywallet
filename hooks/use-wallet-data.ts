@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { DataIntegrityManager } from "@/lib/data-integrity"
 import { SecureKeyManager } from "@/lib/key-manager"
 import type {
@@ -35,6 +35,141 @@ import { toast } from "sonner"
 
 const HOUR_MS = 60 * 60 * 1000
 const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
+const DELETE_UNDO_WINDOW_MS = 5000
+
+type TransactionDeleteSnapshot = {
+  transactions: Transaction[]
+  debtAccounts: DebtAccount[]
+  debtCreditTransactions: DebtCreditTransaction[]
+  balance: number
+}
+
+type PendingTransactionDeletion = {
+  transactionId: string
+  snapshot: TransactionDeleteSnapshot
+  timeoutId: ReturnType<typeof setTimeout>
+}
+
+const calculateCashBalanceFromTransactions = (txs: Transaction[]) => {
+  return txs.reduce((sum, tx) => {
+    if (tx.type === "income") return sum + (tx.actual ?? tx.amount)
+    return sum - (tx.actual ?? tx.amount)
+  }, 0)
+}
+
+const findDebtHistoryEntryIndex = (
+  entries: DebtCreditTransaction[],
+  transaction: Transaction,
+  targetType: "charge" | "payment",
+  targetAmount: number,
+) => {
+  if (!transaction.debtAccountId) return -1
+
+  const linkedIdx = entries.findIndex((entry) => entry.sourceTransactionId === transaction.id)
+  if (linkedIdx >= 0) return linkedIdx
+
+  const candidates = entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) =>
+      entry.accountType === "debt" &&
+      entry.accountId === transaction.debtAccountId &&
+      entry.type === targetType &&
+      Math.abs(entry.amount - targetAmount) < 0.0001
+    )
+
+  if (candidates.length === 0) return -1
+
+  const txTime = new Date(transaction.date).getTime()
+  if (Number.isNaN(txTime)) return candidates[candidates.length - 1].index
+
+  let best = candidates[0]
+  let bestDiff = Math.abs(new Date(best.entry.date).getTime() - txTime)
+
+  for (let i = 1; i < candidates.length; i += 1) {
+    const candidate = candidates[i]
+    const diff = Math.abs(new Date(candidate.entry.date).getTime() - txTime)
+    if (diff < bestDiff) {
+      best = candidate
+      bestDiff = diff
+    }
+  }
+
+  return best.index
+}
+
+const computePostDeleteState = (snapshot: TransactionDeleteSnapshot, transactionId: string) => {
+  const deletedTransaction = snapshot.transactions.find((tx) => tx.id === transactionId)
+  if (!deletedTransaction) {
+    return {
+      transactions: snapshot.transactions,
+      debtAccounts: snapshot.debtAccounts,
+      debtCreditTransactions: snapshot.debtCreditTransactions,
+      balance: snapshot.balance,
+    }
+  }
+
+  const nextTransactions = snapshot.transactions.filter((tx) => tx.id !== transactionId)
+  let nextDebtAccounts = [...snapshot.debtAccounts]
+  let nextDebtCreditTransactions = [...snapshot.debtCreditTransactions]
+
+  const isRepaymentTx = deletedTransaction.status === "repayment" && Boolean(deletedTransaction.debtAccountId)
+  const isDebtChargeTx =
+    deletedTransaction.status === "debt" &&
+    Boolean(deletedTransaction.debtAccountId) &&
+    (deletedTransaction.debtUsed ?? 0) > 0
+
+  if (isRepaymentTx) {
+    const repaymentAmount = deletedTransaction.total ?? deletedTransaction.amount
+    const historyIndex = findDebtHistoryEntryIndex(nextDebtCreditTransactions, deletedTransaction, "payment", repaymentAmount)
+
+    if (historyIndex >= 0) {
+      const historyEntry = nextDebtCreditTransactions[historyIndex]
+      nextDebtCreditTransactions = nextDebtCreditTransactions.filter((_, index) => index !== historyIndex)
+      nextDebtAccounts = nextDebtAccounts.map((account) =>
+        account.id === historyEntry.accountId
+          ? { ...account, balance: Math.max(0, account.balance + historyEntry.amount) }
+          : account
+      )
+    } else if (deletedTransaction.debtAccountId) {
+      nextDebtAccounts = nextDebtAccounts.map((account) =>
+        account.id === deletedTransaction.debtAccountId
+          ? { ...account, balance: Math.max(0, account.balance + repaymentAmount) }
+          : account
+      )
+    }
+  }
+
+  if (isDebtChargeTx) {
+    const chargeAmount = deletedTransaction.debtUsed ?? deletedTransaction.amount
+    const historyIndex = findDebtHistoryEntryIndex(nextDebtCreditTransactions, deletedTransaction, "charge", chargeAmount)
+
+    if (historyIndex >= 0) {
+      const historyEntry = nextDebtCreditTransactions[historyIndex]
+      nextDebtCreditTransactions = nextDebtCreditTransactions.filter((_, index) => index !== historyIndex)
+      nextDebtAccounts = nextDebtAccounts.map((account) =>
+        account.id === historyEntry.accountId
+          ? { ...account, balance: Math.max(0, account.balance - historyEntry.amount) }
+          : account
+      )
+    } else if (deletedTransaction.debtAccountId) {
+      nextDebtAccounts = nextDebtAccounts.map((account) =>
+        account.id === deletedTransaction.debtAccountId
+          ? { ...account, balance: Math.max(0, account.balance - chargeAmount) }
+          : account
+      )
+    }
+  }
+
+  // Keep behavior consistent with repayment flow: remove fully settled debt accounts.
+  nextDebtAccounts = nextDebtAccounts.filter((account) => account.balance > 0)
+
+  return {
+    transactions: nextTransactions,
+    debtAccounts: nextDebtAccounts,
+    debtCreditTransactions: nextDebtCreditTransactions,
+    balance: calculateCashBalanceFromTransactions(nextTransactions),
+  }
+}
 
 const readReminderCache = (): Record<string, number> => {
   if (typeof window === "undefined") return {}
@@ -85,6 +220,7 @@ export function useWalletData() {
   const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
 
   // Reminder engine: budgets, goals, and IPO windows.
   useEffect(() => {
@@ -872,6 +1008,7 @@ export function useWalletData() {
     setDebtAccounts(updatedDebts)
     saveToLocalStorage('debtAccounts', updatedDebts, true)
 
+    const debtAdditionTransactionId = generateId('tx')
     const debtCharge: DebtCreditTransaction = {
       id: generateId('debt_tx'),
       accountId: debtId,
@@ -881,6 +1018,7 @@ export function useWalletData() {
       description: description || `Added to ${debt?.name || 'debt'}`,
       date: new Date().toISOString(),
       balanceAfter: (debt ? debt.balance : 0) + amount,
+      sourceTransactionId: debtAdditionTransactionId,
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
@@ -889,7 +1027,7 @@ export function useWalletData() {
 
     // Also create a regular transaction for main transactions list
     const debtAdditionTransaction: Transaction = {
-      id: generateId('tx'),
+      id: debtAdditionTransactionId,
       type: "expense",
       amount,
       description: `Added to debt: ${debt?.name || 'debt'}`,
@@ -1002,8 +1140,9 @@ export function useWalletData() {
       }
     }
 
+    const paymentTransactionId = generateId('tx')
     const paymentTransaction: Transaction = {
-      id: generateId('tx'),
+      id: paymentTransactionId,
       type: "expense",
       amount: paymentAmount,
       description: `Debt payment: ${debt.name}`,
@@ -1055,6 +1194,7 @@ export function useWalletData() {
       description: `Payment towards ${debt.name}`,
       date: new Date().toISOString(),
       balanceAfter: Math.max(0, debt.balance - paymentAmount),
+      sourceTransactionId: paymentTransactionId,
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
@@ -1151,19 +1291,101 @@ export function useWalletData() {
     await saveDataWithIntegrity("goals", updatedGoals)
   }
 
-  const deleteTransaction = async (id: string) => {
-    const updatedTransactions = transactions.filter((transaction) => transaction.id !== id)
-    setTransactions(updatedTransactions)
-    await saveDataWithIntegrity("transactions", updatedTransactions)
-    // Calculate balance based on actual cash flow
-    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
-      if (tx.type === "income") {
-        return sum + (tx.actual ?? tx.amount)
-      } else {
-        return sum - (tx.actual ?? tx.amount)
+  useEffect(() => {
+    return () => {
+      if (pendingTransactionDeletionRef.current) {
+        clearTimeout(pendingTransactionDeletionRef.current.timeoutId)
+        pendingTransactionDeletionRef.current = null
       }
-    }, 0)
-    setBalance(newBalance)
+    }
+  }, [])
+
+  const applyWalletState = (nextState: {
+    transactions: Transaction[]
+    debtAccounts: DebtAccount[]
+    debtCreditTransactions: DebtCreditTransaction[]
+    balance: number
+  }) => {
+    setTransactions(nextState.transactions)
+    setDebtAccounts(nextState.debtAccounts)
+    setDebtCreditTransactions(nextState.debtCreditTransactions)
+    setBalance(nextState.balance)
+  }
+
+  const commitWalletState = async (nextState: {
+    transactions: Transaction[]
+    debtAccounts: DebtAccount[]
+    debtCreditTransactions: DebtCreditTransaction[]
+    balance: number
+  }) => {
+    await saveDataWithIntegrity("transactions", nextState.transactions)
+    await saveDataWithIntegrity("debtAccounts", nextState.debtAccounts)
+    await saveDataWithIntegrity("debtCreditTransactions", nextState.debtCreditTransactions)
+  }
+
+  const finalizePendingTransactionDeletion = async (transactionId: string) => {
+    const pending = pendingTransactionDeletionRef.current
+    if (!pending || pending.transactionId !== transactionId) return
+
+    clearTimeout(pending.timeoutId)
+    pendingTransactionDeletionRef.current = null
+
+    const nextState = computePostDeleteState(pending.snapshot, transactionId)
+    applyWalletState(nextState)
+    await commitWalletState(nextState)
+  }
+
+  const undoPendingTransactionDeletion = (transactionId: string) => {
+    const pending = pendingTransactionDeletionRef.current
+    if (!pending || pending.transactionId !== transactionId) return
+
+    clearTimeout(pending.timeoutId)
+    pendingTransactionDeletionRef.current = null
+    applyWalletState({
+      transactions: pending.snapshot.transactions,
+      debtAccounts: pending.snapshot.debtAccounts,
+      debtCreditTransactions: pending.snapshot.debtCreditTransactions,
+      balance: pending.snapshot.balance,
+    })
+    toast("Deletion undone")
+  }
+
+  const deleteTransaction = async (id: string) => {
+    const transactionExists = transactions.some((transaction) => transaction.id === id)
+    if (!transactionExists) return
+
+    if (pendingTransactionDeletionRef.current) {
+      await finalizePendingTransactionDeletion(pendingTransactionDeletionRef.current.transactionId)
+    }
+
+    const snapshot: TransactionDeleteSnapshot = {
+      transactions: [...transactions],
+      debtAccounts: [...debtAccounts],
+      debtCreditTransactions: [...debtCreditTransactions],
+      balance,
+    }
+
+    const nextState = computePostDeleteState(snapshot, id)
+    applyWalletState(nextState)
+
+    const timeoutId = setTimeout(() => {
+      void finalizePendingTransactionDeletion(id)
+    }, DELETE_UNDO_WINDOW_MS)
+
+    pendingTransactionDeletionRef.current = {
+      transactionId: id,
+      snapshot,
+      timeoutId,
+    }
+
+    toast("Transaction deleted", {
+      description: "Undo is available for 5 seconds.",
+      duration: DELETE_UNDO_WINDOW_MS,
+      action: {
+        label: "Undo",
+        onClick: () => undoPendingTransactionDeletion(id),
+      },
+    })
   }
 
   const deleteDebtAccount = async (id: string) => {
@@ -1179,6 +1401,11 @@ export function useWalletData() {
   }
 
   const clearAllData = async () => {
+    if (pendingTransactionDeletionRef.current) {
+      clearTimeout(pendingTransactionDeletionRef.current.timeoutId)
+      pendingTransactionDeletionRef.current = null
+    }
+
     // Clear data integrity records
     DataIntegrityManager.clearIntegrityRecords()
 
