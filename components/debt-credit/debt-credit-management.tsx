@@ -605,13 +605,13 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                               {/* Recent Transactions */}
                               {recentTransactions.length > 0 && (
                                 <div className="space-y-2">
-                                  <h5 className="font-medium text-sm flex items-center gap-2">
+                                  <h5 className="font-medium text-xs sm:text-sm flex items-center gap-2 flex-wrap">
                                     📊 Recent Transactions
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
-                                      className="text-xs h-6 px-2"
+                                      className="text-[10px] sm:text-xs h-6 px-2"
                                     >
                                       View All
                                     </Button>
@@ -869,13 +869,13 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                               {/* Recent Transactions */}
                               {recentTransactions.length > 0 && (
                                 <div className="space-y-2">
-                                  <h5 className="font-medium text-sm flex items-center gap-2">
+                                  <h5 className="font-medium text-xs sm:text-sm flex items-center gap-2 flex-wrap">
                                     📊 Recent Transactions
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
-                                      className="text-xs h-6 px-2"
+                                      className="text-[10px] sm:text-xs h-6 px-2"
                                     >
                                       View All
                                     </Button>

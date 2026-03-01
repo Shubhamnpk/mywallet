@@ -9,11 +9,57 @@ import { Badge } from "@/components/ui/badge"
 import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat } from "lucide-react"
 
 // QR Code interfaces
+type QRContentType = 'url' | 'email' | 'phone' | 'wifi' | 'contact' | 'calendar' | 'bitcoin' | 'text'
+
+interface QRPoint {
+  x: number
+  y: number
+}
+
+interface QRCodeLocation {
+  topLeftCorner: QRPoint
+  topRightCorner: QRPoint
+  bottomRightCorner: QRPoint
+  bottomLeftCorner: QRPoint
+}
+
+interface DecodedQRCode {
+  data: string
+  location: QRCodeLocation
+}
+
+interface QRBeautifiedData {
+  type: QRContentType
+  title: string
+  displayText: string
+  url?: string
+  email?: string | null
+  phone?: string | null
+  ssid?: string
+  password?: string | null
+  security?: string
+  name?: string | null
+  summary?: string
+  startDate?: string | null
+  location?: string | null
+  icsData?: string
+  address?: string
+  content?: string
+}
+
+interface TorchConstraintSet extends MediaTrackConstraintSet {
+  torch?: boolean
+}
+
+interface TorchTrackCapabilities extends MediaTrackCapabilities {
+  torch?: boolean
+}
+
 interface QRScanResult {
   data: string
   timestamp: number
   type: string
-  beautified?: any
+  beautified?: QRBeautifiedData
 }
 
 interface QRCodeScannerProps {
@@ -22,7 +68,7 @@ interface QRCodeScannerProps {
   onScanningChange: (scanning: boolean) => void
   cameraFacingMode: 'environment' | 'user'
   isFlashlightOn: boolean
-  onFlashlightToggle: () => void
+  onFlashlightToggle: (enabled: boolean) => void
   onSwitchCamera?: () => void
 }
 
@@ -40,17 +86,17 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   const [qrScanResult, setQrScanResult] = useState<QRScanResult | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
   const [isInitializingCamera, setIsInitializingCamera] = useState(false)
+  const [showScannerView, setShowScannerView] = useState(false)
   const qrVideoRef = useRef<HTMLVideoElement>(null)
   const qrStreamRef = useRef<MediaStream | null>(null)
   const qrFileInputRef = useRef<HTMLInputElement>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement>(null)
   const scanAnimRef = useRef<number | null>(null)
   const lastScannedRef = useRef<string | null>(null)
-  const jsQRRef = useRef<any>(null)
+  const jsQRRef = useRef<((data: Uint8ClampedArray, width: number, height: number, options?: { inversionAttempts?: 'attemptBoth' | 'dontInvert' | 'onlyInvert' | 'invertFirst' }) => DecodedQRCode | null) | null>(null)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
   const [torchAvailable, setTorchAvailable] = useState(false)
-  const [torchOn, setTorchOn] = useState(false)
   const [continuousScan, setContinuousScan] = useState(false)
 
   // Load jsQR library
@@ -95,8 +141,23 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     }
   }, [])
 
+  // Preload available cameras so camera select can populate early.
+  useEffect(() => {
+    if (!navigator.mediaDevices?.enumerateDevices) return
+
+    void listCameras()
+    const handleDeviceChange = () => {
+      void listCameras()
+    }
+
+    navigator.mediaDevices.addEventListener?.('devicechange', handleDeviceChange)
+    return () => {
+      navigator.mediaDevices.removeEventListener?.('devicechange', handleDeviceChange)
+    }
+  }, [listCameras])
+
   // Beautify QR code data
-  const beautifyQRData = useCallback((data: string): any => {
+  const beautifyQRData = useCallback((data: string): QRBeautifiedData => {
     // URL detection
     if (data.startsWith('http://') || data.startsWith('https://') || data.startsWith('www.')) {
       return {
@@ -211,10 +272,10 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   }, [])
 
   // Handle QR code actions
-  const handleQRAction = useCallback((beautified: any) => {
+  const handleQRAction = useCallback((beautified: QRBeautifiedData) => {
     switch (beautified.type) {
       case 'url':
-        window.open(beautified.url, '_blank')
+        window.open(beautified.url, '_blank', 'noopener,noreferrer')
         break
       case 'email':
         window.location.href = `mailto:${beautified.email}`
@@ -229,7 +290,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         copyToClipboard(beautified.icsData || beautified.displayText)
         break
       case 'bitcoin':
-        copyToClipboard(beautified.address)
+        copyToClipboard(beautified.address ?? beautified.displayText)
         break
       default:
         copyToClipboard(beautified.content || beautified.displayText)
@@ -254,97 +315,82 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
   }, [])
 
-  // Start camera
-  const startQRCamera = useCallback(async () => {
-    if (!isCameraSupported()) {
-      toast.error('Camera is not supported in this browser')
-      return
+  // Bind stream to video element. This handles fast camera starts where
+  // getUserMedia resolves before the video ref is mounted.
+  const attachStreamToVideo = useCallback(async (stream: MediaStream) => {
+    const video = qrVideoRef.current
+    if (!video) return false
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
     }
 
-    setIsInitializingCamera(true)
     try {
-      // Stop any existing stream
-      if (qrStreamRef.current) {
-        qrStreamRef.current.getTracks().forEach(track => track.stop())
-        qrStreamRef.current = null
-      }
-
-      const constraints = {
-        video: {
-          facingMode: cameraFacingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
-        },
-        audio: false
-      }
-
-  const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      qrStreamRef.current = stream
-
-      // Set the stream to video element
-      if (qrVideoRef.current) {
-        qrVideoRef.current.srcObject = stream
-        // try to play and then start scanning loop
-        try {
-          await qrVideoRef.current.play()
-        } catch (e) {
-          // ignore play errors; scanning will start when video has data
-        }
-      }
-
-  // determine active device id and torch support
-  const track = stream.getVideoTracks()[0]
-  const settings = track.getSettings()
-  const deviceId = (settings as any).deviceId || null
-  setCurrentDeviceId(deviceId)
-  // check torch capability
-  const caps = (track as any).getCapabilities?.()
-  setTorchAvailable(!!(caps && caps.torch))
-
-  setIsCameraActive(true)
-      toast.success('Camera ready - live scanning started')
-      // start live scan loop
-  await listCameras()
-  startLiveScan()
-    } catch (error) {
-      console.error('Camera error:', error)
-      // Provide specific error messages
-      let errorMessage = 'Camera access failed'
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          errorMessage = 'Camera access denied. Please allow camera permissions.'
-        } else if (error.name === 'NotFoundError') {
-          errorMessage = 'No camera found on this device.'
-        } else if (error.name === 'NotReadableError') {
-          errorMessage = 'Camera is already in use by another application.'
-        } else {
-          errorMessage = `Camera error: ${error.message}`
-        }
-      }
-      toast.error(errorMessage)
-    } finally {
-      setIsInitializingCamera(false)
+      await video.play()
+    } catch {
+      // Ignore autoplay/play races; another effect retry will handle it.
     }
-  }, [cameraFacingMode, isCameraSupported])
+
+    return true
+  }, [])
+
+  // Ensure scanner UI is painted before heavy camera initialization starts.
+  const waitForNextPaint = useCallback(async () => {
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  }, [])
+
+  const stopQRCamera = useCallback((options?: { silent?: boolean; notifyParent?: boolean; keepScannerView?: boolean }) => {
+    if (qrStreamRef.current) {
+      qrStreamRef.current.getTracks().forEach(track => track.stop())
+      qrStreamRef.current = null
+    }
+    if (qrVideoRef.current) {
+      qrVideoRef.current.srcObject = null
+    }
+    if (scanAnimRef.current) {
+      cancelAnimationFrame(scanAnimRef.current)
+      scanAnimRef.current = null
+    }
+    setIsCameraActive(false)
+    setIsInitializingCamera(false)
+    if (!options?.keepScannerView) {
+      setShowScannerView(false)
+    }
+    setTorchAvailable(false)
+    setCurrentDeviceId(null)
+
+    if (isFlashlightOn) {
+      onFlashlightToggle(false)
+    }
+
+    if (options?.notifyParent !== false) {
+      onScanningChange(false)
+    }
+    if (!options?.silent) {
+      toast.info('Camera stopped')
+    }
+  }, [isFlashlightOn, onFlashlightToggle, onScanningChange])
 
   // Toggle torch if supported
   const toggleTorch = useCallback(async () => {
     if (!qrStreamRef.current) return
     const track = qrStreamRef.current.getVideoTracks()[0]
     if (!track) return
+    const torchTrack = track as MediaStreamTrack & {
+      getCapabilities?: () => TorchTrackCapabilities
+    }
     try {
-      const newState = !torchOn
-      await (track as any).applyConstraints({ advanced: [{ torch: newState }] })
-      setTorchOn(newState)
+      const newState = !isFlashlightOn
+      await torchTrack.applyConstraints({ advanced: [{ torch: newState } as TorchConstraintSet] })
       toast.info(newState ? 'Flashlight enabled' : 'Flashlight disabled')
-      onFlashlightToggle?.()
+      onFlashlightToggle(newState)
     } catch (e) {
       console.warn('Torch toggle failed', e)
       toast.error('Flashlight not supported on this device')
     }
-  }, [torchOn, onFlashlightToggle])
+  }, [isFlashlightOn, onFlashlightToggle])
 
-  const drawDetectionBox = useCallback((location: any, ctx: CanvasRenderingContext2D) => {
+  const drawDetectionBox = useCallback((location: QRCodeLocation, ctx: CanvasRenderingContext2D) => {
     try {
       ctx.lineWidth = 4
       ctx.strokeStyle = '#22c55e'
@@ -362,7 +408,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
   // Live scan loop similar to the jsQR demo
   const startLiveScan = useCallback(() => {
-    if (!qrVideoRef.current || !qrCanvasRef.current || !jsQRRef.current) return
+    const jsQR = jsQRRef.current
+    if (!qrVideoRef.current || !qrCanvasRef.current || !jsQR) return
     const canvas = qrCanvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -375,7 +422,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         ctx.drawImage(qrVideoRef.current, 0, 0, canvas.width, canvas.height)
         try {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const code = jsQRRef.current(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' })
           ctx.clearRect(0, 0, canvas.width, canvas.height)
           if (code) {
             drawDetectionBox(code.location, ctx)
@@ -400,7 +447,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               // Stop scanning after successful detection unless continuous scan is enabled
               if (!continuousScan) {
                 stopQRCamera()
-                onScanningChange(false)
                 return
               } else {
                 // In continuous mode, reset lastScanned after a delay to allow rescanning same code
@@ -419,43 +465,15 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
     if (scanAnimRef.current) cancelAnimationFrame(scanAnimRef.current)
     scanAnimRef.current = requestAnimationFrame(loop)
-  }, [beautifyQRData, drawDetectionBox, onScanResult])
-
-  const stopQRCamera = useCallback(() => {
-    if (qrStreamRef.current) {
-      qrStreamRef.current.getTracks().forEach(track => track.stop())
-      qrStreamRef.current = null
-    }
-    if (qrVideoRef.current) {
-      qrVideoRef.current.srcObject = null
-    }
-    if (scanAnimRef.current) {
-      cancelAnimationFrame(scanAnimRef.current)
-      scanAnimRef.current = null
-    }
-    setIsCameraActive(false)
-    toast.info('Camera stopped')
-  }, [])
-
-  const switchQRCamera = useCallback(() => {
-    onSwitchCamera?.()
-    // if we have multiple cameras, cycle to the next one
-    if (availableCameras.length < 2) {
-      // fallback: restart with facing mode
-      setTimeout(() => startQRCamera(), 100)
-      return
-    }
-    const idx = availableCameras.findIndex(c => c.deviceId === currentDeviceId)
-    const next = availableCameras[(idx + 1) % availableCameras.length]
-    // restart with selected deviceId
-    stopQRCamera()
-    setTimeout(() => startQRCameraWithDevice(next.deviceId), 150)
-  }, [onSwitchCamera, startQRCamera])
+  }, [beautifyQRData, continuousScan, drawDetectionBox, onScanResult, stopQRCamera])
 
   // helper to start camera with specific device id
   const startQRCameraWithDevice = useCallback(async (deviceId?: string) => {
+    setShowScannerView(true)
+    await waitForNextPaint()
     if (!isCameraSupported()) {
       toast.error('Camera is not supported in this browser')
+      setShowScannerView(false)
       return
     }
 
@@ -466,7 +484,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         qrStreamRef.current = null
       }
 
-      const constraints: any = {
+      const constraints: MediaStreamConstraints = {
         video: {
           deviceId: deviceId ? { exact: deviceId } : undefined,
           facingMode: deviceId ? undefined : cameraFacingMode,
@@ -478,73 +496,143 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       qrStreamRef.current = stream
-      if (qrVideoRef.current) {
-        qrVideoRef.current.srcObject = stream
-        try {
-          await qrVideoRef.current.play()
-        } catch (e) {
-          console.warn('Video play failed:', e)
-        }      }
+      lastScannedRef.current = null
+      const attached = await attachStreamToVideo(stream)
 
       const track = stream.getVideoTracks()[0]
       const settings = track.getSettings()
-      const devId = (settings as any).deviceId || deviceId || null
+      const devId = settings.deviceId || deviceId || null
       setCurrentDeviceId(devId)
-      const caps = (track as any).getCapabilities?.()
+      const caps = track.getCapabilities?.() as TorchTrackCapabilities | undefined
       setTorchAvailable(!!(caps && caps.torch))
 
       setIsCameraActive(true)
-      await listCameras()
-      startLiveScan()
+      onScanningChange(true)
+      void listCameras()
+      if (attached) {
+        startLiveScan()
+      }
     } catch (error) {
       console.error('Camera error:', error)
       toast.error('Camera access failed')
+      setShowScannerView(false)
     } finally {
       setIsInitializingCamera(false)
     }
-  }, [cameraFacingMode, isCameraSupported, listCameras, startLiveScan])
+  }, [attachStreamToVideo, cameraFacingMode, isCameraSupported, listCameras, onScanningChange, startLiveScan, waitForNextPaint])
 
-  // Capture image from camera
-  const captureQRImage = useCallback(() => {
-    if (!qrVideoRef.current) {
-      toast.error('Camera not ready. Please try again.')
+  // Start camera
+  const startQRCamera = useCallback(async () => {
+    setShowScannerView(true)
+    await waitForNextPaint()
+    if (!isCameraSupported()) {
+      toast.error('Camera is not supported in this browser')
+      setShowScannerView(false)
       return
     }
 
-    if (!qrCanvasRef.current) {
-      toast.error('Capture failed. Please try again.')
-      return
-    }
-
-    const canvas = qrCanvasRef.current
-    const video = qrVideoRef.current
-
-    // Check if video has valid dimensions
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      toast.error('Camera feed not ready. Please wait a moment.')
-      return
-    }
-
-    const context = canvas.getContext('2d')
-    if (!context) {
-      toast.error('Capture failed. Please try again.')
-      return
-    }
-
+    setIsInitializingCamera(true)
     try {
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      context.drawImage(video, 0, 0)
+      // Stop any existing stream
+      if (qrStreamRef.current) {
+        qrStreamRef.current.getTracks().forEach(track => track.stop())
+        qrStreamRef.current = null
+      }
 
-      const imageData = canvas.toDataURL('image/png')
-      setSelectedImage(imageData)
-      setQrScanResult(null)
-      stopQRCamera()
-      toast.success('Photo captured! Ready to scan QR code.')
+      const constraints = {
+        video: {
+          facingMode: cameraFacingMode,
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        },
+        audio: false
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      qrStreamRef.current = stream
+      lastScannedRef.current = null
+      const attached = await attachStreamToVideo(stream)
+
+      const track = stream.getVideoTracks()[0]
+      const settings = track.getSettings()
+      const deviceId = settings.deviceId || null
+      setCurrentDeviceId(deviceId)
+      const caps = track.getCapabilities?.() as TorchTrackCapabilities | undefined
+      setTorchAvailable(!!(caps && caps.torch))
+
+      setIsCameraActive(true)
+      onScanningChange(true)
+      toast.success('Camera ready - live scanning started')
+      void listCameras()
+      if (attached) {
+        startLiveScan()
+      }
     } catch (error) {
-      toast.error('Failed to capture photo. Please try again.')
+      console.error('Camera error:', error)
+      let errorMessage = 'Camera access failed'
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Camera access denied. Please allow camera permissions.'
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No camera found on this device.'
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'Camera is already in use by another application.'
+        } else {
+          errorMessage = `Camera error: ${error.message}`
+        }
+      }
+      toast.error(errorMessage)
+      setShowScannerView(false)
+    } finally {
+      setIsInitializingCamera(false)
     }
-  }, [stopQRCamera])
+  }, [attachStreamToVideo, cameraFacingMode, isCameraSupported, listCameras, onScanningChange, startLiveScan, waitForNextPaint])
+
+  const switchQRCamera = useCallback(() => {
+    onSwitchCamera?.()
+
+    if (availableCameras.length < 2) {
+      stopQRCamera({ silent: true, notifyParent: false, keepScannerView: true })
+      setTimeout(() => startQRCamera(), 100)
+      return
+    }
+
+    const idx = availableCameras.findIndex(c => c.deviceId === currentDeviceId)
+    const next = availableCameras[(idx + 1) % availableCameras.length]
+    stopQRCamera({ silent: true, notifyParent: false, keepScannerView: true })
+    setTimeout(() => startQRCameraWithDevice(next.deviceId), 150)
+  }, [availableCameras, currentDeviceId, onSwitchCamera, startQRCamera, startQRCameraWithDevice, stopQRCamera])
+
+  // Keep scanner aligned with parent state changes.
+  useEffect(() => {
+    if (isScanning && !isCameraActive && !isInitializingCamera && !selectedImage) {
+      startQRCamera()
+      return
+    }
+    if (!isScanning && (isCameraActive || isInitializingCamera)) {
+      stopQRCamera({ silent: true, notifyParent: false })
+    }
+  }, [isCameraActive, isInitializingCamera, isScanning, selectedImage, startQRCamera, stopQRCamera])
+
+  // Rebind stream when camera UI mounts/re-mounts (e.g. reopening modal).
+  useEffect(() => {
+    if (!qrStreamRef.current) return
+    if (!isCameraActive && !isInitializingCamera) return
+
+    let cancelled = false
+
+    const syncVideo = async () => {
+      const attached = await attachStreamToVideo(qrStreamRef.current as MediaStream)
+      if (!cancelled && attached) {
+        startLiveScan()
+      }
+    }
+
+    syncVideo()
+    return () => {
+      cancelled = true
+    }
+  }, [attachStreamToVideo, isCameraActive, isInitializingCamera, startLiveScan])
 
   // Process the selected image
   const processQRImage = useCallback(async () => {
@@ -557,7 +645,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
     setIsProcessing(true)
     try {
       toast.info('Scanning QR code...')
-      // …rest of the scanning logic
+      // rest of the scanning logic
       // Create image element
       const img = new Image()
       img.src = selectedImage
@@ -614,14 +702,14 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   const resetQRScanner = useCallback(() => {
     setSelectedImage(null)
     setQrScanResult(null)
-    setIsCameraActive(false)
-    setIsInitializingCamera(false)
-  }, [])
+    setShowScannerView(false)
+    stopQRCamera({ silent: true })
+  }, [stopQRCamera])
 
   return (
     <div className="space-y-6">
        {/* Image Selection */}
-      {!selectedImage && !isCameraActive && !isInitializingCamera && (
+      {!selectedImage && !showScannerView && !isCameraActive && !isInitializingCamera && (
         <Card className="border-0 sm:border shadow-lg">
           <CardHeader className="pb-3 sm:pb-6 text-center">
             <CardTitle className="text-lg sm:text-xl">
@@ -684,7 +772,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       )}
 
       {/* Camera View */}
-      {(isCameraActive || isInitializingCamera) && (
+      {(showScannerView || isCameraActive || isInitializingCamera) && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -705,7 +793,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   <span className="sm:hidden">Switch</span>
                 </Button>
                 <Button
-                  onClick={stopQRCamera}
+                  onClick={() => stopQRCamera()}
                   variant="outline"
                   size="sm"
                   disabled={isInitializingCamera}
@@ -754,8 +842,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   disabled={!torchAvailable || isInitializingCamera}
                   className="text-xs sm:text-sm px-2 sm:px-3"
                 >
-                  <span className="hidden sm:inline">{torchOn ? 'Flash Off' : 'Flash On'}</span>
-                  <span className="sm:hidden">{torchOn ? 'Off' : 'On'}</span>
+                  <span className="hidden sm:inline">{isFlashlightOn ? 'Flash Off' : 'Flash On'}</span>
+                  <span className="sm:hidden">{isFlashlightOn ? 'Off' : 'On'}</span>
                 </Button>
               </div>
             </div>
@@ -778,11 +866,11 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
               {/* Loading overlay */}
               {isInitializingCamera && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                  <div className="text-center">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-white rounded-lg">
+                  <div className="text-center px-4">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                    <div className="text-sm">Starting camera...</div>
-                    <div className="text-xs mt-2 opacity-75">Please allow camera access when prompted</div>
+                    <div className="text-sm font-medium">Starting camera...</div>
+                    <div className="text-xs mt-1 opacity-80">Please allow camera permission if prompted</div>
                   </div>
                 </div>
               )}
@@ -814,10 +902,10 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                 <div className="text-sm text-blue-700 dark:text-blue-300">
                   <strong>Camera Tips:</strong>
                   <ul className="mt-1 space-y-1 text-xs">
-                    <li>• Position QR code in the center square</li>
-                    <li>• Ensure good lighting for better detection</li>
-                    <li>• Hold camera steady when capturing</li>
-                    <li>• QR code should be clearly visible</li>
+                    <li>- Position QR code in the center square</li>
+                    <li>- Ensure good lighting for better detection</li>
+                    <li>- Hold camera steady when capturing</li>
+                    <li>- QR code should be clearly visible</li>
                   </ul>
                 </div>
               </div>
@@ -943,9 +1031,14 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 
             <div className="flex gap-2 sm:gap-3">
               <Button
-                onClick={() => handleQRAction(qrScanResult.beautified)}
+                onClick={() => {
+                  if (qrScanResult.beautified) {
+                    handleQRAction(qrScanResult.beautified)
+                  }
+                }}
                 className="flex-1 text-xs sm:text-sm"
                 size="sm"
+                disabled={!qrScanResult.beautified}
               >
                 {qrScanResult.beautified?.type === 'url' && 'Open Link'}
                 {qrScanResult.beautified?.type === 'email' && 'Send Email'}
@@ -975,3 +1068,4 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
 }
 
 export default QRCodeScanner
+

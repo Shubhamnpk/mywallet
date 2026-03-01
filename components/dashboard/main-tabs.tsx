@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Receipt, PiggyBank, Target, CreditCard, TrendingUp, FolderOpen, Briefcase } from "lucide-react"
@@ -35,6 +35,28 @@ interface MainTabsProps {
   debtAccounts?: any[]
 }
 
+// Custom hook for delayed tooltip
+function useDelayedTooltip(delay: number = 3000) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleMouseEnter = useCallback(() => {
+    timeoutRef.current = setTimeout(() => {
+      setShowTooltip(true)
+    }, delay)
+  }, [delay])
+
+  const handleMouseLeave = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    setShowTooltip(false)
+  }, [])
+
+  return { showTooltip, handleMouseEnter, handleMouseLeave }
+}
+
 export function MainTabs({
   transactions,
   budgets,
@@ -57,16 +79,13 @@ export function MainTabs({
 }: MainTabsProps) {
   const [activeTab, setActiveTab] = useState("transactions")
 
-  // Calculate summary stats for badges
   const recentTransactions = transactions.slice(0, 5).length
   const activeBudgets = budgets.filter((b) => b.spent < b.limit).length
   const activeGoals = goals.filter((g) => g.currentAmount < g.targetAmount).length
   const customCategories = categories.filter((c) => !c.isDefault).length
 
-  // Calculate insights badge (simplified check for activity)
   const hasInsights = transactions.length > 0
 
-  // Validate session on component mount and tab changes
   useEffect(() => {
     const validateSession = () => {
       if (!SessionManager.isSessionValid()) {
@@ -142,6 +161,35 @@ export function MainTabs({
     },
   ]
 
+  // Tab trigger component with delayed tooltip
+  const TabTriggerWithTooltip = ({ tab }: { tab: typeof tabs[0] }) => {
+    const { showTooltip, handleMouseEnter, handleMouseLeave } = useDelayedTooltip(800)
+
+    return (
+      <TabsTrigger
+        key={tab.value}
+        value={tab.value}
+        className="flex flex-col items-center gap-2 p-4 data-[state=active]:bg-background data-[state=active]:shadow-sm relative"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div className="flex items-center gap-2">
+          <tab.icon className="w-4 h-4" />
+          <span className="font-medium">{tab.label}</span>
+          {tab.badge && (
+            <Badge variant="secondary" className="text-xs h-5 px-1.5">
+            </Badge>
+          )}
+        </div>
+        {showTooltip && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 px-3 py-1.5 text-xs bg-popover text-popover-foreground border rounded-md shadow-md animate-in fade-in-0 zoom-in-95 duration-200 whitespace-nowrap">
+            {tab.description}
+          </div>
+        )}
+      </TabsTrigger>
+    )
+  }
+
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -149,21 +197,7 @@ export function MainTabs({
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/50">
             {tabs.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="flex flex-col items-center gap-2 p-4 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <tab.icon className="w-4 h-4" />
-                  <span className="font-medium">{tab.label}</span>
-                  {tab.badge && (
-                    <Badge variant="secondary" className="text-xs h-5 px-1.5">
-                    </Badge>
-                  )}
-                </div>
-                <span className="text-xs text-muted-foreground hidden xl:block">{tab.description}</span>
-              </TabsTrigger>
+              <TabTriggerWithTooltip key={tab.value} tab={tab} />
             ))}
           </TabsList>
         </div>

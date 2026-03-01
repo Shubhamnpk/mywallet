@@ -36,8 +36,8 @@ export default function ReleasesPage() {
         <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
       </div>
 
-      <div className="relative z-10 border-b bg-card/40 backdrop-blur-xl border-border/60">
-        <div className="container mx-auto max-w-5xl px-4 py-6 sm:py-8">
+      <div className="relative z-10 border-b bg-card/40 backdrop-blur-xl border-border/60 w-full">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Badge className="rounded-full bg-primary text-primary-foreground">
               <Globe className="mr-1.5 h-3.5 w-3.5" />
@@ -68,7 +68,7 @@ export default function ReleasesPage() {
         </div>
       </div>
 
-      <div className="relative z-10 container mx-auto max-w-5xl px-4 py-8 sm:py-10 space-y-6">
+      <div className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
         <Card className="bg-card/80 backdrop-blur-xl border-border shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl sm:text-2xl">
