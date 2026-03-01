@@ -196,7 +196,10 @@ export default function WelcomePage() {
                     Get Started Free
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
-                  <button className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300">
+                  <button
+                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                  >
                     Watch Demo
                   </button>
                 </div>
@@ -711,7 +714,17 @@ export default function WelcomePage() {
                   <Link href="/welcome?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
                     Try Web Version
                   </Link>
-                  <button className="px-10 py-5 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300">
+                  <button
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && 'beforeinstallprompt' in window) {
+                        // @ts-ignore
+                        window.deferredPrompt?.prompt();
+                      } else {
+                        alert('To install: Tap the menu button in your browser and select "Add to Home Screen" or "Install App"');
+                      }
+                    }}
+                    className="px-10 py-5 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                  >
                     Download Mobile App
                   </button>
                 </div>

@@ -914,12 +914,23 @@ export function PortfolioList() {
                                                                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
                                                                     {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
                                                                         <div className="flex flex-col gap-1 items-start">
-                                                                            <div className={cn(
-                                                                                "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
-                                                                                ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
-                                                                            )}>
-                                                                                <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
-                                                                                {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <div className={cn(
+                                                                                    "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
+                                                                                    ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
+                                                                                )}>
+                                                                                    <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
+                                                                                    {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
+                                                                                </div>
+                                                                                {ipo.is_reserved_share && (
+                                                                                    <Badge
+                                                                                        variant="outline"
+                                                                                        title={ipo.reserved_for || "Reserved IPO share"}
+                                                                                        className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                                                                    >
+                                                                                        Reserved
+                                                                                    </Badge>
+                                                                                )}
                                                                             </div>
                                                                             {ipo.status === 'upcoming' && ipo.openingDay && (
                                                                                 <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">

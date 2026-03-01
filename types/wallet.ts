@@ -246,6 +246,8 @@ export interface UpcomingIPO {
   announcement_date: string
   full_text: string
   url: string
+  is_reserved_share?: boolean
+  reserved_for?: string
   scraped_at: string
   status?: 'upcoming' | 'open' | 'closed'
   daysRemaining?: number
@@ -253,4 +255,60 @@ export interface UpcomingIPO {
   closingDate?: string
   openingDay?: string
   closingDay?: string
+}
+
+export interface TopStockItem {
+  symbol: string
+  ltp: number
+  pointChange: number
+  percentageChange: number
+}
+
+export interface TopStocksData {
+  top_gainer: TopStockItem[]
+  top_loser: TopStockItem[]
+  top_turnover: TopStockItem[]
+  top_trade: TopStockItem[]
+  top_transaction: TopStockItem[]
+}
+
+export interface MarketSummaryMetric {
+  detail: string
+  value: number
+}
+
+export interface MarketSummaryHistoryItem {
+  businessDate: string
+  totalTurnover: number
+  totalTradedShares: number
+  totalTransactions: number
+  tradedScrips: number
+}
+
+export interface NepseNoticeGeneral {
+  id: number
+  noticeHeading: string
+}
+
+export interface NepseDisclosure {
+  id: number
+  newsHeadline: string
+  newsBody?: string
+  addedDate?: string
+  applicationDocumentDetailsList?: Array<{ filePath?: string; encryptedId?: string }>
+}
+
+export interface NepseExchangeMessage {
+  id: number
+  messageTitle: string
+  messageBody?: string
+  expiryDate?: string
+  filePath?: string | null
+}
+
+export interface NepseNoticesBundle {
+  general: NepseNoticeGeneral[]
+  company: NepseDisclosure[]
+  exchange: NepseExchangeMessage[]
+  last_updated?: string
 }
