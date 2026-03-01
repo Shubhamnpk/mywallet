@@ -48,6 +48,11 @@ export function PortfolioList() {
         getFaceValue,
         upcomingIPOs,
         isIPOsLoading,
+        topStocks,
+        marketSummary,
+        noticesBundle,
+        disclosures,
+        exchangeMessages,
     } = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
 
@@ -70,6 +75,7 @@ export function PortfolioList() {
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
+    const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(true)
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
@@ -452,6 +458,43 @@ export function PortfolioList() {
         return summaries
     }, [portfolio, portfolios])
 
+    const marketSnapshot = useMemo(() => {
+        const topGainer = topStocks?.top_gainer?.[0]
+        const topLoser = topStocks?.top_loser?.[0]
+        const turnoverMetric = marketSummary.find((metric) =>
+            (metric.detail || "").toLowerCase().includes("turnover"),
+        )
+
+        return {
+            topGainer,
+            topLoser,
+            turnover: typeof turnoverMetric?.value === "number" ? turnoverMetric.value : null,
+        }
+    }, [topStocks, marketSummary])
+
+    const overviewNotifications = useMemo(() => {
+        const general = (noticesBundle?.general || []).slice(0, 4).map((n) => ({
+            id: `general-${n.id}`,
+            title: "NEPSE Notice",
+            text: n.noticeHeading || "General market notice available.",
+            tone: "info" as const,
+        }))
+        const company = disclosures.slice(0, 4).map((d) => ({
+            id: `disclosure-${d.id}`,
+            title: "Company Disclosure",
+            text: d.newsHeadline || "A company disclosure was published.",
+            tone: "warning" as const,
+        }))
+        const exchange = exchangeMessages.slice(0, 4).map((m) => ({
+            id: `exchange-${m.id}`,
+            title: "Exchange Message",
+            text: m.messageTitle || "A new exchange message is available.",
+            tone: "success" as const,
+        }))
+
+        return [...general, ...company, ...exchange].slice(0, 8)
+    }, [noticesBundle, disclosures, exchangeMessages])
+
     const ipoInsights = useMemo(() => {
         const normalizeIpoName = (value?: string) =>
             (value || "")
@@ -767,6 +810,92 @@ export function PortfolioList() {
 
                     <div className="mt-8">
                         {renderOverviewHeader()}
+                        {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null || overviewNotifications.length > 0) && (
+                            <div className="mb-6">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-between rounded-xl font-black text-xs uppercase tracking-widest border-primary/20 bg-card/60"
+                                    onClick={() => setIsOverviewFeedOpen((prev) => !prev)}
+                                >
+                                    Market & Notifications
+                                    {isOverviewFeedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </Button>
+                                {isOverviewFeedOpen && (
+                                    <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-transparent text-left">
+                                        <CardContent className="p-4 sm:p-5">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null) && (
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <BarChart3 className="w-4 h-4 text-primary" />
+                                                            <h4 className="text-sm font-black uppercase tracking-widest">Market Snapshot</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3 gap-3">
+                                                            <div className="rounded-xl border border-success/20 bg-success/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Gainer</p>
+                                                                <p className="text-sm font-black truncate">{marketSnapshot.topGainer?.symbol || "-"}</p>
+                                                                <p className="text-xs font-bold text-success">
+                                                                    {typeof marketSnapshot.topGainer?.percentageChange === "number"
+                                                                        ? `+${marketSnapshot.topGainer.percentageChange.toFixed(2)}%`
+                                                                        : "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-error/20 bg-error/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Loser</p>
+                                                                <p className="text-sm font-black truncate">{marketSnapshot.topLoser?.symbol || "-"}</p>
+                                                                <p className="text-xs font-bold text-error">
+                                                                    {typeof marketSnapshot.topLoser?.percentageChange === "number"
+                                                                        ? `${marketSnapshot.topLoser.percentageChange.toFixed(2)}%`
+                                                                        : "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Total Turnover</p>
+                                                                <p className="text-sm font-black truncate">
+                                                                    {typeof marketSnapshot.turnover === "number"
+                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                                                        : "-"}
+                                                                </p>
+                                                                <p className="text-[10px] font-bold text-primary">From NEPSE summary</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {overviewNotifications.length > 0 && (
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Activity className="w-4 h-4 text-primary" />
+                                                            <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                        </div>
+                                                        <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                                            {overviewNotifications.map((item) => (
+                                                                <div
+                                                                    key={item.id}
+                                                                    className={cn(
+                                                                        "rounded-xl border px-3 py-2",
+                                                                        item.tone === "info" && "border-info/20 bg-info/5",
+                                                                        item.tone === "warning" && "border-amber-500/20 bg-amber-500/5",
+                                                                        item.tone === "success" && "border-success/20 bg-success/5",
+                                                                    )}
+                                                                >
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                        {item.title}
+                                                                    </p>
+                                                                    <p className="text-xs font-semibold text-foreground/90 line-clamp-2">
+                                                                        {item.text}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {portfolios.map(p => renderPortfolioCard(p))}
                         </div>

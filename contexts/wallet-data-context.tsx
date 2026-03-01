@@ -15,6 +15,12 @@ import type {
   PortfolioItem,
   ShareTransaction,
   UpcomingIPO,
+  TopStocksData,
+  MarketSummaryMetric,
+  MarketSummaryHistoryItem,
+  NepseNoticesBundle,
+  NepseDisclosure,
+  NepseExchangeMessage,
 } from "@/types/wallet"
 type WalletDataContextType = {
   userProfile: UserProfile | null
@@ -35,6 +41,12 @@ type WalletDataContextType = {
   portfolio: PortfolioItem[]
   shareTransactions: ShareTransaction[]
   upcomingIPOs: UpcomingIPO[]
+  topStocks: TopStocksData | null
+  marketSummary: MarketSummaryMetric[]
+  marketSummaryHistory: MarketSummaryHistoryItem[]
+  noticesBundle: NepseNoticesBundle | null
+  disclosures: NepseDisclosure[]
+  exchangeMessages: NepseExchangeMessage[]
   scripNamesMap: Record<string, string>
   isIPOsLoading: boolean
   portfolios: Portfolio[]

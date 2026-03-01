@@ -17,6 +17,12 @@ import type {
   PortfolioItem,
   ShareTransaction,
   UpcomingIPO,
+  TopStocksData,
+  MarketSummaryMetric,
+  MarketSummaryHistoryItem,
+  NepseNoticesBundle,
+  NepseDisclosure,
+  NepseExchangeMessage,
 } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
@@ -219,6 +225,12 @@ export function useWalletData() {
   const [scripNamesMap, setScripNamesMap] = useState<Record<string, string>>({})
   const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
+  const [topStocks, setTopStocks] = useState<TopStocksData | null>(null)
+  const [marketSummary, setMarketSummary] = useState<MarketSummaryMetric[]>([])
+  const [marketSummaryHistory, setMarketSummaryHistory] = useState<MarketSummaryHistoryItem[]>([])
+  const [noticesBundle, setNoticesBundle] = useState<NepseNoticesBundle | null>(null)
+  const [disclosures, setDisclosures] = useState<NepseDisclosure[]>([])
+  const [exchangeMessages, setExchangeMessages] = useState<NepseExchangeMessage[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
 
@@ -509,6 +521,66 @@ export function useWalletData() {
         })
         .catch(err => console.error("Error fetching upcoming IPOs:", err))
         .finally(() => setIsIPOsLoading(false))
+
+      fetch("/api/nepse/top-stocks")
+        .then(res => res.json())
+        .then((data: TopStocksData) => {
+          if (data && typeof data === "object") {
+            setTopStocks({
+              top_gainer: Array.isArray(data.top_gainer) ? data.top_gainer : [],
+              top_loser: Array.isArray(data.top_loser) ? data.top_loser : [],
+              top_turnover: Array.isArray(data.top_turnover) ? data.top_turnover : [],
+              top_trade: Array.isArray(data.top_trade) ? data.top_trade : [],
+              top_transaction: Array.isArray(data.top_transaction) ? data.top_transaction : [],
+            })
+          }
+        })
+        .catch(err => console.error("Error fetching top stocks:", err))
+
+      fetch("/api/nepse/market-summary")
+        .then(res => res.json())
+        .then((data: MarketSummaryMetric[]) => {
+          if (Array.isArray(data)) {
+            setMarketSummary(data)
+          }
+        })
+        .catch(err => console.error("Error fetching market summary:", err))
+
+      fetch("/api/nepse/market-summary/history")
+        .then(res => res.json())
+        .then((data: MarketSummaryHistoryItem[]) => {
+          if (Array.isArray(data)) {
+            setMarketSummaryHistory(data)
+          }
+        })
+        .catch(err => console.error("Error fetching market summary history:", err))
+
+      fetch("/api/nepse/notices")
+        .then(res => res.json())
+        .then((data: NepseNoticesBundle) => {
+          if (data && typeof data === "object") {
+            setNoticesBundle(data)
+          }
+        })
+        .catch(err => console.error("Error fetching notices bundle:", err))
+
+      fetch("/api/nepse/disclosures")
+        .then(res => res.json())
+        .then((data: NepseDisclosure[]) => {
+          if (Array.isArray(data)) {
+            setDisclosures(data)
+          }
+        })
+        .catch(err => console.error("Error fetching disclosures:", err))
+
+      fetch("/api/nepse/exchange-messages")
+        .then(res => res.json())
+        .then((data: NepseExchangeMessage[]) => {
+          if (Array.isArray(data)) {
+            setExchangeMessages(data)
+          }
+        })
+        .catch(err => console.error("Error fetching exchange messages:", err))
     }
   }, [isLoaded])
 
@@ -2603,6 +2675,12 @@ export function useWalletData() {
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,
     upcomingIPOs,
+    topStocks,
+    marketSummary,
+    marketSummaryHistory,
+    noticesBundle,
+    disclosures,
+    exchangeMessages,
     scripNamesMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {
