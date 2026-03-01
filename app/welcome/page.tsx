@@ -173,7 +173,7 @@ export default function WelcomePage() {
                   </span>
                   <br />
                   <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                    Simplified mywallet 
+                    Simplified
                   </span>
                 </h1>
 
@@ -196,7 +196,10 @@ export default function WelcomePage() {
                     Get Started Free
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
-                  <button className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300">
+                  <button
+                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                  >
                     Watch Demo
                   </button>
                 </div>
@@ -212,7 +215,7 @@ export default function WelcomePage() {
                     <span>10k+ active users</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex text-primary">â˜…â˜…â˜…â˜…â˜…</div>
+                    <div className="flex text-primary">{'\u2605\u2605\u2605\u2605\u2605'}</div>
                     <span>4.9/5 rating</span>
                   </div>
                 </div>
@@ -526,7 +529,7 @@ export default function WelcomePage() {
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">{'\u2605\u2605\u2605\u2605\u2605'}</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "MyWallet completely changed how I manage my money. I've saved over $2,000 in the last 6 months thanks to the smart budgeting features."
@@ -544,7 +547,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">{'\u2605\u2605\u2605\u2605\u2605'}</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "The offline functionality is a game-changer. I can track expenses anywhere, even without internet. Perfect for travel!"
@@ -562,7 +565,7 @@ export default function WelcomePage() {
 
               <div className="bg-card backdrop-blur-sm rounded-xl p-8 border border-border shadow-lg">
                 <div className="flex items-center mb-4">
-                  <div className="flex text-primary text-lg">â˜…â˜…â˜…â˜…â˜…</div>
+                  <div className="flex text-primary text-lg">{'\u2605\u2605\u2605\u2605\u2605'}</div>
                 </div>
                 <p className="text-muted-foreground mb-6 italic">
                   "Finally achieved my dream vacation goal! The goal tracking and progress visualization kept me motivated every step of the way."
@@ -648,7 +651,7 @@ export default function WelcomePage() {
                   <div className="text-muted-foreground">Money Saved</div>
                 </div>
                 <div>
-                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9â˜…</div>
+                  <div className="text-4xl md:text-5xl font-bold text-primary mb-2">4.9{'\u2605'}</div>
                   <div className="text-muted-foreground">App Rating</div>
                 </div>
                 <div>
@@ -711,12 +714,22 @@ export default function WelcomePage() {
                   <Link href="/welcome?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
                     Try Web Version
                   </Link>
-                  <button className="px-10 py-5 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300">
+                  <button
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && 'beforeinstallprompt' in window) {
+                        // @ts-ignore
+                        window.deferredPrompt?.prompt();
+                      } else {
+                        alert('To install: Tap the menu button in your browser and select "Add to Home Screen" or "Install App"');
+                      }
+                    }}
+                    className="px-10 py-5 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                  >
                     Download Mobile App
                   </button>
                 </div>
                 <p className="text-sm text-muted-foreground mt-6">
-                  No credit card required â€¢ Free forever â€¢ Cancel anytime
+                  No credit card required {'\u2022'} Free forever {'\u2022'} Cancel anytime
                 </p>
               </div>
             </div>

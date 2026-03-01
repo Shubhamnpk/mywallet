@@ -258,6 +258,15 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                     {ipo.status === 'open' ? 'Currently Open' : ipo.status}
                                 </Badge>
                             )}
+                            {ipo.is_reserved_share && ipo.reserved_for && (
+                                <Badge
+                                    variant="outline"
+                                    title={ipo.reserved_for}
+                                    className="text-[10px] font-bold normal-case px-3 py-1 border-amber-500/30 bg-amber-500/5 text-amber-800 dark:text-amber-200 max-w-[220px] truncate"
+                                >
+                                    {ipo.reserved_for}
+                                </Badge>
+                            )}
                             {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
                                 <Badge variant="outline" className="text-[10px] font-black uppercase px-3 py-1 border-primary/20 text-primary bg-primary/10 backdrop-blur-sm">
                                     <Activity className={cn("w-3 h-3 mr-1.5", ipo.status === 'open' && "animate-pulse")} />

@@ -341,17 +341,31 @@ export function useWalletData() {
         .then(data => {
           if (Array.isArray(data)) {
             const processedIPOs: UpcomingIPO[] = data.map(ipo => {
+              const normalizedReservedFlag =
+                typeof ipo?.is_reserved_share === "boolean"
+                  ? ipo.is_reserved_share
+                  : typeof ipo?.is_reserved_share === "string"
+                    ? ipo.is_reserved_share.trim().toLowerCase() === "true"
+                    : typeof ipo?.is_reserved_share === "number"
+                      ? ipo.is_reserved_share === 1
+                      : false
+
+              const baseIpo: UpcomingIPO = {
+                ...ipo,
+                is_reserved_share: normalizedReservedFlag,
+                reserved_for: typeof ipo?.reserved_for === "string" ? ipo.reserved_for.trim() : "",
+              }
               const dates = parseNepaliDateRange(ipo.date_range)
               if (dates) {
                 const statusInfo = getIPOStatus(dates.start, dates.end)
                 return {
-                  ...ipo,
+                  ...baseIpo,
                   ...statusInfo,
                   openingDate: dates.start.toISOString(),
                   closingDate: dates.end.toISOString()
                 }
               }
-              return ipo
+              return baseIpo
             })
             setUpcomingIPOs(processedIPOs)
 
