@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react"
 import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,9 @@ import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { UpcomingIPO } from "@/types/wallet"
 
 export function PortfolioList() {
+    const showReservedDebugBadge =
+        process.env.NODE_ENV !== "production" &&
+        process.env.NEXT_PUBLIC_SHOW_IPO_RESERVED_DEBUG === "true"
     const {
         portfolio,
         shareTransactions,
@@ -50,6 +53,7 @@ export function PortfolioList() {
         isIPOsLoading,
         topStocks,
         marketSummary,
+        marketSummaryHistory,
         noticesBundle,
         disclosures,
         exchangeMessages,
@@ -75,7 +79,12 @@ export function PortfolioList() {
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
-    const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(true)
+    const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
+    const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
+    const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
+    const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
+    const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
+    const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
@@ -471,6 +480,65 @@ export function PortfolioList() {
             turnover: typeof turnoverMetric?.value === "number" ? turnoverMetric.value : null,
         }
     }, [topStocks, marketSummary])
+
+    const marketHistorySeries = useMemo(() => {
+        if (!Array.isArray(marketSummaryHistory) || marketSummaryHistory.length === 0) return []
+
+        const parseBusinessDate = (value: string) => {
+            const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+            if (!match) return null
+            const year = Number(match[1])
+            const month = Number(match[2])
+            const day = Number(match[3])
+            if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+            if (month < 1 || month > 12 || day < 1 || day > 31) return null
+            return { year, month, day }
+        }
+
+        const normalized = [...marketSummaryHistory]
+            .map((row) => {
+                const parsed = row.businessDate ? parseBusinessDate(row.businessDate) : null
+                if (!parsed) return null
+                return {
+                    ...row,
+                    parsed,
+                    sortTs: Date.UTC(parsed.year, parsed.month - 1, parsed.day),
+                }
+            })
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .sort((a, b) => a.sortTs - b.sortTs)
+
+        if (marketHistoryView === "yearly") {
+            const byYear = new Map<string, { turnover: number; transactions: number }>()
+            normalized.forEach((row) => {
+                const year = row.parsed.year.toString()
+                const prev = byYear.get(year) || { turnover: 0, transactions: 0 }
+                byYear.set(year, {
+                    turnover: prev.turnover + (row.totalTurnover || 0),
+                    transactions: prev.transactions + (row.totalTransactions || 0),
+                })
+            })
+
+            const yearlySeries = Array.from(byYear.entries())
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                .map(([year, value]) => ({
+                    date: year,
+                    turnoverCr: Number((value.turnover / 10000000).toFixed(2)),
+                    transactionsK: Number((value.transactions / 1000).toFixed(1)),
+                }))
+
+            if (yearWindow === "all") return yearlySeries
+            return yearlySeries.slice(-Number(yearWindow))
+        }
+
+        const dailySeries = normalized.map((row) => ({
+            date: new Date(row.sortTs).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+            turnoverCr: Number(((row.totalTurnover || 0) / 10000000).toFixed(2)),
+            transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
+        }))
+
+        return dailySeries.slice(-Number(dayWindow))
+    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
 
     const overviewNotifications = useMemo(() => {
         const general = (noticesBundle?.general || []).slice(0, 4).map((n) => ({
@@ -891,6 +959,147 @@ export function PortfolioList() {
                                                     </div>
                                                 )}
                                             </div>
+                                            {marketHistorySeries.length > 0 && (
+                                                <div className="mt-4 border-t border-primary/10 pt-4">
+                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20"
+                                                            onClick={() => setIsMarketHistoryOpen((prev) => !prev)}
+                                                        >
+                                                            {isMarketHistoryOpen ? "Hide Market History Chart" : "Show Market History Chart"}
+                                                            {isMarketHistoryOpen ? <ChevronUp className="ml-2 w-3.5 h-3.5" /> : <ChevronDown className="ml-2 w-3.5 h-3.5" />}
+                                                        </Button>
+                                                        <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
+                                                            <SelectTrigger className="h-8 sm:w-[130px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="yearly">Yearly</SelectItem>
+                                                                <SelectItem value="daily">Daily</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {marketHistoryView === "yearly" ? (
+                                                            <Select value={yearWindow} onValueChange={(value) => setYearWindow(value as "5" | "10" | "all")}>
+                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="5">Last 5Y</SelectItem>
+                                                                    <SelectItem value="10">Last 10Y</SelectItem>
+                                                                    <SelectItem value="all">All Years</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        ) : (
+                                                            <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
+                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="30">Last 30D</SelectItem>
+                                                                    <SelectItem value="90">Last 90D</SelectItem>
+                                                                    <SelectItem value="365">Last 1Y</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        )}
+                                                        <div className="flex items-center gap-1 sm:ml-auto">
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "both" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                                onClick={() => setHistorySeriesMode("both")}
+                                                            >
+                                                                Both
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "turnover" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/30 text-primary"
+                                                                onClick={() => setHistorySeriesMode("turnover")}
+                                                            >
+                                                                Turnover
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "transactions" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                                                onClick={() => setHistorySeriesMode("transactions")}
+                                                            >
+                                                                Transactions
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    {isMarketHistoryOpen && (
+                                                        <div className="mt-3 h-[240px] rounded-xl border border-primary/10 bg-background/50 p-2">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <LineChart data={marketHistorySeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "hsl(var(--primary))" }} />
+                                                                    )}
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} />
+                                                                    )}
+                                                                    <Tooltip
+                                                                        content={({ active, payload, label }) => {
+                                                                            if (!active || !payload || payload.length === 0) return null
+                                                                            const turnoverValue = payload.find((p) => p.dataKey === "turnoverCr")?.value
+                                                                            const txValue = payload.find((p) => p.dataKey === "transactionsK")?.value
+                                                                            return (
+                                                                                <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-lg px-3 py-2">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                                                                        {marketHistoryView === "yearly" ? `Year ${label}` : label}
+                                                                                    </p>
+                                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                                        <p className="text-xs font-bold text-primary">
+                                                                                            Turnover: {typeof turnoverValue === "number" ? turnoverValue.toFixed(2) : turnoverValue} Cr
+                                                                                        </p>
+                                                                                    )}
+                                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                            Transactions: {typeof txValue === "number" ? txValue.toFixed(1) : txValue} K
+                                                                                        </p>
+                                                                                    )}
+                                                                                </div>
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            yAxisId="left"
+                                                                            dataKey="turnoverCr"
+                                                                            name="Turnover (Cr)"
+                                                                            stroke="#f97316"
+                                                                            strokeWidth={3}
+                                                                            dot={false}
+                                                                            activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
+                                                                        />
+                                                                    )}
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            yAxisId="right"
+                                                                            dataKey="transactionsK"
+                                                                            name="Transactions (K)"
+                                                                            stroke="#10b981"
+                                                                            strokeWidth={2.5}
+                                                                            dot={false}
+                                                                            activeDot={{ r: 4, strokeWidth: 0, fill: "#10b981" }}
+                                                                        />
+                                                                    )}
+                                                                </LineChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </CardContent>
                                     </Card>
                                 )}
@@ -1041,9 +1250,9 @@ export function PortfolioList() {
                                                             </div>
                                                             <div className="flex items-start flex-wrap gap-y-2 gap-x-3 sm:gap-x-4">
                                                                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
-                                                                    {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
-                                                                        <div className="flex flex-col gap-1 items-start">
-                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                    <div className="flex flex-col gap-1 items-start">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
                                                                                 <div className={cn(
                                                                                     "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
                                                                                     ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
@@ -1051,23 +1260,32 @@ export function PortfolioList() {
                                                                                     <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
                                                                                     {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
                                                                                 </div>
-                                                                                {ipo.is_reserved_share && (
-                                                                                    <Badge
-                                                                                        variant="outline"
-                                                                                        title={ipo.reserved_for || "Reserved IPO share"}
-                                                                                        className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                                                                                    >
-                                                                                        Reserved
-                                                                                    </Badge>
-                                                                                )}
-                                                                            </div>
-                                                                            {ipo.status === 'upcoming' && ipo.openingDay && (
-                                                                                <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
-                                                                                    Starts on {ipo.openingDay}
-                                                                                </span>
+                                                                            )}
+                                                                            {ipo.is_reserved_share && (
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    title={ipo.reserved_for || "Reserved IPO share"}
+                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                                                                >
+                                                                                    Reserved
+                                                                                </Badge>
+                                                                            )}
+                                                                            {showReservedDebugBadge && (
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    title={ipo.reserved_for || "(empty)"}
+                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-mono normal-case tracking-tight border-muted-foreground/30 text-muted-foreground"
+                                                                                >
+                                                                                    reserved_for: {ipo.reserved_for || "(empty)"}
+                                                                                </Badge>
                                                                             )}
                                                                         </div>
-                                                                    )}
+                                                                        {ipo.status === 'upcoming' && ipo.openingDay && (
+                                                                            <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
+                                                                                Starts on {ipo.openingDay}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>

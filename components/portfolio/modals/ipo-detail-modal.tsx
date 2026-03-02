@@ -258,7 +258,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                     {ipo.status === 'open' ? 'Currently Open' : ipo.status}
                                 </Badge>
                             )}
-                            {ipo.is_reserved_share && ipo.reserved_for && (
+                            {(ipo.is_reserved_share || Boolean(ipo.reserved_for)) && ipo.reserved_for && (
                                 <Badge
                                     variant="outline"
                                     title={ipo.reserved_for}

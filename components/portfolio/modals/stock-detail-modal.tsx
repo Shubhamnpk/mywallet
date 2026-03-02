@@ -13,6 +13,18 @@ import { Activity, BarChart3, TrendingDown, TrendingUp, Calendar, Info, Clock, E
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useState } from "react"
+
+type ProposedDividendRecord = {
+    id: number
+    symbol: string
+    company_name: string
+    cash_dividend?: string
+    bonus_share?: string
+    fiscal_year?: string
+    announcement_date?: string
+    scraped_at?: string
+}
 
 interface StockDetailModalProps {
     item: PortfolioItem | null
@@ -22,6 +34,10 @@ interface StockDetailModalProps {
 
 export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalProps) {
     const { scripNamesMap } = useWalletData()
+    const [showDividendHistory, setShowDividendHistory] = useState(false)
+    const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
+    const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
+    const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
     const current = item?.currentPrice || item?.buyPrice || 0
     const investment = (item?.units || 0) * (item?.buyPrice || 0)
     const value = (item?.units || 0) * current
@@ -34,10 +50,67 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const isDailyProfit = dailyChange >= 0
     const companyName = item ? (scripNamesMap[item.symbol.trim().toUpperCase()] || "") : ""
 
+    const parsePositiveNumber = (value?: string) => {
+        if (!value) return 0
+        const parsed = Number.parseFloat(value.replace(/,/g, "").trim())
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    }
+
+    const normalizeCompany = (value?: string) =>
+        (value || "")
+            .toLowerCase()
+            .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, "")
+            .replace(/[().,-]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+
+    const loadDividendHistory = async () => {
+        if (dividendHistory || isDividendHistoryLoading) return
+        setIsDividendHistoryLoading(true)
+        setDividendHistoryError(null)
+        try {
+            const response = await fetch("/api/nepse/proposed-dividend/history-all-years")
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error || "Failed to fetch dividend history")
+            }
+            if (!Array.isArray(data)) {
+                throw new Error("Dividend history response was invalid")
+            }
+            setDividendHistory(data as ProposedDividendRecord[])
+        } catch (error: any) {
+            setDividendHistoryError(error?.message || "Could not load dividend history right now.")
+        } finally {
+            setIsDividendHistoryLoading(false)
+        }
+    }
+
+    const symbol = item?.symbol?.trim().toUpperCase() || ""
+    const normalizedHoldingName = normalizeCompany(companyName)
+    const matchedDividendHistory = (dividendHistory || [])
+        .filter((record) => {
+            const recordSymbol = record.symbol?.trim().toUpperCase() || ""
+            if (symbol && recordSymbol === symbol) return true
+            const recordName = normalizeCompany(record.company_name)
+            return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
+        })
+        .sort((a, b) => {
+            const aDate = new Date(a.announcement_date || a.scraped_at || 0).getTime()
+            const bDate = new Date(b.announcement_date || b.scraped_at || 0).getTime()
+            return bDate - aDate
+        })
+
+    const latestDividend = matchedDividendHistory[0]
+    const latestCashPercent = parsePositiveNumber(latestDividend?.cash_dividend)
+    const latestBonusPercent = parsePositiveNumber(latestDividend?.bonus_share)
+    const heldUnits = item?.units || 0
+    const estimatedCashAmount = latestCashPercent * heldUnits
+    const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             {item && (
-                <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden" showCloseButton={false}>
+                <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
                     <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative">
                         <Button
                             variant="ghost"
@@ -93,7 +166,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                         </div>
                     </DialogHeader>
 
-                    <div className="p-6 pt-2 space-y-6">
+                    <div className="p-6 pt-2 space-y-6 flex-1 overflow-y-auto show-scrollbars">
                         {/* Performance Card */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
@@ -164,6 +237,96 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     Long Term
                                 </Badge>
                             </div>
+                        </div>
+
+                        <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                                    Dividend History
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2.5 text-[10px] font-black uppercase tracking-widest border-primary/20"
+                                    onClick={() => {
+                                        const nextValue = !showDividendHistory
+                                        setShowDividendHistory(nextValue)
+                                        if (nextValue) {
+                                            void loadDividendHistory()
+                                        }
+                                    }}
+                                >
+                                    {showDividendHistory ? "Hide" : "Show"}
+                                </Button>
+                            </div>
+
+                            {showDividendHistory && (
+                                <div className="space-y-3">
+                                    {isDividendHistoryLoading && (
+                                        <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
+                                    )}
+
+                                    {!isDividendHistoryLoading && dividendHistoryError && (
+                                        <p className="text-xs text-destructive">{dividendHistoryError}</p>
+                                    )}
+
+                                    {!isDividendHistoryLoading && !dividendHistoryError && matchedDividendHistory.length === 0 && (
+                                        <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
+                                    )}
+
+                                    {!isDividendHistoryLoading && !dividendHistoryError && matchedDividendHistory.length > 0 && (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
+                                                    <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
+                                                    <p className="text-[10px] text-green-700/80 mt-0.5">
+                                                        Est. cash for {heldUnits} units: NPR {estimatedCashAmount.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                                <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
+                                                    <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
+                                                    <p className="text-[10px] text-blue-700/80 mt-0.5">
+                                                        Est. bonus for {heldUnits} units: {estimatedBonusUnits.toFixed(2)} units
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                <div className="max-h-40 overflow-y-auto show-scrollbars">
+                                                    <table className="w-full text-left">
+                                                        <thead className="sticky top-0 bg-muted/70">
+                                                            <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                <th className="px-3 py-2">FY</th>
+                                                                <th className="px-3 py-2">Cash</th>
+                                                                <th className="px-3 py-2">Bonus</th>
+                                                                <th className="px-3 py-2">Date</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {matchedDividendHistory.slice(0, 20).map((record) => (
+                                                                <tr key={`${record.id}-${record.fiscal_year}-${record.announcement_date}`} className="border-t border-muted/20">
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-green-700">
+                                                                        {parsePositiveNumber(record.cash_dividend).toFixed(2)}%
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">
+                                                                        {parsePositiveNumber(record.bonus_share).toFixed(2)}%
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-[11px] text-muted-foreground">
+                                                                        {record.announcement_date || "N/A"}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 pt-2">
