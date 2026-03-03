@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Camera, Mic, Calculator, Lock, Gamepad2 } from "lucide-react"
+import { Plus, Camera, Mic, Calculator, Lock, Gamepad2, ArrowLeftRight } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScanner from "./receipt-scanner"
 import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
+import { CurrencyConverterDialog } from "./currency-converter-dialog"
 
 declare global {
   interface Window {
@@ -35,6 +36,7 @@ const quickActions = [
   { id: "scan", icon: Camera, label: "Scan", color: "bg-emerald-500" },
   { id: "voice", icon: Mic, label: "Voice", color: "bg-blue-500" },
   { id: "calc", icon: Calculator, label: "Calc", color: "bg-amber-500" },
+  { id: "convert", icon: ArrowLeftRight, label: "Convert", color: "bg-cyan-500" },
   { id: "game", icon: Gamepad2, label: "Game", color: "bg-purple-500" },
   { id: "lock", icon: Lock, label: "Lock", color: "bg-red-500" },
 ]
@@ -65,6 +67,7 @@ export function FloatingAddButton({
   const [prefilledReceiptImage, setPrefilledReceiptImage] = useState("")
   const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false)
   const [isGamingPlaceOpen, setIsGamingPlaceOpen] = useState(false)
+  const [isCurrencyConverterOpen, setIsCurrencyConverterOpen] = useState(false)
 
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
@@ -106,6 +109,9 @@ export function FloatingAddButton({
           break
         case "calc":
           setIsCalculatorOpen(true)
+          break
+        case "convert":
+          setIsCurrencyConverterOpen(true)
           break
         case "game":
           setIsGamingPlaceOpen(true)
@@ -530,6 +536,11 @@ export function FloatingAddButton({
           </div>
         </DialogContent>
       </Dialog>
+
+      <CurrencyConverterDialog
+        isOpen={isCurrencyConverterOpen}
+        onOpenChange={setIsCurrencyConverterOpen}
+      />
 
       {/* Receipt Scanner */}
       <ReceiptScanner
