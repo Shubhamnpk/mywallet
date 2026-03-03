@@ -38,17 +38,38 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
-    const current = item?.currentPrice || item?.buyPrice || 0
-    const investment = (item?.units || 0) * (item?.buyPrice || 0)
-    const value = (item?.units || 0) * current
+    const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
+    const currencySymbol = isCrypto ? "$" : "रु"
+    const current = item?.currentPrice ?? item?.buyPrice ?? 0
+    const investment = (item?.units ?? 0) * (item?.buyPrice ?? 0)
+    const value = (item?.units ?? 0) * current
     const profitLoss = value - investment
     const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
+    const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
 
-    const dailyChange = item?.change || (item?.currentPrice && item?.previousClose ? item?.currentPrice - item?.previousClose : 0)
-    const dailyChangePerc = item?.percentChange || (item?.previousClose ? (dailyChange / item?.previousClose) * 100 : 0)
+    const dailyChange = item?.change ?? ((item?.currentPrice != null && item?.previousClose != null) ? item.currentPrice - item.previousClose : 0)
+    const dailyChangePerc = item?.percentChange ?? ((item?.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
     const isDailyProfit = dailyChange >= 0
-    const companyName = item ? (scripNamesMap[item.symbol.trim().toUpperCase()] || "") : ""
+    const companyName = item
+        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
+        : ""
+    const formatUnits = (units: number) => {
+        if (!Number.isFinite(units)) return "0"
+        if (units === 0) return "0"
+        if (Math.abs(units) < 1) return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
+    const formatValue = (amount: number) => {
+        if (!Number.isFinite(amount)) return "0"
+        if (amount === 0) return "0"
+        if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })
+        return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    const formatProfitLossPercent = (percent: number) => {
+        if (!Number.isFinite(percent)) return "N/A"
+        return `${percent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
+    }
 
     const parsePositiveNumber = (value?: string) => {
         if (!value) return 0
@@ -103,7 +124,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const latestDividend = matchedDividendHistory[0]
     const latestCashPercent = parsePositiveNumber(latestDividend?.cash_dividend)
     const latestBonusPercent = parsePositiveNumber(latestDividend?.bonus_share)
-    const heldUnits = item?.units || 0
+    const heldUnits = item?.units ?? 0
     const estimatedCashAmount = latestCashPercent * heldUnits
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
 
@@ -123,7 +144,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
                         <div className="flex items-center justify-between mb-2 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
-                                Stock Details
+                                {isCrypto ? "Crypto Details" : "Stock Details"}
                             </Badge>
                             {item.lastUpdated && (
                                 <div className="flex items-center gap-1.5 grayscale opacity-60">
@@ -139,7 +160,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 <DialogTitle className="text-3xl font-black tracking-tight flex items-center flex-wrap gap-2">
                                     {item.symbol}
                                     <Badge className="bg-muted text-muted-foreground text-[10px] font-black uppercase tracking-widest border-none">
-                                        {item.sector || "Others"}
+                                        {item.sector ?? "Others"}
                                     </Badge>
                                 </DialogTitle>
                                 {companyName && (
@@ -148,12 +169,12 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     </p>
                                 )}
                                 <DialogDescription className="text-sm font-medium mt-1">
-                                    {item.units} Units Held in Portfolio
+                                    {formatUnits(item.units)} Units Held in Portfolio
                                 </DialogDescription>
                             </div>
                             <div className="text-right ml-4">
                                 <div className="text-2xl font-black font-mono">
-                                    रु {current.toLocaleString()}
+                                    {currencySymbol} {formatValue(current)}
                                 </div>
                                 <div className={cn(
                                     "text-[10px] font-black uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1",
@@ -171,7 +192,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                         <div className="grid grid-cols-2 gap-4">
                             <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
                                 <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Current Value</span>
-                                <span className="text-lg font-black font-mono">रु {value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                <span className="text-lg font-black font-mono">{currencySymbol} {formatValue(value)}</span>
                             </div>
                             <div className={cn(
                                 "p-4 rounded-2xl border flex flex-col gap-1",
@@ -182,7 +203,10 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     "text-lg font-black font-mono",
                                     isProfit ? "text-green-600" : "text-red-600"
                                 )}>
-                                    {isProfit ? "+" : ""}{profitLossPerc.toFixed(1)}%
+                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)}
+                                </span>
+                                <span className="text-[10px] font-bold text-muted-foreground">
+                                    {hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A (no cost basis)"}
                                 </span>
                             </div>
                         </div>
@@ -194,7 +218,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
                                 </span>
                                 <span className="text-xs font-bold font-mono">
-                                    रु {(item.high || current).toLocaleString()}
+                                    {currencySymbol} {formatValue(item.high ?? current)}
                                 </span>
                             </div>
                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
@@ -202,7 +226,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
                                 </span>
                                 <span className="text-xs font-bold font-mono">
-                                    रु {(item.low || current).toLocaleString()}
+                                    {currencySymbol} {formatValue(item.low ?? current)}
                                 </span>
                             </div>
                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
@@ -210,24 +234,26 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
                                 </span>
                                 <span className="text-xs font-bold font-mono">
-                                    {(item.volume || 0).toLocaleString()}
+                                    {(item.volume ?? 0).toLocaleString()}
                                 </span>
                             </div>
                         </div>
 
                         {/* Investment Details */}
+                        {!isCrypto && (
+                        <>
                         <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
                             <div className="flex justify-between items-center pb-2 border-b border-muted/20">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                     <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
                                 </span>
-                                <span className="text-sm font-black font-mono">रु {item.buyPrice.toFixed(2)}</span>
+                                <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(item.buyPrice)}</span>
                             </div>
                             <div className="flex justify-between items-center pb-2 border-b border-muted/20">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                     <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
                                 </span>
-                                <span className="text-sm font-black font-mono">रु {investment.toLocaleString()}</span>
+                                <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(investment)}</span>
                             </div>
                             <div className="flex justify-between items-center">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -328,16 +354,20 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 </div>
                             )}
                         </div>
+                        </>
+                        )}
 
                         <div className="grid grid-cols-2 gap-3 pt-2">
-                            <Button
-                                variant="outline"
-                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
-                                onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
-                            >
-                                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                View Analysis
-                            </Button>
+                            {!isCrypto && (
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                    onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                    View Analysis
+                                </Button>
+                            )}
                             <Button
                                 className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
                                 onClick={() => onOpenChange(false)}

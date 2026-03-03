@@ -57,6 +57,7 @@ export function PortfolioList() {
         noticesBundle,
         disclosures,
         exchangeMessages,
+        scripNamesMap,
     } = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
 
@@ -90,6 +91,25 @@ export function PortfolioList() {
         description: "",
         color: "#3b82f6"
     })
+    const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
+        if (!Number.isFinite(amount)) return "0"
+        if (isCrypto) {
+            if (amount === 0) return "0.00"
+            const sign = amount < 0 ? "-" : ""
+            const abs = Math.abs(amount)
+            const adjusted = abs < 0.01 ? 0.01 : abs
+            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }
+        return amount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    }
+    const formatUnits = (units: number) => {
+        if (!Number.isFinite(units)) return "0"
+        if (units === 0) return "0"
+        if (Math.abs(units) < 1) {
+            return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+        }
+        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -144,8 +164,10 @@ export function PortfolioList() {
 
     const [newTx, setNewTx] = useState({
         symbol: "",
-        quantity: 0,
-        price: 0,
+        assetType: "stock" as "stock" | "crypto",
+        cryptoId: "",
+        quantity: Number.NaN,
+        price: Number.NaN,
         type: "buy" as ShareTransaction['type'],
         date: new Date().toISOString().split('T')[0],
         description: ""
@@ -175,6 +197,13 @@ export function PortfolioList() {
             ),
         [portfolioTransactions],
     )
+    const stockOptions = useMemo(
+        () =>
+            Object.entries(scripNamesMap || {})
+                .map(([symbol, name]) => ({ symbol, name }))
+                .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+        [scripNamesMap],
+    )
 
     const handleRefresh = async () => {
         setIsRefreshing(true)
@@ -189,15 +218,43 @@ export function PortfolioList() {
     }
 
     const handleAddTransaction = async () => {
-        if (!newTx.symbol || newTx.quantity <= 0 || (newTx.type !== 'bonus' && newTx.price <= 0)) {
+        const hasValidQty = Number.isFinite(newTx.quantity) && newTx.quantity > 0
+        const hasValidPrice = newTx.type === 'bonus' || (Number.isFinite(newTx.price) && newTx.price > 0)
+        if (!newTx.symbol || !hasValidQty || !hasValidPrice) {
             toast.error("Please fill all fields correctly")
             return
         }
-
         try {
+            let resolvedSymbol = newTx.symbol.trim().toUpperCase()
+            if (newTx.assetType === "stock") {
+                const raw = newTx.symbol.trim()
+                const rawLower = raw.toLowerCase()
+                const exactSymbol = stockOptions.find((s) => s.symbol.toLowerCase() === rawLower)
+                const exactName = stockOptions.find((s) => s.name.toLowerCase() === rawLower)
+                if (exactSymbol) resolvedSymbol = exactSymbol.symbol
+                else if (exactName) resolvedSymbol = exactName.symbol
+            }
+
+            let cryptoId: string | undefined = undefined
+            if (newTx.assetType === "crypto") {
+                if (newTx.cryptoId?.trim()) {
+                    cryptoId = newTx.cryptoId.trim()
+                } else {
+                    const symbol = newTx.symbol.trim().toUpperCase()
+                    const resolveRes = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
+                    const resolveData = await resolveRes.json()
+                    if (!resolveRes.ok) {
+                        throw new Error(resolveData?.error || `Unable to resolve Coinlore symbol: ${symbol}`)
+                    }
+                    cryptoId = resolveData.id
+                }
+            }
+
             const { updatedPortfolio } = await addShareTransaction({
                 portfolioId: activePortfolioId!,
-                symbol: newTx.symbol.toUpperCase(),
+                symbol: resolvedSymbol,
+                assetType: newTx.assetType,
+                cryptoId,
                 quantity: newTx.quantity,
                 price: newTx.price,
                 type: newTx.type,
@@ -207,8 +264,10 @@ export function PortfolioList() {
 
             setNewTx({
                 symbol: "",
-                quantity: 0,
-                price: 0,
+                assetType: "stock",
+                cryptoId: "",
+                quantity: Number.NaN,
+                price: Number.NaN,
                 type: "buy",
                 date: new Date().toISOString().split('T')[0],
                 description: ""
@@ -391,12 +450,12 @@ export function PortfolioList() {
     const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
         const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * item.buyPrice, 0)
         const current = activePortfolioItems.reduce(
-            (sum, item) => sum + item.units * (item.currentPrice || item.buyPrice),
+            (sum, item) => sum + item.units * (item.currentPrice ?? item.buyPrice),
             0,
         )
         const profitLoss = current - investment
         const today = activePortfolioItems.reduce((sum, item) => {
-            if (item.currentPrice && item.previousClose) {
+            if (item.currentPrice != null && item.previousClose != null) {
                 return sum + item.units * (item.currentPrice - item.previousClose)
             }
             return sum
@@ -418,7 +477,7 @@ export function PortfolioList() {
 
         activePortfolioItems.forEach((item) => {
             const sector = item.sector || "Others"
-            const value = item.units * (item.currentPrice || item.buyPrice)
+            const value = item.units * (item.currentPrice ?? item.buyPrice)
             const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
 
             sectorMap.set(sector, {
@@ -459,7 +518,7 @@ export function PortfolioList() {
             const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0 }
             summaries.set(item.portfolioId, {
                 investment: prev.investment + item.units * item.buyPrice,
-                current: prev.current + item.units * (item.currentPrice || item.buyPrice),
+                current: prev.current + item.units * (item.currentPrice ?? item.buyPrice),
                 count: prev.count + 1,
             })
         })
@@ -1414,6 +1473,7 @@ export function PortfolioList() {
                             newTx={newTx}
                             setNewTx={setNewTx}
                             onAdd={handleAddTransaction}
+                            stockOptions={stockOptions}
                         />
                     </div>
 
@@ -1773,14 +1833,15 @@ export function PortfolioList() {
                                     </div>
                                 ) : (
                                     filteredPortfolio.map((item) => {
-                                        const current = item.currentPrice || item.buyPrice
+                                        const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
+                                        const current = item.currentPrice ?? item.buyPrice
                                         const investment = item.units * item.buyPrice
                                         const value = item.units * current
                                         const profitLoss = value - investment
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
                                         const isProfit = profitLoss >= 0
-                                        const dailyChange = item.change || (item.currentPrice && item.previousClose ? item.currentPrice - item.previousClose : 0)
-                                        const dailyChangePerc = item.percentChange || (item.previousClose ? (dailyChange / item.previousClose) * 100 : 0)
+                                        const dailyChange = item.change ?? ((item.currentPrice != null && item.previousClose != null) ? item.currentPrice - item.previousClose : 0)
+                                        const dailyChangePerc = item.percentChange ?? ((item.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
                                         const isDailyProfit = dailyChange >= 0
 
                                         return (
@@ -1808,13 +1869,13 @@ export function PortfolioList() {
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">
-                                                                <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{item.units} Units</span>
+                                                                <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{formatUnits(item.units)} Units</span>
                                                                 <span className="hidden sm:inline text-[10px] opacity-20">•</span>
                                                                 <div className="flex items-center gap-1.5">
                                                                     <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                                        रु {current.toLocaleString()}
+                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
                                                                     </span>
-                                                                    {item.previousClose && (
+                                                                    {item.previousClose != null && (
                                                                         <span
                                                                             className={cn(
                                                                                 "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
@@ -1832,13 +1893,13 @@ export function PortfolioList() {
                                                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                                                         <div className="text-right flex flex-col items-end">
                                                             <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
-                                                                रु {value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                {isCrypto ? "$" : "रु"} {formatHoldingAmount(value, isCrypto)}
                                                             </div>
                                                             <div className={cn(
                                                                 "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
                                                                 isDailyProfit ? "text-success" : "text-error"
                                                             )}>
-                                                                <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{(dailyChange * item.units).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
                                                                 <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>
                                                                 <span className="hidden sm:inline">({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)</span>
                                                             </div>
@@ -1992,7 +2053,7 @@ export function PortfolioList() {
                                                 <div className="flex items-center gap-3 sm:gap-6 shrink-0">
                                                     <div className="text-right">
                                                         <div className={cn("font-extrabold text-sm sm:text-lg", isCredit ? "text-success" : "text-warning")}>
-                                                            {isCredit ? "+" : "-"}{tx.quantity} <span className="hidden sm:inline text-[10px] opacity-70 font-bold uppercase">Units</span>
+                                                            {isCredit ? "+" : "-"}{formatUnits(tx.quantity)} <span className="hidden sm:inline text-[10px] opacity-70 font-bold uppercase">Units</span>
                                                         </div>
                                                         {tx.price > 0 && (
                                                             <div className="text-[9px] sm:text-[10px] text-muted-foreground font-bold">

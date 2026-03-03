@@ -215,6 +215,9 @@ export interface PortfolioItem {
   id: string
   portfolioId: string
   symbol: string
+  assetType?: "stock" | "crypto"
+  cryptoId?: string
+  assetName?: string
   units: number
   buyPrice: number // This will be the average cost price
   currentPrice?: number
@@ -232,6 +235,8 @@ export interface ShareTransaction {
   id: string
   portfolioId: string
   symbol: string
+  assetType?: "stock" | "crypto"
+  cryptoId?: string
   type: "buy" | "sell" | "bonus" | "ipo" | "merger_in" | "merger_out"
   quantity: number
   price: number
