@@ -486,7 +486,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="targetDate" className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-primary" />
@@ -545,39 +545,41 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Card>
-                    <CardContent className="pt-5 space-y-2">
-                      <Label htmlFor="priority">Priority</Label>
-                      <Select
-                        value={formData.priority}
-                        onValueChange={(value: "low" | "medium" | "high") =>
-                          setFormData((prev) => ({ ...prev, priority: value }))
-                        }
-                      >
-                        <SelectTrigger id="priority">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PRIORITY_LEVELS.map((priority) => (
-                            <SelectItem key={priority.id} value={priority.id}>
-                              {priority.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
+                    <CardContent className="pt-2.5 space-y-1.5">
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor="priority" className="shrink-0">Priority</Label>
+                        <Select
+                          value={formData.priority}
+                          onValueChange={(value: "low" | "medium" | "high") =>
+                            setFormData((prev) => ({ ...prev, priority: value }))
+                          }
+                        >
+                          <SelectTrigger id="priority" className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PRIORITY_LEVELS.map((priority) => (
+                              <SelectItem key={priority.id} value={priority.id}>
+                                {priority.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
                         {PRIORITY_LEVELS.find((p) => p.id === formData.priority)?.description}
                       </p>
                     </CardContent>
                   </Card>
 
                   <Card>
-                    <CardContent className="pt-5 space-y-4">
+                    <CardContent className="pt-2.5 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <Label htmlFor="auto-contribute">Auto-contribute</Label>
-                          <p className="text-xs text-muted-foreground">Add money automatically on a schedule.</p>
+                          <p className="text-[11px] text-muted-foreground">Add money automatically on a schedule.</p>
                         </div>
                         <Switch
                           id="auto-contribute"
@@ -587,42 +589,43 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                       </div>
 
                       {formData.autoContribute && (
-                        <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                              {currencySymbol}
-                            </span>
-                            <Input
-                              id="contributionAmount"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={formData.contributionAmount}
-                              onChange={(e) => {
-                                setFormData((prev) => ({ ...prev, contributionAmount: e.target.value }))
-                                if (errors.contributionAmount) setErrors((prev) => ({ ...prev, contributionAmount: "" }))
-                              }}
-                              placeholder="Contribution amount"
-                              className={cn("pl-10", errors.contributionAmount && "border-destructive")}
-                            />
+                        <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
+                                {currencySymbol}
+                              </span>
+                              <Input
+                                id="contributionAmount"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={formData.contributionAmount}
+                                onChange={(e) => {
+                                  setFormData((prev) => ({ ...prev, contributionAmount: e.target.value }))
+                                  if (errors.contributionAmount) setErrors((prev) => ({ ...prev, contributionAmount: "" }))
+                                }}
+                                placeholder="Contribution amount"
+                                className={cn("pl-10", errors.contributionAmount && "border-destructive")}
+                              />
+                            </div>
+                            <Select
+                              value={formData.contributionFrequency}
+                              onValueChange={(value: "daily" | "weekly" | "monthly") =>
+                                setFormData((prev) => ({ ...prev, contributionFrequency: value }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">Daily</SelectItem>
+                                <SelectItem value="weekly">Weekly</SelectItem>
+                                <SelectItem value="monthly">Monthly</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           {errors.contributionAmount && <p className="text-sm text-destructive">{errors.contributionAmount}</p>}
-
-                          <Select
-                            value={formData.contributionFrequency}
-                            onValueChange={(value: "daily" | "weekly" | "monthly") =>
-                              setFormData((prev) => ({ ...prev, contributionFrequency: value }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="daily">Daily</SelectItem>
-                              <SelectItem value="weekly">Weekly</SelectItem>
-                              <SelectItem value="monthly">Monthly</SelectItem>
-                            </SelectContent>
-                          </Select>
                         </div>
                       )}
                     </CardContent>
@@ -638,7 +641,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
                         <div className="rounded-md border bg-background p-3 text-center">
                           <p className="text-xs text-muted-foreground">Time left</p>
                           <p className="text-lg font-semibold text-primary">{goalInsights.monthsToGoal} months</p>

@@ -108,6 +108,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
   const [showDebtDialog, setShowDebtDialog] = useState(false)
+  const [shortfallFundingMode, setShortfallFundingMode] = useState<"goal_wallet" | "debt">("debt")
   const [debtFormData, setDebtFormData] = useState<DebtFormData>({
     name: "",
     minimumPayment: "",
@@ -121,6 +122,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const [showGoalShortfallDialog, setShowGoalShortfallDialog] = useState(false)
   const [goalShortfallData, setGoalShortfallData] = useState<GoalShortfallData | null>(null)
   const [goalShortfallDebtAccountId, setGoalShortfallDebtAccountId] = useState("")
+  const [walletShortfallGoalId, setWalletShortfallGoalId] = useState("")
+  const [walletShortfallDebtAccountId, setWalletShortfallDebtAccountId] = useState("")
   const amountInputRef = useRef<HTMLInputElement>(null)
 
   const currencySymbol = useMemo(() => {
@@ -195,6 +198,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     }
     return []
   }, [formData.allocationType, availableGoals, debtAccounts, creditAccounts])
+
+  const walletShortfallGoalOptions = useMemo(
+    () => (goals || []).filter((g) => g.currentAmount > 0),
+    [goals]
+  )
+  const hasGoalShortfallOption = walletShortfallGoalOptions.length > 0
 
   const availableCategories = useMemo(() => {
     const contextCategories = categories
@@ -379,6 +388,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowGoalShortfallDialog(false)
     setGoalShortfallData(null)
     setGoalShortfallDebtAccountId("")
+    setShortfallFundingMode("debt")
+    setWalletShortfallGoalId("")
+    setWalletShortfallDebtAccountId("")
     setPendingTransactionResult(null)
     setPendingTransaction(null)
   }, [initialAmount, initialDescription, initialType, initialCategory, numberFormat])
@@ -593,6 +605,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           // Show debt creation dialog
           setPendingTransactionResult(result)
           setPendingTransaction(result.pendingTransaction)
+          const debtRequired = Number(result.debtAmount || 0)
+          const suggestedGoal =
+            walletShortfallGoalOptions.find((g) => g.currentAmount >= debtRequired) ||
+            walletShortfallGoalOptions[0]
+          setWalletShortfallGoalId(suggestedGoal?.id || "")
+          setWalletShortfallDebtAccountId(debtAccounts[0]?.id || "")
+          setShortfallFundingMode(suggestedGoal ? "goal_wallet" : "debt")
           setShowDebtDialog(true)
           setIsSubmitting(false)
           return
@@ -642,7 +661,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         setIsSubmitting(false)
       }
     },
-    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep],
+    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep, walletShortfallGoalOptions],
   )
 
   const canSubmitNow = useMemo(() => {
@@ -807,6 +826,147 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       playSound("transaction-failed")
     }
   }, [debtFormData, pendingTransactionResult, pendingTransaction, addDebtAccount, completeTransactionWithDebt, currencySymbol, playSound, resetForm, handleOpenChange])
+
+  const handleCompleteWithGoalAndWallet = useCallback(async () => {
+    if (!pendingTransactionResult || !pendingTransaction || !walletShortfallGoalId) return
+
+    const goal = goals.find((g) => g.id === walletShortfallGoalId)
+    if (!goal) {
+      toast.error("Goal not found", {
+        description: "Please select a valid goal."
+      })
+      return
+    }
+
+    const debtAmount = Number(pendingTransactionResult.debtAmount || 0)
+    const availableBalance = Number(pendingTransactionResult.availableBalance || 0)
+    const cleanDescription = (pendingTransaction.description || `Expense - ${pendingTransaction.category || "General"}`).trim()
+
+    setIsSubmitting(true)
+    try {
+      const goalContribution = Math.min(goal.currentAmount, debtAmount)
+      const remainingAfterGoal = Math.max(0, debtAmount - goalContribution)
+
+      if (goalContribution > 0) {
+        const goalResult = await spendFromGoal(goal.id, goalContribution, cleanDescription, pendingTransaction.category)
+        if (!goalResult.success) {
+          toast.error("Failed to spend from goal", {
+            description: goalResult.error || "Unable to process goal spending."
+          })
+          playSound("transaction-failed")
+          return
+        }
+      }
+
+      if (remainingAfterGoal === 0) {
+        const walletResult = await addTransaction({
+          type: "expense",
+          amount: availableBalance,
+          category: pendingTransaction.category,
+          subcategory: pendingTransaction.subcategory || undefined,
+          description: cleanDescription,
+          date: new Date().toISOString(),
+          allocationType: "direct",
+          allocationTarget: undefined,
+          total: availableBalance,
+          actual: availableBalance,
+          debtUsed: 0,
+          debtAccountId: null,
+          status: "normal",
+        })
+
+        if (!walletResult?.transaction) {
+          toast.error("Failed to complete wallet portion", {
+            description: "Goal portion was recorded, but wallet portion could not be completed."
+          })
+          playSound("transaction-failed")
+          return
+        }
+      } else {
+        if (!walletShortfallDebtAccountId) {
+          toast.error("Select a debt account", {
+            description: "Goal is not enough. Choose a debt account for the remaining shortfall."
+          })
+          return
+        }
+
+        const debtAccount = debtAccounts.find((d) => d.id === walletShortfallDebtAccountId)
+        if (!debtAccount) {
+          toast.error("Debt account not found")
+          return
+        }
+
+        const debtCharge = await addDebtToAccount(
+          walletShortfallDebtAccountId,
+          remainingAfterGoal,
+          `Goal + wallet shortfall: ${cleanDescription}`,
+          pendingTransaction.category
+        )
+        if (!debtCharge.success) {
+          toast.error("Failed to charge debt account", {
+            description: debtCharge.error || "Unable to process debt charge."
+          })
+          playSound("transaction-failed")
+          return
+        }
+
+        await completeTransactionWithDebt(
+          {
+            type: "expense",
+            amount: availableBalance + remainingAfterGoal,
+            category: pendingTransaction.category,
+            subcategory: pendingTransaction.subcategory || undefined,
+            description: cleanDescription,
+            date: new Date().toISOString(),
+            allocationType: "direct",
+            allocationTarget: undefined,
+            total: availableBalance + remainingAfterGoal,
+            actual: availableBalance,
+            debtUsed: remainingAfterGoal,
+            debtAccountId: walletShortfallDebtAccountId,
+            status: "debt",
+          },
+          debtAccount.name,
+          walletShortfallDebtAccountId,
+          availableBalance,
+          remainingAfterGoal
+        )
+      }
+
+      toast.success("Transaction completed with goal + wallet", {
+        description:
+          remainingAfterGoal > 0
+            ? `${currencySymbol}${Math.max(0, availableBalance).toFixed(2)} from wallet + ${currencySymbol}${goalContribution.toFixed(2)} from goal + ${currencySymbol}${remainingAfterGoal.toFixed(2)} from debt`
+            : `${currencySymbol}${Math.max(0, availableBalance).toFixed(2)} from wallet + ${currencySymbol}${goalContribution.toFixed(2)} from goal`,
+        duration: 3000,
+      })
+      playSound("transaction-success")
+
+      setShowDebtDialog(false)
+      setPendingTransactionResult(null)
+      setPendingTransaction(null)
+      setWalletShortfallGoalId("")
+      setWalletShortfallDebtAccountId("")
+      setDebtFormData({
+        name: "",
+        minimumPayment: "",
+        interestRate: "",
+        startDate: new Date().toISOString().split('T')[0]
+      })
+
+      setTimeout(() => {
+        resetForm()
+        handleOpenChange(false)
+      }, 800)
+    } catch (error) {
+      toast.error("Failed to complete transaction", {
+        description: error instanceof Error ? error.message : "Please try again."
+      })
+      playSound("transaction-failed")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [pendingTransactionResult, pendingTransaction, walletShortfallGoalId, goals, currencySymbol, spendFromGoal, playSound, addTransaction, resetForm, handleOpenChange, walletShortfallDebtAccountId, debtAccounts, addDebtToAccount, completeTransactionWithDebt])
 
   const handleResolveGoalShortfall = useCallback(
     async (resolution: "wallet" | "debt" | "wallet_debt") => {
@@ -1686,11 +1846,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         </DialogContent>
       </Dialog>
 
-      {/* Debt Creation Dialog */}
+      {/* Shortfall Resolution Dialog */}
       <Dialog open={showDebtDialog} onOpenChange={setShowDebtDialog}>
         <DialogContent className={cn("sm:max-w-md", isMobile && "w-full h-full max-w-none fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 rounded-none border-none shadow-none p-4 z-[60]")}>
           <DialogHeader>
-            <DialogTitle>Create Debt Account</DialogTitle>
+            <DialogTitle>
+              {hasGoalShortfallOption ? "Complete Transaction" : "Create Debt Account"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1700,10 +1862,76 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 <br />
                 Available balance: {currencySymbol}{pendingTransactionResult?.availableBalance?.toFixed(2)}
                 <br />
-                Amount to record as debt: {currencySymbol}{pendingTransactionResult?.debtAmount?.toFixed(2)}
+                Shortfall amount: {currencySymbol}{pendingTransactionResult?.debtAmount?.toFixed(2)}
               </p>
             </div>
 
+            {hasGoalShortfallOption && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Funding Option</Label>
+                <Tabs value={shortfallFundingMode} onValueChange={(v) => setShortfallFundingMode(v as "goal_wallet" | "debt")}>
+                  <TabsList className="grid grid-cols-2 h-10 w-full">
+                    <TabsTrigger value="goal_wallet">Goal + Wallet</TabsTrigger>
+                    <TabsTrigger value="debt">Debt</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            )}
+
+            {hasGoalShortfallOption && shortfallFundingMode === "goal_wallet" && (
+              <div className="space-y-2 rounded-lg border border-emerald-200/60 bg-emerald-50/70 dark:bg-emerald-950/15 p-3">
+                <Label htmlFor="wallet-shortfall-goal" className="text-sm font-medium">
+                  Select Goal For Shortfall
+                </Label>
+                <Select
+                  value={walletShortfallGoalId}
+                  onValueChange={setWalletShortfallGoalId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="wallet-shortfall-goal">
+                    <SelectValue placeholder="Select a goal account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {walletShortfallGoalOptions.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {(g.title || g.name || "Goal")} ({currencySymbol}{g.currentAmount.toFixed(2)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  This will use wallet balance first, then goal money to cover the shortfall.
+                </p>
+                {debtAccounts.length > 0 && (
+                  <>
+                    <Label htmlFor="wallet-shortfall-debt" className="text-sm font-medium">
+                      Debt Backup (if goal is not enough)
+                    </Label>
+                    <Select
+                      value={walletShortfallDebtAccountId}
+                      onValueChange={setWalletShortfallDebtAccountId}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="wallet-shortfall-debt">
+                        <SelectValue placeholder="Select a debt account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {debtAccounts.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name} ({currencySymbol}{d.balance.toFixed(2)})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      If goal balance is short, the remaining amount will be charged to this debt account.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {shortfallFundingMode === "debt" && (
             <div className="space-y-3">
               <div>
                 <Label className="text-sm font-medium">Use Existing Debt or Create New</Label>
@@ -1806,6 +2034,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 </div>
               )}
             </div>
+            )}
 
             <div
               className={cn(
@@ -1826,11 +2055,25 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       interestRate: "",
                       startDate: new Date().toISOString().split('T')[0]
                     })
+                    setWalletShortfallGoalId("")
+                    setWalletShortfallDebtAccountId("")
+                    setShortfallFundingMode("debt")
                   }}
                   className="flex-1"
                 >
                   Cancel
                 </Button>
+                {hasGoalShortfallOption && shortfallFundingMode === "goal_wallet" && (
+                  <Button
+                    type="button"
+                    onClick={handleCompleteWithGoalAndWallet}
+                    disabled={!walletShortfallGoalId || isSubmitting}
+                    className="flex-1"
+                  >
+                    Use Goal + Wallet
+                  </Button>
+                )}
+                {shortfallFundingMode === "debt" && (
                 <Button
                   type="button"
                   onClick={async () => {
@@ -1868,6 +2111,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     setShowDebtDialog(false)
                     setPendingTransactionResult(null)
                     setPendingTransaction(null)
+                    setWalletShortfallGoalId("")
+                    setWalletShortfallDebtAccountId("")
+                    setShortfallFundingMode("debt")
                     setDebtFormData({ name: "", minimumPayment: "", interestRate: "", startDate: new Date().toISOString().split('T')[0] })
 
                     setTimeout(() => {
@@ -1880,6 +2126,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 >
                   Use Selected / Create Debt
                 </Button>
+                )}
               </div>
             </div>
           </div>

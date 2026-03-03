@@ -120,17 +120,19 @@ export function PortfolioList() {
     // Auto-refresh data on mount and every 2 minutes
     useEffect(() => {
         if (!isShareFeaturesEnabled) return
+        const stockItems = portfolio.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
+        if (stockItems.length === 0) return
 
-        // Initial fetch
-        fetchPortfolioPrices()
+        // Initial fetch (stocks only)
+        fetchPortfolioPrices(stockItems)
 
         // Set interval for 2 minutes
         const interval = setInterval(() => {
-            fetchPortfolioPrices()
+            fetchPortfolioPrices(stockItems)
         }, 2 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled])
+    }, [isShareFeaturesEnabled, portfolio])
 
     const enableShareFeatures = () => {
         updateUserProfile({
@@ -153,6 +155,19 @@ export function PortfolioList() {
     }
 
     const handleViewStockDetail = (item: PortfolioItem) => {
+        const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
+        if (isCrypto) {
+            fetchPortfolioPrices([item], true)
+                .then((updated) => {
+                    setSelectedStock(updated?.[0] || item)
+                    setIsStockDetailOpen(true)
+                })
+                .catch(() => {
+                    setSelectedStock(item)
+                    setIsStockDetailOpen(true)
+                })
+            return
+        }
         setSelectedStock(item)
         setIsStockDetailOpen(true)
     }

@@ -36,6 +36,9 @@ export function CombinedBalanceCard() {
     if (!transactions?.length) {
       return { totalIncome: 0, totalExpenses: 0 }
     }
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
 
     const result = transactions.reduce(
       (acc, transaction) => {
@@ -44,6 +47,13 @@ export function CombinedBalanceCard() {
 
         // Ensure transaction has required properties and valid amount
         if (!transaction || typeof actualAmount !== "number" || actualAmount < 0) {
+          return acc
+        }
+        const txDate = new Date(transaction.date)
+        if (Number.isNaN(txDate.getTime())) {
+          return acc
+        }
+        if (txDate.getMonth() !== currentMonth || txDate.getFullYear() !== currentYear) {
           return acc
         }
 
