@@ -1,11 +1,13 @@
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import {
   TrendingUp,
   TrendingDown,
   PiggyBank,
-  Clock} from "lucide-react"
+  Clock
+} from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import BalanceCard from "@/components/dashboard/balance-card-component"
@@ -20,6 +22,7 @@ export function CombinedBalanceCard() {
 
   const [showBalance, setShowBalance] = useState(true)
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [incomeExpenseRange, setIncomeExpenseRange] = useState<"monthly" | "all-time">("monthly")
   const isMobile = useIsMobile()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -32,9 +35,9 @@ export function CombinedBalanceCard() {
   })
 
   // Optimize calculations with useMemo and better logic
-  const { totalIncome, totalExpenses } = useMemo(() => {
+  const { monthlyIncome, monthlyExpenses, allTimeIncome, allTimeExpenses } = useMemo(() => {
     if (!transactions?.length) {
-      return { totalIncome: 0, totalExpenses: 0 }
+      return { monthlyIncome: 0, monthlyExpenses: 0, allTimeIncome: 0, allTimeExpenses: 0 }
     }
     const now = new Date()
     const currentMonth = now.getMonth()
@@ -42,8 +45,8 @@ export function CombinedBalanceCard() {
 
     const result = transactions.reduce(
       (acc, transaction) => {
-  // Use actual amount (what was actually paid from balance) instead of total
-  const actualAmount = transaction.actual ?? transaction.amount
+        // Use actual amount (what was actually paid from balance) instead of total
+        const actualAmount = transaction.actual ?? transaction.amount
 
         // Ensure transaction has required properties and valid amount
         if (!transaction || typeof actualAmount !== "number" || actualAmount < 0) {
@@ -53,22 +56,26 @@ export function CombinedBalanceCard() {
         if (Number.isNaN(txDate.getTime())) {
           return acc
         }
-        if (txDate.getMonth() !== currentMonth || txDate.getFullYear() !== currentYear) {
-          return acc
-        }
-
         if (transaction.type === "income") {
-          acc.totalIncome += actualAmount
+          acc.allTimeIncome += actualAmount
+          if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+            acc.monthlyIncome += actualAmount
+          }
         } else if (transaction.type === "expense") {
-          acc.totalExpenses += actualAmount
+          acc.allTimeExpenses += actualAmount
+          if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+            acc.monthlyExpenses += actualAmount
+          }
         }
 
         return acc
       },
-      { totalIncome: 0, totalExpenses: 0 },
+      { monthlyIncome: 0, monthlyExpenses: 0, allTimeIncome: 0, allTimeExpenses: 0 },
     )
     return result
   }, [transactions])
+  const totalIncome = incomeExpenseRange === "monthly" ? monthlyIncome : allTimeIncome
+  const totalExpenses = incomeExpenseRange === "monthly" ? monthlyExpenses : allTimeExpenses
 
   const totalDebt = useMemo(() => {
     return debtAccounts?.reduce((sum, debt) => sum + debt.balance, 0) || 0
@@ -284,21 +291,19 @@ export function CombinedBalanceCard() {
 
           {/* Net Worth Card */}
           <div className="w-88 flex-shrink-0" style={{ scrollSnapAlign: 'start' }}>
-            <Card className={`border-2 transition-all duration-200 ${
-              netWorth >= 0
+            <Card className={`border-2 transition-all duration-200 ${netWorth >= 0
                 ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
                 : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-            }`}>
+              }`}>
               <CardContent className="p-6 text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
                 </div>
-                <p className={`text-3xl font-bold mb-2 text-center ${
-                  netWorth >= 0
+                <p className={`text-3xl font-bold mb-2 text-center ${netWorth >= 0
                     ? "text-emerald-600 dark:text-emerald-400"
                     : "text-red-600 dark:text-red-400"
-                }`}>
+                  }`}>
                   {netWorth < 0 && "-"}
                   {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
                 </p>
@@ -340,11 +345,10 @@ export function CombinedBalanceCard() {
                 })
               }
             }}
-            className={`relative transition-all duration-300 ease-out ${
-              currentCardIndex === index
+            className={`relative transition-all duration-300 ease-out ${currentCardIndex === index
                 ? 'w-6 h-2 bg-primary scale-110'
                 : 'w-2 h-2 bg-muted-foreground/40 hover:bg-muted-foreground/60 hover:scale-105'
-            } rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2`}
+              } rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2`}
             aria-label={`Go to ${index === 0 ? 'balance' : 'net worth'} card`}
           >
             {/* Active indicator glow effect */}
@@ -372,9 +376,32 @@ export function CombinedBalanceCard() {
 
   return (
     <div className="space-y-6">
-  {mainBalance}
+      {mainBalance}
 
       {/* Income & Expenses Row */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs sm:text-sm text-muted-foreground font-medium">
+          {incomeExpenseRange === "monthly" ? "This Month" : "All Time"} Summary
+        </p>
+        <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1">
+          <Button
+            variant={incomeExpenseRange === "monthly" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setIncomeExpenseRange("monthly")}
+          >
+            Monthly
+          </Button>
+          <Button
+            variant={incomeExpenseRange === "all-time" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setIncomeExpenseRange("all-time")}
+          >
+            All Time
+          </Button>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
         <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
           <CardContent className="p-3 sm:p-5">
@@ -389,6 +416,9 @@ export function CombinedBalanceCard() {
                     {showBalance ? formatCurrency(totalIncome) : "••••••"}
                   </p>
                 </TimeTooltip>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  {incomeExpenseRange === "monthly" ? "This month" : "All time"}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -407,6 +437,9 @@ export function CombinedBalanceCard() {
                     {showBalance ? formatCurrency(totalExpenses) : "••••••"}
                   </p>
                 </TimeTooltip>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  {incomeExpenseRange === "monthly" ? "This month" : "All time"}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -415,21 +448,19 @@ export function CombinedBalanceCard() {
 
       {/* Net Worth Summary - Only show on desktop or when not in mobile row */}
       {(totalDebt > 0 || totalCreditUsed > 0) && !(isMobile && netWorthEnabled) && (
-        <Card className={`border-2 transition-all duration-200 ${
-          netWorth >= 0
+        <Card className={`border-2 transition-all duration-200 ${netWorth >= 0
             ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
             : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-        }`}>
+          }`}>
           <CardContent className="p-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
               <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
               <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
             </div>
-            <p className={`text-3xl font-bold mb-2 text-center ${
-              netWorth >= 0
+            <p className={`text-3xl font-bold mb-2 text-center ${netWorth >= 0
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-red-600 dark:text-red-400"
-            }`}>
+              }`}>
               {netWorth < 0 && "-"}
               {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
             </p>
