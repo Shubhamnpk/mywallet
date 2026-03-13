@@ -108,6 +108,15 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
     const symbol = item?.symbol?.trim().toUpperCase() || ""
     const normalizedHoldingName = normalizeCompany(companyName)
+    const getDividendRecordTime = (record: ProposedDividendRecord) => {
+        const rawDate = (record.announcement_date || "").trim()
+        if (!rawDate || rawDate.toLowerCase() === "n/a") {
+            return Number.NEGATIVE_INFINITY
+        }
+        const parsed = Date.parse(rawDate)
+        return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
+    }
+
     const matchedDividendHistory = (dividendHistory || [])
         .filter((record) => {
             const recordSymbol = record.symbol?.trim().toUpperCase() || ""
@@ -116,8 +125,8 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
             return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
         })
         .sort((a, b) => {
-            const aDate = new Date(a.announcement_date || a.scraped_at || 0).getTime()
-            const bDate = new Date(b.announcement_date || b.scraped_at || 0).getTime()
+            const aDate = getDividendRecordTime(a)
+            const bDate = getDividendRecordTime(b)
             return bDate - aDate
         })
 

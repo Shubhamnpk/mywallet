@@ -43,6 +43,14 @@ const HOUR_MS = 60 * 60 * 1000
 const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
 const DELETE_UNDO_WINDOW_MS = 5000
 const UNITS_EPSILON = 1e-12
+
+// Module-level cache for portfolio prices (persists across re-renders)
+let globalPortfolioCache: {
+  stockPriceData: any[],
+  sectorData: Record<string, string[]>,
+  cryptoPrices: Record<string, any>,
+  timestamp: number
+} | null = null
 const normalizeUnits = (value: number) => {
   if (!Number.isFinite(value)) return 0
   if (Math.abs(value) <= UNITS_EPSILON) return 0
@@ -207,6 +215,7 @@ const shouldSendReminder = (cache: Record<string, number>, key: string, cooldown
   const lastSentAt = cache[key] ?? 0
   return Date.now() - lastSentAt >= cooldownMs
 }
+
 
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -1993,13 +2002,6 @@ export function useWalletData() {
     await saveToLocalStorage("portfolios", updated, true)
   }
 
-  // Module-level cache (resets on browser reload)
-  let globalPortfolioCache: {
-    stockPriceData: any[],
-    sectorData: Record<string, string[]>,
-    cryptoPrices: Record<string, any>,
-    timestamp: number
-  } | null = null
 
   const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) => {
     const targetPortfolio = portfolioOverride || portfolio
@@ -2014,10 +2016,18 @@ export function useWalletData() {
       const isCacheValid = globalPortfolioCache &&
         (now - globalPortfolioCache.timestamp) < CACHE_DURATION
 
+      const mergeUpdatedPortfolio = (base: PortfolioItem[], updated: PortfolioItem[]) => {
+        if (updated.length === 0) return base
+        const updatedKeySet = new Set(updated.map((item) => getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+        const filteredBase = base.filter((item) => !updatedKeySet.has(getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+        return [...filteredBase, ...updated]
+      }
+
       const applyLivePrices = (
         stockPriceData: any[],
         sectorData: Record<string, string[]>,
         cryptoPrices: Record<string, any>,
+        resolvedCryptoIds: Record<string, string>,
       ) => {
         const symbolToSector: Record<string, string> = {}
         const symbolToName: Record<string, string> = {}
@@ -2035,14 +2045,24 @@ export function useWalletData() {
           }
         })
 
+        const stockLookup = new Map<string, any>()
+        if (stockPriceData.length > 0) {
+          stockPriceData.forEach((s: any) => {
+            const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
+            if (key) stockLookup.set(key, s)
+          })
+        }
+
         const updatedPortfolio: PortfolioItem[] = targetPortfolio.map((item): PortfolioItem => {
           if (isCryptoAsset(item)) {
-            const cryptoId = item.cryptoId?.trim()
+            const resolvedId = resolvedCryptoIds[item.symbol.trim().toUpperCase()]
+            const cryptoId = item.cryptoId?.trim() || resolvedId
             const coin = cryptoId ? cryptoPrices[cryptoId] : null
             if (!coin) {
               return {
                 ...item,
                 assetType: "crypto",
+                cryptoId,
                 sector: "Crypto",
               }
             }
@@ -2058,6 +2078,7 @@ export function useWalletData() {
             return {
               ...item,
               assetType: "crypto",
+              cryptoId,
               assetName: coin.name || item.assetName || item.symbol,
               currentPrice: ltp,
               previousClose,
@@ -2070,9 +2091,7 @@ export function useWalletData() {
             }
           }
 
-          const matchingStock = stockPriceData.find((s: any) =>
-            (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
-          )
+          const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
 
           const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
 
@@ -2115,22 +2134,71 @@ export function useWalletData() {
           globalPortfolioCache.stockPriceData,
           globalPortfolioCache.sectorData,
           globalPortfolioCache.cryptoPrices,
+          {},
         )
+        const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
 
-        if (JSON.stringify(updatedPortfolio) !== JSON.stringify(targetPortfolio)) {
-          setPortfolio(updatedPortfolio)
-          await saveDataWithIntegrity("portfolio", updatedPortfolio)
+        // Only update state if data actually changed (excluding timestamps)
+        const hasSubstantialChange = JSON.stringify(mergedPortfolio.map(({ lastUpdated, ...rest }) => rest)) !==
+          JSON.stringify(portfolio.map(({ lastUpdated, ...rest }) => rest))
+
+        if (hasSubstantialChange) {
+          setPortfolio(mergedPortfolio)
+          await saveDataWithIntegrity("portfolio", mergedPortfolio)
         }
         if (Object.keys(symbolToSector).length > 0) {
           setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
           setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
         }
-        return updatedPortfolio
+        return mergedPortfolio
       }
 
       const stockItems = targetPortfolio.filter((item) => !isCryptoAsset(item))
       const cryptoItems = targetPortfolio.filter((item) => isCryptoAsset(item))
-      const cryptoIds = Array.from(new Set(cryptoItems.map((item) => (item.cryptoId || "").trim()).filter(Boolean)))
+      const resolveNeeded = cryptoItems.filter((item) => !(item.cryptoId || "").trim())
+
+      const resolveMissingCryptoIds = async () => {
+        const MAX_CRYPTO_RESOLVE = 20
+        const symbols = Array.from(
+          new Set(
+            resolveNeeded
+              .map((item) => item.symbol.trim().toUpperCase())
+              .filter(Boolean)
+          )
+        ).slice(0, MAX_CRYPTO_RESOLVE)
+
+        if (symbols.length === 0) return {}
+
+        const entries = await Promise.all(
+          symbols.map(async (symbol) => {
+            try {
+              const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
+              const payload = await response.json()
+              if (!response.ok) return null
+              const id = payload?.id ? String(payload.id) : ""
+              if (!id) return null
+              return [symbol, id] as const
+            } catch {
+              return null
+            }
+          })
+        )
+
+        const resolved: Record<string, string> = {}
+        entries.forEach((entry) => {
+          if (entry) resolved[entry[0]] = entry[1]
+        })
+        return resolved
+      }
+
+      const resolvedCryptoIds = await resolveMissingCryptoIds()
+      const cryptoIds = Array.from(
+        new Set(
+          cryptoItems
+            .map((item) => (item.cryptoId || resolvedCryptoIds[item.symbol.trim().toUpperCase()] || "").trim())
+            .filter(Boolean)
+        )
+      )
 
       let stockPriceData: any[] = []
       let sectorData: Record<string, string[]> = {}
@@ -2196,17 +2264,23 @@ export function useWalletData() {
         timestamp: now,
       }
 
-      const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(stockPriceData, sectorData, cryptoPrices)
+      const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+        stockPriceData,
+        sectorData,
+        cryptoPrices,
+        resolvedCryptoIds,
+      )
+      const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
 
-      setPortfolio(updatedPortfolio)
+      setPortfolio(mergedPortfolio)
       if (Object.keys(symbolToSector).length > 0) {
         setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
         setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
         saveToLocalStorage("sectorsMap", symbolToSector)
         saveToLocalStorage("scripNamesMap", symbolToName)
       }
-      await saveDataWithIntegrity("portfolio", updatedPortfolio)
-      return updatedPortfolio
+      await saveDataWithIntegrity("portfolio", mergedPortfolio)
+      return mergedPortfolio
     } catch (error: any) {
       throw error // Propagate specialized error
     }

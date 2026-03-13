@@ -117,22 +117,37 @@ export function PortfolioList() {
         }
     }, [isShareFeaturesEnabled, viewMode])
 
+    const portfolioSymbols = useMemo(
+        () => portfolio.map((p) => p.symbol).sort().join(","),
+        [portfolio]
+    )
+
     // Auto-refresh data on mount and every 2 minutes
     useEffect(() => {
-        if (!isShareFeaturesEnabled) return
-        const stockItems = portfolio.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
-        if (stockItems.length === 0) return
+        if (!activePortfolioId) return
+        const activeItems = portfolio.filter((p) => p.portfolioId === activePortfolioId)
+        const stockItems = activeItems.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
+        const cryptoItems = activeItems.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
+        const shouldFetchStocks = isShareFeaturesEnabled && stockItems.length > 0
+        const shouldFetchCrypto = cryptoItems.length > 0
 
-        // Initial fetch (stocks only)
-        fetchPortfolioPrices(stockItems)
+        if (!shouldFetchStocks && !shouldFetchCrypto) return
+
+        const itemsToFetch = shouldFetchStocks
+            ? (shouldFetchCrypto ? [...stockItems, ...cryptoItems] : stockItems)
+            : cryptoItems
+
+        // Initial fetch
+        fetchPortfolioPrices(itemsToFetch)
 
         // Set interval for 2 minutes
         const interval = setInterval(() => {
-            fetchPortfolioPrices(stockItems)
+            if (typeof document !== "undefined" && document.hidden) return
+            fetchPortfolioPrices(itemsToFetch)
         }, 2 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled, portfolio])
+    }, [isShareFeaturesEnabled, portfolioSymbols, activePortfolioId])
 
     const enableShareFeatures = () => {
         updateUserProfile({
