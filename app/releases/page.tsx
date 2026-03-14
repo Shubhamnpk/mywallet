@@ -16,9 +16,35 @@ interface ReleaseItem {
   highlights: string[]
 }
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://mywalletnp.vercel.app"
+
 export const metadata = {
   title: "Release Notes | MyWallet",
-  description: "Public changelog and shipped versions of MyWallet."
+  description: "Public changelog and shipped versions of MyWallet.",
+  alternates: {
+    canonical: "/releases",
+  },
+  openGraph: {
+    title: "Release Notes | MyWallet",
+    description: "Public changelog and shipped versions of MyWallet.",
+    url: `${siteUrl}/releases`,
+    type: "website",
+    siteName: "MyWallet",
+    images: [
+      {
+        url: "/mywallet.png",
+        width: 1200,
+        height: 630,
+        alt: "MyWallet Release Notes",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Release Notes | MyWallet",
+    description: "Public changelog and shipped versions of MyWallet.",
+    images: ["/mywallet.png"],
+  },
 }
 
 function formatReleaseDate(value: string) {

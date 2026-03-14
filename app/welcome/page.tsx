@@ -108,7 +108,7 @@ export default function WelcomePage() {
       <OnboardingFlow
         onComplete={(profile) => {
           handleOnboardingComplete(profile);
-          router.replace('/');
+          router.replace('/dashboard');
         }}
       />
     );
@@ -146,7 +146,7 @@ export default function WelcomePage() {
               </nav>
 
               <Link
-                href="/welcome?start=1"
+                href="/?start=1"
                 className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Start
@@ -192,7 +192,7 @@ export default function WelcomePage() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-start items-center mb-16">
-                  <Link href="/welcome?start=1" className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
+                  <Link href="/?start=1" className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
                     Get Started Free
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
@@ -711,7 +711,7 @@ export default function WelcomePage() {
                   Join over 100,000 users who have transformed their financial lives with MyWallet. Start your journey today.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/welcome?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
+                  <Link href="/?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
                     Try Web Version
                   </Link>
                   <button
@@ -756,8 +756,10 @@ export default function WelcomePage() {
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wide mb-3">Product</h3>
               <div className="space-y-2 text-sm">
-                <a href="#features" className="block text-muted-foreground hover:text-foreground transition-colors">Features</a>
-                <a href="#how-it-works" className="block text-muted-foreground hover:text-foreground transition-colors">How it works</a>
+                <Link href="/features" className="block text-muted-foreground hover:text-foreground transition-colors">Features</Link>
+                <Link href="/how-it-works" className="block text-muted-foreground hover:text-foreground transition-colors">How it works</Link>
+                <Link href="/pricing" className="block text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
+                <Link href="/security" className="block text-muted-foreground hover:text-foreground transition-colors">Security</Link>
                 <Link href="/releases" className="block text-muted-foreground hover:text-foreground transition-colors">Release notes</Link>
               </div>
             </div>
@@ -765,9 +767,9 @@ export default function WelcomePage() {
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wide mb-3">Start</h3>
               <div className="space-y-2 text-sm">
-                <Link href="/welcome?start=1" className="block text-muted-foreground hover:text-foreground transition-colors">Start onboarding</Link>
-                <Link href="/settings?tab=about" className="block text-muted-foreground hover:text-foreground transition-colors">About</Link>
-                <Link href="/" className="block text-muted-foreground hover:text-foreground transition-colors">Dashboard</Link>
+                <Link href="/?start=1" className="block text-muted-foreground hover:text-foreground transition-colors">Start onboarding</Link>
+                <Link href="/guides" className="block text-muted-foreground hover:text-foreground transition-colors">Guides</Link>
+                <Link href="/dashboard" className="block text-muted-foreground hover:text-foreground transition-colors">Dashboard</Link>
               </div>
             </div>
           </div>
