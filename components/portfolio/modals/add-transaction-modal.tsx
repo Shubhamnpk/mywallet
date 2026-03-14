@@ -38,6 +38,8 @@ interface AddTransactionModalProps {
     setNewTx: (tx: any) => void
     onAdd: () => Promise<void>
     stockOptions?: StockOption[]
+    portfolioStockOptions?: StockOption[]
+    portfolioCryptoOptions?: CryptoHoldingOption[]
 }
 
 type CryptoCoinOption = {
@@ -45,6 +47,11 @@ type CryptoCoinOption = {
     symbol: string
     name: string
     rank: number
+}
+type CryptoHoldingOption = {
+    id?: string
+    symbol: string
+    name?: string
 }
 type StockOption = {
     symbol: string
@@ -57,7 +64,9 @@ export function AddTransactionModal({
     newTx,
     setNewTx,
     onAdd,
-    stockOptions = []
+    stockOptions = [],
+    portfolioStockOptions = [],
+    portfolioCryptoOptions = []
 }: AddTransactionModalProps) {
     const [popularCoins, setPopularCoins] = useState<CryptoCoinOption[]>([])
     const [isLoadingCoins, setIsLoadingCoins] = useState(false)
@@ -82,7 +91,21 @@ export function AddTransactionModal({
         return () => { mounted = false }
     }, [open, newTx.assetType])
 
+    const isSellType = newTx.type === "sell"
+    const stockSuggestionPool = isSellType ? portfolioStockOptions : stockOptions
+    const filteredStocks = useMemo(() => {
+        const q = (newTx.symbol || "").trim().toLowerCase()
+        if (!q) return stockSuggestionPool.slice(0, 8)
+        return stockSuggestionPool
+            .filter((stock) =>
+                stock.symbol.toLowerCase().includes(q) || stock.name.toLowerCase().includes(q)
+            )
+            .slice(0, 8)
+    }, [stockSuggestionPool, newTx.symbol])
+
+    const useHoldingCryptoSuggestions = isSellType
     const filteredCoins = useMemo(() => {
+        if (useHoldingCryptoSuggestions) return []
         const q = (newTx.symbol || "").trim().toLowerCase()
         if (!q) return popularCoins.slice(0, 8)
         return popularCoins
@@ -90,16 +113,17 @@ export function AddTransactionModal({
                 coin.symbol.toLowerCase().includes(q) || coin.name.toLowerCase().includes(q)
             )
             .slice(0, 8)
-    }, [popularCoins, newTx.symbol])
-    const filteredStocks = useMemo(() => {
+    }, [popularCoins, newTx.symbol, useHoldingCryptoSuggestions])
+    const filteredCryptoHoldings = useMemo(() => {
+        if (!useHoldingCryptoSuggestions) return []
         const q = (newTx.symbol || "").trim().toLowerCase()
-        if (!q) return stockOptions.slice(0, 8)
-        return stockOptions
-            .filter((stock) =>
-                stock.symbol.toLowerCase().includes(q) || stock.name.toLowerCase().includes(q)
+        if (!q) return portfolioCryptoOptions.slice(0, 8)
+        return portfolioCryptoOptions
+            .filter((coin) =>
+                coin.symbol.toLowerCase().includes(q) || (coin.name || "").toLowerCase().includes(q)
             )
             .slice(0, 8)
-    }, [stockOptions, newTx.symbol])
+    }, [portfolioCryptoOptions, newTx.symbol, useHoldingCryptoSuggestions])
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,9 +133,12 @@ export function AddTransactionModal({
                     New Transaction
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] rounded-3xl">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl font-black">Record Transaction</DialogTitle>
+            <DialogContent
+                className="sm:max-w-[425px] rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
+                overlayClassName="bg-black/45 backdrop-blur-none"
+            >
+                <DialogHeader className="pb-3 border-b border-primary/10">
+                    <DialogTitle className="text-2xl font-black text-primary">Record Transaction</DialogTitle>
                     <DialogDescription className="font-medium">
                         Manage buys, sells, IPOs, or bonuses to keep your portfolio accurate.
                     </DialogDescription>
@@ -180,7 +207,31 @@ export function AddTransactionModal({
                                 {showSuggestions && (
                                     <div className="absolute z-50 mt-1 w-full rounded-xl border bg-popover shadow-lg max-h-52 overflow-auto">
                                         {newTx.assetType === "crypto" ? (
-                                            isLoadingCoins ? (
+                                            useHoldingCryptoSuggestions ? (
+                                                filteredCryptoHoldings.length === 0 ? (
+                                                    <div className="px-3 py-2 text-xs text-muted-foreground">No matching holding found</div>
+                                                ) : (
+                                                    filteredCryptoHoldings.map((coin) => (
+                                                        <button
+                                                            key={`${coin.id || coin.symbol}`}
+                                                            type="button"
+                                                            className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
+                                                            onMouseDown={(e) => {
+                                                                e.preventDefault()
+                                                                setNewTx({
+                                                                    ...newTx,
+                                                                    symbol: coin.symbol,
+                                                                    cryptoId: coin.id || "",
+                                                                })
+                                                                setShowSuggestions(false)
+                                                            }}
+                                                        >
+                                                            <span className="font-bold">{coin.symbol}</span>
+                                                            {coin.name && <span className="text-muted-foreground"> - {coin.name}</span>}
+                                                        </button>
+                                                    ))
+                                                )
+                                            ) : isLoadingCoins ? (
                                                 <div className="px-3 py-2 text-xs text-muted-foreground">Loading coins...</div>
                                             ) : filteredCoins.length === 0 ? (
                                                 <div className="px-3 py-2 text-xs text-muted-foreground">No matching coin found</div>
@@ -207,7 +258,9 @@ export function AddTransactionModal({
                                             )
                                         ) : (
                                             filteredStocks.length === 0 ? (
-                                                <div className="px-3 py-2 text-xs text-muted-foreground">No matching stock found</div>
+                                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                                    {isSellType ? "No matching holding found" : "No matching stock found"}
+                                                </div>
                                             ) : (
                                                 filteredStocks.map((stock) => (
                                                     <button
@@ -236,7 +289,7 @@ export function AddTransactionModal({
                     </div>
                     {newTx.assetType === "crypto" && (
                         <p className="text-[11px] font-medium text-muted-foreground">
-                            Pick from popular coins like Bitcoin (BTC), Ethereum (ETH), and more.
+                            {useHoldingCryptoSuggestions ? "Showing only your crypto holdings for sell." : "Pick from popular coins like Bitcoin (BTC), Ethereum (ETH), and more."}
                         </p>
                     )}
                     <div className="grid grid-cols-2 gap-4">

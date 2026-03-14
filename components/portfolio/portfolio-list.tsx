@@ -234,6 +234,37 @@ export function PortfolioList() {
                 .sort((a, b) => a.symbol.localeCompare(b.symbol)),
         [scripNamesMap],
     )
+    const portfolioStockOptions = useMemo(() => {
+        const bySymbol = new Map<string, string>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .filter((item) => item.assetType !== "crypto" && !item.cryptoId)
+            .forEach((item) => {
+                const symbol = item.symbol.toUpperCase()
+                const name = scripNamesMap?.[symbol] || item.assetName || symbol
+                if (!bySymbol.has(symbol)) bySymbol.set(symbol, name)
+            })
+        return Array.from(bySymbol.entries())
+            .map(([symbol, name]) => ({ symbol, name }))
+            .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }, [portfolio, activePortfolioId, scripNamesMap])
+    const portfolioCryptoOptions = useMemo(() => {
+        const byKey = new Map<string, { id?: string; symbol: string; name?: string }>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .filter((item) => item.assetType === "crypto" || Boolean(item.cryptoId))
+            .forEach((item) => {
+                const key = item.cryptoId || item.symbol
+                if (!byKey.has(key)) {
+                    byKey.set(key, {
+                        id: item.cryptoId,
+                        symbol: item.symbol,
+                        name: item.assetName,
+                    })
+                }
+            })
+        return Array.from(byKey.values()).sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }, [portfolio, activePortfolioId])
 
     const handleRefresh = async () => {
         setIsRefreshing(true)
@@ -1504,6 +1535,8 @@ export function PortfolioList() {
                             setNewTx={setNewTx}
                             onAdd={handleAddTransaction}
                             stockOptions={stockOptions}
+                            portfolioStockOptions={portfolioStockOptions}
+                            portfolioCryptoOptions={portfolioCryptoOptions}
                         />
                     </div>
 

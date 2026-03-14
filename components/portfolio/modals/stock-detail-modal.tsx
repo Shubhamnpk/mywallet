@@ -30,7 +30,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -57,6 +57,22 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
+    const [expandedNoticeId, setExpandedNoticeId] = useState<number | null>(null)
+
+    useEffect(() => {
+        if (!open || typeof document === "undefined") return
+        const originalOverflow = document.body.style.overflow
+        const originalPaddingRight = document.body.style.paddingRight
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+        document.body.style.overflow = "hidden"
+        if (scrollbarWidth > 0) {
+            document.body.style.paddingRight = `${scrollbarWidth}px`
+        }
+        return () => {
+            document.body.style.overflow = originalOverflow
+            document.body.style.paddingRight = originalPaddingRight
+        }
+    }, [open])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
     const currencySymbol = isCrypto ? "$" : "रु"
@@ -107,6 +123,47 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
             .replace(/[().,-]/g, "")
             .replace(/\s+/g, " ")
             .trim()
+
+    const stripHtml = (value?: string) => {
+        if (!value) return ""
+        return value
+            .replace(/<[^>]*>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/gi, "'")
+            .replace(/\s+/g, " ")
+            .trim()
+    }
+
+    const getNoticeDocuments = (notice?: NepseDisclosure) => {
+        if (!notice?.applicationDocumentDetailsList?.length) return []
+        return notice.applicationDocumentDetailsList
+            .map((doc) => {
+                const directUrl = (doc.fileUrl || "").trim()
+                if (directUrl) {
+                    return {
+                        label: directUrl.split("/").pop() || "Document",
+                        url: directUrl,
+                    }
+                }
+                const rawPath = (doc.filePath || "").trim()
+                if (!rawPath) return null
+                if (/^https?:\/\//i.test(rawPath)) {
+                    return { label: rawPath.split("/").pop() || "Document", url: rawPath }
+                }
+                const normalized = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath
+                return {
+                    label: rawPath.split("/").pop() || "Document",
+                    url: `https://www.nepalstock.com.np/api/nots/security/fetchFiles?fileLocation=${encodeURI(normalized)}`,
+                }
+            })
+            .filter((doc): doc is { label: string; url: string } => Boolean(doc?.url))
+    }
+
+    const toggleNoticeDetails = (noticeId: number) => {
+        setExpandedNoticeId((prev) => (prev === noticeId ? null : noticeId))
+    }
 
     const loadDividendHistory = async () => {
         if (dividendHistory || isDividendHistoryLoading) return
@@ -168,6 +225,33 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [item, shareTransactions, symbol])
 
+    const holdingStartDate = useMemo(() => {
+        if (matchedTransactions.length === 0) return null
+        let earliest = Number.POSITIVE_INFINITY
+        for (const tx of matchedTransactions) {
+            const parsed = Date.parse(tx.date)
+            if (Number.isFinite(parsed) && parsed < earliest) {
+                earliest = parsed
+            }
+        }
+        return Number.isFinite(earliest) ? new Date(earliest) : null
+    }, [matchedTransactions])
+
+    const holdingPeriodLabel = useMemo(() => {
+        if (!holdingStartDate) return "N/A"
+        const start = holdingStartDate.getTime()
+        const now = Date.now()
+        if (!Number.isFinite(start) || start > now) return "N/A"
+        const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+        if (diffDays < 1) return "Less than a day"
+        if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? "" : "s"}`
+        const diffMonths = Math.floor(diffDays / 30)
+        if (diffMonths < 12) return `${diffMonths} month${diffMonths === 1 ? "" : "s"}`
+        const years = Math.floor(diffMonths / 12)
+        const months = diffMonths % 12
+        return months > 0 ? `${years}y ${months}m` : `${years} year${years === 1 ? "" : "s"}`
+    }, [holdingStartDate])
+
     const matchedNotices = useMemo(() => {
         if (!item) return []
         const combined = [...(noticesBundle?.company || []), ...(disclosures || [])]
@@ -178,9 +262,10 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     }, [item, noticesBundle, disclosures, symbol, companyName])
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            {item && (
-                <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                {item && (
+                    <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
                     <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative">
                         <Button
                             variant="ghost"
@@ -263,30 +348,53 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 <div className="p-6 pt-2 space-y-4">
                                     <TabsContent value="overview" className="m-0 space-y-6">
                                         {/* Performance Card */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
-                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Current Value</span>
-                                                <span className="text-lg font-black font-mono">{currencySymbol} {formatValue(value)}</span>
-                                            </div>
+                                        <div className="grid grid-cols-2 gap-3">
                                             <div className={cn(
-                                                "p-4 rounded-2xl border flex flex-col gap-1",
+                                                "p-4 rounded-2xl border flex flex-col gap-2",
                                                 isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
                                             )}>
-                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Total P/L</span>
-                                                <span className={cn(
-                                                    "text-lg font-black font-mono",
+                                                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                    Position Summary
+                                                </div>
+                                                <div className="text-lg font-black font-mono">
+                                                    {currencySymbol} {formatValue(value)}
+                                                </div>
+                                                <div className={cn(
+                                                    "text-[10px] font-bold",
                                                     isProfit ? "text-green-600" : "text-red-600"
                                                 )}>
-                                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)}
-                                                </span>
-                                                <span className="text-[10px] font-bold text-muted-foreground">
-                                                    {hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"}
-                                                </span>
+                                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
+                                                </div>
+                                            </div>
+                                            <div className={cn(
+                                                "p-4 rounded-2xl border flex flex-col gap-2",
+                                                isDailyProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                            )}>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
+                                                    <span className={cn(
+                                                        "text-[10px] font-bold",
+                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                    )}>
+                                                        {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <div className={cn(
+                                                        "text-lg font-black font-mono",
+                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                    )}>
+                                                        {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-muted-foreground">
+                                                    Per Unit: {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange)} ({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)
+                                                </div>
                                             </div>
                                         </div>
 
                                         {/* Market Data */}
-                                        <div className="grid grid-cols-3 gap-3">
+                                        <div className="grid grid-cols-3 gap-2 -mt-2">
                                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
                                                 <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
                                                     <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
@@ -332,8 +440,12 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                                         <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
                                                     </span>
-                                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest">
-                                                        Long Term
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-[9px] font-black uppercase tracking-widest"
+                                                        title={holdingStartDate ? `Since ${holdingStartDate.toLocaleDateString()}` : "No transactions"}
+                                                    >
+                                                        {holdingPeriodLabel}
                                                     </Badge>
                                                 </div>
                                             </div>
@@ -432,12 +544,47 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                             {notice.newsHeadline}
                                                         </h4>
                                                         <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
-                                                            {notice.addedDate ? new Date(notice.addedDate).toLocaleDateString() : 'Recent'}
+                                                            {notice.addedDate ? new Date(notice.addedDate).toLocaleDateString() : "Recent"}
                                                         </span>
                                                     </div>
-                                                    <Button variant="ghost" size="sm" className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent">
-                                                        View Details <ExternalLink className="w-2.5 h-2.5 ml-1" />
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent"
+                                                        onClick={() => toggleNoticeDetails(notice.id)}
+                                                    >
+                                                        {expandedNoticeId === notice.id ? "Hide Details" : "View Details"}
                                                     </Button>
+                                                    {expandedNoticeId === notice.id && (
+                                                        <div className="rounded-lg border border-muted/30 bg-muted/10 p-3 space-y-3">
+                                                            {notice.newsBody ? (
+                                                                <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                                                                    {stripHtml(notice.newsBody)}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground">No detailed summary available for this notice.</p>
+                                                            )}
+                                                            {getNoticeDocuments(notice).length > 0 && (
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Documents</p>
+                                                                    <div className="flex flex-col gap-2">
+                                                                        {getNoticeDocuments(notice).map((doc, index) => (
+                                                                            <Button
+                                                                                key={`${doc.url}-${index}`}
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                className="justify-start text-xs"
+                                                                                onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}
+                                                                            >
+                                                                                <ExternalLink className="w-3 h-3 mr-2" />
+                                                                                {doc.label}
+                                                                            </Button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))
                                         ) : (
@@ -467,8 +614,9 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                             </Button>
                         </div>
                     </Tabs>
-                </DialogContent>
-            )}
-        </Dialog>
+                    </DialogContent>
+                )}
+            </Dialog>
+        </>
     )
 }

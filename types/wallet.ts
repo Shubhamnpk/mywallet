@@ -296,7 +296,7 @@ export interface NepseDisclosure {
   newsHeadline: string
   newsBody?: string
   addedDate?: string
-  applicationDocumentDetailsList?: Array<{ filePath?: string; encryptedId?: string }>
+  applicationDocumentDetailsList?: Array<{ filePath?: string; encryptedId?: string; fileUrl?: string }>
 }
 
 export interface NepseExchangeMessage {
