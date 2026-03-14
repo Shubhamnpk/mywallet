@@ -110,7 +110,13 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
       })
     }
     return items.slice(0, 15)
-  }, [budgets, goals, upcomingIPOs, userProfile.meroShare?.shareFeaturesEnabled, userProfile.meroShare?.shareNotificationsEnabled])
+  }, [
+    budgets,
+    goals,
+    upcomingIPOs,
+    userProfile.meroShare?.shareFeaturesEnabled,
+    userProfile.meroShare?.shareNotificationsEnabled,
+  ])
 
   const unreadCount = notifications.filter((n) => !readMap[n.id]).length
 

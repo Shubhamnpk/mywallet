@@ -17,6 +17,12 @@ import type {
   PortfolioItem,
   ShareTransaction,
   UpcomingIPO,
+  TopStocksData,
+  MarketSummaryMetric,
+  MarketSummaryHistoryItem,
+  NepseNoticesBundle,
+  NepseDisclosure,
+  NepseExchangeMessage,
 } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
@@ -36,6 +42,20 @@ import { toast } from "sonner"
 const HOUR_MS = 60 * 60 * 1000
 const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
 const DELETE_UNDO_WINDOW_MS = 5000
+const UNITS_EPSILON = 1e-12
+
+// Module-level cache for portfolio prices (persists across re-renders)
+let globalPortfolioCache: {
+  stockPriceData: any[],
+  sectorData: Record<string, string[]>,
+  cryptoPrices: Record<string, any>,
+  timestamp: number
+} | null = null
+const normalizeUnits = (value: number) => {
+  if (!Number.isFinite(value)) return 0
+  if (Math.abs(value) <= UNITS_EPSILON) return 0
+  return Number(value.toFixed(12))
+}
 
 type TransactionDeleteSnapshot = {
   transactions: Transaction[]
@@ -196,6 +216,7 @@ const shouldSendReminder = (cache: Record<string, number>, key: string, cooldown
   return Date.now() - lastSentAt >= cooldownMs
 }
 
+
 export function useWalletData() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -219,8 +240,17 @@ export function useWalletData() {
   const [scripNamesMap, setScripNamesMap] = useState<Record<string, string>>({})
   const [upcomingIPOs, setUpcomingIPOs] = useState<UpcomingIPO[]>([])
   const [isIPOsLoading, setIsIPOsLoading] = useState(false)
+  const [topStocks, setTopStocks] = useState<TopStocksData | null>(null)
+  const [marketSummary, setMarketSummary] = useState<MarketSummaryMetric[]>([])
+  const [marketSummaryHistory, setMarketSummaryHistory] = useState<MarketSummaryHistoryItem[]>([])
+  const [noticesBundle, setNoticesBundle] = useState<NepseNoticesBundle | null>(null)
+  const [disclosures, setDisclosures] = useState<NepseDisclosure[]>([])
+  const [exchangeMessages, setExchangeMessages] = useState<NepseExchangeMessage[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
+  const normalizeAssetType = (assetType?: "stock" | "crypto") => assetType === "crypto" ? "crypto" : "stock"
+  const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) =>
+    `${portfolioId}::${symbol.trim().toUpperCase()}::${normalizeAssetType(assetType)}::${(cryptoId || "").trim()}`
 
   // Reminder engine: budgets, goals, and IPO windows.
   useEffect(() => {
@@ -421,6 +451,13 @@ export function useWalletData() {
     userProfile?.meroShare?.shareNotificationsEnabled,
   ])
 
+  // Transactions are the source of truth for holdings.
+  // Keep portfolio reconciled in case older stored portfolio snapshots drift.
+  useEffect(() => {
+    if (!isLoaded) return
+    void recomputePortfolio(shareTransactions)
+  }, [isLoaded, shareTransactions])
+
   useEffect(() => {
     if (isLoaded) return
 
@@ -477,6 +514,9 @@ export function useWalletData() {
         .then(data => {
           if (Array.isArray(data)) {
             const processedIPOs: UpcomingIPO[] = data.map(ipo => {
+              const normalizedReservedFor =
+                typeof ipo?.reserved_for === "string" ? ipo.reserved_for.trim() : ""
+
               const normalizedReservedFlag =
                 typeof ipo?.is_reserved_share === "boolean"
                   ? ipo.is_reserved_share
@@ -484,12 +524,12 @@ export function useWalletData() {
                     ? ipo.is_reserved_share.trim().toLowerCase() === "true"
                     : typeof ipo?.is_reserved_share === "number"
                       ? ipo.is_reserved_share === 1
-                      : false
+                      : normalizedReservedFor.length > 0
 
               const baseIpo: UpcomingIPO = {
                 ...ipo,
                 is_reserved_share: normalizedReservedFlag,
-                reserved_for: typeof ipo?.reserved_for === "string" ? ipo.reserved_for.trim() : "",
+                reserved_for: normalizedReservedFor,
               }
               const dates = parseNepaliDateRange(ipo.date_range)
               if (dates) {
@@ -509,6 +549,66 @@ export function useWalletData() {
         })
         .catch(err => console.error("Error fetching upcoming IPOs:", err))
         .finally(() => setIsIPOsLoading(false))
+
+      fetch("/api/nepse/top-stocks")
+        .then(res => res.json())
+        .then((data: TopStocksData) => {
+          if (data && typeof data === "object") {
+            setTopStocks({
+              top_gainer: Array.isArray(data.top_gainer) ? data.top_gainer : [],
+              top_loser: Array.isArray(data.top_loser) ? data.top_loser : [],
+              top_turnover: Array.isArray(data.top_turnover) ? data.top_turnover : [],
+              top_trade: Array.isArray(data.top_trade) ? data.top_trade : [],
+              top_transaction: Array.isArray(data.top_transaction) ? data.top_transaction : [],
+            })
+          }
+        })
+        .catch(err => console.error("Error fetching top stocks:", err))
+
+      fetch("/api/nepse/market-summary")
+        .then(res => res.json())
+        .then((data: MarketSummaryMetric[]) => {
+          if (Array.isArray(data)) {
+            setMarketSummary(data)
+          }
+        })
+        .catch(err => console.error("Error fetching market summary:", err))
+
+      fetch("/api/nepse/market-summary/history")
+        .then(res => res.json())
+        .then((data: MarketSummaryHistoryItem[]) => {
+          if (Array.isArray(data)) {
+            setMarketSummaryHistory(data)
+          }
+        })
+        .catch(err => console.error("Error fetching market summary history:", err))
+
+      fetch("/api/nepse/notices")
+        .then(res => res.json())
+        .then((data: NepseNoticesBundle) => {
+          if (data && typeof data === "object") {
+            setNoticesBundle(data)
+          }
+        })
+        .catch(err => console.error("Error fetching notices bundle:", err))
+
+      fetch("/api/nepse/disclosures")
+        .then(res => res.json())
+        .then((data: NepseDisclosure[]) => {
+          if (Array.isArray(data)) {
+            setDisclosures(data)
+          }
+        })
+        .catch(err => console.error("Error fetching disclosures:", err))
+
+      fetch("/api/nepse/exchange-messages")
+        .then(res => res.json())
+        .then((data: NepseExchangeMessage[]) => {
+          if (Array.isArray(data)) {
+            setExchangeMessages(data)
+          }
+        })
+        .catch(err => console.error("Error fetching exchange messages:", err))
     }
   }, [isLoaded])
 
@@ -1806,6 +1906,8 @@ export function useWalletData() {
   const addPortfolioItem = async (item: Omit<PortfolioItem, "id">) => {
     const newItem: PortfolioItem = {
       ...item,
+      assetType: normalizeAssetType(item.assetType),
+      cryptoId: item.cryptoId?.trim() || undefined,
       id: generateId('port'),
       lastUpdated: new Date().toISOString(),
     }
@@ -1825,17 +1927,20 @@ export function useWalletData() {
 
   const deletePortfolioItem = async (id: string) => {
     const itemToDelete = portfolio.find((item) => item.id === id)
-    if (itemToDelete) {
-      // Also delete all transactions associated with this symbol
-      const symbolToDelete = itemToDelete.symbol
-      const updatedTransactions = shareTransactions.filter((t) => t.symbol !== symbolToDelete)
-      setShareTransactions(updatedTransactions)
-      await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    }
+    if (!itemToDelete) return
 
-    const updatedPortfolio = portfolio.filter((item) => item.id !== id)
-    setPortfolio(updatedPortfolio)
-    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    const itemKey = getHoldingKey(
+      itemToDelete.portfolioId,
+      itemToDelete.symbol,
+      itemToDelete.assetType,
+      itemToDelete.cryptoId,
+    )
+    const updatedTransactions = shareTransactions.filter((t) =>
+      getHoldingKey(t.portfolioId, t.symbol, t.assetType, t.cryptoId) !== itemKey
+    )
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    await recomputePortfolio(updatedTransactions)
   }
 
   const addPortfolio = async (name: string, description?: string, color?: string) => {
@@ -1897,30 +2002,33 @@ export function useWalletData() {
     await saveToLocalStorage("portfolios", updated, true)
   }
 
-  // Module-level cache (resets on browser reload)
-  let globalPortfolioCache: {
-    priceData: any[],
-    sectorData: Record<string, string[]>,
-    timestamp: number
-  } | null = null
 
   const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) => {
     const targetPortfolio = portfolioOverride || portfolio
     if (targetPortfolio.length === 0) return
 
     try {
-      // Check cache validity (2 minutes = 120000 milliseconds)
       const CACHE_DURATION = 2 * 60 * 1000
       const now = Date.now()
+      const nowIso = new Date().toISOString()
+      const isCryptoAsset = (item: PortfolioItem) => normalizeAssetType(item.assetType) === "crypto" || Boolean(item.cryptoId?.trim())
 
       const isCacheValid = globalPortfolioCache &&
         (now - globalPortfolioCache.timestamp) < CACHE_DURATION
 
-      // If cache is valid and not forcing refresh, use cached data
-      if (isCacheValid && !forceRefresh && globalPortfolioCache) {
-        const { priceData, sectorData } = globalPortfolioCache
+      const mergeUpdatedPortfolio = (base: PortfolioItem[], updated: PortfolioItem[]) => {
+        if (updated.length === 0) return base
+        const updatedKeySet = new Set(updated.map((item) => getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+        const filteredBase = base.filter((item) => !updatedKeySet.has(getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+        return [...filteredBase, ...updated]
+      }
 
-        // Process cached data same way as fresh data
+      const applyLivePrices = (
+        stockPriceData: any[],
+        sectorData: Record<string, string[]>,
+        cryptoPrices: Record<string, any>,
+        resolvedCryptoIds: Record<string, string>,
+      ) => {
         const symbolToSector: Record<string, string> = {}
         const symbolToName: Record<string, string> = {}
         Object.entries(sectorData).forEach(([sector, scrips]) => {
@@ -1937,10 +2045,53 @@ export function useWalletData() {
           }
         })
 
-        const updatedPortfolio = targetPortfolio.map(item => {
-          const matchingStock = priceData.find((s: any) =>
-            (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
-          )
+        const stockLookup = new Map<string, any>()
+        if (stockPriceData.length > 0) {
+          stockPriceData.forEach((s: any) => {
+            const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
+            if (key) stockLookup.set(key, s)
+          })
+        }
+
+        const updatedPortfolio: PortfolioItem[] = targetPortfolio.map((item): PortfolioItem => {
+          if (isCryptoAsset(item)) {
+            const resolvedId = resolvedCryptoIds[item.symbol.trim().toUpperCase()]
+            const cryptoId = item.cryptoId?.trim() || resolvedId
+            const coin = cryptoId ? cryptoPrices[cryptoId] : null
+            if (!coin) {
+              return {
+                ...item,
+                assetType: "crypto",
+                cryptoId,
+                sector: "Crypto",
+              }
+            }
+
+            const ltp = Number(coin.price_usd || item.currentPrice || item.buyPrice || 0)
+            const percentChange = Number(coin.percent_change_24h ?? item.percentChange ?? 0)
+            const computedPrev = Number.isFinite(percentChange) && percentChange > -100
+              ? ltp / (1 + (percentChange / 100))
+              : item.previousClose
+            const previousClose = Number(computedPrev || item.previousClose || ltp)
+            const change = Number(item.change ?? (ltp - previousClose))
+
+            return {
+              ...item,
+              assetType: "crypto",
+              cryptoId,
+              assetName: coin.name || item.assetName || item.symbol,
+              currentPrice: ltp,
+              previousClose,
+              change,
+              percentChange,
+              high: item.high ?? ltp,
+              low: item.low ?? ltp,
+              sector: "Crypto",
+              lastUpdated: nowIso,
+            }
+          }
+
+          const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
 
           const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
 
@@ -1955,6 +2106,7 @@ export function useWalletData() {
 
             return {
               ...item,
+              assetType: "stock",
               currentPrice: ltp,
               previousClose: pc,
               high,
@@ -1969,165 +2121,184 @@ export function useWalletData() {
 
           return {
             ...item,
+            assetType: "stock",
             sector: sector
           }
         })
 
-        // Optimized state updates
-        if (JSON.stringify(updatedPortfolio) !== JSON.stringify(targetPortfolio)) {
-          setPortfolio(updatedPortfolio)
-          await saveDataWithIntegrity("portfolio", updatedPortfolio)
+        return { updatedPortfolio, symbolToSector, symbolToName }
+      }
+
+      if (isCacheValid && !forceRefresh && globalPortfolioCache) {
+        const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+          globalPortfolioCache.stockPriceData,
+          globalPortfolioCache.sectorData,
+          globalPortfolioCache.cryptoPrices,
+          {},
+        )
+        const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+
+        // Only update state if data actually changed (excluding timestamps)
+        const hasSubstantialChange = JSON.stringify(mergedPortfolio.map(({ lastUpdated, ...rest }) => rest)) !==
+          JSON.stringify(portfolio.map(({ lastUpdated, ...rest }) => rest))
+
+        if (hasSubstantialChange) {
+          setPortfolio(mergedPortfolio)
+          await saveDataWithIntegrity("portfolio", mergedPortfolio)
         }
-        return updatedPortfolio
-      }
-
-      // Fetch fresh data from API
-      const [priceRes, sectorRes] = await Promise.all([
-        fetch("/api/nepse/today"),
-        fetch("/api/nepse/sectors")
-      ])
-
-      const priceData = await priceRes.json()
-      let sectorData: Record<string, string[]> = {}
-
-      try {
-        if (sectorRes.ok) {
-          sectorData = await sectorRes.json()
+        if (Object.keys(symbolToSector).length > 0) {
+          setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+          setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
         }
-      } catch (e) {
+        return mergedPortfolio
       }
 
-      if (!priceRes.ok) {
-        throw new Error(priceData.message || priceData.error || "Nepal Stock APIs are currently unavailable")
-      }
+      const stockItems = targetPortfolio.filter((item) => !isCryptoAsset(item))
+      const cryptoItems = targetPortfolio.filter((item) => isCryptoAsset(item))
+      const resolveNeeded = cryptoItems.filter((item) => !(item.cryptoId || "").trim())
 
-      if (!Array.isArray(priceData)) {
-        throw new Error("Received invalid data format from stock exchange")
-      }
+      const resolveMissingCryptoIds = async () => {
+        const MAX_CRYPTO_RESOLVE = 20
+        const symbols = Array.from(
+          new Set(
+            resolveNeeded
+              .map((item) => item.symbol.trim().toUpperCase())
+              .filter(Boolean)
+          )
+        ).slice(0, MAX_CRYPTO_RESOLVE)
 
-      // Update memory cache
-      globalPortfolioCache = {
-        priceData,
-        sectorData,
-        timestamp: now
-      }
+        if (symbols.length === 0) return {}
 
-      // Create maps for sectors and names
-      const symbolToSector: Record<string, string> = {}
-      const symbolToName: Record<string, string> = {}
-      Object.entries(sectorData).forEach(([sector, scrips]) => {
-        if (Array.isArray(scrips)) {
-          scrips.forEach((scrip: any) => {
-            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
-            if (sym) {
-              symbolToSector[sym] = sector
-              if (scrip.name) {
-                symbolToName[sym] = scrip.name.trim()
-              }
+        const entries = await Promise.all(
+          symbols.map(async (symbol) => {
+            try {
+              const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
+              const payload = await response.json()
+              if (!response.ok) return null
+              const id = payload?.id ? String(payload.id) : ""
+              if (!id) return null
+              return [symbol, id] as const
+            } catch {
+              return null
             }
           })
-        }
-      })
-
-      const updatedPortfolio = targetPortfolio.map(item => {
-        const matchingStock = priceData.find((s: any) =>
-          (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase() === item.symbol.trim().toUpperCase()
         )
 
-        // Try to get sector from map, or keep existing, or fallback to "Others"
-        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+        const resolved: Record<string, string> = {}
+        entries.forEach((entry) => {
+          if (entry) resolved[entry[0]] = entry[1]
+        })
+        return resolved
+      }
 
-        if (matchingStock) {
-          // Normalize price field names from various community APIs
-          const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
-          const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
-          const high = Number(matchingStock.high || matchingStock.high_price || item.high)
-          const low = Number(matchingStock.low || matchingStock.low_price || item.low)
-          const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
-          const change = Number(matchingStock.change || (ltp - pc) || item.change)
-          const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
+      const resolvedCryptoIds = await resolveMissingCryptoIds()
+      const cryptoIds = Array.from(
+        new Set(
+          cryptoItems
+            .map((item) => (item.cryptoId || resolvedCryptoIds[item.symbol.trim().toUpperCase()] || "").trim())
+            .filter(Boolean)
+        )
+      )
 
-          return {
-            ...item,
-            currentPrice: ltp,
-            previousClose: pc,
-            high,
-            low,
-            volume,
-            change,
-            percentChange,
-            sector: sector,
-            lastUpdated: new Date().toISOString()
+      let stockPriceData: any[] = []
+      let sectorData: Record<string, string[]> = {}
+      let cryptoPrices: Record<string, any> = {}
+      let stockError: string | null = null
+      let cryptoError: string | null = null
+
+      await Promise.all([
+        (async () => {
+          if (stockItems.length === 0) return
+          try {
+            const [priceRes, sectorRes] = await Promise.all([
+              fetch("/api/nepse/today"),
+              fetch("/api/nepse/sectors"),
+            ])
+            const pricePayload = await priceRes.json()
+            if (!priceRes.ok) {
+              throw new Error(pricePayload?.message || pricePayload?.error || "Nepal Stock APIs are currently unavailable")
+            }
+            if (!Array.isArray(pricePayload)) {
+              throw new Error("Received invalid data format from stock exchange")
+            }
+            stockPriceData = pricePayload
+            if (sectorRes.ok) {
+              try {
+                sectorData = await sectorRes.json()
+              } catch {
+              }
+            }
+          } catch (error: any) {
+            stockError = error?.message || "Failed to load stock prices"
           }
-        }
+        })(),
+        (async () => {
+          if (cryptoIds.length === 0) return
+          try {
+            const response = await fetch(`/api/crypto/coinlore?ids=${cryptoIds.join(",")}`)
+            const payload = await response.json()
+            if (!response.ok) {
+              throw new Error(payload?.error || "Failed to load crypto prices")
+            }
+            cryptoPrices = payload?.prices && typeof payload.prices === "object" ? payload.prices : {}
+          } catch (error: any) {
+            cryptoError = error?.message || "Failed to load crypto prices"
+          }
+        })(),
+      ])
 
-        // Even if price not found, update sector if we found it
-        return {
-          ...item,
-          sector: sector
-        }
-      })
+      if (stockItems.length > 0 && stockPriceData.length === 0 && cryptoIds.length === 0) {
+        throw new Error(stockError || "Stock prices are currently unavailable")
+      }
+      if (cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0 && stockItems.length === 0) {
+        throw new Error(cryptoError || "Crypto prices are currently unavailable")
+      }
+      if (stockItems.length > 0 && cryptoIds.length > 0 && stockPriceData.length === 0 && Object.keys(cryptoPrices).length === 0) {
+        throw new Error(stockError || cryptoError || "Price services are currently unavailable")
+      }
 
-      setPortfolio(updatedPortfolio)
-      setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
-      setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
-      saveToLocalStorage("sectorsMap", symbolToSector)
-      saveToLocalStorage("scripNamesMap", symbolToName)
-      await saveDataWithIntegrity("portfolio", updatedPortfolio)
-      return updatedPortfolio
+      globalPortfolioCache = {
+        stockPriceData,
+        sectorData,
+        cryptoPrices,
+        timestamp: now,
+      }
+
+      const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+        stockPriceData,
+        sectorData,
+        cryptoPrices,
+        resolvedCryptoIds,
+      )
+      const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+
+      setPortfolio(mergedPortfolio)
+      if (Object.keys(symbolToSector).length > 0) {
+        setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+        setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
+        saveToLocalStorage("sectorsMap", symbolToSector)
+        saveToLocalStorage("scripNamesMap", symbolToName)
+      }
+      await saveDataWithIntegrity("portfolio", mergedPortfolio)
+      return mergedPortfolio
     } catch (error: any) {
       throw error // Propagate specialized error
     }
   }
 
   const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
+    const normalizedSymbol = tx.symbol.trim().toUpperCase()
     const newTx: ShareTransaction = {
       ...tx,
+      symbol: normalizedSymbol,
+      assetType: normalizeAssetType(tx.assetType),
+      cryptoId: tx.cryptoId?.trim() || undefined,
       id: generateId('stx'),
     }
     const updatedTransactions = [...shareTransactions, newTx]
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-
-    // Update Portfolio based on transaction
-    const existingItem = portfolio.find(p => p.symbol === tx.symbol && p.portfolioId === tx.portfolioId)
-    let updatedPortfolio = [...portfolio]
-
-    if (tx.type === 'buy' || tx.type === 'ipo' || tx.type === 'bonus' || tx.type === 'merger_in') {
-      if (existingItem) {
-        const totalUnits = existingItem.units + tx.quantity
-        const totalCost = (existingItem.units * existingItem.buyPrice) + (tx.quantity * tx.price)
-        const avgPrice = totalUnits > 0 ? totalCost / totalUnits : 0
-
-        updatedPortfolio = portfolio.map(p =>
-          p.symbol === tx.symbol ? { ...p, units: totalUnits, buyPrice: avgPrice, lastUpdated: new Date().toISOString() } : p
-        )
-      } else {
-        updatedPortfolio.push({
-          id: generateId('port'),
-          portfolioId: activePortfolioId!,
-          symbol: tx.symbol,
-          units: tx.quantity,
-          buyPrice: tx.price,
-          sector: sectorsMap[tx.symbol.toUpperCase()] || "Others",
-          lastUpdated: new Date().toISOString()
-        })
-      }
-    } else if (tx.type === 'sell' || tx.type === 'merger_out') {
-      if (existingItem) {
-        const remainingUnits = Math.max(0, existingItem.units - tx.quantity)
-        if (remainingUnits <= 0) {
-          updatedPortfolio = portfolio.filter(p => !(p.symbol === tx.symbol && p.portfolioId === tx.portfolioId))
-        } else {
-          updatedPortfolio = portfolio.map(p =>
-            (p.symbol === tx.symbol && p.portfolioId === tx.portfolioId) ? { ...p, units: remainingUnits, lastUpdated: new Date().toISOString() } : p
-          )
-        }
-      }
-    }
-
-    setPortfolio(updatedPortfolio)
-    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
     return { newTx, updatedPortfolio }
   }
 
@@ -2139,43 +2310,51 @@ export function useWalletData() {
     const txs = transactionsToUse || shareTransactions
     const newPortfolio: PortfolioItem[] = []
 
-    // Group by portfolioId first, then by symbol
+    // Group by portfolioId + (symbol, assetType, cryptoId)
     const groupedByPortfolio = txs.reduce((acc, tx) => {
       if (!acc[tx.portfolioId]) acc[tx.portfolioId] = {}
-      if (!acc[tx.portfolioId][tx.symbol]) acc[tx.portfolioId][tx.symbol] = []
-      acc[tx.portfolioId][tx.symbol].push(tx)
+      const holdingKey = getHoldingKey(tx.portfolioId, tx.symbol, tx.assetType, tx.cryptoId)
+      if (!acc[tx.portfolioId][holdingKey]) acc[tx.portfolioId][holdingKey] = []
+      acc[tx.portfolioId][holdingKey].push(tx)
       return acc
     }, {} as Record<string, Record<string, ShareTransaction[]>>)
 
     for (const [pId, symbolMap] of Object.entries(groupedByPortfolio)) {
-      for (const [symbol, symbolTxs] of Object.entries(symbolMap)) {
+      for (const [, symbolTxs] of Object.entries(symbolMap)) {
         let totalUnits = 0
         let totalCost = 0
 
         const sortedSymbolTxs = [...symbolTxs].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         )
+        const refTx = sortedSymbolTxs[0]
+        const symbol = refTx?.symbol || ""
+        const assetType = normalizeAssetType(refTx?.assetType)
+        const cryptoId = refTx?.cryptoId?.trim() || undefined
 
         sortedSymbolTxs.forEach((t) => {
           if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "merger_in") {
-            totalUnits += t.quantity
+            totalUnits = normalizeUnits(totalUnits + t.quantity)
             totalCost += t.quantity * t.price
           } else if (t.type === "sell" || t.type === "merger_out") {
-            totalUnits = Math.max(0, totalUnits - t.quantity)
+            totalUnits = normalizeUnits(totalUnits - t.quantity)
           }
         })
 
         if (totalUnits > 0) {
-          const existing = portfolio.find(p => p.symbol === symbol && p.portfolioId === pId)
+          const key = getHoldingKey(pId, symbol, assetType, cryptoId)
+          const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
           newPortfolio.push({
             id: existing?.id || generateId("port"),
             portfolioId: pId,
             symbol: symbol,
+            assetType,
+            cryptoId,
             units: totalUnits,
             buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
             currentPrice: existing?.currentPrice,
             previousClose: existing?.previousClose,
-            sector: existing?.sector || sectorsMap[symbol.toUpperCase()] || "Others",
+            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[symbol.toUpperCase()] || "Others")),
             lastUpdated: new Date().toISOString(),
           })
         }
@@ -2190,71 +2369,10 @@ export function useWalletData() {
   const deleteMultipleShareTransactions = async (ids: string[]) => {
     if (ids.length === 0) return
 
-    const txsToDelete = shareTransactions.filter((t) => ids.includes(t.id))
-    // Group affected (portfolioId, symbol) pairs
-    const affectedPairs = txsToDelete.reduce((acc, tx) => {
-      const key = `${tx.portfolioId}:${tx.symbol}`
-      acc.add(key)
-      return acc
-    }, new Set<string>())
-
     const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    let updatedPortfolio = [...portfolio]
-
-    for (const pair of affectedPairs) {
-      const [pId, symbol] = pair.split(':')
-      const symbolTransactions = updatedTransactions.filter((t) => t.symbol === symbol && t.portfolioId === pId)
-
-      if (symbolTransactions.length === 0) {
-        updatedPortfolio = updatedPortfolio.filter((p) => !(p.symbol === symbol && p.portfolioId === pId))
-      } else {
-        let totalUnits = 0
-        let totalCost = 0
-
-        const sortedSymbolTxs = [...symbolTransactions].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        )
-
-        sortedSymbolTxs.forEach((t) => {
-          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "merger_in") {
-            totalUnits += t.quantity
-            totalCost += t.quantity * t.price
-          } else if (t.type === "sell" || t.type === "merger_out") {
-            totalUnits = Math.max(0, totalUnits - t.quantity)
-          }
-        })
-
-        const avgPrice = totalUnits > 0 ? totalCost / (totalCost > 0 ? totalUnits : 1) : 0
-        const exists = updatedPortfolio.find((p) => p.symbol === symbol && p.portfolioId === pId)
-
-        if (exists) {
-          if (totalUnits <= 0) {
-            updatedPortfolio = updatedPortfolio.filter((p) => !(p.symbol === symbol && p.portfolioId === pId))
-          } else {
-            updatedPortfolio = updatedPortfolio.map((p) =>
-              p.symbol === symbol && p.portfolioId === pId
-                ? { ...p, units: totalUnits, buyPrice: avgPrice, lastUpdated: new Date().toISOString() }
-                : p
-            )
-          }
-        } else if (totalUnits > 0) {
-          updatedPortfolio.push({
-            id: generateId('port'),
-            portfolioId: pId,
-            symbol: symbol,
-            units: totalUnits,
-            buyPrice: avgPrice,
-            sector: sectorsMap[symbol.toUpperCase()] || "Others",
-            lastUpdated: new Date().toISOString()
-          })
-        }
-      }
-    }
-
-    setPortfolio(updatedPortfolio)
-    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
     return updatedPortfolio
   }
 
@@ -2603,6 +2721,12 @@ export function useWalletData() {
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,
     upcomingIPOs,
+    topStocks,
+    marketSummary,
+    marketSummaryHistory,
+    noticesBundle,
+    disclosures,
+    exchangeMessages,
     scripNamesMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {

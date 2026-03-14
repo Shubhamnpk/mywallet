@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,9 @@ import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { UpcomingIPO } from "@/types/wallet"
 
 export function PortfolioList() {
+    const showReservedDebugBadge =
+        process.env.NODE_ENV !== "production" &&
+        process.env.NEXT_PUBLIC_SHOW_IPO_RESERVED_DEBUG === "true"
     const {
         portfolio,
         shareTransactions,
@@ -48,6 +51,13 @@ export function PortfolioList() {
         getFaceValue,
         upcomingIPOs,
         isIPOsLoading,
+        topStocks,
+        marketSummary,
+        marketSummaryHistory,
+        noticesBundle,
+        disclosures,
+        exchangeMessages,
+        scripNamesMap,
     } = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
 
@@ -70,11 +80,36 @@ export function PortfolioList() {
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
+    const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
+    const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
+    const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
+    const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
+    const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
+    const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
         color: "#3b82f6"
     })
+    const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
+        if (!Number.isFinite(amount)) return "0"
+        if (isCrypto) {
+            if (amount === 0) return "0.00"
+            const sign = amount < 0 ? "-" : ""
+            const abs = Math.abs(amount)
+            const adjusted = abs < 0.01 ? 0.01 : abs
+            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }
+        return amount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    }
+    const formatUnits = (units: number) => {
+        if (!Number.isFinite(units)) return "0"
+        if (units === 0) return "0"
+        if (Math.abs(units) < 1) {
+            return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+        }
+        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -82,20 +117,37 @@ export function PortfolioList() {
         }
     }, [isShareFeaturesEnabled, viewMode])
 
+    const portfolioSymbols = useMemo(
+        () => portfolio.map((p) => p.symbol).sort().join(","),
+        [portfolio]
+    )
+
     // Auto-refresh data on mount and every 2 minutes
     useEffect(() => {
-        if (!isShareFeaturesEnabled) return
+        if (!activePortfolioId) return
+        const activeItems = portfolio.filter((p) => p.portfolioId === activePortfolioId)
+        const stockItems = activeItems.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
+        const cryptoItems = activeItems.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
+        const shouldFetchStocks = isShareFeaturesEnabled && stockItems.length > 0
+        const shouldFetchCrypto = cryptoItems.length > 0
+
+        if (!shouldFetchStocks && !shouldFetchCrypto) return
+
+        const itemsToFetch = shouldFetchStocks
+            ? (shouldFetchCrypto ? [...stockItems, ...cryptoItems] : stockItems)
+            : cryptoItems
 
         // Initial fetch
-        fetchPortfolioPrices()
+        fetchPortfolioPrices(itemsToFetch)
 
         // Set interval for 2 minutes
         const interval = setInterval(() => {
-            fetchPortfolioPrices()
+            if (typeof document !== "undefined" && document.hidden) return
+            fetchPortfolioPrices(itemsToFetch)
         }, 2 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled])
+    }, [isShareFeaturesEnabled, portfolioSymbols, activePortfolioId])
 
     const enableShareFeatures = () => {
         updateUserProfile({
@@ -118,6 +170,19 @@ export function PortfolioList() {
     }
 
     const handleViewStockDetail = (item: PortfolioItem) => {
+        const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
+        if (isCrypto) {
+            fetchPortfolioPrices([item], true)
+                .then((updated) => {
+                    setSelectedStock(updated?.[0] || item)
+                    setIsStockDetailOpen(true)
+                })
+                .catch(() => {
+                    setSelectedStock(item)
+                    setIsStockDetailOpen(true)
+                })
+            return
+        }
         setSelectedStock(item)
         setIsStockDetailOpen(true)
     }
@@ -129,8 +194,10 @@ export function PortfolioList() {
 
     const [newTx, setNewTx] = useState({
         symbol: "",
-        quantity: 0,
-        price: 0,
+        assetType: "stock" as "stock" | "crypto",
+        cryptoId: "",
+        quantity: Number.NaN,
+        price: Number.NaN,
         type: "buy" as ShareTransaction['type'],
         date: new Date().toISOString().split('T')[0],
         description: ""
@@ -160,6 +227,44 @@ export function PortfolioList() {
             ),
         [portfolioTransactions],
     )
+    const stockOptions = useMemo(
+        () =>
+            Object.entries(scripNamesMap || {})
+                .map(([symbol, name]) => ({ symbol, name }))
+                .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+        [scripNamesMap],
+    )
+    const portfolioStockOptions = useMemo(() => {
+        const bySymbol = new Map<string, string>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .filter((item) => item.assetType !== "crypto" && !item.cryptoId)
+            .forEach((item) => {
+                const symbol = item.symbol.toUpperCase()
+                const name = scripNamesMap?.[symbol] || item.assetName || symbol
+                if (!bySymbol.has(symbol)) bySymbol.set(symbol, name)
+            })
+        return Array.from(bySymbol.entries())
+            .map(([symbol, name]) => ({ symbol, name }))
+            .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }, [portfolio, activePortfolioId, scripNamesMap])
+    const portfolioCryptoOptions = useMemo(() => {
+        const byKey = new Map<string, { id?: string; symbol: string; name?: string }>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .filter((item) => item.assetType === "crypto" || Boolean(item.cryptoId))
+            .forEach((item) => {
+                const key = item.cryptoId || item.symbol
+                if (!byKey.has(key)) {
+                    byKey.set(key, {
+                        id: item.cryptoId,
+                        symbol: item.symbol,
+                        name: item.assetName,
+                    })
+                }
+            })
+        return Array.from(byKey.values()).sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }, [portfolio, activePortfolioId])
 
     const handleRefresh = async () => {
         setIsRefreshing(true)
@@ -174,15 +279,43 @@ export function PortfolioList() {
     }
 
     const handleAddTransaction = async () => {
-        if (!newTx.symbol || newTx.quantity <= 0 || (newTx.type !== 'bonus' && newTx.price <= 0)) {
+        const hasValidQty = Number.isFinite(newTx.quantity) && newTx.quantity > 0
+        const hasValidPrice = newTx.type === 'bonus' || (Number.isFinite(newTx.price) && newTx.price > 0)
+        if (!newTx.symbol || !hasValidQty || !hasValidPrice) {
             toast.error("Please fill all fields correctly")
             return
         }
-
         try {
+            let resolvedSymbol = newTx.symbol.trim().toUpperCase()
+            if (newTx.assetType === "stock") {
+                const raw = newTx.symbol.trim()
+                const rawLower = raw.toLowerCase()
+                const exactSymbol = stockOptions.find((s) => s.symbol.toLowerCase() === rawLower)
+                const exactName = stockOptions.find((s) => s.name.toLowerCase() === rawLower)
+                if (exactSymbol) resolvedSymbol = exactSymbol.symbol
+                else if (exactName) resolvedSymbol = exactName.symbol
+            }
+
+            let cryptoId: string | undefined = undefined
+            if (newTx.assetType === "crypto") {
+                if (newTx.cryptoId?.trim()) {
+                    cryptoId = newTx.cryptoId.trim()
+                } else {
+                    const symbol = newTx.symbol.trim().toUpperCase()
+                    const resolveRes = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
+                    const resolveData = await resolveRes.json()
+                    if (!resolveRes.ok) {
+                        throw new Error(resolveData?.error || `Unable to resolve Coinlore symbol: ${symbol}`)
+                    }
+                    cryptoId = resolveData.id
+                }
+            }
+
             const { updatedPortfolio } = await addShareTransaction({
                 portfolioId: activePortfolioId!,
-                symbol: newTx.symbol.toUpperCase(),
+                symbol: resolvedSymbol,
+                assetType: newTx.assetType,
+                cryptoId,
                 quantity: newTx.quantity,
                 price: newTx.price,
                 type: newTx.type,
@@ -192,8 +325,10 @@ export function PortfolioList() {
 
             setNewTx({
                 symbol: "",
-                quantity: 0,
-                price: 0,
+                assetType: "stock",
+                cryptoId: "",
+                quantity: Number.NaN,
+                price: Number.NaN,
                 type: "buy",
                 date: new Date().toISOString().split('T')[0],
                 description: ""
@@ -376,12 +511,12 @@ export function PortfolioList() {
     const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
         const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * item.buyPrice, 0)
         const current = activePortfolioItems.reduce(
-            (sum, item) => sum + item.units * (item.currentPrice || item.buyPrice),
+            (sum, item) => sum + item.units * (item.currentPrice ?? item.buyPrice),
             0,
         )
         const profitLoss = current - investment
         const today = activePortfolioItems.reduce((sum, item) => {
-            if (item.currentPrice && item.previousClose) {
+            if (item.currentPrice != null && item.previousClose != null) {
                 return sum + item.units * (item.currentPrice - item.previousClose)
             }
             return sum
@@ -403,7 +538,7 @@ export function PortfolioList() {
 
         activePortfolioItems.forEach((item) => {
             const sector = item.sector || "Others"
-            const value = item.units * (item.currentPrice || item.buyPrice)
+            const value = item.units * (item.currentPrice ?? item.buyPrice)
             const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
 
             sectorMap.set(sector, {
@@ -444,13 +579,109 @@ export function PortfolioList() {
             const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0 }
             summaries.set(item.portfolioId, {
                 investment: prev.investment + item.units * item.buyPrice,
-                current: prev.current + item.units * (item.currentPrice || item.buyPrice),
+                current: prev.current + item.units * (item.currentPrice ?? item.buyPrice),
                 count: prev.count + 1,
             })
         })
 
         return summaries
     }, [portfolio, portfolios])
+
+    const marketSnapshot = useMemo(() => {
+        const topGainer = topStocks?.top_gainer?.[0]
+        const topLoser = topStocks?.top_loser?.[0]
+        const turnoverMetric = marketSummary.find((metric) =>
+            (metric.detail || "").toLowerCase().includes("turnover"),
+        )
+
+        return {
+            topGainer,
+            topLoser,
+            turnover: typeof turnoverMetric?.value === "number" ? turnoverMetric.value : null,
+        }
+    }, [topStocks, marketSummary])
+
+    const marketHistorySeries = useMemo(() => {
+        if (!Array.isArray(marketSummaryHistory) || marketSummaryHistory.length === 0) return []
+
+        const parseBusinessDate = (value: string) => {
+            const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+            if (!match) return null
+            const year = Number(match[1])
+            const month = Number(match[2])
+            const day = Number(match[3])
+            if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+            if (month < 1 || month > 12 || day < 1 || day > 31) return null
+            return { year, month, day }
+        }
+
+        const normalized = [...marketSummaryHistory]
+            .map((row) => {
+                const parsed = row.businessDate ? parseBusinessDate(row.businessDate) : null
+                if (!parsed) return null
+                return {
+                    ...row,
+                    parsed,
+                    sortTs: Date.UTC(parsed.year, parsed.month - 1, parsed.day),
+                }
+            })
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .sort((a, b) => a.sortTs - b.sortTs)
+
+        if (marketHistoryView === "yearly") {
+            const byYear = new Map<string, { turnover: number; transactions: number }>()
+            normalized.forEach((row) => {
+                const year = row.parsed.year.toString()
+                const prev = byYear.get(year) || { turnover: 0, transactions: 0 }
+                byYear.set(year, {
+                    turnover: prev.turnover + (row.totalTurnover || 0),
+                    transactions: prev.transactions + (row.totalTransactions || 0),
+                })
+            })
+
+            const yearlySeries = Array.from(byYear.entries())
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                .map(([year, value]) => ({
+                    date: year,
+                    turnoverCr: Number((value.turnover / 10000000).toFixed(2)),
+                    transactionsK: Number((value.transactions / 1000).toFixed(1)),
+                }))
+
+            if (yearWindow === "all") return yearlySeries
+            return yearlySeries.slice(-Number(yearWindow))
+        }
+
+        const dailySeries = normalized.map((row) => ({
+            date: new Date(row.sortTs).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+            turnoverCr: Number(((row.totalTurnover || 0) / 10000000).toFixed(2)),
+            transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
+        }))
+
+        return dailySeries.slice(-Number(dayWindow))
+    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
+
+    const overviewNotifications = useMemo(() => {
+        const general = (noticesBundle?.general || []).slice(0, 4).map((n) => ({
+            id: `general-${n.id}`,
+            title: "NEPSE Notice",
+            text: n.noticeHeading || "General market notice available.",
+            tone: "info" as const,
+        }))
+        const company = disclosures.slice(0, 4).map((d) => ({
+            id: `disclosure-${d.id}`,
+            title: "Company Disclosure",
+            text: d.newsHeadline || "A company disclosure was published.",
+            tone: "warning" as const,
+        }))
+        const exchange = exchangeMessages.slice(0, 4).map((m) => ({
+            id: `exchange-${m.id}`,
+            title: "Exchange Message",
+            text: m.messageTitle || "A new exchange message is available.",
+            tone: "success" as const,
+        }))
+
+        return [...general, ...company, ...exchange].slice(0, 8)
+    }, [noticesBundle, disclosures, exchangeMessages])
 
     const ipoInsights = useMemo(() => {
         const normalizeIpoName = (value?: string) =>
@@ -767,7 +998,234 @@ export function PortfolioList() {
 
                     <div className="mt-8">
                         {renderOverviewHeader()}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null || overviewNotifications.length > 0) && (
+                            <div className="mb-6">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-between rounded-xl font-black text-xs uppercase tracking-widest border-primary/20 bg-card/60"
+                                    onClick={() => setIsOverviewFeedOpen((prev) => !prev)}
+                                >
+                                    Market & Notifications
+                                    {isOverviewFeedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </Button>
+                                {isOverviewFeedOpen && (
+                                    <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-transparent text-left">
+                                        <CardContent className="p-4 sm:p-5">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null) && (
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <BarChart3 className="w-4 h-4 text-primary" />
+                                                            <h4 className="text-sm font-black uppercase tracking-widest">Market Snapshot</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3 gap-3">
+                                                            <div className="rounded-xl border border-success/20 bg-success/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Gainer</p>
+                                                                <p className="text-sm font-black truncate">{marketSnapshot.topGainer?.symbol || "-"}</p>
+                                                                <p className="text-xs font-bold text-success">
+                                                                    {typeof marketSnapshot.topGainer?.percentageChange === "number"
+                                                                        ? `+${marketSnapshot.topGainer.percentageChange.toFixed(2)}%`
+                                                                        : "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-error/20 bg-error/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Loser</p>
+                                                                <p className="text-sm font-black truncate">{marketSnapshot.topLoser?.symbol || "-"}</p>
+                                                                <p className="text-xs font-bold text-error">
+                                                                    {typeof marketSnapshot.topLoser?.percentageChange === "number"
+                                                                        ? `${marketSnapshot.topLoser.percentageChange.toFixed(2)}%`
+                                                                        : "-"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Total Turnover</p>
+                                                                <p className="text-sm font-black truncate">
+                                                                    {typeof marketSnapshot.turnover === "number"
+                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                                                        : "-"}
+                                                                </p>
+                                                                <p className="text-[10px] font-bold text-primary">From NEPSE summary</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {overviewNotifications.length > 0 && (
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Activity className="w-4 h-4 text-primary" />
+                                                            <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                        </div>
+                                                        <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                                            {overviewNotifications.map((item) => (
+                                                                <div
+                                                                    key={item.id}
+                                                                    className={cn(
+                                                                        "rounded-xl border px-3 py-2",
+                                                                        item.tone === "info" && "border-info/20 bg-info/5",
+                                                                        item.tone === "warning" && "border-amber-500/20 bg-amber-500/5",
+                                                                        item.tone === "success" && "border-success/20 bg-success/5",
+                                                                    )}
+                                                                >
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                        {item.title}
+                                                                    </p>
+                                                                    <p className="text-xs font-semibold text-foreground/90 line-clamp-2">
+                                                                        {item.text}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {marketHistorySeries.length > 0 && (
+                                                <div className="mt-4 border-t border-primary/10 pt-4">
+                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20"
+                                                            onClick={() => setIsMarketHistoryOpen((prev) => !prev)}
+                                                        >
+                                                            {isMarketHistoryOpen ? "Hide Market History Chart" : "Show Market History Chart"}
+                                                            {isMarketHistoryOpen ? <ChevronUp className="ml-2 w-3.5 h-3.5" /> : <ChevronDown className="ml-2 w-3.5 h-3.5" />}
+                                                        </Button>
+                                                        <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
+                                                            <SelectTrigger className="h-8 sm:w-[130px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="yearly">Yearly</SelectItem>
+                                                                <SelectItem value="daily">Daily</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {marketHistoryView === "yearly" ? (
+                                                            <Select value={yearWindow} onValueChange={(value) => setYearWindow(value as "5" | "10" | "all")}>
+                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="5">Last 5Y</SelectItem>
+                                                                    <SelectItem value="10">Last 10Y</SelectItem>
+                                                                    <SelectItem value="all">All Years</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        ) : (
+                                                            <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
+                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="30">Last 30D</SelectItem>
+                                                                    <SelectItem value="90">Last 90D</SelectItem>
+                                                                    <SelectItem value="365">Last 1Y</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        )}
+                                                        <div className="flex items-center gap-1 sm:ml-auto">
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "both" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                                onClick={() => setHistorySeriesMode("both")}
+                                                            >
+                                                                Both
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "turnover" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/30 text-primary"
+                                                                onClick={() => setHistorySeriesMode("turnover")}
+                                                            >
+                                                                Turnover
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant={historySeriesMode === "transactions" ? "default" : "outline"}
+                                                                size="sm"
+                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                                                onClick={() => setHistorySeriesMode("transactions")}
+                                                            >
+                                                                Transactions
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    {isMarketHistoryOpen && (
+                                                        <div className="mt-3 h-[240px] rounded-xl border border-primary/10 bg-background/50 p-2">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <LineChart data={marketHistorySeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "hsl(var(--primary))" }} />
+                                                                    )}
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} />
+                                                                    )}
+                                                                    <Tooltip
+                                                                        content={({ active, payload, label }) => {
+                                                                            if (!active || !payload || payload.length === 0) return null
+                                                                            const turnoverValue = payload.find((p) => p.dataKey === "turnoverCr")?.value
+                                                                            const txValue = payload.find((p) => p.dataKey === "transactionsK")?.value
+                                                                            return (
+                                                                                <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-lg px-3 py-2">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                                                                        {marketHistoryView === "yearly" ? `Year ${label}` : label}
+                                                                                    </p>
+                                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                                        <p className="text-xs font-bold text-primary">
+                                                                                            Turnover: {typeof turnoverValue === "number" ? turnoverValue.toFixed(2) : turnoverValue} Cr
+                                                                                        </p>
+                                                                                    )}
+                                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                            Transactions: {typeof txValue === "number" ? txValue.toFixed(1) : txValue} K
+                                                                                        </p>
+                                                                                    )}
+                                                                                </div>
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            yAxisId="left"
+                                                                            dataKey="turnoverCr"
+                                                                            name="Turnover (Cr)"
+                                                                            stroke="#f97316"
+                                                                            strokeWidth={3}
+                                                                            dot={false}
+                                                                            activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
+                                                                        />
+                                                                    )}
+                                                                    {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            yAxisId="right"
+                                                                            dataKey="transactionsK"
+                                                                            name="Transactions (K)"
+                                                                            stroke="#10b981"
+                                                                            strokeWidth={2.5}
+                                                                            dot={false}
+                                                                            activeDot={{ r: 4, strokeWidth: 0, fill: "#10b981" }}
+                                                                        />
+                                                                    )}
+                                                                </LineChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </div>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
                             {portfolios.map(p => renderPortfolioCard(p))}
                         </div>
                         {portfolios.length === 0 && (
@@ -883,7 +1341,7 @@ export function PortfolioList() {
                                                 return (
                                                     <div
                                                         key={ipoKey}
-                                                        className="group/item flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
+                                                        className="group/item flex flex-row items-start sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
                                                         onClick={() => handleViewIPODetail(ipo)}
                                                         role="button"
                                                         tabIndex={0}
@@ -912,9 +1370,9 @@ export function PortfolioList() {
                                                             </div>
                                                             <div className="flex items-start flex-wrap gap-y-2 gap-x-3 sm:gap-x-4">
                                                                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
-                                                                    {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
-                                                                        <div className="flex flex-col gap-1 items-start">
-                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                    <div className="flex flex-col gap-1 items-start">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
                                                                                 <div className={cn(
                                                                                     "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
                                                                                     ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
@@ -922,36 +1380,47 @@ export function PortfolioList() {
                                                                                     <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
                                                                                     {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
                                                                                 </div>
-                                                                                {ipo.is_reserved_share && (
-                                                                                    <Badge
-                                                                                        variant="outline"
-                                                                                        title={ipo.reserved_for || "Reserved IPO share"}
-                                                                                        className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                                                                                    >
-                                                                                        Reserved
-                                                                                    </Badge>
-                                                                                )}
-                                                                            </div>
-                                                                            {ipo.status === 'upcoming' && ipo.openingDay && (
-                                                                                <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
-                                                                                    Starts on {ipo.openingDay}
-                                                                                </span>
+                                                                            )}
+                                                                            {ipo.is_reserved_share && (
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    title={ipo.reserved_for || "Reserved IPO share"}
+                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                                                                >
+                                                                                    Reserved
+                                                                                </Badge>
+                                                                            )}
+                                                                            {showReservedDebugBadge && (
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    title={ipo.reserved_for || "(empty)"}
+                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-mono normal-case tracking-tight border-muted-foreground/30 text-muted-foreground"
+                                                                                >
+                                                                                    reserved_for: {ipo.reserved_for || "(empty)"}
+                                                                                </Badge>
                                                                             )}
                                                                         </div>
-                                                                    )}
+                                                                        {ipo.status === 'upcoming' && ipo.openingDay && (
+                                                                            <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
+                                                                                Starts on {ipo.openingDay}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
-                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-4 py-2 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 w-full sm:w-auto shrink-0 h-auto"
+                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-2 py-2 sm:px-4 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 shrink-0 h-9 w-9 sm:w-auto"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleViewIPODetail(ipo);
                                                             }}
                                                         >
-                                                            View Info <Info className="w-3 h-3" />
+                                                            <span className="hidden sm:inline">View Info</span>
+                                                            <Info className="hidden sm:block w-3 h-3" />
+                                                            <ChevronRight className="sm:hidden w-4 h-4" />
                                                         </Button>
                                                         <div className="absolute inset-y-0 left-0 w-1 bg-primary scale-y-0 group-hover/item:scale-y-100 transition-transform origin-center" />
                                                     </div>
@@ -1067,6 +1536,9 @@ export function PortfolioList() {
                             newTx={newTx}
                             setNewTx={setNewTx}
                             onAdd={handleAddTransaction}
+                            stockOptions={stockOptions}
+                            portfolioStockOptions={portfolioStockOptions}
+                            portfolioCryptoOptions={portfolioCryptoOptions}
                         />
                     </div>
 
@@ -1426,14 +1898,15 @@ export function PortfolioList() {
                                     </div>
                                 ) : (
                                     filteredPortfolio.map((item) => {
-                                        const current = item.currentPrice || item.buyPrice
+                                        const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
+                                        const current = item.currentPrice ?? item.buyPrice
                                         const investment = item.units * item.buyPrice
                                         const value = item.units * current
                                         const profitLoss = value - investment
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
                                         const isProfit = profitLoss >= 0
-                                        const dailyChange = item.change || (item.currentPrice && item.previousClose ? item.currentPrice - item.previousClose : 0)
-                                        const dailyChangePerc = item.percentChange || (item.previousClose ? (dailyChange / item.previousClose) * 100 : 0)
+                                        const dailyChange = item.change ?? ((item.currentPrice != null && item.previousClose != null) ? item.currentPrice - item.previousClose : 0)
+                                        const dailyChangePerc = item.percentChange ?? ((item.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
                                         const isDailyProfit = dailyChange >= 0
 
                                         return (
@@ -1461,13 +1934,13 @@ export function PortfolioList() {
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">
-                                                                <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{item.units} Units</span>
+                                                                <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{formatUnits(item.units)} Units</span>
                                                                 <span className="hidden sm:inline text-[10px] opacity-20">•</span>
                                                                 <div className="flex items-center gap-1.5">
                                                                     <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                                        रु {current.toLocaleString()}
+                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
                                                                     </span>
-                                                                    {item.previousClose && (
+                                                                    {item.previousClose != null && (
                                                                         <span
                                                                             className={cn(
                                                                                 "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
@@ -1485,13 +1958,13 @@ export function PortfolioList() {
                                                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                                                         <div className="text-right flex flex-col items-end">
                                                             <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
-                                                                रु {value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                {isCrypto ? "$" : "रु"} {formatHoldingAmount(value, isCrypto)}
                                                             </div>
                                                             <div className={cn(
                                                                 "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
                                                                 isDailyProfit ? "text-success" : "text-error"
                                                             )}>
-                                                                <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{(dailyChange * item.units).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
                                                                 <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>
                                                                 <span className="hidden sm:inline">({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)</span>
                                                             </div>
@@ -1645,7 +2118,7 @@ export function PortfolioList() {
                                                 <div className="flex items-center gap-3 sm:gap-6 shrink-0">
                                                     <div className="text-right">
                                                         <div className={cn("font-extrabold text-sm sm:text-lg", isCredit ? "text-success" : "text-warning")}>
-                                                            {isCredit ? "+" : "-"}{tx.quantity} <span className="hidden sm:inline text-[10px] opacity-70 font-bold uppercase">Units</span>
+                                                            {isCredit ? "+" : "-"}{formatUnits(tx.quantity)} <span className="hidden sm:inline text-[10px] opacity-70 font-bold uppercase">Units</span>
                                                         </div>
                                                         {tx.price > 0 && (
                                                             <div className="text-[9px] sm:text-[10px] text-muted-foreground font-bold">

@@ -149,8 +149,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Radix UI](https://www.radix-ui.com/) for the amazing component library
 - [Tailwind CSS](https://tailwindcss.com/) for the utility-first CSS framework
 - [Next.js](https://nextjs.org/) for the React framework
-- [Lucide React](https://lucide.dev/) for the beautiful icons
-
+- [Lucide React](https://lucide.dev/) for the beautiful icon
+- [Coinlore API](https://www.coinlore.com/cryptocurrency-data-api) for free cryptocurrency market data
+- [Frankfurter API](https://frankfurter.dev/) for currency conversion rates
+- [Open Exchange Rates API (open.er-api.com)](https://www.exchangerate-api.com/docs/free) as currency conversion fallback
+- [yonepsescaper](https://shubhamnpk.github.io/nepse-scaper/) for public market datasets used in the app
 ## 📞 Support
 
 If you have any questions or need help, please:
@@ -160,4 +163,4 @@ If you have any questions or need help, please:
 
 ---
 
-**Made with ❤️ for better financial management**
+**Made with ❤️ by mywllet & yoguru team for better financial management**

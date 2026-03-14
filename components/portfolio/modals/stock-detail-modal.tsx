@@ -1,6 +1,6 @@
 "use client"
 
-import { PortfolioItem } from "@/types/wallet"
+import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
 import {
     Dialog,
     DialogContent,
@@ -9,10 +9,42 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Activity, BarChart3, TrendingDown, TrendingUp, Calendar, Info, Clock, ExternalLink, X } from "lucide-react"
+import {
+    Activity,
+    BarChart3,
+    TrendingDown,
+    TrendingUp,
+    Calendar,
+    Info,
+    Clock,
+    ExternalLink,
+    X,
+    History,
+    FileText,
+    LayoutGrid,
+    ArrowUpRight,
+    ArrowDownLeft,
+    Gift,
+    Banknote
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useEffect, useState, useMemo } from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+
+type ProposedDividendRecord = {
+    id: number
+    symbol: string
+    company_name: string
+    cash_dividend?: string
+    bonus_share?: string
+    fiscal_year?: string
+    announcement_date?: string
+    scraped_at?: string
+}
 
 interface StockDetailModalProps {
     item: PortfolioItem | null
@@ -21,23 +53,219 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalProps) {
-    const { scripNamesMap } = useWalletData()
-    const current = item?.currentPrice || item?.buyPrice || 0
-    const investment = (item?.units || 0) * (item?.buyPrice || 0)
-    const value = (item?.units || 0) * current
+    const { scripNamesMap, shareTransactions, noticesBundle, disclosures } = useWalletData()
+    const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
+    const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
+    const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
+    const [expandedNoticeId, setExpandedNoticeId] = useState<number | null>(null)
+
+    useEffect(() => {
+        if (!open || typeof document === "undefined") return
+        const originalOverflow = document.body.style.overflow
+        const originalPaddingRight = document.body.style.paddingRight
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+        document.body.style.overflow = "hidden"
+        if (scrollbarWidth > 0) {
+            document.body.style.paddingRight = `${scrollbarWidth}px`
+        }
+        return () => {
+            document.body.style.overflow = originalOverflow
+            document.body.style.paddingRight = originalPaddingRight
+        }
+    }, [open])
+
+    const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
+    const currencySymbol = isCrypto ? "$" : "रु"
+    const current = item?.currentPrice ?? item?.buyPrice ?? 0
+    const investment = (item?.units ?? 0) * (item?.buyPrice ?? 0)
+    const value = (item?.units ?? 0) * current
     const profitLoss = value - investment
     const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
+    const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
 
-    const dailyChange = item?.change || (item?.currentPrice && item?.previousClose ? item?.currentPrice - item?.previousClose : 0)
-    const dailyChangePerc = item?.percentChange || (item?.previousClose ? (dailyChange / item?.previousClose) * 100 : 0)
+    const dailyChange = item?.change ?? ((item?.currentPrice != null && item?.previousClose != null) ? item.currentPrice - item.previousClose : 0)
+    const dailyChangePerc = item?.percentChange ?? ((item?.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
     const isDailyProfit = dailyChange >= 0
-    const companyName = item ? (scripNamesMap[item.symbol.trim().toUpperCase()] || "") : ""
+    const companyName = item
+        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
+        : ""
+
+    const formatUnits = (units: number) => {
+        if (!Number.isFinite(units)) return "0"
+        if (units === 0) return "0"
+        if (Math.abs(units) < 1) return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
+
+    const formatValue = (amount: number) => {
+        if (!Number.isFinite(amount)) return "0"
+        if (amount === 0) return "0"
+        if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })
+        return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+
+    const formatProfitLossPercent = (percent: number) => {
+        if (!Number.isFinite(percent)) return "N/A"
+        return `${percent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
+    }
+
+    const parsePositiveNumber = (value?: string) => {
+        if (!value) return 0
+        const parsed = Number.parseFloat(value.replace(/,/g, "").trim())
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    }
+
+    const normalizeCompany = (value?: string) =>
+        (value || "")
+            .toLowerCase()
+            .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, "")
+            .replace(/[().,-]/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+
+    const stripHtml = (value?: string) => {
+        if (!value) return ""
+        return value
+            .replace(/<[^>]*>/g, " ")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/gi, "'")
+            .replace(/\s+/g, " ")
+            .trim()
+    }
+
+    const getNoticeDocuments = (notice?: NepseDisclosure) => {
+        if (!notice?.applicationDocumentDetailsList?.length) return []
+        return notice.applicationDocumentDetailsList
+            .map((doc) => {
+                const directUrl = (doc.fileUrl || "").trim()
+                if (directUrl) {
+                    return {
+                        label: directUrl.split("/").pop() || "Document",
+                        url: directUrl,
+                    }
+                }
+                const rawPath = (doc.filePath || "").trim()
+                if (!rawPath) return null
+                if (/^https?:\/\//i.test(rawPath)) {
+                    return { label: rawPath.split("/").pop() || "Document", url: rawPath }
+                }
+                const normalized = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath
+                return {
+                    label: rawPath.split("/").pop() || "Document",
+                    url: `https://www.nepalstock.com.np/api/nots/security/fetchFiles?fileLocation=${encodeURI(normalized)}`,
+                }
+            })
+            .filter((doc): doc is { label: string; url: string } => Boolean(doc?.url))
+    }
+
+    const toggleNoticeDetails = (noticeId: number) => {
+        setExpandedNoticeId((prev) => (prev === noticeId ? null : noticeId))
+    }
+
+    const loadDividendHistory = async () => {
+        if (dividendHistory || isDividendHistoryLoading) return
+        setIsDividendHistoryLoading(true)
+        setDividendHistoryError(null)
+        try {
+            const response = await fetch("/api/nepse/proposed-dividend/history-all-years")
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error || "Failed to fetch dividend history")
+            }
+            if (!Array.isArray(data)) {
+                throw new Error("Dividend history response was invalid")
+            }
+            setDividendHistory(data as ProposedDividendRecord[])
+        } catch (error: any) {
+            setDividendHistoryError(error?.message || "Could not load dividend history right now.")
+        } finally {
+            setIsDividendHistoryLoading(false)
+        }
+    }
+
+    const symbol = item?.symbol?.trim().toUpperCase() || ""
+    const normalizedHoldingName = normalizeCompany(companyName)
+    const getDividendRecordTime = (record: ProposedDividendRecord) => {
+        const rawDate = (record.announcement_date || "").trim()
+        if (!rawDate || rawDate.toLowerCase() === "n/a") {
+            return Number.NEGATIVE_INFINITY
+        }
+        const parsed = Date.parse(rawDate)
+        return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
+    }
+
+    const matchedDividendHistory = useMemo(() => {
+        return (dividendHistory || [])
+            .filter((record) => {
+                const recordSymbol = record.symbol?.trim().toUpperCase() || ""
+                if (symbol && recordSymbol === symbol) return true
+                const recordName = normalizeCompany(record.company_name)
+                return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
+            })
+            .sort((a, b) => {
+                const aDate = getDividendRecordTime(a)
+                const bDate = getDividendRecordTime(b)
+                return bDate - aDate
+            })
+    }, [dividendHistory, symbol, normalizedHoldingName])
+
+    const latestDividend = matchedDividendHistory[0]
+    const latestCashPercent = parsePositiveNumber(latestDividend?.cash_dividend)
+    const latestBonusPercent = parsePositiveNumber(latestDividend?.bonus_share)
+    const heldUnits = item?.units ?? 0
+    const estimatedCashAmount = latestCashPercent * heldUnits
+    const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
+
+    const matchedTransactions = useMemo(() => {
+        if (!item || !shareTransactions) return []
+        return shareTransactions.filter(tx => tx.symbol.toUpperCase() === symbol)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }, [item, shareTransactions, symbol])
+
+    const holdingStartDate = useMemo(() => {
+        if (matchedTransactions.length === 0) return null
+        let earliest = Number.POSITIVE_INFINITY
+        for (const tx of matchedTransactions) {
+            const parsed = Date.parse(tx.date)
+            if (Number.isFinite(parsed) && parsed < earliest) {
+                earliest = parsed
+            }
+        }
+        return Number.isFinite(earliest) ? new Date(earliest) : null
+    }, [matchedTransactions])
+
+    const holdingPeriodLabel = useMemo(() => {
+        if (!holdingStartDate) return "N/A"
+        const start = holdingStartDate.getTime()
+        const now = Date.now()
+        if (!Number.isFinite(start) || start > now) return "N/A"
+        const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+        if (diffDays < 1) return "Less than a day"
+        if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? "" : "s"}`
+        const diffMonths = Math.floor(diffDays / 30)
+        if (diffMonths < 12) return `${diffMonths} month${diffMonths === 1 ? "" : "s"}`
+        const years = Math.floor(diffMonths / 12)
+        const months = diffMonths % 12
+        return months > 0 ? `${years}y ${months}m` : `${years} year${years === 1 ? "" : "s"}`
+    }, [holdingStartDate])
+
+    const matchedNotices = useMemo(() => {
+        if (!item) return []
+        const combined = [...(noticesBundle?.company || []), ...(disclosures || [])]
+        return combined.filter(d => {
+            const headline = (d.newsHeadline || "").toUpperCase()
+            return headline.includes(symbol) || (companyName && headline.includes(companyName.toUpperCase()))
+        }).sort((a, b) => new Date(b.addedDate || "").getTime() - new Date(a.addedDate || "").getTime())
+    }, [item, noticesBundle, disclosures, symbol, companyName])
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            {item && (
-                <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden" showCloseButton={false}>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                {item && (
+                    <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
                     <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative">
                         <Button
                             variant="ghost"
@@ -50,7 +278,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
                         <div className="flex items-center justify-between mb-2 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
-                                Stock Details
+                                {isCrypto ? "Crypto Details" : "Stock Details"}
                             </Badge>
                             {item.lastUpdated && (
                                 <div className="flex items-center gap-1.5 grayscale opacity-60">
@@ -66,21 +294,21 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 <DialogTitle className="text-3xl font-black tracking-tight flex items-center flex-wrap gap-2">
                                     {item.symbol}
                                     <Badge className="bg-muted text-muted-foreground text-[10px] font-black uppercase tracking-widest border-none">
-                                        {item.sector || "Others"}
+                                        {item.sector ?? "Others"}
                                     </Badge>
                                 </DialogTitle>
                                 {companyName && (
-                                    <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider mt-0.5 line-clamp-1">
+                                    <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider mt-0.5 line-clamp-1 text-left">
                                         {companyName}
                                     </p>
                                 )}
-                                <DialogDescription className="text-sm font-medium mt-1">
-                                    {item.units} Units Held in Portfolio
+                                <DialogDescription className="text-sm font-medium mt-1 text-left">
+                                    {formatUnits(item.units)} Units Held in Portfolio
                                 </DialogDescription>
                             </div>
                             <div className="text-right ml-4">
                                 <div className="text-2xl font-black font-mono">
-                                    रु {current.toLocaleString()}
+                                    {currencySymbol} {formatValue(current)}
                                 </div>
                                 <div className={cn(
                                     "text-[10px] font-black uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1",
@@ -93,88 +321,291 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                         </div>
                     </DialogHeader>
 
-                    <div className="p-6 pt-2 space-y-6">
-                        {/* Performance Card */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
-                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Current Value</span>
-                                <span className="text-lg font-black font-mono">रु {value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                            </div>
-                            <div className={cn(
-                                "p-4 rounded-2xl border flex flex-col gap-1",
-                                isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
-                            )}>
-                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Total P/L</span>
-                                <span className={cn(
-                                    "text-lg font-black font-mono",
-                                    isProfit ? "text-green-600" : "text-red-600"
-                                )}>
-                                    {isProfit ? "+" : ""}{profitLossPerc.toFixed(1)}%
-                                </span>
-                            </div>
+                    <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+                        <div className="px-6 py-1 border-b border-muted/20 bg-muted/5">
+                            <TabsList className="bg-transparent h-9 w-full justify-start gap-4 p-0">
+                                <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    Overview
+                                </TabsTrigger>
+                                <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    History
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="dividend"
+                                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
+                                    onClick={() => loadDividendHistory()}
+                                >
+                                    Dividends
+                                </TabsTrigger>
+                                <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    News
+                                </TabsTrigger>
+                            </TabsList>
                         </div>
 
-                        {/* Market Data */}
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    रु {(item.high || current).toLocaleString()}
-                                </span>
-                            </div>
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    रु {(item.low || current).toLocaleString()}
-                                </span>
-                            </div>
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    {(item.volume || 0).toLocaleString()}
-                                </span>
-                            </div>
+                        <div className="flex-1 min-h-0 bg-muted/5 overflow-hidden">
+                            <ScrollArea className="h-[280px] sm:h-[370px]">
+                                <div className="p-6 pt-2 space-y-4">
+                                    <TabsContent value="overview" className="m-0 space-y-6">
+                                        {/* Performance Card */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className={cn(
+                                                "p-4 rounded-2xl border flex flex-col gap-2",
+                                                isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                            )}>
+                                                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                    Position Summary
+                                                </div>
+                                                <div className="text-lg font-black font-mono">
+                                                    {currencySymbol} {formatValue(value)}
+                                                </div>
+                                                <div className={cn(
+                                                    "text-[10px] font-bold",
+                                                    isProfit ? "text-green-600" : "text-red-600"
+                                                )}>
+                                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
+                                                </div>
+                                            </div>
+                                            <div className={cn(
+                                                "p-4 rounded-2xl border flex flex-col gap-2",
+                                                isDailyProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                            )}>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
+                                                    <span className={cn(
+                                                        "text-[10px] font-bold",
+                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                    )}>
+                                                        {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <div className={cn(
+                                                        "text-lg font-black font-mono",
+                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                    )}>
+                                                        {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-muted-foreground">
+                                                    Per Unit: {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange)} ({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Market Data */}
+                                        <div className="grid grid-cols-3 gap-2 -mt-2">
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {currencySymbol} {formatValue(item.high ?? current)}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {currencySymbol} {formatValue(item.low ?? current)}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {(item.volume ?? 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Investment Details */}
+                                        {!isCrypto && (
+                                            <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
+                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
+                                                    </span>
+                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(item.buyPrice)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
+                                                    </span>
+                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(investment)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
+                                                    </span>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-[9px] font-black uppercase tracking-widest"
+                                                        title={holdingStartDate ? `Since ${holdingStartDate.toLocaleDateString()}` : "No transactions"}
+                                                    >
+                                                        {holdingPeriodLabel}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="history" className="m-0 space-y-3">
+                                        {matchedTransactions.length > 0 ? (
+                                            matchedTransactions.map((tx) => (
+                                                <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                            tx.type === "buy" || tx.type === "ipo" ? "bg-green-500/10 text-green-600" :
+                                                                tx.type === "sell" ? "bg-red-500/10 text-red-600" :
+                                                                    "bg-blue-500/10 text-blue-600"
+                                                        )}>
+                                                            {tx.type === "buy" || tx.type === "ipo" ? <ArrowDownLeft className="w-4 h-4" /> :
+                                                                tx.type === "sell" ? <ArrowUpRight className="w-4 h-4" /> :
+                                                                    <Gift className="w-4 h-4" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] font-black uppercase">{tx.type}</p>
+                                                            <p className="text-[9px] font-bold text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
+                                                        <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-center text-muted-foreground py-8">No transaction history found.</p>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="dividend" className="m-0 space-y-4">
+                                        {isDividendHistoryLoading ? (
+                                            <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
+                                        ) : dividendHistoryError ? (
+                                            <p className="text-xs text-destructive">{dividendHistoryError}</p>
+                                        ) : matchedDividendHistory.length === 0 ? (
+                                            <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
+                                                        <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
+                                                        <p className="text-[10px] text-green-700/80 mt-0.5">
+                                                            Est. NPR {estimatedCashAmount.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
+                                                        <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
+                                                        <p className="text-[10px] text-blue-700/80 mt-0.5">
+                                                            Est. {estimatedBonusUnits.toFixed(2)} units
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                    <table className="w-full text-left">
+                                                        <thead className="bg-muted/70">
+                                                            <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                <th className="px-3 py-2">FY</th>
+                                                                <th className="px-3 py-2">Cash</th>
+                                                                <th className="px-3 py-2">Bonus</th>
+                                                                <th className="px-3 py-2">Date</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-muted/10">
+                                                            {matchedDividendHistory.slice(0, 15).map((record) => (
+                                                                <tr key={`${record.id}-${record.fiscal_year}`} className="hover:bg-muted/5">
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-green-700">{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
+                                                                    <td className="px-3 py-2 text-[11px] text-muted-foreground">{record.announcement_date || "N/A"}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="notices" className="m-0 space-y-3">
+                                        {matchedNotices.length > 0 ? (
+                                            matchedNotices.map((notice) => (
+                                                <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
+                                                    <div className="flex justify-between items-start gap-2">
+                                                        <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
+                                                            {notice.newsHeadline}
+                                                        </h4>
+                                                        <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
+                                                            {notice.addedDate ? new Date(notice.addedDate).toLocaleDateString() : "Recent"}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent"
+                                                        onClick={() => toggleNoticeDetails(notice.id)}
+                                                    >
+                                                        {expandedNoticeId === notice.id ? "Hide Details" : "View Details"}
+                                                    </Button>
+                                                    {expandedNoticeId === notice.id && (
+                                                        <div className="rounded-lg border border-muted/30 bg-muted/10 p-3 space-y-3">
+                                                            {notice.newsBody ? (
+                                                                <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                                                                    {stripHtml(notice.newsBody)}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground">No detailed summary available for this notice.</p>
+                                                            )}
+                                                            {getNoticeDocuments(notice).length > 0 && (
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Documents</p>
+                                                                    <div className="flex flex-col gap-2">
+                                                                        {getNoticeDocuments(notice).map((doc, index) => (
+                                                                            <Button
+                                                                                key={`${doc.url}-${index}`}
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                className="justify-start text-xs"
+                                                                                onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}
+                                                                            >
+                                                                                <ExternalLink className="w-3 h-3 mr-2" />
+                                                                                {doc.label}
+                                                                            </Button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-center text-muted-foreground py-8">No news found for this scrip.</p>
+                                        )}
+                                    </TabsContent>
+                                </div>
+                            </ScrollArea>
                         </div>
 
-                        {/* Investment Details */}
-                        <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
-                            <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                    <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
-                                </span>
-                                <span className="text-sm font-black font-mono">रु {item.buyPrice.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                    <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
-                                </span>
-                                <span className="text-sm font-black font-mono">रु {investment.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                    <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
-                                </span>
-                                <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest">
-                                    Long Term
-                                </Badge>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                            <Button
-                                variant="outline"
-                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
-                                onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
-                            >
-                                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                View Analysis
-                            </Button>
+                        <div className="p-6 pt-2 grid grid-cols-2 gap-3 border-t border-muted/20">
+                            {!isCrypto && (
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                    onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                    View Analysis
+                                </Button>
+                            )}
                             <Button
                                 className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
                                 onClick={() => onOpenChange(false)}
@@ -182,9 +613,10 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 Close Details
                             </Button>
                         </div>
-                    </div>
-                </DialogContent>
-            )}
-        </Dialog>
+                    </Tabs>
+                    </DialogContent>
+                )}
+            </Dialog>
+        </>
     )
 }

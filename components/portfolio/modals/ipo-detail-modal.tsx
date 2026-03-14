@@ -222,9 +222,9 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
             {ipo && (
                 <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
                     {/* Visual Decor */}
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl -mr-12 -mt-12 pointer-events-none" />
 
-                    <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative z-20 shrink-0 border-b border-primary/5">
+                    <DialogHeader className="p-4 pb-3 sm:p-6 sm:pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative z-20 shrink-0 border-b border-primary/5">
                         <Button
                             variant="ghost"
                             size="icon"
@@ -234,12 +234,12 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             <X className="h-4 w-4" />
                         </Button>
 
-                        <div className="flex items-center justify-between mb-3 pr-8">
+                        <div className="flex items-center justify-between mb-2 sm:mb-3 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-[0.2em] border-primary/30 text-primary bg-primary/5 px-2.5 py-1">
                                 Investment Alert
                             </Badge>
                             {ipo.scraped_at && (
-                                <div className="flex items-center gap-1.5 opacity-50">
+                                <div className="hidden sm:flex items-center gap-1.5 opacity-50">
                                     <Clock className="w-3 h-3" />
                                     <span className="text-[10px] font-black uppercase tracking-widest">
                                         Data Sync: {new Date(ipo.scraped_at).toLocaleDateString()}
@@ -248,17 +248,17 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             )}
                         </div>
 
-                        <DialogTitle className="text-2xl font-black tracking-tight leading-tight pr-6 drop-shadow-sm text-left">
+                        <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight leading-tight pr-6 drop-shadow-sm text-left">
                             {ipo.company}
                         </DialogTitle>
 
-                        <div className="flex items-center gap-2 mt-4">
+                        <div className="flex items-center gap-2 mt-3 sm:mt-4">
                             {ipo.status && (
                                 <Badge className={cn("text-[10px] font-black uppercase px-3 py-1 border shadow-sm", statusColor)}>
                                     {ipo.status === 'open' ? 'Currently Open' : ipo.status}
                                 </Badge>
                             )}
-                            {ipo.is_reserved_share && ipo.reserved_for && (
+                            {(ipo.is_reserved_share || Boolean(ipo.reserved_for)) && ipo.reserved_for && (
                                 <Badge
                                     variant="outline"
                                     title={ipo.reserved_for}
@@ -276,10 +276,10 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         </div>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto show-scrollbars p-6 pt-2 space-y-5 relative z-10">
+                    <div className="flex-1 overflow-y-auto show-scrollbars p-4 pt-2 sm:p-6 sm:pt-2 space-y-4 sm:space-y-5 relative z-10">
                         {/* Advice Card */}
                         {advice && (
-                            <div className={cn("p-4 rounded-2xl border transition-all duration-300 flex gap-4 items-start shadow-sm", advice.bgColor, advice.borderColor)}>
+                            <div className={cn("p-3 sm:p-4 rounded-2xl border transition-all duration-300 flex gap-3 sm:gap-4 items-start shadow-sm", advice.bgColor, advice.borderColor)}>
                                 <div className="shrink-0 mt-0.5">
                                     {advice.icon}
                                 </div>
@@ -295,8 +295,8 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         )}
 
                         {/* Summary Stats */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="p-4 rounded-2xl bg-muted/20 border border-muted/50 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                            <div className="p-3 sm:p-4 rounded-2xl bg-muted/20 border border-muted/50 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
                                     <LayoutGrid className="w-3 h-3 text-primary/60" /> Issue Size
                                 </span>
@@ -305,7 +305,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 </span>
                                 <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">Total Units</span>
                             </div>
-                            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
+                            <div className="p-3 sm:p-4 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
                                 <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest flex items-center gap-1.5">
                                     <CreditCard className="w-3 h-3" /> Min Apply
                                 </span>
@@ -317,14 +317,14 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         </div>
 
                         {/* Timeline */}
-                        <div className="space-y-3">
+                        <div className="space-y-2 sm:space-y-3">
                             <div className="flex items-center justify-between px-1">
                                 <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Timeline</h4>
                                 <span className="text-[10px] font-black text-muted-foreground/30 uppercase">BS and AD Calendar</span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="flex flex-col p-3.5 rounded-2xl border border-primary/20 bg-primary/5 relative overflow-hidden group hover:border-primary/40 transition-all text-left">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                <div className="flex flex-col p-3 rounded-2xl border border-primary/20 bg-primary/5 relative overflow-hidden group hover:border-primary/40 transition-all text-left">
                                     <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none">
                                         <Calendar className="w-3 h-3" /> Open Date
                                     </span>
@@ -345,7 +345,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col p-3.5 rounded-2xl border border-muted/50 bg-muted/10 hover:border-muted-foreground/30 transition-all text-left">
+                                <div className="flex flex-col p-3 rounded-2xl border border-muted/50 bg-muted/10 hover:border-muted-foreground/30 transition-all text-left">
                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none text-left">
                                         <Clock className="w-3 h-3" /> End Date
                                     </span>
@@ -370,7 +370,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
 
                         {/* Investor Note */}
                         {ipo.full_text && (
-                            <div className="p-4 rounded-2xl border border-muted/30 bg-muted/5 space-y-2 relative group overflow-hidden text-left">
+                            <div className="p-3 sm:p-4 rounded-2xl border border-muted/30 bg-muted/5 space-y-2 relative group overflow-hidden text-left">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                     <AlertCircle className="w-3.5 h-3.5 text-primary/60" /> Investor Insights
                                 </span>
@@ -383,11 +383,11 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                     </div>
 
                     {/* Sticky Footer */}
-                    <div className="p-4 bg-muted/30 backdrop-blur-md border-t border-primary/5 shrink-0 relative z-20">
-                        <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 sm:p-4 bg-muted/15 backdrop-blur-0 border-t border-primary/5 shrink-0 relative z-20">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
                             <Button
                                 variant="outline"
-                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all group"
+                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 sm:h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all group"
                                 onClick={() => window.open(ipo.url, '_blank')}
                                 disabled={!ipo.url}
                             >
@@ -395,7 +395,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 Source Details
                             </Button>
                             <Button
-                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20 bg-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 sm:h-11 shadow-lg shadow-primary/20 bg-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                                 disabled={isApplying || isCheckingResult}
                                 onClick={() => {
                                     if (ipo.status === 'open') {
@@ -417,12 +417,12 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                     <>
                                         {canAutomate
                                             ? (isAppliedForIpo ? "Check Result" : "Apply Now")
-                                            : 'Set Up Automation'}
+                                            : 'Setup'}
                                         <ArrowRight className={cn("w-3.5 h-3.5", !isApplying && "animate-pulse")} />
                                     </>
                                 ) : (
                                     <>
-                                        {canAutomate ? 'Check Allotment' : 'Open MeroShare Setup'}
+                                        {canAutomate ? 'Check Allotment' : 'Setup'}
                                         <Sparkles className={cn("w-3.5 h-3.5", !isCheckingResult && "animate-pulse")} />
                                     </>
                                 )}

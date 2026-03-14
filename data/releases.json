@@ -1,10 +1,22 @@
 {
-  "currentBuild": "2026.02.13",
+  "currentBuild": "2026.03.14",
   "releases": [
+    {
+      "version": "1.3.4",
+      "date": "2026-03-14",
+      "status": "current",
+      "title": "Comprehensive Wealth Flow & Accurate Expense Tracking",
+      "highlights": [
+        "Updated Balance Card to calculate expenses using total transaction amounts, including debt-funded purchases, for a more accurate financial overview.",
+        "Integrated Portfolio & IPO activity into daily summaries: Stock/Crypto buys and IPO applications are now factored into total expenses.",
+        "Included debt repayments in the global expense calculations for a complete picture of wealth flow.",
+        "Optimized Balance Card performance with improved memoization and explicit TypeScript safety."
+      ]
+    },
     {
       "version": "1.3.3",
       "date": "2026-02-13",
-      "status": "current",
+      "status": "stable",
       "title": "Major UX, Scanner, and PWA Update",
       "highlights": [
         "Introduced native modal support for smoother in-app flows.",
