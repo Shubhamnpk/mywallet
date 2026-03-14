@@ -134,7 +134,7 @@ export function AddTransactionModal({
                 </Button>
             </DialogTrigger>
             <DialogContent
-                className="sm:max-w-[425px] rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
+                className="sm:max-w-[425px] rounded-xl sm:rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
                 overlayClassName="bg-black/45 backdrop-blur-none"
             >
                 <DialogHeader className="pb-3 border-b border-primary/10">

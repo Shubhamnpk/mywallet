@@ -298,11 +298,11 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     </Badge>
                                 </DialogTitle>
                                 {companyName && (
-                                    <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider mt-0.5 line-clamp-1">
+                                    <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider mt-0.5 line-clamp-1 text-left">
                                         {companyName}
                                     </p>
                                 )}
-                                <DialogDescription className="text-sm font-medium mt-1">
+                                <DialogDescription className="text-sm font-medium mt-1 text-left">
                                     {formatUnits(item.units)} Units Held in Portfolio
                                 </DialogDescription>
                             </div>
