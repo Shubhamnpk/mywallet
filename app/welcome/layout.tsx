@@ -1,7 +1,5 @@
 import type { Metadata } from "next"
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://mywalletnp.vercel.app"
-
 export const metadata: Metadata = {
   title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
   description: "Discover MyWallet, the innovative personal finance app that shows expenses in terms of time worked. Free budget tracker with offline functionality, goal setting, and smart financial insights.",
@@ -9,9 +7,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: "MyWallet - Free Personal Finance App | Track Expenses & Budget Money",
     description: "Take control of your finances with MyWallet - the innovative personal finance app that shows expenses in terms of time worked. Free forever, works offline.",
-    url: siteUrl,
+    url: "https://mywalletnp.vercel.app/welcome",
     type: "website",
-    siteName: "MyWallet",
     images: [
       {
         url: "/mywallet.png",
@@ -28,11 +25,7 @@ export const metadata: Metadata = {
     images: ["/mywallet.png"],
   },
   alternates: {
-    canonical: "/",
-  },
-  robots: {
-    index: false,
-    follow: true,
+    canonical: "/welcome",
   },
 }
 

@@ -98,14 +98,14 @@ export default function SettingsPage() {
         ? activeSettingsTab
         : "main"
 
-    return <MobileSettingsPage onClose={() => router.push('/dashboard')} initialView={mobileInitialView} />
+    return <MobileSettingsPage onClose={() => router.push('/')} initialView={mobileInitialView} />
   }
 
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')} className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>
