@@ -15,6 +15,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/hooks/use-toast"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { SecureKeyManager } from "@/lib/key-manager"
 
 type ImportOptions = {
   userProfile: boolean
@@ -41,7 +43,7 @@ interface ImportModalProps {
   isOpen: boolean
   onClose: () => void
   onImportComplete: () => void
-  onImportData: (data: any) => Promise<boolean>
+  onImportData: (data: any, unlockPin?: string) => Promise<boolean>
 }
 
 const defaultOptions: ImportOptions = {
@@ -122,12 +124,14 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
   const [importFile, setImportFile] = useState<File | null>(null)
   const [backupText, setBackupText] = useState("")
   const [importPin, setImportPin] = useState("")
+  const [walletPin, setWalletPin] = useState("")
   const [importError, setImportError] = useState("")
   const [isEncrypted, setIsEncrypted] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [availableImportData, setAvailableImportData] = useState<any>(null)
   const [importMode, setImportMode] = useState<ImportMode>("all")
   const [importOptions, setImportOptions] = useState<ImportOptions>(defaultOptions)
+  const [needsWalletPin, setNeedsWalletPin] = useState(false)
 
   const availableOptions = useMemo(() => getAvailableOptions(availableImportData), [availableImportData])
 
@@ -137,17 +141,30 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     setImportMode("all")
   }, [availableImportData, availableOptions])
 
+  const refreshNeedsWalletPin = () => {
+    const requiresUnlock = SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid()
+    setNeedsWalletPin(requiresUnlock)
+    return requiresUnlock
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+    refreshNeedsWalletPin()
+  }, [isOpen])
+
   const resetState = () => {
     setStep("file")
     setImportFile(null)
     setBackupText("")
     setImportPin("")
+    setWalletPin("")
     setImportError("")
     setIsEncrypted(false)
     setIsBusy(false)
     setAvailableImportData(null)
     setImportMode("all")
     setImportOptions(defaultOptions)
+    setNeedsWalletPin(false)
   }
 
   const handleClose = () => {
@@ -177,6 +194,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
         }
         setAvailableImportData(parsedData)
         setStep("review")
+        refreshNeedsWalletPin()
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Invalid backup file"
@@ -217,6 +235,10 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
 
       setAvailableImportData(decrypted)
       setStep("review")
+      const requiresUnlock = refreshNeedsWalletPin()
+      if (requiresUnlock && !walletPin.trim() && importPin.trim()) {
+        setWalletPin(importPin)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to decrypt backup"
       setImportError(message)
@@ -240,7 +262,10 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     setImportError("")
 
     try {
-      const success = await onImportData(payload)
+      if (needsWalletPin && !walletPin.trim()) {
+        throw new Error("Wallet PIN required to save restored data")
+      }
+      const success = await onImportData(payload, walletPin.trim() || undefined)
       if (!success) {
         throw new Error("Import failed - data could not be processed")
       }
@@ -364,6 +389,27 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
               </div>
             )
           })}
+        </div>
+      )}
+
+      {needsWalletPin && (
+        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <Label htmlFor="wallet-pin" className="text-sm font-medium">
+            Wallet PIN (to save restored data)
+          </Label>
+          <Input
+            id="wallet-pin"
+            type="password"
+            placeholder="Enter your current wallet PIN"
+            value={walletPin}
+            onChange={(e) => {
+              setWalletPin(e.target.value)
+              setImportError("")
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            This is required to re-encrypt your data on this device. If your backup PIN is the same, you can reuse it.
+          </p>
         </div>
       )}
 

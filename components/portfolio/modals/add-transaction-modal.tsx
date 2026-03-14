@@ -168,7 +168,11 @@ export function AddTransactionModal({
                             <Label htmlFor="type" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Type</Label>
                             <Select
                                 value={newTx.type}
-                                onValueChange={(v: any) => setNewTx({ ...newTx, type: v })}
+                                onValueChange={(v: any) => setNewTx({
+                                    ...newTx,
+                                    type: v,
+                                    price: (v === "bonus" || v === "gift") ? 0 : newTx.price,
+                                })}
                             >
                                 <SelectTrigger className="rounded-xl border-muted-foreground/20">
                                     <SelectValue placeholder="Select type" />
@@ -178,6 +182,7 @@ export function AddTransactionModal({
                                     <SelectItem value="sell">Sell</SelectItem>
                                     <SelectItem value="ipo">IPO</SelectItem>
                                     <SelectItem value="bonus">Bonus</SelectItem>
+                                    <SelectItem value="gift">Gift</SelectItem>
                                     <SelectItem value="merger_in">Merger In</SelectItem>
                                     <SelectItem value="merger_out">Merger Out</SelectItem>
                                 </SelectContent>
@@ -318,7 +323,7 @@ export function AddTransactionModal({
                                 type="number"
                                 step="any"
                                 min="0"
-                                disabled={newTx.type === 'bonus'}
+                                disabled={newTx.type === 'bonus' || newTx.type === 'gift'}
                                 className="rounded-xl border-muted-foreground/20 font-bold"
                                 value={Number.isNaN(newTx.price) ? "" : newTx.price}
                                 placeholder="0"

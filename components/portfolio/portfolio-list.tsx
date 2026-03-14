@@ -174,7 +174,22 @@ export function PortfolioList() {
         if (isCrypto) {
             fetchPortfolioPrices([item], true)
                 .then((updated) => {
-                    setSelectedStock(updated?.[0] || item)
+                    const match = updated?.find((entry) => {
+                        if (entry.id === item.id) return true
+                        const entrySymbol = entry.symbol.trim().toUpperCase()
+                        const itemSymbol = item.symbol.trim().toUpperCase()
+                        const entryAssetType = entry.assetType || "stock"
+                        const itemAssetType = item.assetType || "stock"
+                        const entryCryptoId = (entry.cryptoId || "").trim()
+                        const itemCryptoId = (item.cryptoId || "").trim()
+                        return (
+                            entry.portfolioId === item.portfolioId &&
+                            entrySymbol === itemSymbol &&
+                            entryAssetType === itemAssetType &&
+                            entryCryptoId === itemCryptoId
+                        )
+                    })
+                    setSelectedStock(match || item)
                     setIsStockDetailOpen(true)
                 })
                 .catch(() => {
@@ -280,7 +295,7 @@ export function PortfolioList() {
 
     const handleAddTransaction = async () => {
         const hasValidQty = Number.isFinite(newTx.quantity) && newTx.quantity > 0
-        const hasValidPrice = newTx.type === 'bonus' || (Number.isFinite(newTx.price) && newTx.price > 0)
+        const hasValidPrice = newTx.type === 'bonus' || newTx.type === 'gift' || (Number.isFinite(newTx.price) && newTx.price > 0)
         if (!newTx.symbol || !hasValidQty || !hasValidPrice) {
             toast.error("Please fill all fields correctly")
             return
@@ -508,29 +523,30 @@ export function PortfolioList() {
         [portfolio, activePortfolioId],
     )
 
-    const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
-        const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * item.buyPrice, 0)
-        const current = activePortfolioItems.reduce(
-            (sum, item) => sum + item.units * (item.currentPrice ?? item.buyPrice),
-            0,
-        )
-        const profitLoss = current - investment
-        const today = activePortfolioItems.reduce((sum, item) => {
-            if (item.currentPrice != null && item.previousClose != null) {
-                return sum + item.units * (item.currentPrice - item.previousClose)
-            }
-            return sum
-        }, 0)
-
-        return {
-            totalInvestment: investment,
-            currentValue: current,
-            totalProfitLoss: profitLoss,
-            totalProfitLossPercentage: investment > 0 ? (profitLoss / investment) * 100 : 0,
-            todayChange: today,
-            todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
-        }
-    }, [activePortfolioItems])
+      const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
+          const safePrice = (value?: number) => (Number.isFinite(value) ? value : 0)
+          const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safePrice(item.buyPrice ?? 0), 0)
+          const current = activePortfolioItems.reduce((sum, item) => {
+              const price = Number.isFinite(item.currentPrice) ? item.currentPrice : safePrice(item.buyPrice ?? 0)
+              return sum + item.units * price
+          }, 0)
+          const profitLoss = current - investment
+          const today = activePortfolioItems.reduce((sum, item) => {
+              if (Number.isFinite(item.currentPrice) && Number.isFinite(item.previousClose)) {
+                  return sum + item.units * ((item.currentPrice ?? 0) - (item.previousClose ?? 0))
+              }
+              return sum
+          }, 0)
+  
+          return {
+              totalInvestment: investment,
+              currentValue: current,
+              totalProfitLoss: profitLoss,
+              totalProfitLossPercentage: investment > 0 ? (profitLoss / investment) * 100 : 0,
+              todayChange: today,
+              todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
+          }
+      }, [activePortfolioItems])
 
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number }>()
@@ -1899,8 +1915,9 @@ export function PortfolioList() {
                                 ) : (
                                     filteredPortfolio.map((item) => {
                                         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
-                                        const current = item.currentPrice ?? item.buyPrice
-                                        const investment = item.units * item.buyPrice
+                                        const safeBuyPrice = Number.isFinite(item.buyPrice) ? item.buyPrice : 0
+                                        const current = Number.isFinite(item.currentPrice) ? item.currentPrice! : safeBuyPrice
+                                        const investment = item.units * safeBuyPrice
                                         const value = item.units * current
                                         const profitLoss = value - investment
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
@@ -2069,7 +2086,7 @@ export function PortfolioList() {
                                     </div>
                                 ) : (
                                     sortedTransactions.map((tx) => {
-                                        const isCredit = ['buy', 'ipo', 'bonus', 'merger_in'].includes(tx.type)
+                                        const isCredit = ['buy', 'ipo', 'bonus', 'gift', 'merger_in'].includes(tx.type)
                                         return (
                                             <div
                                                 key={tx.id}
@@ -2090,13 +2107,13 @@ export function PortfolioList() {
                                                         "w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border shadow-sm shrink-0",
                                                         tx.type === 'buy' ? "bg-blue-500/10 text-blue-600 border-blue-500/10" :
                                                             tx.type === 'sell' ? "bg-orange-500/10 text-orange-600 border-orange-500/10" :
-                                                                tx.type === 'bonus' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
+                                                            tx.type === 'bonus' || tx.type === 'gift' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
                                                                     tx.type === 'ipo' ? "bg-green-500/10 text-green-600 border-green-500/10" :
                                                                         "bg-muted text-foreground border-muted-foreground/20"
                                                     )}>
                                                         {tx.type === 'buy' && <ArrowDownLeft className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'sell' && <ArrowUpRight className="w-4 h-4 sm:w-6 sm:h-6" />}
-                                                        {tx.type === 'bonus' && <Gift className="w-4 h-4 sm:w-6 sm:h-6" />}
+                                                        {(tx.type === 'bonus' || tx.type === 'gift') && <Gift className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'ipo' && <FileText className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {(tx.type === 'merger_in' || tx.type === 'merger_out') && <RefreshCcw className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                     </div>
