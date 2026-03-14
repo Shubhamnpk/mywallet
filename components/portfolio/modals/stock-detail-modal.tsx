@@ -1,6 +1,6 @@
 "use client"
 
-import { PortfolioItem } from "@/types/wallet"
+import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
 import {
     Dialog,
     DialogContent,
@@ -9,11 +9,31 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Activity, BarChart3, TrendingDown, TrendingUp, Calendar, Info, Clock, ExternalLink, X } from "lucide-react"
+import {
+    Activity,
+    BarChart3,
+    TrendingDown,
+    TrendingUp,
+    Calendar,
+    Info,
+    Clock,
+    ExternalLink,
+    X,
+    History,
+    FileText,
+    LayoutGrid,
+    ArrowUpRight,
+    ArrowDownLeft,
+    Gift,
+    Banknote
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 
 type ProposedDividendRecord = {
     id: number
@@ -33,11 +53,11 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalProps) {
-    const { scripNamesMap } = useWalletData()
-    const [showDividendHistory, setShowDividendHistory] = useState(false)
+    const { scripNamesMap, shareTransactions, noticesBundle, disclosures } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
+
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
     const currencySymbol = isCrypto ? "$" : "रु"
     const current = item?.currentPrice ?? item?.buyPrice ?? 0
@@ -54,18 +74,21 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const companyName = item
         ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
         : ""
+
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
         if (units === 0) return "0"
         if (Math.abs(units) < 1) return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
     }
+
     const formatValue = (amount: number) => {
         if (!Number.isFinite(amount)) return "0"
         if (amount === 0) return "0"
         if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })
         return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     }
+
     const formatProfitLossPercent = (percent: number) => {
         if (!Number.isFinite(percent)) return "N/A"
         return `${percent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
@@ -117,18 +140,20 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
         return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
     }
 
-    const matchedDividendHistory = (dividendHistory || [])
-        .filter((record) => {
-            const recordSymbol = record.symbol?.trim().toUpperCase() || ""
-            if (symbol && recordSymbol === symbol) return true
-            const recordName = normalizeCompany(record.company_name)
-            return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
-        })
-        .sort((a, b) => {
-            const aDate = getDividendRecordTime(a)
-            const bDate = getDividendRecordTime(b)
-            return bDate - aDate
-        })
+    const matchedDividendHistory = useMemo(() => {
+        return (dividendHistory || [])
+            .filter((record) => {
+                const recordSymbol = record.symbol?.trim().toUpperCase() || ""
+                if (symbol && recordSymbol === symbol) return true
+                const recordName = normalizeCompany(record.company_name)
+                return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
+            })
+            .sort((a, b) => {
+                const aDate = getDividendRecordTime(a)
+                const bDate = getDividendRecordTime(b)
+                return bDate - aDate
+            })
+    }, [dividendHistory, symbol, normalizedHoldingName])
 
     const latestDividend = matchedDividendHistory[0]
     const latestCashPercent = parsePositiveNumber(latestDividend?.cash_dividend)
@@ -136,6 +161,21 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const heldUnits = item?.units ?? 0
     const estimatedCashAmount = latestCashPercent * heldUnits
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
+
+    const matchedTransactions = useMemo(() => {
+        if (!item || !shareTransactions) return []
+        return shareTransactions.filter(tx => tx.symbol.toUpperCase() === symbol)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }, [item, shareTransactions, symbol])
+
+    const matchedNotices = useMemo(() => {
+        if (!item) return []
+        const combined = [...(noticesBundle?.company || []), ...(disclosures || [])]
+        return combined.filter(d => {
+            const headline = (d.newsHeadline || "").toUpperCase()
+            return headline.includes(symbol) || (companyName && headline.includes(companyName.toUpperCase()))
+        }).sort((a, b) => new Date(b.addedDate || "").getTime() - new Date(a.addedDate || "").getTime())
+    }, [item, noticesBundle, disclosures, symbol, companyName])
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,177 +236,219 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                         </div>
                     </DialogHeader>
 
-                    <div className="p-6 pt-2 space-y-6 flex-1 overflow-y-auto show-scrollbars">
-                        {/* Performance Card */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
-                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Current Value</span>
-                                <span className="text-lg font-black font-mono">{currencySymbol} {formatValue(value)}</span>
-                            </div>
-                            <div className={cn(
-                                "p-4 rounded-2xl border flex flex-col gap-1",
-                                isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
-                            )}>
-                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Total P/L</span>
-                                <span className={cn(
-                                    "text-lg font-black font-mono",
-                                    isProfit ? "text-green-600" : "text-red-600"
-                                )}>
-                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)}
-                                </span>
-                                <span className="text-[10px] font-bold text-muted-foreground">
-                                    {hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"}
-                                </span>
-                            </div>
+                    <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+                        <div className="px-6 py-1 border-b border-muted/20 bg-muted/5">
+                            <TabsList className="bg-transparent h-9 w-full justify-start gap-4 p-0">
+                                <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    Overview
+                                </TabsTrigger>
+                                <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    History
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="dividend"
+                                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
+                                    onClick={() => loadDividendHistory()}
+                                >
+                                    Dividends
+                                </TabsTrigger>
+                                <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    News
+                                </TabsTrigger>
+                            </TabsList>
                         </div>
 
-                        {/* Market Data */}
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    {currencySymbol} {formatValue(item.high ?? current)}
-                                </span>
-                            </div>
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    {currencySymbol} {formatValue(item.low ?? current)}
-                                </span>
-                            </div>
-                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
-                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                                    <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
-                                </span>
-                                <span className="text-xs font-bold font-mono">
-                                    {(item.volume ?? 0).toLocaleString()}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Investment Details */}
-                        {!isCrypto && (
-                            <>
-                                <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
-                                    <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                            <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
-                                        </span>
-                                        <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(item.buyPrice)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                            <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
-                                        </span>
-                                        <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(investment)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                            <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
-                                        </span>
-                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest">
-                                            Long Term
-                                        </Badge>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                                            Dividend History
-                                        </span>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-7 px-2.5 text-[10px] font-black uppercase tracking-widest border-primary/20"
-                                            onClick={() => {
-                                                const nextValue = !showDividendHistory
-                                                setShowDividendHistory(nextValue)
-                                                if (nextValue) {
-                                                    void loadDividendHistory()
-                                                }
-                                            }}
-                                        >
-                                            {showDividendHistory ? "Hide" : "Show"}
-                                        </Button>
-                                    </div>
-
-                                    {showDividendHistory && (
-                                        <div className="space-y-3">
-                                            {isDividendHistoryLoading && (
-                                                <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
-                                            )}
-
-                                            {!isDividendHistoryLoading && dividendHistoryError && (
-                                                <p className="text-xs text-destructive">{dividendHistoryError}</p>
-                                            )}
-
-                                            {!isDividendHistoryLoading && !dividendHistoryError && matchedDividendHistory.length === 0 && (
-                                                <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
-                                            )}
-
-                                            {!isDividendHistoryLoading && !dividendHistoryError && matchedDividendHistory.length > 0 && (
-                                                <>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
-                                                            <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
-                                                            <p className="text-[10px] text-green-700/80 mt-0.5">
-                                                                Est. cash for {heldUnits} units: NPR {estimatedCashAmount.toFixed(2)}
-                                                            </p>
-                                                        </div>
-                                                        <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
-                                                            <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
-                                                            <p className="text-[10px] text-blue-700/80 mt-0.5">
-                                                                Est. bonus for {heldUnits} units: {estimatedBonusUnits.toFixed(2)} units
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="rounded-xl border border-muted/30 overflow-hidden">
-                                                        <div className="max-h-40 overflow-y-auto show-scrollbars">
-                                                            <table className="w-full text-left">
-                                                                <thead className="sticky top-0 bg-muted/70">
-                                                                    <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                                        <th className="px-3 py-2">FY</th>
-                                                                        <th className="px-3 py-2">Cash</th>
-                                                                        <th className="px-3 py-2">Bonus</th>
-                                                                        <th className="px-3 py-2">Date</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {matchedDividendHistory.slice(0, 20).map((record) => (
-                                                                        <tr key={`${record.id}-${record.fiscal_year}-${record.announcement_date}`} className="border-t border-muted/20">
-                                                                            <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
-                                                                            <td className="px-3 py-2 text-[11px] font-semibold text-green-700">
-                                                                                {parsePositiveNumber(record.cash_dividend).toFixed(2)}%
-                                                                            </td>
-                                                                            <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">
-                                                                                {parsePositiveNumber(record.bonus_share).toFixed(2)}%
-                                                                            </td>
-                                                                            <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                                                                                {record.announcement_date || "N/A"}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
+                        <div className="flex-1 min-h-0 bg-muted/5 overflow-hidden">
+                            <ScrollArea className="h-[280px] sm:h-[370px]">
+                                <div className="p-6 pt-2 space-y-4">
+                                    <TabsContent value="overview" className="m-0 space-y-6">
+                                        {/* Performance Card */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-2xl bg-muted/30 border border-muted/50 flex flex-col gap-1">
+                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Current Value</span>
+                                                <span className="text-lg font-black font-mono">{currencySymbol} {formatValue(value)}</span>
+                                            </div>
+                                            <div className={cn(
+                                                "p-4 rounded-2xl border flex flex-col gap-1",
+                                                isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                            )}>
+                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Total P/L</span>
+                                                <span className={cn(
+                                                    "text-lg font-black font-mono",
+                                                    isProfit ? "text-green-600" : "text-red-600"
+                                                )}>
+                                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-muted-foreground">
+                                                    {hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"}
+                                                </span>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
 
-                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                        {/* Market Data */}
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {currencySymbol} {formatValue(item.high ?? current)}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {currencySymbol} {formatValue(item.low ?? current)}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                                                    <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
+                                                </span>
+                                                <span className="text-xs font-bold font-mono">
+                                                    {(item.volume ?? 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Investment Details */}
+                                        {!isCrypto && (
+                                            <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
+                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
+                                                    </span>
+                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(item.buyPrice)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
+                                                    </span>
+                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(investment)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
+                                                    </span>
+                                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest">
+                                                        Long Term
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="history" className="m-0 space-y-3">
+                                        {matchedTransactions.length > 0 ? (
+                                            matchedTransactions.map((tx) => (
+                                                <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                            tx.type === "buy" || tx.type === "ipo" ? "bg-green-500/10 text-green-600" :
+                                                                tx.type === "sell" ? "bg-red-500/10 text-red-600" :
+                                                                    "bg-blue-500/10 text-blue-600"
+                                                        )}>
+                                                            {tx.type === "buy" || tx.type === "ipo" ? <ArrowDownLeft className="w-4 h-4" /> :
+                                                                tx.type === "sell" ? <ArrowUpRight className="w-4 h-4" /> :
+                                                                    <Gift className="w-4 h-4" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] font-black uppercase">{tx.type}</p>
+                                                            <p className="text-[9px] font-bold text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
+                                                        <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-center text-muted-foreground py-8">No transaction history found.</p>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="dividend" className="m-0 space-y-4">
+                                        {isDividendHistoryLoading ? (
+                                            <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
+                                        ) : dividendHistoryError ? (
+                                            <p className="text-xs text-destructive">{dividendHistoryError}</p>
+                                        ) : matchedDividendHistory.length === 0 ? (
+                                            <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
+                                                        <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
+                                                        <p className="text-[10px] text-green-700/80 mt-0.5">
+                                                            Est. NPR {estimatedCashAmount.toFixed(2)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
+                                                        <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
+                                                        <p className="text-[10px] text-blue-700/80 mt-0.5">
+                                                            Est. {estimatedBonusUnits.toFixed(2)} units
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                    <table className="w-full text-left">
+                                                        <thead className="bg-muted/70">
+                                                            <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                <th className="px-3 py-2">FY</th>
+                                                                <th className="px-3 py-2">Cash</th>
+                                                                <th className="px-3 py-2">Bonus</th>
+                                                                <th className="px-3 py-2">Date</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-muted/10">
+                                                            {matchedDividendHistory.slice(0, 15).map((record) => (
+                                                                <tr key={`${record.id}-${record.fiscal_year}`} className="hover:bg-muted/5">
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-green-700">{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
+                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
+                                                                    <td className="px-3 py-2 text-[11px] text-muted-foreground">{record.announcement_date || "N/A"}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </>
+                                        )}
+                                    </TabsContent>
+
+                                    <TabsContent value="notices" className="m-0 space-y-3">
+                                        {matchedNotices.length > 0 ? (
+                                            matchedNotices.map((notice) => (
+                                                <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
+                                                    <div className="flex justify-between items-start gap-2">
+                                                        <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
+                                                            {notice.newsHeadline}
+                                                        </h4>
+                                                        <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
+                                                            {notice.addedDate ? new Date(notice.addedDate).toLocaleDateString() : 'Recent'}
+                                                        </span>
+                                                    </div>
+                                                    <Button variant="ghost" size="sm" className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent">
+                                                        View Details <ExternalLink className="w-2.5 h-2.5 ml-1" />
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-center text-muted-foreground py-8">No news found for this scrip.</p>
+                                        )}
+                                    </TabsContent>
+                                </div>
+                            </ScrollArea>
+                        </div>
+
+                        <div className="p-6 pt-2 grid grid-cols-2 gap-3 border-t border-muted/20">
                             {!isCrypto && (
                                 <Button
                                     variant="outline"
@@ -384,7 +466,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 Close Details
                             </Button>
                         </div>
-                    </div>
+                    </Tabs>
                 </DialogContent>
             )}
         </Dialog>

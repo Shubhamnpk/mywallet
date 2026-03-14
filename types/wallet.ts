@@ -65,11 +65,9 @@ export interface Transaction {
   location?: string
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
-  // New allocation fields
   allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt"
   allocationTarget?: string
   subcategory?: string
-  // Enhanced debt transaction fields
   total?: number
   actual?: number
   debtUsed?: number
@@ -105,7 +103,6 @@ export interface Budget {
   allowDebt: boolean
   debtLimit?: number
   interestRate?: number
-  // New subcategory support
   subcategories?: BudgetSubcategory[]
 }
 
@@ -120,7 +117,6 @@ export interface BudgetSubcategory {
 export interface Goal {
   id: string
   title: string
-  // Backwards-compatible alias: some components use `name` instead of `title`
   name?: string
   targetAmount: number
   currentAmount: number
@@ -219,7 +215,7 @@ export interface PortfolioItem {
   cryptoId?: string
   assetName?: string
   units: number
-  buyPrice: number // This will be the average cost price
+  buyPrice: number
   currentPrice?: number
   previousClose?: number
   high?: number
