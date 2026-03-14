@@ -12,9 +12,6 @@ export class SessionManager {
 
   private static activityTimer: NodeJS.Timeout | null = null
 
-  /**
-   * Create a new session after successful PIN authentication
-   */
   static createSession(): void {
     const sessionId = this.generateSessionId()
     const now = Date.now()
