@@ -29,6 +29,7 @@ import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent,
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { SessionManager } from "@/lib/session-manager"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
 import {
   getDefaultNotificationSettings,
@@ -670,7 +671,7 @@ export function useWalletData() {
       migrateToEncrypted()
     }
   }, [isLoaded])
-  async function saveDataWithIntegrity(key: string, data: any) {
+  async function saveDataWithIntegrity(key: string, data: any): Promise<boolean> {
     const sensitiveKeys = [
       "userProfile",
       "transactions",
@@ -704,10 +705,13 @@ export function useWalletData() {
       }
 
       await DataIntegrityManager.updateIntegrityRecord(allData)
+      return true
     } catch {
       try {
         await saveToLocalStorage(key, data, shouldEncrypt)
+        return true
       } catch (e) {
+        return false
       }
     }
   }
@@ -1076,6 +1080,7 @@ export function useWalletData() {
   const updateUserProfile = (updates: Partial<UserProfile>) => {
     if (!userProfile) return
 
+    const previousProfile = userProfile
     const updatedProfile = {
       ...userProfile,
       ...updates,
@@ -1085,7 +1090,15 @@ export function useWalletData() {
       }),
     }
     setUserProfile(updatedProfile)
-    saveDataWithIntegrity("userProfile", updatedProfile)
+    void (async () => {
+      const saved = await saveDataWithIntegrity("userProfile", updatedProfile)
+      if (!saved) {
+        setUserProfile(previousProfile)
+        toast.error("Unlock required", {
+          description: "Please unlock your wallet to save changes."
+        })
+      }
+    })()
   }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
@@ -1621,8 +1634,29 @@ export function useWalletData() {
     URL.revokeObjectURL(url)
   }
 
-  const importData = async (dataOrJson: string | any) => {
+  const importData = async (dataOrJson: string | any, unlockPin?: string) => {
     try {
+      if (typeof window !== "undefined") {
+        const requiresUnlock = SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid()
+        if (requiresUnlock) {
+          if (!unlockPin?.trim()) {
+            throw new Error("Wallet PIN required to restore data")
+          }
+
+          const validation = await SecurePinManager.validatePin(unlockPin)
+          if (!validation.success) {
+            throw new Error("Invalid wallet PIN")
+          }
+
+          const masterKey = await SecureKeyManager.getMasterKey(unlockPin)
+          if (!masterKey) {
+            throw new Error("Unable to unlock wallet")
+          }
+          SecureKeyManager.cacheSessionPin(unlockPin)
+          SessionManager.createSession()
+        }
+      }
+
       const data = typeof dataOrJson === 'string' ? JSON.parse(dataOrJson) : dataOrJson
 
       // Validate data structure
@@ -1647,16 +1681,23 @@ export function useWalletData() {
         throw new Error("Invalid backup file format - no valid data to import")
       }
 
+      const ensureSaved = async (key: string, value: any) => {
+        const saved = await saveDataWithIntegrity(key, value)
+        if (!saved) {
+          throw new Error("Failed to save data. Please unlock your wallet and try again.")
+        }
+      }
+
       // Import user profile (only if selected)
       if (data.userProfile) {
         setUserProfile(data.userProfile)
-        await saveDataWithIntegrity("userProfile", data.userProfile)
+        await ensureSaved("userProfile", data.userProfile)
       }
 
       // Import transactions (only if selected)
       if (data.transactions && Array.isArray(data.transactions)) {
         setTransactions(data.transactions)
-        await saveDataWithIntegrity("transactions", data.transactions)
+        await ensureSaved("transactions", data.transactions)
         // Calculate balance based on actual cash flow
         const actualBalance = data.transactions.reduce((sum: number, tx: Transaction) => {
           if (tx.type === "income") {
@@ -1671,13 +1712,13 @@ export function useWalletData() {
       // Import portfolio (only if selected)
       if (data.portfolio && Array.isArray(data.portfolio)) {
         setPortfolio(data.portfolio)
-        await saveDataWithIntegrity("portfolio", data.portfolio)
+        await ensureSaved("portfolio", data.portfolio)
       }
 
       // Import share transactions
       if (data.shareTransactions && Array.isArray(data.shareTransactions)) {
         setShareTransactions(data.shareTransactions)
-        await saveDataWithIntegrity("shareTransactions", data.shareTransactions)
+        await ensureSaved("shareTransactions", data.shareTransactions)
       }
 
       if (data.portfolios && Array.isArray(data.portfolios)) {
@@ -1694,45 +1735,45 @@ export function useWalletData() {
       // Import budgets (only if selected)
       if (data.budgets && Array.isArray(data.budgets)) {
         setBudgets(data.budgets)
-        await saveDataWithIntegrity("budgets", data.budgets)
+        await ensureSaved("budgets", data.budgets)
       }
 
       // Import goals (only if selected)
       if (data.goals && Array.isArray(data.goals)) {
         setGoals(data.goals)
-        await saveDataWithIntegrity("goals", data.goals)
+        await ensureSaved("goals", data.goals)
       }
 
       // Import debt accounts (only if selected)
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
         setDebtAccounts(data.debtAccounts)
-        await saveDataWithIntegrity("debtAccounts", data.debtAccounts)
+        await ensureSaved("debtAccounts", data.debtAccounts)
       }
 
       // Import credit accounts (only if selected)
       if (data.creditAccounts && Array.isArray(data.creditAccounts)) {
         setCreditAccounts(data.creditAccounts)
-        await saveDataWithIntegrity("creditAccounts", data.creditAccounts)
+        await ensureSaved("creditAccounts", data.creditAccounts)
       }
 
       // Import debt/credit transactions
       if (data.debtCreditTransactions && Array.isArray(data.debtCreditTransactions)) {
         setDebtCreditTransactions(data.debtCreditTransactions)
-        await saveDataWithIntegrity("debtCreditTransactions", data.debtCreditTransactions)
+        await ensureSaved("debtCreditTransactions", data.debtCreditTransactions)
       }
 
       // Import categories (only if selected)
       if (data.categories && Array.isArray(data.categories)) {
         const importedCustomCategories = data.categories.filter((category: any) => !category?.isDefault)
         setCategories(importedCustomCategories)
-        await saveDataWithIntegrity("categories", importedCustomCategories)
+        await ensureSaved("categories", importedCustomCategories)
       }
 
       // Import emergency fund (only if selected)
       if (typeof data.emergencyFund === 'number' || typeof data.emergencyFund === 'string') {
         const emergencyFundValue = Number.parseFloat(data.emergencyFund.toString()) || 0
         setEmergencyFund(emergencyFundValue)
-        await saveDataWithIntegrity("emergencyFund", emergencyFundValue)
+        await ensureSaved("emergencyFund", emergencyFundValue)
       }
 
       // Import scrollbar setting (only if userProfile is imported)
@@ -2288,11 +2329,16 @@ export function useWalletData() {
 
   const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
     const normalizedSymbol = tx.symbol.trim().toUpperCase()
+    const normalizedPrice =
+      tx.type === "bonus" || tx.type === "gift"
+        ? 0
+        : (Number.isFinite(tx.price) ? tx.price : 0)
     const newTx: ShareTransaction = {
       ...tx,
       symbol: normalizedSymbol,
       assetType: normalizeAssetType(tx.assetType),
       cryptoId: tx.cryptoId?.trim() || undefined,
+      price: normalizedPrice,
       id: generateId('stx'),
     }
     const updatedTransactions = [...shareTransactions, newTx]
@@ -2333,9 +2379,12 @@ export function useWalletData() {
         const cryptoId = refTx?.cryptoId?.trim() || undefined
 
         sortedSymbolTxs.forEach((t) => {
-          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "merger_in") {
+          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
             totalUnits = normalizeUnits(totalUnits + t.quantity)
-            totalCost += t.quantity * t.price
+            const unitPrice = (t.type === "bonus" || t.type === "gift")
+              ? 0
+              : (Number.isFinite(t.price) ? t.price : 0)
+            totalCost += t.quantity * unitPrice
           } else if (t.type === "sell" || t.type === "merger_out") {
             totalUnits = normalizeUnits(totalUnits - t.quantity)
           }

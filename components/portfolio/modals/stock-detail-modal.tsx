@@ -76,16 +76,21 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
     const currencySymbol = isCrypto ? "$" : "रु"
-    const current = item?.currentPrice ?? item?.buyPrice ?? 0
-    const investment = (item?.units ?? 0) * (item?.buyPrice ?? 0)
+    const safeBuyPrice = Number.isFinite(item?.buyPrice) ? (item?.buyPrice ?? 0) : 0
+    const safeCurrent = Number.isFinite(item?.currentPrice) ? (item?.currentPrice ?? safeBuyPrice) : safeBuyPrice
+    const current = safeCurrent
+    const investment = (item?.units ?? 0) * safeBuyPrice
     const value = (item?.units ?? 0) * current
     const profitLoss = value - investment
     const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
     const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
 
-    const dailyChange = item?.change ?? ((item?.currentPrice != null && item?.previousClose != null) ? item.currentPrice - item.previousClose : 0)
-    const dailyChangePerc = item?.percentChange ?? ((item?.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
+    const safePreviousClose = Number.isFinite(item?.previousClose) ? (item?.previousClose ?? safeCurrent) : safeCurrent
+    const dailyChange = Number.isFinite(item?.change) ? (item?.change ?? 0) : (safeCurrent - safePreviousClose)
+    const dailyChangePerc = Number.isFinite(item?.percentChange)
+        ? (item?.percentChange ?? 0)
+        : (safePreviousClose !== 0 ? (dailyChange / safePreviousClose) * 100 : 0)
     const isDailyProfit = dailyChange >= 0
     const companyName = item
         ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
@@ -221,7 +226,9 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
     const matchedTransactions = useMemo(() => {
         if (!item || !shareTransactions) return []
-        return shareTransactions.filter(tx => tx.symbol.toUpperCase() === symbol)
+        const portfolioId = item.portfolioId
+        return shareTransactions
+            .filter((tx) => tx.portfolioId === portfolioId && tx.symbol.toUpperCase() === symbol)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [item, shareTransactions, symbol])
 
@@ -330,13 +337,17 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                     History
                                 </TabsTrigger>
-                                <TabsTrigger
-                                    value="dividend"
-                                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
-                                    onClick={() => loadDividendHistory()}
-                                >
-                                    Dividends
-                                </TabsTrigger>
+                                {!isCrypto && (
+                                    <TabsTrigger
+                                        value="dividend"
+                                        className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
+                                        onClick={() => {
+                                            loadDividendHistory()
+                                        }}
+                                    >
+                                        Dividends
+                                    </TabsTrigger>
+                                )}
                                 <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                     News
                                 </TabsTrigger>
@@ -483,57 +494,59 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                         )}
                                     </TabsContent>
 
-                                    <TabsContent value="dividend" className="m-0 space-y-4">
-                                        {isDividendHistoryLoading ? (
-                                            <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
-                                        ) : dividendHistoryError ? (
-                                            <p className="text-xs text-destructive">{dividendHistoryError}</p>
-                                        ) : matchedDividendHistory.length === 0 ? (
-                                            <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
-                                        ) : (
-                                            <>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
-                                                        <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
-                                                        <p className="text-[10px] text-green-700/80 mt-0.5">
-                                                            Est. NPR {estimatedCashAmount.toFixed(2)}
-                                                        </p>
+                                    {!isCrypto && (
+                                        <TabsContent value="dividend" className="m-0 space-y-4">
+                                            {isDividendHistoryLoading ? (
+                                                <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
+                                            ) : dividendHistoryError ? (
+                                                <p className="text-xs text-destructive">{dividendHistoryError}</p>
+                                            ) : matchedDividendHistory.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">No dividend history found for this holding.</p>
+                                            ) : (
+                                                <>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
+                                                            <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
+                                                            <p className="text-[10px] text-green-700/80 mt-0.5">
+                                                                Est. NPR {estimatedCashAmount.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                        <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
+                                                            <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
+                                                            <p className="text-[10px] text-blue-700/80 mt-0.5">
+                                                                Est. {estimatedBonusUnits.toFixed(2)} units
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
-                                                        <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
-                                                        <p className="text-[10px] text-blue-700/80 mt-0.5">
-                                                            Est. {estimatedBonusUnits.toFixed(2)} units
-                                                        </p>
-                                                    </div>
-                                                </div>
 
-                                                <div className="rounded-xl border border-muted/30 overflow-hidden">
-                                                    <table className="w-full text-left">
-                                                        <thead className="bg-muted/70">
-                                                            <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                                <th className="px-3 py-2">FY</th>
-                                                                <th className="px-3 py-2">Cash</th>
-                                                                <th className="px-3 py-2">Bonus</th>
-                                                                <th className="px-3 py-2">Date</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-muted/10">
-                                                            {matchedDividendHistory.slice(0, 15).map((record) => (
-                                                                <tr key={`${record.id}-${record.fiscal_year}`} className="hover:bg-muted/5">
-                                                                    <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
-                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-green-700">{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
-                                                                    <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
-                                                                    <td className="px-3 py-2 text-[11px] text-muted-foreground">{record.announcement_date || "N/A"}</td>
+                                                    <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                        <table className="w-full text-left">
+                                                            <thead className="bg-muted/70">
+                                                                <tr className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                    <th className="px-3 py-2">FY</th>
+                                                                    <th className="px-3 py-2">Cash</th>
+                                                                    <th className="px-3 py-2">Bonus</th>
+                                                                    <th className="px-3 py-2">Date</th>
                                                                 </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </>
-                                        )}
-                                    </TabsContent>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-muted/10">
+                                                                {matchedDividendHistory.slice(0, 15).map((record) => (
+                                                                    <tr key={`${record.id}-${record.fiscal_year}`} className="hover:bg-muted/5">
+                                                                        <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
+                                                                        <td className="px-3 py-2 text-[11px] font-semibold text-green-700">{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
+                                                                        <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
+                                                                        <td className="px-3 py-2 text-[11px] text-muted-foreground">{record.announcement_date || "N/A"}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </TabsContent>
+                                    )}
 
                                     <TabsContent value="notices" className="m-0 space-y-3">
                                         {matchedNotices.length > 0 ? (
