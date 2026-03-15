@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 
 interface FormData {
   amount: string
@@ -285,15 +286,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
       // Load persisted form data only if no initial data provided
       if (!initialAmount && !initialDescription && !initialType && !initialCategory && !initialReceiptImage) {
-        const persisted = localStorage.getItem("transaction-dialog-form")
-        if (persisted) {
+        const loadPersisted = async () => {
           try {
-            const parsed = JSON.parse(persisted)
-            setFormData({ ...initialFormData, ...parsed })
-          } catch (error) {
+            const stored = await loadFromLocalStorage(["transaction-dialog-form"])
+            const persisted = stored["transaction-dialog-form"]
+            if (persisted && typeof persisted === "object") {
+              setFormData({ ...initialFormData, ...persisted })
+            }
+          } catch {
             // Ignore invalid data
           }
         }
+        void loadPersisted()
       }
     } else {
       localStorage.removeItem("transaction-dialog-form")
@@ -327,7 +331,12 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   // Persist form data
   useEffect(() => {
     if (open && (formData.amount !== "" || formData.category !== "" || formData.description !== "")) {
-      localStorage.setItem("transaction-dialog-form", JSON.stringify(formData))
+      void (async () => {
+        try {
+          await saveToLocalStorage("transaction-dialog-form", formData, true)
+        } catch {
+        }
+      })()
     }
   }, [formData, open])
 

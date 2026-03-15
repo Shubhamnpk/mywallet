@@ -54,11 +54,11 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
       const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
       setIsSupported(available)
       if (!available) {
-        setAuthError('No biometric authenticator available on this device.')
+        setAuthError('No biometric authenticator available on this device. Please ensure you have a screen lock (PIN, pattern, or fingerprint) set up in your device settings.')
       }
     } catch (error) {
       setIsSupported(false)
-      setAuthError('Error checking biometric support. Please try again.')
+      setAuthError('Error checking biometric support. This can happen if the site is not served over HTTPS or if biometric hardware is not available.')
     }
   }
 
@@ -165,6 +165,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
       }
 
       setAuthError(errorMessage)
+      if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+        setAuthError(errorMessage + " Tip: Make sure your device screen lock (PIN/Biometric) is enabled in device settings.")
+      }
       onError?.(errorMessage)
     } finally {
       setIsAuthenticating(false)
@@ -231,6 +234,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
       }
 
       setAuthError(errorMessage)
+      if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+        setAuthError(errorMessage + " Tip: Make sure your device is unlocked and screen lock is configured.")
+      }
       onError?.(errorMessage)
     } finally {
       setIsAuthenticating(false)

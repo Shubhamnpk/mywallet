@@ -13,8 +13,12 @@ import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SessionManager } from "@/lib/session-manager"
+import { SecurityLogger, SecurityEvent } from "@/lib/security-logger"
 import { BiometricAuth } from "../security/biometric-auth"
-import { Shield, Lock, Key, Volume2 } from "lucide-react"
+import { Shield, Lock, Key, Volume2, AlertTriangle, CheckCircle2, Info } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
 
 interface SecuritySettingsProps {
@@ -42,6 +46,14 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
   const [emergencyConfirmPin, setEmergencyConfirmPin] = useState("")
   const [emergencyStep, setEmergencyStep] = useState<"current" | "new" | "confirm">("new")
   const [isEmergencyProcessing, setIsEmergencyProcessing] = useState(false)
+  
+  // Audit states
+  const [securityAudit, setSecurityAudit] = useState<{
+    vulnerabilities: string[]
+    recommendations: string[]
+    overallRisk: 'low' | 'medium' | 'high'
+  } | null>(null)
+  const [securityLogs, setSecurityLogs] = useState<SecurityEvent[]>([])
 
   // Update pinEnabled state when userProfile changes
   useEffect(() => {
@@ -58,11 +70,17 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
 
     updateEmergencyStatus()
 
-    // Update when dialog opens
-    if (showEmergencyPinDialog) {
+    // Update audit info
+    setSecurityAudit(SecureKeyManager.performSecurityAudit())
+    setSecurityLogs(SecurityLogger.getLogs())
+
+    // Update when dialog opens or settings change
+    if (showEmergencyPinDialog || showPinDialog) {
       updateEmergencyStatus()
+      setSecurityAudit(SecureKeyManager.performSecurityAudit())
+      setSecurityLogs(SecurityLogger.getLogs())
     }
-  }, [showEmergencyPinDialog])
+  }, [showEmergencyPinDialog, showPinDialog])
 
   if (!userProfile) {
     return (
@@ -616,6 +634,123 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
 
       {/* Biometric Authentication */}
       <BiometricAuth pinEnabled={pinEnabled} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className={`w-5 h-5 ${
+              securityAudit?.overallRisk === 'high' ? 'text-destructive' : 
+              securityAudit?.overallRisk === 'medium' ? 'text-orange-500' : 
+              'text-primary'
+            }`} />
+            Security Health Audit
+          </CardTitle>
+          <CardDescription>
+            Comprehensive analysis of your wallet's security configuration.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {securityAudit && (
+            <>
+              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <span className="text-sm font-medium">Overall Risk Level</span>
+                <Badge variant={
+                  securityAudit.overallRisk === 'high' ? 'destructive' : 
+                  securityAudit.overallRisk === 'medium' ? 'outline' : 
+                  'default'
+                } className={
+                  securityAudit.overallRisk === 'medium' ? 'border-orange-500 text-orange-500' : ''
+                }>
+                  {securityAudit.overallRisk.toUpperCase()}
+                </Badge>
+              </div>
+
+              {securityAudit.vulnerabilities.length > 0 && (
+                <Alert variant="destructive" className="bg-destructive/5">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Vulnerabilities Detected</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc ml-4 mt-1 text-xs">
+                      {securityAudit.vulnerabilities.map((v, i) => (
+                        <li key={i}>{v}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {securityAudit.recommendations.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    Recommendations
+                  </h4>
+                  <div className="space-y-2">
+                    {securityAudit.recommendations.map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 p-2 bg-primary/5 rounded border border-primary/10">
+                        <Info className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                        <span className="text-xs">{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2">
+                <div className="flex justify-between text-xs mb-1 text-muted-foreground">
+                  <span>Encryption Strength</span>
+                  <span>{securityStatus.strength?.toUpperCase() || 'N/A'}</span>
+                </div>
+                <Progress value={
+                  securityStatus.strength === 'strong' ? 100 : 
+                  securityStatus.strength === 'medium' ? 60 : 30
+                } className="h-1" />
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Security Activity Logs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Info className="w-4 h-4" />
+            Recent Security Activity
+          </CardTitle>
+          <CardDescription>Last 10 security-related events for auditing.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {securityLogs.length > 0 ? (
+            <div className="space-y-2">
+              {securityLogs.map((log, i) => (
+                <div key={i} className="flex items-center justify-between text-xs p-2 bg-muted/30 rounded border border-muted">
+                  <div className="flex flex-col">
+                    <span className="font-medium capitalize">{log.type.replace(/_/g, " ")}</span>
+                    <span className="text-[10px] text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</span>
+                  </div>
+                  {log.details && (
+                    <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded">{log.details}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">No recent activity logged.</p>
+          )}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="w-full text-xs h-8"
+            onClick={() => {
+              SecurityLogger.clearLogs()
+              setSecurityLogs([])
+            }}
+          >
+            Clear Activity Logs
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Audio Feedback for Authentication */}
       <Card>

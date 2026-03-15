@@ -126,7 +126,7 @@ export class SessionManager {
         ? "; Secure"
         : ""
 
-    document.cookie = `${this.SESSION_COOKIE}=${encodedData}; expires=${expires.toUTCString()}; path=/; SameSite=Strict${secureAttr}`
+    document.cookie = `${this.SESSION_COOKIE}=${encodedData}; expires=${expires.toUTCString()}; path=/; SameSite=Lax${secureAttr}`
   }
 
   /**

@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import QRCodeScanner from "./qr-code-scanner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { MobileNativeModal } from "@/components/dashboard/mobile-native-modal"
+import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 
 interface TransactionData {
   amount: string
@@ -134,17 +135,18 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
   // Load scan history from localStorage
   useEffect(() => {
-    const loadHistory = () => {
+    const loadHistory = async () => {
       try {
-        const receiptHistory = JSON.parse(localStorage.getItem('receiptScanHistory') || '[]')
-        const qrScanHistory = JSON.parse(localStorage.getItem('qrScanHistory') || '[]')
+        const stored = await loadFromLocalStorage(['receiptScanHistory', 'qrScanHistory'])
+        const receiptHistory = Array.isArray(stored.receiptScanHistory) ? stored.receiptScanHistory : []
+        const qrScanHistory = Array.isArray(stored.qrScanHistory) ? stored.qrScanHistory : []
         setScanHistory(receiptHistory)
         setLocalQrHistory(qrScanHistory)
       } catch (error) {
         console.error('Failed to load scan history:', error)
       }
     }
-    loadHistory()
+    void loadHistory()
   }, [])
 
   // Check video element readiness
@@ -250,7 +252,12 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
     }
     const updatedHistory = [historyItem, ...scanHistory].slice(0, 10) // Keep last 10
     setScanHistory(updatedHistory)
-    localStorage.setItem('receiptScanHistory', JSON.stringify(updatedHistory))
+    void (async () => {
+      try {
+        await saveToLocalStorage('receiptScanHistory', updatedHistory, true)
+      } catch {
+      }
+    })()
   }, [scanHistory])
 
   // Save QR scan to history
@@ -263,7 +270,12 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
     }
     const updatedHistory = [historyItem, ...localQrHistory].slice(0, 10) // Keep last 10
     setLocalQrHistory(updatedHistory)
-    localStorage.setItem('qrScanHistory', JSON.stringify(updatedHistory))
+    void (async () => {
+      try {
+        await saveToLocalStorage('qrScanHistory', updatedHistory, true)
+      } catch {
+      }
+    })()
   }, [localQrHistory])
 
   // Clear all history

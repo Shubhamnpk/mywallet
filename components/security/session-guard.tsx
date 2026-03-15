@@ -11,80 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Lock, AlertCircle, Shield, Fingerprint } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
-// Sound generation functions
-const generateTone = (frequency: number, duration: number, type: OscillatorType = "sine") => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-  const oscillator = audioContext.createOscillator()
-  const gainNode = audioContext.createGain()
-
-  oscillator.connect(gainNode)
-  gainNode.connect(audioContext.destination)
-
-  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-  oscillator.type = type
-
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-
-  oscillator.start(audioContext.currentTime)
-  oscillator.stop(audioContext.currentTime + duration)
-}
-
-const playSound = (activity: string) => {
-  // Default to true if no saved preference exists
-  const soundEffectsEnabled = localStorage.getItem("wallet_sound_effects") !== "false"
-
-  if (!soundEffectsEnabled) return
-
-  let enabled = false
-  let selected = "success-tone"
-  let customUrl = ""
-
-  switch (activity) {
-    case "pin-success":
-      enabled = localStorage.getItem("wallet_pin_success_enabled") !== "false"
-      selected = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
-      customUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
-      break
-    case "pin-failed":
-      enabled = localStorage.getItem("wallet_pin_failed_enabled") !== "false"
-      selected = localStorage.getItem("wallet_pin_failed_selected_sound") || "notification"
-      customUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
-      break
-    default:
-      return
-  }
-
-  if (!enabled) return
-
-  try {
-    if (selected === "custom" && customUrl) {
-      const audio = new Audio(customUrl)
-      audio.play().catch(console.error)
-    } else if (selected !== "none") {
-      // Use preset sounds
-      switch (selected) {
-        case "success-tone":
-          generateTone(523, 0.2)
-          setTimeout(() => generateTone(659, 0.2), 100)
-          break
-        case "notification":
-          generateTone(440, 0.4)
-          break
-        case "gentle-chime":
-          generateTone(800, 0.3)
-          break
-        case "soft-click":
-          generateTone(1000, 0.1, "square")
-          break
-        default:
-          generateTone(523, 0.2)
-      }
-    }
-  } catch (error) {
-    console.error("Error playing sound:", error)
-  }
-}
+import { playSound } from "@/lib/sound-utils"
+import { SecurityLogger } from "@/lib/security-logger"
 
 interface SessionGuardProps {
   children: React.ReactNode
@@ -241,6 +169,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
       }) as PublicKeyCredential
 
       if (assertion) {
+        SecurityLogger.logEvent({ type: 'biometric_success' })
         await onUnlock("")
         // Set authentication timestamp to prevent duplicate PIN screen
         localStorage.setItem("wallet_last_auth", Date.now().toString())
@@ -248,6 +177,9 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
     } catch (error) {
       // Play failed sound for biometric authentication
       playSound("pin-failed")
+      const errorMessage = error instanceof Error ? error.message : "Biometric authentication failed"
+      SecurityLogger.logEvent({ type: 'biometric_failed', details: errorMessage })
+      setErrorMessage(errorMessage)
       toast({
         title: "Biometric Authentication Failed",
         description: "Please use your PIN to unlock the wallet.",
@@ -650,6 +582,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
           }
         } else {
           playSound("pin-failed")
+          // Failures are already logged in SecurePinManager
           throw new Error("PIN validation failed") // Throw error to trigger visual feedback
         }
       }}

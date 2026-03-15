@@ -13,37 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Accessibility, Type, Volume2, Eye, RotateCcw, Upload, Play } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-const generateTone = (frequency: number, duration: number, type: OscillatorType = "sine") => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-  const oscillator = audioContext.createOscillator()
-  const gainNode = audioContext.createGain()
-
-  oscillator.connect(gainNode)
-  gainNode.connect(audioContext.destination)
-
-  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-  oscillator.type = type
-
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-
-  oscillator.start(audioContext.currentTime)
-  oscillator.stop(audioContext.currentTime + duration)
-}
-
-const PRESET_SOUNDS = {
-  "gentle-chime": { name: "Gentle Chime", generator: () => generateTone(800, 0.3) },
-  "soft-click": { name: "Soft Click", generator: () => generateTone(1000, 0.1, "square") },
-  "success-tone": {
-    name: "Success Tone",
-    generator: () => {
-      generateTone(523, 0.2)
-      setTimeout(() => generateTone(659, 0.2), 100)
-    },
-  },
-  notification: { name: "Notification", generator: () => generateTone(440, 0.4) },
-  none: { name: "No Sound", generator: () => {} },
-}
+import { playSound, PRESET_SOUNDS, SoundActivity } from "@/lib/sound-utils"
 
 export function AccessibilitySettings() {
   const [screenReader, setScreenReader] = useState(false)
@@ -183,65 +153,8 @@ export function AccessibilitySettings() {
     }
   }
 
-  const playSound = (activity = "default") => {
-    if (!soundEffects) return
-
-    let enabled = false
-    let selected = selectedSound
-    let customUrl = customSoundUrl
-
-    switch (activity) {
-      case "transaction-success":
-        enabled = transactionSuccessEnabled
-        selected = transactionSuccessSelectedSound
-        customUrl = transactionSuccessCustomUrl
-        break
-      case "transaction-failed":
-        enabled = transactionFailedEnabled
-        selected = transactionFailedSelectedSound
-        customUrl = transactionFailedCustomUrl
-        break
-      case "budget-warning":
-        enabled = budgetWarningEnabled
-        selected = budgetWarningSelectedSound
-        customUrl = budgetWarningCustomUrl
-        break
-      case "pin-success":
-        enabled = pinSuccessEnabled
-        selected = pinSuccessSelectedSound
-        customUrl = pinSuccessCustomUrl
-        break
-      case "pin-failed":
-        enabled = pinFailedEnabled
-        selected = pinFailedSelectedSound
-        customUrl = pinFailedCustomUrl
-        break
-      default:
-        enabled = true
-    }
-
-    if (!enabled) return
-
-    try {
-      if (selected === "custom" && customUrl) {
-        // Use custom uploaded sound
-        if (audioRef.current) {
-          audioRef.current.src = customUrl
-          audioRef.current.play().catch(console.error)
-        } else {
-          audioRef.current = new Audio(customUrl)
-          audioRef.current.play().catch(console.error)
-        }
-      } else if (selected !== "none") {
-        // Use generated tone
-        const soundConfig = PRESET_SOUNDS[selected as keyof typeof PRESET_SOUNDS]
-        if (soundConfig?.generator) {
-          soundConfig.generator()
-        }
-      }
-    } catch (error) {
-      console.error("Error playing sound:", error)
-    }
+  const handlePlaySound = (activity: any = "default") => {
+    playSound(activity as SoundActivity)
   }
 
   const handleScreenReaderChange = (enabled: boolean) => {
@@ -255,7 +168,7 @@ export function AccessibilitySettings() {
     } else {
       document.documentElement.classList.remove("screen-reader-optimized")
     }
-    playSound("toggle")
+    handlePlaySound("toggle")
   }
 
   const handleKeyboardNavChange = (enabled: boolean) => {
@@ -268,7 +181,7 @@ export function AccessibilitySettings() {
     } else {
       document.documentElement.classList.remove("keyboard-nav-enabled")
     }
-    playSound("toggle")
+    handlePlaySound("toggle")
     announceToScreenReader(`Keyboard navigation ${enabled ? "enabled" : "disabled"}`)
   }
 
@@ -286,7 +199,7 @@ export function AccessibilitySettings() {
     localStorage.setItem("wallet_sound_effects", enabled.toString())
 
     if (enabled) {
-      playSound("enable")
+      handlePlaySound("enable")
     }
     announceToScreenReader(`Sound effects ${enabled ? "enabled" : "disabled"}`)
   }
@@ -301,14 +214,14 @@ export function AccessibilitySettings() {
     } else {
       document.documentElement.classList.remove("enhanced-focus")
     }
-    playSound("toggle")
+    handlePlaySound("toggle")
     announceToScreenReader(`Enhanced focus indicators ${enabled ? "enabled" : "disabled"}`)
   }
 
   const handleTooltipsChange = (enabled: boolean) => {
     setTooltips(enabled)
     localStorage.setItem("wallet_tooltips", enabled.toString())
-    playSound("toggle")
+    handlePlaySound("toggle")
     announceToScreenReader(`Enhanced tooltips ${enabled ? "enabled" : "disabled"}`)
   }
 
