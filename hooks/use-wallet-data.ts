@@ -1807,6 +1807,15 @@ export function useWalletData() {
       if (data.userProfile) {
         setUserProfile(data.userProfile)
         await ensureSaved("userProfile", data.userProfile)
+
+        const hasPinData = Boolean(data.userProfile.securityEnabled && data.userProfile.pin && data.userProfile.pinSalt)
+        if (hasPinData) {
+          localStorage.setItem("wallet_pin_hash", data.userProfile.pin)
+          localStorage.setItem("wallet_pin_salt", data.userProfile.pinSalt)
+        } else {
+          localStorage.removeItem("wallet_pin_hash")
+          localStorage.removeItem("wallet_pin_salt")
+        }
       }
 
       // Import transactions (only if selected)

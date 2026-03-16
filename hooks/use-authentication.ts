@@ -318,6 +318,10 @@ export function useAuthentication(): AuthState & AuthActions {
       const result = await SecurePinManager.validatePin(pin)
 
 	      if (result.success) {
+          if (!SecureKeyManager.hasMasterKey()) {
+            await SecureKeyManager.createMasterKey(pin)
+            await SecureKeyManager.migrateFromDefaultKeyToMasterKey(pin)
+          }
 	        // Get master key after successful validation
 	        const masterKey = await SecureKeyManager.getMasterKey(pin)
 	        SecureKeyManager.cacheSessionPin(pin)
