@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { SecureKeyManager } from "@/lib/key-manager"
 import { toast } from "@/hooks/use-toast"
 import { Download } from "lucide-react"
 
@@ -237,7 +238,9 @@ export function BackupModal({
   }
 
   const handleExportData = async () => {
-    if (!exportPin) {
+    const cachedPin = SecureKeyManager.getCachedSessionPin()
+    const pinToUse = exportPin || cachedPin || ""
+    if (!pinToUse) {
       toast({
         title: "PIN Required",
         description: "Please enter your wallet PIN to create an encrypted backup.",
@@ -258,7 +261,7 @@ export function BackupModal({
         return
       }
 
-      const validation = await SecurePinManager.validatePin(exportPin)
+      const validation = await SecurePinManager.validatePin(pinToUse)
       if (!validation.success) {
         toast({
           title: "Invalid Wallet PIN",
@@ -299,7 +302,7 @@ export function BackupModal({
       }
 
       // Call the parent component to handle the backup creation
-      await onBackupSuccess(data, exportPin)
+      await onBackupSuccess(data, pinToUse)
 
       setExportPin("")
       setIsCustomizeMode(false)

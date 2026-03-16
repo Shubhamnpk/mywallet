@@ -119,6 +119,15 @@ export class SecureKeyManager {
     }
   }
 
+  static getCachedSessionPin(): string | null {
+    try {
+      if (typeof window === "undefined") return null
+      return sessionStorage.getItem(this.SESSION_PIN_KEY)
+    } catch {
+      return null
+    }
+  }
+
   static clearSessionPin(): void {
     try {
       if (typeof window === "undefined") return

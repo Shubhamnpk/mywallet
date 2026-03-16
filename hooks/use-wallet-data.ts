@@ -78,6 +78,42 @@ const calculateCashBalanceFromTransactions = (txs: Transaction[]) => {
   }, 0)
 }
 
+type TombstoneRecord = {
+  id: string
+  deletedAt: string
+}
+
+const TOMBSTONE_KEYS = {
+  transactions: "deleted_transactions",
+  budgets: "deleted_budgets",
+  goals: "deleted_goals",
+  debtAccounts: "deleted_debtAccounts",
+  creditAccounts: "deleted_creditAccounts",
+  debtCreditTransactions: "deleted_debtCreditTransactions",
+  categories: "deleted_categories",
+  shareTransactions: "deleted_shareTransactions",
+  portfolios: "deleted_portfolios",
+} as const
+
+const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+const recordDeletion = async (tombstoneKey: string, ids: string[]) => {
+  if (ids.length === 0) return
+  try {
+    const stored = await loadFromLocalStorage([tombstoneKey])
+    const existing = Array.isArray(stored[tombstoneKey]) ? stored[tombstoneKey] as TombstoneRecord[] : []
+    const now = new Date().toISOString()
+    const cutoff = Date.now() - TOMBSTONE_RETENTION_MS
+    const retained = existing.filter((entry) => Date.parse(entry.deletedAt || "") >= cutoff)
+    const next = [...retained.filter((entry) => !ids.includes(entry.id))]
+    ids.forEach((id) => {
+      next.push({ id, deletedAt: now })
+    })
+    await saveToLocalStorage(tombstoneKey, next, true)
+  } catch {
+  }
+}
+
 const findDebtHistoryEntryIndex = (
   entries: DebtCreditTransaction[],
   transaction: Transaction,
@@ -671,6 +707,70 @@ export function useWalletData() {
       migrateToEncrypted()
     }
   }, [isLoaded])
+  type SaveFailureReason = "unlock_required" | "storage_full" | "unknown"
+
+  const isQuotaExceeded = (error: unknown) => {
+    if (!error) return false
+    if (error instanceof DOMException) {
+      return error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    }
+    const err = error as { name?: string; message?: string }
+    if (err?.name === "QuotaExceededError") return true
+    const message = err?.message || String(error)
+    return message.toLowerCase().includes("quota")
+  }
+
+  const isMissingEncryptionKey = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    return message.includes("No encryption key available")
+  }
+
+  async function saveDataWithIntegrityDetailed(key: string, data: any): Promise<{ success: boolean; reason?: SaveFailureReason }> {
+    const sensitiveKeys = [
+      "userProfile",
+      "transactions",
+      "budgets",
+      "goals",
+      "debtAccounts",
+      "creditAccounts",
+      "debtCreditTransactions",
+      "portfolio",
+      "shareTransactions",
+      "emergencyFund"
+    ];
+    const shouldEncrypt = sensitiveKeys.includes(key);
+
+    try {
+      await saveToLocalStorage(key, data, shouldEncrypt)
+
+      const allData = {
+        userProfile,
+        transactions,
+        budgets,
+        goals,
+        debtAccounts,
+        creditAccounts,
+        debtCreditTransactions,
+        categories,
+        emergencyFund,
+        portfolio,
+        shareTransactions,
+        [key]: data,
+      }
+
+      await DataIntegrityManager.updateIntegrityRecord(allData)
+      return { success: true }
+    } catch (error) {
+      if (isMissingEncryptionKey(error)) {
+        return { success: false, reason: "unlock_required" }
+      }
+      if (isQuotaExceeded(error)) {
+        return { success: false, reason: "storage_full" }
+      }
+      return { success: false, reason: "unknown" }
+    }
+  }
+
   async function saveDataWithIntegrity(key: string, data: any): Promise<boolean> {
     const sensitiveKeys = [
       "userProfile",
@@ -1077,29 +1177,39 @@ export function useWalletData() {
     }
   }
 
-  const updateUserProfile = (updates: Partial<UserProfile>) => {
-    if (!userProfile) return
+    const updateUserProfile = (updates: Partial<UserProfile>) => {
+      if (!userProfile) return
 
-    const previousProfile = userProfile
-    const updatedProfile = {
-      ...userProfile,
+      const previousProfile = userProfile
+      const updatedProfile = {
+        ...userProfile,
       ...updates,
       notificationSettings: normalizeNotificationSettings({
         ...userProfile.notificationSettings,
         ...(updates.notificationSettings || {}),
       }),
-    }
-    setUserProfile(updatedProfile)
-    void (async () => {
-      const saved = await saveDataWithIntegrity("userProfile", updatedProfile)
-      if (!saved) {
-        setUserProfile(previousProfile)
-        toast.error("Unlock required", {
-          description: "Please unlock your wallet to save changes."
-        })
       }
-    })()
-  }
+      setUserProfile(updatedProfile)
+      void (async () => {
+      const result = await saveDataWithIntegrityDetailed("userProfile", updatedProfile)
+      if (!result.success) {
+        setUserProfile(previousProfile)
+        if (result.reason === "storage_full") {
+          toast.error("Storage full", {
+            description: "Profile image is too large to save. Please use a smaller image."
+          })
+        } else if (result.reason === "unlock_required") {
+          toast.error("Unlock required", {
+            description: "Please unlock your wallet to save changes."
+          })
+        } else {
+          toast.error("Save failed", {
+            description: "Unable to save profile changes. Please try again."
+          })
+        }
+      }
+      })()
+    }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
   const addDebtAccount = (debt: Omit<DebtAccount, "id">) => {
@@ -1378,6 +1488,7 @@ export function useWalletData() {
     const updatedBudgets = budgets.filter((budget) => budget.id !== id)
     setBudgets(updatedBudgets)
     await saveDataWithIntegrity("budgets", updatedBudgets)
+    await recordDeletion(TOMBSTONE_KEYS.budgets, [id])
   }
 
   // Accept goal payload from UI
@@ -1416,6 +1527,7 @@ export function useWalletData() {
     const updatedGoals = goals.filter((goal) => goal.id !== id)
     setGoals(updatedGoals)
     await saveDataWithIntegrity("goals", updatedGoals)
+    await recordDeletion(TOMBSTONE_KEYS.goals, [id])
   }
 
   useEffect(() => {
@@ -1460,6 +1572,7 @@ export function useWalletData() {
     const nextState = computePostDeleteState(pending.snapshot, transactionId)
     applyWalletState(nextState)
     await commitWalletState(nextState)
+    await recordDeletion(TOMBSTONE_KEYS.transactions, [transactionId])
   }
 
   const undoPendingTransactionDeletion = (transactionId: string) => {
@@ -1519,12 +1632,14 @@ export function useWalletData() {
     const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
     setDebtAccounts(updatedDebtAccounts)
     await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
+    await recordDeletion(TOMBSTONE_KEYS.debtAccounts, [id])
   }
 
   const deleteCreditAccount = async (id: string) => {
     const updatedCreditAccounts = creditAccounts.filter((credit) => credit.id !== id)
     setCreditAccounts(updatedCreditAccounts)
     await saveDataWithIntegrity("creditAccounts", updatedCreditAccounts)
+    await recordDeletion(TOMBSTONE_KEYS.creditAccounts, [id])
   }
 
   const clearAllData = async () => {
@@ -1926,6 +2041,7 @@ export function useWalletData() {
     const updatedCategories = categories.filter((cat) => cat.id !== id)
     setCategories(updatedCategories)
     await saveDataWithIntegrity("categories", updatedCategories)
+    await recordDeletion(TOMBSTONE_KEYS.categories, [id])
   }
 
   const updateCategoryStats = async () => {
@@ -1976,11 +2092,15 @@ export function useWalletData() {
       itemToDelete.assetType,
       itemToDelete.cryptoId,
     )
+    const removedShareIds = shareTransactions
+      .filter((t) => getHoldingKey(t.portfolioId, t.symbol, t.assetType, t.cryptoId) === itemKey)
+      .map((t) => t.id)
     const updatedTransactions = shareTransactions.filter((t) =>
       getHoldingKey(t.portfolioId, t.symbol, t.assetType, t.cryptoId) !== itemKey
     )
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, removedShareIds)
     await recomputePortfolio(updatedTransactions)
   }
 
@@ -2014,15 +2134,18 @@ export function useWalletData() {
 
     setPortfolios(updatedPortfolios)
     await saveToLocalStorage("portfolios", updatedPortfolios, true)
+    await recordDeletion(TOMBSTONE_KEYS.portfolios, [id])
 
     // Delete all associated items and transactions
     const updatedItems = portfolio.filter(p => p.portfolioId !== id)
     setPortfolio(updatedItems)
     await saveDataWithIntegrity("portfolio", updatedItems)
 
+    const removedShareIds = shareTransactions.filter(t => t.portfolioId === id).map((t) => t.id)
     const updatedTxs = shareTransactions.filter(t => t.portfolioId !== id)
     setShareTransactions(updatedTxs)
     await saveDataWithIntegrity("shareTransactions", updatedTxs)
+    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, removedShareIds)
 
     if (activePortfolioId === id) {
       // If there are remaining portfolios, switch to the first one
@@ -2421,15 +2544,18 @@ export function useWalletData() {
     const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, ids)
     const updatedPortfolio = await recomputePortfolio(updatedTransactions)
     return updatedPortfolio
   }
 
   const clearPortfolioHistory = async () => {
     if (!activePortfolioId) return
+    const removedShareIds = shareTransactions.filter(t => t.portfolioId === activePortfolioId).map((t) => t.id)
     const updatedTransactions = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, removedShareIds)
     const updatedPortfolio = portfolio.filter(p => p.portfolioId !== activePortfolioId)
     setPortfolio(updatedPortfolio)
     await saveDataWithIntegrity("portfolio", updatedPortfolio)

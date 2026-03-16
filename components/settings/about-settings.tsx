@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
 import packageJson from '../../package.json'
+import releasesData from "@/data/releases.json"
 import Link from "next/link"
 
 export function AboutSettings() {
@@ -48,6 +49,10 @@ export function AboutSettings() {
       tapTriggered.current = false
     }, 3000) // reset after 3 seconds
   }
+
+  const buildLabel =
+    process.env.NEXT_PUBLIC_BUILD_NUMBER ||
+    (process.env.NODE_ENV === "development" ? "dev" : releasesData.currentBuild || "unknown")
 
   const openExternal = (url: string) => {
     try {
@@ -135,7 +140,7 @@ export function AboutSettings() {
               }}
               title="Development build - click for easter egg!"
             >
-              {process.env.NEXT_PUBLIC_BUILD_NUMBER || 'dev'}
+              {buildLabel}
             </span>
           </div>
           <div className="flex items-center justify-between">

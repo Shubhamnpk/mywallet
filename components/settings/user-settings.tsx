@@ -17,6 +17,7 @@ import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { useAchievements } from "@/hooks/use-achievements"
 import { AchievementsProfile } from "@/components/achievements/achievements-profile"
+import { compressImageToDataUrl } from "@/lib/image-utils"
 
 export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: string }) {
   const {
@@ -198,14 +199,25 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        setAvatarPreview(result)
-        updateField("avatar", result)
-        setShowAvatarDialog(true)
-      }
-      reader.readAsDataURL(file)
+      void (async () => {
+        try {
+          const result = await compressImageToDataUrl(file, {
+            maxSize: 512,
+            maxBytes: 500 * 1024,
+            mimeType: "image/jpeg",
+            quality: 0.9,
+          })
+          setAvatarPreview(result)
+          updateField("avatar", result)
+          setShowAvatarDialog(true)
+        } catch {
+          toast({
+            title: "Image processing failed",
+            description: "Please try a different image.",
+            variant: "destructive",
+          })
+        }
+      })()
     }
   }
 

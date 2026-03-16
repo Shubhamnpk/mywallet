@@ -35,6 +35,7 @@ import { ONBOARDING_CURRENCIES } from '@/lib/currency';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { compressImageToDataUrl } from '@/lib/image-utils';
 
 interface OnboardingProps {
   onComplete: (userProfile: UserProfile) => void;
@@ -257,12 +258,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         return
       }
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        setFormData({ ...formData, avatar: result })
-      }
-      reader.readAsDataURL(file)
+      void (async () => {
+        try {
+          const result = await compressImageToDataUrl(file, {
+            maxSize: 512,
+            maxBytes: 500 * 1024,
+            mimeType: "image/jpeg",
+            quality: 0.9,
+          })
+          setFormData({ ...formData, avatar: result })
+        } catch {
+          toast.error('Failed to process image. Please try another.')
+        }
+      })()
     }
   }
 
