@@ -209,7 +209,7 @@ export function useAuthentication(): AuthState & AuthActions {
     setAuthState(prev => ({ ...prev, isLoading: true }))
 
     try {
-      const result = await SecurePinManager.validateEmergencyPin(pin)
+       const result = await SecurePinManager.validateEmergencyPin(pin)
 
       if (result.success) {
         // Get master key after successful validation
@@ -286,6 +286,29 @@ export function useAuthentication(): AuthState & AuthActions {
 
         // Load master key for biometric authentication
         const masterKey = await SecureKeyManager.getMasterKey("")
+        if (!masterKey) {
+          const status = SecurePinManager.getAuthStatus()
+          setAuthState(prev => ({
+            ...prev,
+            isLoading: false,
+            isLocked: status.isLocked,
+            attemptsRemaining: status.attemptsRemaining,
+            lockoutTimeRemaining: status.lockoutTimeRemaining,
+          }))
+
+          toast({
+            title: "Biometric Unlock Unavailable",
+            description: "Please unlock once with your PIN to enable biometric access.",
+            variant: "destructive",
+          })
+
+          return {
+            success: false,
+            attemptsRemaining: status.attemptsRemaining,
+            isLocked: status.isLocked,
+            lockoutTimeRemaining: status.lockoutTimeRemaining,
+          }
+        }
 
         setAuthState({
           isAuthenticated: true,

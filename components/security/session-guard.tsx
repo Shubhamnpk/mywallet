@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { isBiometricKeyConfigured, unwrapPinWithBiometric } from "@/lib/biometric-key"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
@@ -83,9 +84,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
   useEffect(() => {
     // Check if biometrics are enabled
-    const biometricCredentialId = localStorage.getItem('wallet_biometric_credential_id')
-    const biometricEnabledFlag = localStorage.getItem('wallet_biometric_enabled')
-    setBiometricEnabled(!!biometricCredentialId && biometricEnabledFlag === 'true')
+    setBiometricEnabled(isBiometricKeyConfigured())
 
     // Check biometric support
     const checkBiometricSupport = async () => {
@@ -143,37 +142,15 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
     setIsBiometricAuthenticating(true)
 
     try {
-      const credentialId = localStorage.getItem('wallet_biometric_credential_id')
-      if (!credentialId) {
-        throw new Error('Biometric credentials not found')
+      const pin = await unwrapPinWithBiometric()
+      if (!pin) {
+        throw new Error("Biometric unlock is not available")
       }
 
-      const challenge = new Uint8Array(32)
-      crypto.getRandomValues(challenge)
-
-      const credentialIdBytes = Uint8Array.from(atob(credentialId), c => c.charCodeAt(0))
-
-      const requestCredentialOptions: PublicKeyCredentialRequestOptions = {
-        challenge,
-        allowCredentials: [{
-          id: credentialIdBytes,
-          type: 'public-key',
-          transports: ['internal']
-        }],
-        timeout: 60000,
-        userVerification: 'required'
-      }
-
-      const assertion = await navigator.credentials.get({
-        publicKey: requestCredentialOptions
-      }) as PublicKeyCredential
-
-      if (assertion) {
-        SecurityLogger.logEvent({ type: 'biometric_success' })
-        await onUnlock("")
-        // Set authentication timestamp to prevent duplicate PIN screen
-        localStorage.setItem("wallet_last_auth", Date.now().toString())
-      }
+      SecurityLogger.logEvent({ type: 'biometric_success' })
+      await onUnlock(pin)
+      // Set authentication timestamp to prevent duplicate PIN screen
+      localStorage.setItem("wallet_last_auth", Date.now().toString())
     } catch (error) {
       // Play failed sound for biometric authentication
       playSound("pin-failed")

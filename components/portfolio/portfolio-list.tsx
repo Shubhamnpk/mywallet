@@ -73,6 +73,8 @@ export function PortfolioList() {
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState("holdings")
     const [chartView, setChartView] = useState<"sector" | "scrip">("sector")
+    const [chartMetric, setChartMetric] = useState<"value" | "units">("value")
+    const [chartMode, setChartMode] = useState<"allocation" | "movers">("allocation")
     const [selectedTxs, setSelectedTxs] = useState<string[]>([])
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
@@ -549,43 +551,107 @@ export function PortfolioList() {
       }, [activePortfolioItems])
 
     const { sectorData, scripData } = useMemo(() => {
-        const sectorMap = new Map<string, { value: number; count: number }>()
-        const scripMap = new Map<string, number>()
+        const sectorMap = new Map<string, { value: number; count: number; units: number }>()
+        const scripMap = new Map<string, { value: number; units: number }>()
+        let unitsSum = 0
 
         activePortfolioItems.forEach((item) => {
             const sector = item.sector || "Others"
-            const value = item.units * (item.currentPrice ?? item.buyPrice)
-            const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
+            const safePrice = Number.isFinite(item.currentPrice)
+                ? item.currentPrice
+                : (Number.isFinite(item.buyPrice) ? item.buyPrice : 0)
+            const safeUnits = Number.isFinite(item.units) ? item.units : 0
+            const value = safeUnits * safePrice
+            unitsSum += safeUnits
+            const currentSector = sectorMap.get(sector) || { value: 0, count: 0, units: 0 }
 
             sectorMap.set(sector, {
                 value: currentSector.value + value,
                 count: currentSector.count + 1,
+                units: currentSector.units + safeUnits,
             })
-            scripMap.set(item.symbol, (scripMap.get(item.symbol) || 0) + value)
+            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0 }
+            scripMap.set(item.symbol, {
+                value: currentScrip.value + value,
+                units: currentScrip.units + safeUnits,
+            })
         })
+
+        const totalBase = chartMetric === "units" ? unitsSum : currentValue
 
         const memoSectorData = Array.from(sectorMap.entries())
             .map(([name, data]) => ({
                 name,
                 value: data.value,
                 count: data.count,
-                percentage: currentValue > 0 ? (data.value / currentValue) * 100 : 0,
+                units: data.units,
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
             }))
-            .sort((a, b) => b.value - a.value)
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         const memoScripData = Array.from(scripMap.entries())
-            .map(([name, value]) => ({
+            .map(([name, data]) => ({
                 name,
-                value,
-                percentage: currentValue > 0 ? (value / currentValue) * 100 : 0,
+                value: data.value,
+                units: data.units,
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
             }))
-            .sort((a, b) => b.value - a.value)
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         return { sectorData: memoSectorData, scripData: memoScripData }
-    }, [activePortfolioItems, currentValue])
+    }, [activePortfolioItems, currentValue, chartMetric])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
     const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
+
+    const portfolioMovers = useMemo(() => {
+        const rows = activePortfolioItems
+            .map((item) => {
+                const symbol = item.symbol?.trim().toUpperCase() || ""
+                if (!symbol) return null
+                const safeUnits = Number.isFinite(item.units) ? item.units : 0
+                const currentPrice = Number.isFinite(item.currentPrice)
+                    ? item.currentPrice
+                    : (Number.isFinite(item.buyPrice) ? item.buyPrice : 0)
+                const previousClose = Number.isFinite(item.previousClose) ? item.previousClose : null
+                const changePerUnit = Number.isFinite(item.change)
+                    ? item.change
+                    : (previousClose !== null ? currentPrice - previousClose : 0)
+                const percentChange = Number.isFinite(item.percentChange)
+                    ? item.percentChange
+                    : (previousClose ? (changePerUnit / previousClose) * 100 : 0)
+                if (!Number.isFinite(percentChange) || percentChange === 0) return null
+
+                const displayName = item.assetType === "crypto" || item.cryptoId
+                    ? (item.assetName || symbol)
+                    : (scripNamesMap[symbol] || "")
+
+                return {
+                    id: item.id,
+                    symbol,
+                    name: displayName,
+                    percentChange,
+                    units: safeUnits,
+                }
+            })
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+        const gainers = rows
+            .filter((row) => row.percentChange > 0)
+            .sort((a, b) => b.percentChange - a.percentChange)
+            .slice(0, 5)
+
+        const losers = rows
+            .filter((row) => row.percentChange < 0)
+            .sort((a, b) => a.percentChange - b.percentChange)
+            .slice(0, 5)
+
+        return { gainers, losers }
+    }, [activePortfolioItems, scripNamesMap])
 
     const portfolioSummaryById = useMemo(() => {
         const summaries = new Map<string, { investment: number; current: number; count: number }>()
@@ -1659,13 +1725,23 @@ export function PortfolioList() {
                         <div className="flex items-center justify-between font-black">
                             <div className="min-w-0 flex-1">
                                 <CardTitle className="text-base sm:text-lg font-black flex items-center gap-2">
-                                    <PieChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                                    <span className="truncate">{chartView === "sector" ? "Sector Allocation" : "Stock Allocation"}</span>
+                                    {chartMode === "allocation" ? (
+                                        <PieChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                                    ) : (
+                                        <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                                    )}
+                                    <span className="truncate">
+                                        {chartMode === "allocation"
+                                            ? (chartView === "sector" ? "Sector Allocation" : "Stock Allocation")
+                                            : "Top Movers"}
+                                    </span>
                                 </CardTitle>
                                 <CardDescription className="text-xs font-medium hidden sm:block">
-                                    {chartView === "sector"
-                                        ? "Portfolio distribution by industry sector"
-                                        : "Portfolio weighting by individual scrip"}
+                                    {chartMode === "allocation"
+                                        ? (chartView === "sector"
+                                            ? "Portfolio distribution by industry sector"
+                                            : "Portfolio weighting by individual scrip")
+                                        : "Best and worst performers in your portfolio today"}
                                 </CardDescription>
                             </div>
                             <div className="flex items-center gap-1 sm:gap-2">
@@ -1681,22 +1757,64 @@ export function PortfolioList() {
                                 </Button>
                                 <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
                                     <Button
-                                        variant={chartView === "sector" ? "secondary" : "ghost"}
+                                        variant={chartMode === "allocation" ? "secondary" : "ghost"}
                                         size="sm"
-                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
-                                        onClick={() => setChartView("sector")}
+                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "allocation" && "bg-background shadow-sm")}
+                                        onClick={() => setChartMode("allocation")}
                                     >
-                                        Sectors
+                                        Allocation
                                     </Button>
                                     <Button
-                                        variant={chartView === "scrip" ? "secondary" : "ghost"}
+                                        variant={chartMode === "movers" ? "secondary" : "ghost"}
                                         size="sm"
-                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
-                                        onClick={() => setChartView("scrip")}
+                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "movers" && "bg-background shadow-sm")}
+                                        onClick={() => setChartMode("movers")}
                                     >
-                                        Stocks
+                                        Movers
                                     </Button>
                                 </div>
+                                {chartMode === "allocation" && (
+                                    <div className="flex flex-col items-center gap-1">
+                                        <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Button
+                                                variant={chartView === "sector" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
+                                                onClick={() => setChartView("sector")}
+                                            >
+                                                Sectors
+                                            </Button>
+                                            <Button
+                                                variant={chartView === "scrip" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
+                                                onClick={() => setChartView("scrip")}
+                                            >
+                                                Stocks
+                                            </Button>
+                                        </div>
+                                        <div className="hidden sm:flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-muted/50 self-center w-fit">
+                                            <Button
+                                                variant={chartMetric === "value" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "value" && "bg-background shadow-sm")}
+                                                onClick={() => setChartMetric("value")}
+                                                title="Allocation by value"
+                                            >
+                                                Value
+                                            </Button>
+                                            <Button
+                                                variant={chartMetric === "units" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "units" && "bg-background shadow-sm")}
+                                                onClick={() => setChartMetric("units")}
+                                                title="Allocation by units"
+                                            >
+                                                Units
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </CardHeader>
@@ -1710,11 +1828,17 @@ export function PortfolioList() {
                             "lg:hidden absolute inset-0 flex flex-col items-center justify-center bg-card/50 backdrop-blur-sm transition-opacity cursor-pointer",
                             isChartExpanded ? "opacity-0 pointer-events-none" : "opacity-100"
                         )} onClick={() => setIsChartExpanded(true)}>
-                            <PieChartIcon className="w-8 h-8 text-primary/40 mb-2" />
-                            <span className="text-xs font-bold text-muted-foreground">Tap to view chart</span>
+                            {chartMode === "allocation" ? (
+                                <PieChartIcon className="w-8 h-8 text-primary/40 mb-2" />
+                            ) : (
+                                <TrendingUp className="w-8 h-8 text-primary/40 mb-2" />
+                            )}
+                            <span className="text-xs font-bold text-muted-foreground">
+                                Tap to view {chartMode === "allocation" ? "chart" : "movers"}
+                            </span>
                         </div>
                         {activePortfolioItems.length > 0 ? (
-                            <>
+                            chartMode === "allocation" ? (
                                 <div className="flex h-full items-center justify-center relative">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
@@ -1725,7 +1849,7 @@ export function PortfolioList() {
                                                 innerRadius={75}
                                                 outerRadius={105}
                                                 paddingAngle={4}
-                                                dataKey="value"
+                                                dataKey={chartMetric}
                                                 stroke="none"
                                                 animationBegin={0}
                                                 animationDuration={1000}
@@ -1748,22 +1872,38 @@ export function PortfolioList() {
                                                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].color }} />
                                                                     <span className="font-black text-sm">{data.name}</span>
                                                                 </div>
-                                                                <div className="space-y-1.5">
-                                                                    <div className="flex justify-between gap-8">
-                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Allocation</span>
-                                                                        <span className="text-[10px] font-black text-right">{data.percentage.toFixed(2)}%</span>
-                                                                    </div>
-                                                                    <div className="flex justify-between gap-8">
-                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Value</span>
-                                                                        <span className="text-[10px] font-black text-right">रु{data.value.toLocaleString()}</span>
-                                                                    </div>
-                                                                    {chartView === "sector" && (
+                                                                    <div className="space-y-1.5">
                                                                         <div className="flex justify-between gap-8">
-                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Holdings</span>
-                                                                            <span className="text-[10px] font-black text-right">{data.count} Scrips</span>
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Allocation</span>
+                                                                            <span className="text-[10px] font-black text-right">{data.percentage.toFixed(2)}%</span>
                                                                         </div>
-                                                                    )}
-                                                                </div>
+                                                                        <div className="flex justify-between gap-8">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                                                {chartMetric === "units" ? "Units" : "Value"}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-black text-right">
+                                                                                {chartMetric === "units"
+                                                                                    ? formatUnits(data.units || 0)
+                                                                                    : `रु${data.value.toLocaleString()}`}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex justify-between gap-8">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                                                {chartMetric === "units" ? "Value" : "Units"}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-black text-right">
+                                                                                {chartMetric === "units"
+                                                                                    ? `रु${data.value.toLocaleString()}`
+                                                                                    : formatUnits(data.units || 0)}
+                                                                            </span>
+                                                                        </div>
+                                                                        {chartView === "sector" && (
+                                                                            <div className="flex justify-between gap-8">
+                                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Holdings</span>
+                                                                                <span className="text-[10px] font-black text-right">{data.count} Scrips</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                             </div>
                                                         );
                                                     }
@@ -1790,7 +1930,62 @@ export function PortfolioList() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                            </>
+                            ) : (
+                                <div className="h-full w-full p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
+                                            <TrendingUp className="w-3.5 h-3.5 text-success" />
+                                        </div>
+                                        {portfolioMovers.gainers.length > 0 ? (
+                                            portfolioMovers.gainers.map((row) => (
+                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-success">
+                                                            +{row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">No gainers found.</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
+                                            <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                        </div>
+                                        {portfolioMovers.losers.length > 0 ? (
+                                            portfolioMovers.losers.map((row) => (
+                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-error">
+                                                            {row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">No losers found.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />

@@ -15,6 +15,16 @@ import {
   Lock,
   Unlock
 } from "lucide-react"
+import { SecureKeyManager } from "@/lib/key-manager"
+import {
+  clearBiometricKeyData,
+  ensureBiometricPrfSalt,
+  getBiometricCredentialId,
+  hasWrappedBiometricPin,
+  setBiometricEnabled,
+  unwrapPinWithBiometric,
+  wrapPinWithBiometric,
+} from "@/lib/biometric-key"
 
 interface BiometricAuthProps {
   pinEnabled?: boolean
@@ -25,6 +35,7 @@ interface BiometricAuthProps {
 export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: BiometricAuthProps) {
   const [isSupported, setIsSupported] = useState(false)
   const [isEnrolled, setIsEnrolled] = useState(false)
+  const [isKeyWrapped, setIsKeyWrapped] = useState(false)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [credentialId, setCredentialId] = useState<string | null>(null)
@@ -63,10 +74,14 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
   }
 
   const checkExistingCredentials = () => {
-    const storedCredentialId = localStorage.getItem('wallet_biometric_credential_id')
+    const storedCredentialId = getBiometricCredentialId()
     if (storedCredentialId) {
       setIsEnrolled(true)
       setCredentialId(storedCredentialId)
+      setIsKeyWrapped(hasWrappedBiometricPin())
+    } else {
+      setIsEnrolled(false)
+      setIsKeyWrapped(false)
     }
   }
 
@@ -98,6 +113,8 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
       const challenge = new Uint8Array(32)
       crypto.getRandomValues(challenge)
 
+      const prfSalt = ensureBiometricPrfSalt()
+
       const createCredentialOptions: PublicKeyCredentialCreationOptions = {
         challenge,
         rp: {
@@ -119,7 +136,11 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
           requireResidentKey: false
         },
         timeout: 60000,
-        attestation: 'direct'
+        attestation: 'direct',
+        extensions: {
+          prf: { eval: { first: prfSalt } },
+          hmacCreateSecret: true,
+        } as any,
       }
 
       const credential = await navigator.credentials.create({
@@ -130,11 +151,27 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
         // Store credential ID for future authentication
         const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
         localStorage.setItem('wallet_biometric_credential_id', credentialId)
-        localStorage.setItem('wallet_biometric_enabled', 'true')
 
         setIsEnrolled(true)
         setCredentialId(credentialId)
 
+        const cachedPin = SecureKeyManager.getCachedSessionPin()
+        if (!cachedPin) {
+          setBiometricEnabled(false)
+          setIsKeyWrapped(false)
+          setAuthError("Biometric enrolled. Unlock once with your PIN to finish setup.")
+          return
+        }
+
+        const wrapped = await wrapPinWithBiometric(cachedPin)
+        if (!wrapped) {
+          setBiometricEnabled(false)
+          setIsKeyWrapped(false)
+          setAuthError("Biometric enrolled, but secure key storage isn't supported on this device.")
+          return
+        }
+
+        setIsKeyWrapped(true)
         console.log('Biometric enrollment successful')
       }
 
@@ -185,31 +222,13 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
     try {
       setIsAuthenticating(true)
       setAuthError(null)
-
-      // Create credential request options
-      const challenge = new Uint8Array(32)
-      crypto.getRandomValues(challenge)
-
-      const credentialIdBytes = Uint8Array.from(atob(credentialId), c => c.charCodeAt(0))
-
-      const requestCredentialOptions: PublicKeyCredentialRequestOptions = {
-        challenge,
-        allowCredentials: [{
-          id: credentialIdBytes,
-          type: 'public-key',
-          transports: ['internal']
-        }],
-        timeout: 60000,
-        userVerification: 'required'
+      const pin = await unwrapPinWithBiometric()
+      if (!pin) {
+        setAuthError("Biometric unlock is not available. Please unlock once with your PIN.")
+        onError?.("Biometric unlock failed")
+        return
       }
-
-      const assertion = await navigator.credentials.get({
-        publicKey: requestCredentialOptions
-      }) as PublicKeyCredential
-
-      if (assertion) {
-        onAuthenticated?.()
-      }
+      onAuthenticated?.()
 
     } catch (error) {
       let errorMessage = 'Biometric authentication failed'
@@ -244,11 +263,10 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
   }
 
   const disableBiometric = () => {
-    localStorage.removeItem('wallet_biometric_credential_id')
-    localStorage.removeItem('wallet_biometric_enabled')
-    localStorage.removeItem('wallet_biometric_user_id')
+    clearBiometricKeyData()
     setIsEnrolled(false)
     setCredentialId(null)
+    setIsKeyWrapped(false)
     setAuthError(null)
   }
 
@@ -301,13 +319,15 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
               }`} />
               <span className="text-sm">
                 {isSupported
-                  ? (isEnrolled ? 'Biometric authentication enabled' : 'Biometric available but not enrolled')
+                  ? (isEnrolled
+                    ? (isKeyWrapped ? 'Biometric authentication enabled' : 'Biometric enrolled; finish setup with PIN')
+                    : 'Biometric available but not enrolled')
                   : 'Biometric authentication not supported'
                 }
               </span>
             </div>
             <Badge variant={isEnrolled ? 'default' : 'secondary'}>
-              {isEnrolled ? 'Enabled' : 'Disabled'}
+              {isEnrolled ? (isKeyWrapped ? 'Enabled' : 'Pending') : 'Disabled'}
             </Badge>
           </div>
 
@@ -348,12 +368,40 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
               <>
                 <Button
                   onClick={authenticateBiometric}
-                  disabled={isAuthenticating}
+                  disabled={isAuthenticating || !isKeyWrapped}
                   className="flex items-center gap-2"
                 >
                   <Unlock className="w-4 h-4" />
                   {isAuthenticating ? 'Authenticating...' : 'Authenticate'}
                 </Button>
+                {!isKeyWrapped && (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const cachedPin = SecureKeyManager.getCachedSessionPin()
+                      if (!cachedPin) {
+                        setAuthError("Please unlock once with your PIN to finish setup.")
+                        return
+                      }
+                      setIsAuthenticating(true)
+                      try {
+                        const wrapped = await wrapPinWithBiometric(cachedPin)
+                        if (!wrapped) {
+                          setAuthError("Secure biometric storage isn't supported on this device.")
+                          return
+                        }
+                        setIsKeyWrapped(true)
+                        setAuthError(null)
+                      } finally {
+                        setIsAuthenticating(false)
+                      }
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Shield className="w-4 h-4" />
+                    Finish Setup
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={disableBiometric}

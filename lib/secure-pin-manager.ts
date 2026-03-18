@@ -120,6 +120,15 @@ export class SecurePinManager {
       // Reset attempt counters
       this.resetAttempts()
 
+      // If PIN changes, biometric wrapping must be re-enrolled.
+      if (localStorage.getItem('wallet_biometric_enabled') === 'true') {
+        localStorage.removeItem('wallet_biometric_credential_id')
+        localStorage.removeItem('wallet_biometric_enabled')
+        localStorage.removeItem('wallet_biometric_user_id')
+        localStorage.removeItem('wallet_biometric_pin_wrapped')
+        localStorage.removeItem('wallet_biometric_prf_salt')
+      }
+
       return true
     } catch (error) {
       return false
@@ -619,6 +628,8 @@ export class SecurePinManager {
     localStorage.removeItem('wallet_biometric_credential_id')
     localStorage.removeItem('wallet_biometric_enabled')
     localStorage.removeItem('wallet_biometric_user_id')
+    localStorage.removeItem('wallet_biometric_pin_wrapped')
+    localStorage.removeItem('wallet_biometric_prf_salt')
 
     // Clear session data
     localStorage.removeItem('wallet_session')
