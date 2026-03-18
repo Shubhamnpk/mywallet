@@ -112,6 +112,9 @@ export function PortfolioList() {
         }
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
     }
+    const isFiniteNumber = (value: unknown): value is number =>
+        typeof value === "number" && Number.isFinite(value)
+    const safeNumber = (value?: number) => (isFiniteNumber(value) ? value : 0)
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -526,16 +529,17 @@ export function PortfolioList() {
     )
 
       const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
-          const safePrice = (value?: number) => (Number.isFinite(value) ? value : 0)
-          const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safePrice(item.buyPrice ?? 0), 0)
+          const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
           const current = activePortfolioItems.reduce((sum, item) => {
-              const price = Number.isFinite(item.currentPrice) ? item.currentPrice : safePrice(item.buyPrice ?? 0)
+              const price = isFiniteNumber(item.currentPrice) ? item.currentPrice : safeNumber(item.buyPrice)
               return sum + item.units * price
           }, 0)
           const profitLoss = current - investment
           const today = activePortfolioItems.reduce((sum, item) => {
-              if (Number.isFinite(item.currentPrice) && Number.isFinite(item.previousClose)) {
-                  return sum + item.units * ((item.currentPrice ?? 0) - (item.previousClose ?? 0))
+              const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : null
+              const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
+              if (currentPrice !== null && previousClose !== null) {
+                  return sum + item.units * (currentPrice - previousClose)
               }
               return sum
           }, 0)
@@ -557,10 +561,10 @@ export function PortfolioList() {
 
         activePortfolioItems.forEach((item) => {
             const sector = item.sector || "Others"
-            const safePrice = Number.isFinite(item.currentPrice)
+            const safePrice = isFiniteNumber(item.currentPrice)
                 ? item.currentPrice
-                : (Number.isFinite(item.buyPrice) ? item.buyPrice : 0)
-            const safeUnits = Number.isFinite(item.units) ? item.units : 0
+                : safeNumber(item.buyPrice)
+            const safeUnits = safeNumber(item.units)
             const value = safeUnits * safePrice
             unitsSum += safeUnits
             const currentSector = sectorMap.get(sector) || { value: 0, count: 0, units: 0 }
@@ -613,15 +617,15 @@ export function PortfolioList() {
             .map((item) => {
                 const symbol = item.symbol?.trim().toUpperCase() || ""
                 if (!symbol) return null
-                const safeUnits = Number.isFinite(item.units) ? item.units : 0
-                const currentPrice = Number.isFinite(item.currentPrice)
+                const safeUnits = safeNumber(item.units)
+                const currentPrice = isFiniteNumber(item.currentPrice)
                     ? item.currentPrice
-                    : (Number.isFinite(item.buyPrice) ? item.buyPrice : 0)
-                const previousClose = Number.isFinite(item.previousClose) ? item.previousClose : null
-                const changePerUnit = Number.isFinite(item.change)
+                    : safeNumber(item.buyPrice)
+                const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : undefined
+                const changePerUnit = isFiniteNumber(item.change)
                     ? item.change
-                    : (previousClose !== null ? currentPrice - previousClose : 0)
-                const percentChange = Number.isFinite(item.percentChange)
+                    : (previousClose !== undefined ? currentPrice - previousClose : 0)
+                const percentChange = isFiniteNumber(item.percentChange)
                     ? item.percentChange
                     : (previousClose ? (changePerUnit / previousClose) * 100 : 0)
                 if (!Number.isFinite(percentChange) || percentChange === 0) return null
