@@ -34,6 +34,8 @@ import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Viewer, Worker } from "@react-pdf-viewer/core"
+import { zoomPlugin } from "@react-pdf-viewer/zoom"
 
 type ProposedDividendRecord = {
     id: number
@@ -56,6 +58,8 @@ type BtcNewsItem = {
     categories?: string[]
 }
 
+const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
+
 interface StockDetailModalProps {
     item: PortfolioItem | null
     open: boolean
@@ -71,9 +75,16 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const [showCashInfo, setShowCashInfo] = useState(false)
     const [showBonusInfo, setShowBonusInfo] = useState(false)
     const [selectedDividendKey, setSelectedDividendKey] = useState<string | null>(null)
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+    const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
+    const [isPdfOpen, setIsPdfOpen] = useState(false)
     const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
+    const zoomPluginInstance = zoomPlugin()
+    const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
+
+    const isPdfLink = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
     useEffect(() => {
         if (!open || typeof document === "undefined") return
@@ -95,6 +106,9 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
             setShowCashInfo(false)
             setShowBonusInfo(false)
             setSelectedDividendKey(null)
+            setIsPdfOpen(false)
+            setPdfUrl(null)
+            setPdfSourceUrl(null)
         }
     }, [open])
 
@@ -199,6 +213,16 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
 
     const toggleNoticeDetails = (noticeId: number) => {
         setExpandedNoticeId((prev) => (prev === noticeId ? null : noticeId))
+    }
+
+    const handleOpenDocument = (url: string) => {
+        if (isPdfLink(url)) {
+            setPdfSourceUrl(url)
+            setPdfUrl(`/api/proxy/pdf?url=${encodeURIComponent(url)}`)
+            setIsPdfOpen(true)
+            return
+        }
+        window.open(url, "_blank", "noopener,noreferrer")
     }
 
     const loadBtcNews = useCallback(async () => {
@@ -759,7 +783,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                                                 variant="outline"
                                                                                 size="sm"
                                                                                 className="justify-start text-xs"
-                                                                                onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}
+                                                                                onClick={() => handleOpenDocument(doc.url)}
                                                                             >
                                                                                 <ExternalLink className="w-3 h-3 mr-2" />
                                                                                 {doc.label}
@@ -801,6 +825,57 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                     </Tabs>
                     </DialogContent>
                 )}
+            </Dialog>
+            <Dialog
+                open={isPdfOpen}
+                onOpenChange={(next) => {
+                    setIsPdfOpen(next)
+                    if (!next) {
+                        setPdfUrl(null)
+                        setPdfSourceUrl(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col">
+                    <DialogHeader className="px-5 pt-5 pb-3 border-b border-muted/20">
+                        <div className="flex items-center justify-between gap-3">
+                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
+                                Document Preview
+                            </DialogTitle>
+                            {(pdfSourceUrl || pdfUrl) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-[10px] font-black uppercase tracking-wider"
+                                    onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                >
+                                    <ExternalLink className="w-3 h-3 mr-2" />
+                                    Open in New Tab
+                                </Button>
+                            )}
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 min-h-0 bg-muted/10 relative">
+                        {pdfUrl ? (
+                            <>
+                                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-muted/50 bg-card/90 backdrop-blur px-1 py-1 shadow-lg
+                                    [&_.rpv-core__minimal-button]:text-foreground [&_.rpv-core__minimal-button]:h-7 [&_.rpv-core__minimal-button]:w-7
+                                    [&_.rpv-core__minimal-button:hover]:bg-muted/40 [&_.rpv-zoom__popover-target]:text-foreground">
+                                    <ZoomOutButton />
+                                    <ZoomPopover />
+                                    <ZoomInButton />
+                                </div>
+                                <Worker workerUrl={PDF_WORKER_URL}>
+                                    <Viewer fileUrl={pdfUrl} plugins={[zoomPluginInstance]} />
+                                </Worker>
+                            </>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                                No document selected.
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
             </Dialog>
         </>
     )
