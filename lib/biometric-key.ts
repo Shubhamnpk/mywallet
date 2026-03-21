@@ -62,11 +62,11 @@ function extractSecretFromExtensions(extensions: any): ArrayBuffer | null {
   if (!extensions || typeof extensions !== "object") return null
   const prfResult = extensions.prf?.results?.first
   if (prfResult instanceof ArrayBuffer) return prfResult
-  if (ArrayBuffer.isView(prfResult)) return prfResult.buffer
+  if (ArrayBuffer.isView(prfResult)) return prfResult.buffer as ArrayBuffer
 
   const hmacResult = extensions.hmacGetSecret?.output1
   if (hmacResult instanceof ArrayBuffer) return hmacResult
-  if (ArrayBuffer.isView(hmacResult)) return hmacResult.buffer
+  if (ArrayBuffer.isView(hmacResult)) return hmacResult.buffer as ArrayBuffer
 
   return null
 }
@@ -122,7 +122,7 @@ async function getBiometricSecret(
 async function importBiometricAesKey(secret: Uint8Array): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
     "raw",
-    secret,
+    secret as BufferSource,
     "AES-GCM",
     false,
     ["encrypt", "decrypt"],
