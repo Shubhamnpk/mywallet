@@ -40,22 +40,22 @@ const pwa = withPWA({
   disable: process.env.NODE_ENV === 'development',
   customWorkerDir: 'worker',
   register: true,
-  skipWaiting: false,
+  skipWaiting: true,
+  clientsClaim: true,
   fallbacks: { document: '/offline.html', image: '/image.png' },
   // ensure the app shell (start URL) is precached so it can load offline
   additionalManifestEntries: [
-  { url: '/', revision: null },
-  { url: '/settings', revision: null },
-  { url: '/settings/', revision: null },
-  { url: '/offline.html', revision: null }
+    { url: '/', revision: null },
+    { url: '/?source=pwa', revision: null },
+    { url: '/settings', revision: null },
+    { url: '/settings/', revision: null },
+    { url: '/offline.html', revision: null }
   ],
   runtimeCaching
 })
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
   images: { unoptimized: true },
   turbopack: {
     resolveAlias: {
