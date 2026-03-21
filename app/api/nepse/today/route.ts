@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
     const APIS = [
-        "https://shubhamnpk.github.io/nepse-scaper/data/nepse_data.json" // Primary: User's personal scraper
+        "https://shubhamnpk.github.io/yonepse/data/nepse_data.json" // Primary: User's personal scraper
     ]
 
     let lastError = "Data sources returned empty or invalid data"

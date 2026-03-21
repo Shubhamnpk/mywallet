@@ -1,4 +1,10 @@
 import withPWA from 'next-pwa'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const emptyCanvasPath = join(__dirname, 'lib', 'empty-canvas.js')
 
 const runtimeCaching = [
   // Ensure the start URL is network-first so users get the latest app shell when online
@@ -51,11 +57,16 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   images: { unoptimized: true },
+  turbopack: {
+    resolveAlias: {
+      canvas: emptyCanvasPath,
+    },
+  },
   webpack: (config) => {
     config.resolve = config.resolve || {}
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
-      canvas: false,
+      canvas: emptyCanvasPath,
     }
     return config
   },
