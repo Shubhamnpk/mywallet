@@ -88,6 +88,7 @@ export function PortfolioList() {
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
     const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
+    const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
@@ -210,6 +211,15 @@ export function PortfolioList() {
     const handleViewIPODetail = (ipo: UpcomingIPO) => {
         setSelectedIPO(ipo)
         setIsIPODetailOpen(true)
+    }
+
+    const toggleIPOExpansion = (company: string) => {
+        setExpandedIPOs(prev => {
+            const next = new Set(prev)
+            if (next.has(company)) next.delete(company)
+            else next.add(company)
+            return next
+        })
     }
 
     const [newTx, setNewTx] = useState({
@@ -814,7 +824,19 @@ export function PortfolioList() {
         const closedIpoCount = upcomingIPOs.filter((ipo) => ipo.status === "closed").length
         const statusSummaryLabel =
             openIpoCount > 0 ? "Open Now" : upcomingIpoCount > 0 ? "Upcoming" : "Recent"
-        const displayedIPOs = showAllIPOs ? filteredIPOs : filteredIPOs.slice(0, 5)
+
+        const groupedIPOsMap = new Map<string, UpcomingIPO[]>()
+        filteredIPOs.forEach((ipo) => {
+            const list = groupedIPOsMap.get(ipo.company) || []
+            groupedIPOsMap.set(ipo.company, [...list, ipo])
+        })
+
+        const groupedIPOs = Array.from(groupedIPOsMap.entries()).map(([company, items]) => ({
+            company,
+            items
+        }))
+
+        const displayedIPOs = showAllIPOs ? groupedIPOs : groupedIPOs.slice(0, 5)
         const sentiment =
             openIpoCount >= 3
                 ? {
@@ -848,12 +870,12 @@ export function PortfolioList() {
 
         return {
             sortedIPOsCount: sortedIPOs.length,
-            filteredIPOsCount: filteredIPOs.length,
+            filteredIPOsCount: groupedIPOs.length,
             openIpoCount,
             upcomingIpoCount,
             closedIpoCount,
             statusSummaryLabel,
-            displayedIPOs,
+            displayedIPOs, // This is now an array of { company, items }
             sentiment,
             appliedIpoKeys,
         }
@@ -1461,102 +1483,149 @@ export function PortfolioList() {
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="divide-y divide-muted/10">
-                                            {displayedIPOs.length > 0 ? displayedIPOs.map((ipo) => {
-                                                const ipoKey = `${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`
-                                                const isApplied = appliedIpoKeys.has(ipoKey)
-                                                const statusLabel = ipo.status === 'open' ? 'Closing in' :
-                                                    ipo.status === 'upcoming' ? 'Opening in' :
-                                                        'Closed';
+                                            {displayedIPOs.length > 0 ? displayedIPOs.map((group) => {
+                                                const { company, items } = group;
+                                                const hasMultiple = items.length > 1;
+                                                const isExpanded = expandedIPOs.has(company);
 
-                                                const statusColor = ipo.status === 'open' ? 'text-success bg-success/10 border-success/20' :
-                                                    ipo.status === 'upcoming' ? 'text-info bg-info/10 border-info/20' :
+                                                // For the header, we can use the first item to show some basic info
+                                                const firstIpo = items[0];
+                                                const statusColor = firstIpo.status === 'open' ? 'text-success bg-success/10 border-success/20' :
+                                                    firstIpo.status === 'upcoming' ? 'text-info bg-info/10 border-info/20' :
                                                         'text-muted-foreground bg-muted/20 border-muted/30';
 
                                                 return (
-                                                    <div
-                                                        key={ipoKey}
-                                                        className="group/item flex flex-row items-start sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
-                                                        onClick={() => handleViewIPODetail(ipo)}
-                                                        role="button"
-                                                        tabIndex={0}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === "Enter" || e.key === " ") {
-                                                                e.preventDefault()
-                                                                handleViewIPODetail(ipo)
-                                                            }
-                                                        }}
-                                                    >
-                                                        <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1 text-left">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight truncate max-w-[200px] sm:max-w-none">
-                                                                    {ipo.company}
-                                                                </span>
-                                                                {ipo.status && (
-                                                                    <Badge className={cn("text-[10px] font-black uppercase px-2 py-0 border", statusColor)}>
-                                                                        {ipo.status === 'open' ? 'Open Today' : ipo.status.charAt(0).toUpperCase() + ipo.status.slice(1)}
-                                                                    </Badge>
-                                                                )}
-                                                                {isApplied && (
-                                                                    <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0 border-success/30 bg-success/10 text-success">
-                                                                        Applied
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                            <div className="flex items-start flex-wrap gap-y-2 gap-x-3 sm:gap-x-4">
-                                                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
-                                                                    <div className="flex flex-col gap-1 items-start">
-                                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                                            {ipo.daysRemaining !== undefined && ipo.status !== 'closed' && (
-                                                                                <div className={cn(
-                                                                                    "flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight",
-                                                                                    ipo.status === 'open' ? "border-success/30 text-success bg-success/5" : "border-info/30 text-info bg-info/5"
-                                                                                )}>
-                                                                                    <Activity className={cn("w-3 h-3", ipo.status === 'open' && "animate-pulse")} />
-                                                                                    {statusLabel} {ipo.daysRemaining} {ipo.daysRemaining === 1 ? 'day' : 'days'}
-                                                                                </div>
-                                                                            )}
-                                                                            {ipo.is_reserved_share && (
-                                                                                <Badge
-                                                                                    variant="outline"
-                                                                                    title={ipo.reserved_for || "Reserved IPO share"}
-                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                                                                                >
-                                                                                    Reserved
-                                                                                </Badge>
-                                                                            )}
-                                                                            {showReservedDebugBadge && (
-                                                                                <Badge
-                                                                                    variant="outline"
-                                                                                    title={ipo.reserved_for || "(empty)"}
-                                                                                    className="px-2 py-0.5 rounded-md border text-[10px] font-mono normal-case tracking-tight border-muted-foreground/30 text-muted-foreground"
-                                                                                >
-                                                                                    reserved_for: {ipo.reserved_for || "(empty)"}
-                                                                                </Badge>
-                                                                            )}
+                                                    <div key={company} className="flex flex-col border-b last:border-0 border-muted/10">
+                                                        <div
+                                                            className="group/item flex flex-row items-start sm:items-center justify-between p-4 sm:p-5 hover:bg-primary/[0.02] transition-all relative overflow-hidden gap-3 sm:gap-4 cursor-pointer"
+                                                            onClick={() => hasMultiple ? toggleIPOExpansion(company) : handleViewIPODetail(firstIpo)}
+                                                            role="button"
+                                                            tabIndex={0}
+                                                        >
+                                                            <div className="flex flex-col gap-1.5 relative z-10 min-w-0 flex-1 text-left">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className="font-black text-sm text-foreground/90 group-hover/item:text-primary transition-colors leading-tight truncate max-w-[200px] sm:max-w-none">
+                                                                        {company}
+                                                                    </span>
+                                                                    {hasMultiple && (
+                                                                        <Badge variant="outline" className="text-[9px] font-black uppercase px-2 py-0 border-primary/30 bg-primary/5 text-primary">
+                                                                            {items.length} Offerings
+                                                                        </Badge>
+                                                                    )}
+                                                                    {!hasMultiple && firstIpo.status && (
+                                                                        <Badge className={cn("text-[10px] font-black uppercase px-2 py-0 border", statusColor)}>
+                                                                            {firstIpo.status === 'open' ? 'Open Today' : firstIpo.status.charAt(0).toUpperCase() + firstIpo.status.slice(1)}
+                                                                        </Badge>
+                                                                    )}
+                                                                </div>
+                                                                {!hasMultiple && (
+                                                                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                                                        <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-tight mr-2">
+                                                                            {firstIpo.date_range}
                                                                         </div>
-                                                                        {ipo.status === 'upcoming' && ipo.openingDay && (
-                                                                            <span className="text-[10px] font-bold text-primary/60 uppercase tracking-tighter">
-                                                                                Starts on {ipo.openingDay}
-                                                                            </span>
+                                                                        {firstIpo.is_reserved_share && (
+                                                                            <Badge
+                                                                                variant="outline"
+                                                                                title={firstIpo.reserved_for || "Reserved IPO share"}
+                                                                                className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                                                            >
+                                                                                Reserved
+                                                                            </Badge>
+                                                                        )}
+                                                                        {appliedIpoKeys.has(`${firstIpo.company}-${firstIpo.date_range}-${firstIpo.status ?? "unknown"}`) && (
+                                                                            <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0.5 border-success/30 bg-success/10 text-success">
+                                                                                Applied
+                                                                            </Badge>
                                                                         )}
                                                                     </div>
-                                                                </div>
+                                                                )}
+                                                                {hasMultiple && (
+                                                                    <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tight italic">
+                                                                        {isExpanded ? "Click to collapse" : "Click to view different types"}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                {hasMultiple && (
+                                                                    <div className={cn("transition-transform duration-200 p-2 rounded-full hover:bg-primary/10", isExpanded ? "rotate-180" : "")}>
+                                                                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                                                    </div>
+                                                                )}
+                                                                {!hasMultiple && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-2 py-2 sm:px-4 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 shrink-0 h-9 w-9 sm:w-auto"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleViewIPODetail(firstIpo);
+                                                                        }}
+                                                                    >
+                                                                        <span className="hidden sm:inline">View Info</span>
+                                                                        <Info className="hidden sm:block w-3 h-3" />
+                                                                        <ChevronRight className="sm:hidden w-4 h-4" />
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="flex items-center justify-center gap-2 bg-background hover:bg-primary text-foreground/70 hover:text-primary-foreground px-2 py-2 sm:px-4 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-sm border border-border group-hover/item:border-primary/30 group-hover/item:shadow-lg group-hover/item:shadow-primary/10 relative z-10 shrink-0 h-9 w-9 sm:w-auto"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleViewIPODetail(ipo);
-                                                            }}
-                                                        >
-                                                            <span className="hidden sm:inline">View Info</span>
-                                                            <Info className="hidden sm:block w-3 h-3" />
-                                                            <ChevronRight className="sm:hidden w-4 h-4" />
-                                                        </Button>
-                                                        <div className="absolute inset-y-0 left-0 w-1 bg-primary scale-y-0 group-hover/item:scale-y-100 transition-transform origin-center" />
+
+                                                        {hasMultiple && isExpanded && (
+                                                            <div className="bg-muted/5 divide-y divide-muted/10 animate-in slide-in-from-top-2 duration-200 border-t border-muted/5">
+                                                                {items.map((ipo, idx) => {
+                                                                    const ipoKey = `${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`
+                                                                    const isApplied = appliedIpoKeys.has(ipoKey)
+                                                                    const subStatusColor = ipo.status === 'open' ? 'text-success bg-success/10 border-success/20' :
+                                                                        ipo.status === 'upcoming' ? 'text-info bg-info/10 border-info/20' :
+                                                                            'text-muted-foreground bg-muted/20 border-muted/30';
+
+                                                                    return (
+                                                                        <div
+                                                                            key={ipoKey}
+                                                                            className="flex items-center justify-between p-4 pl-6 sm:pl-10 hover:bg-primary/[0.03] transition-colors cursor-pointer group/sub"
+                                                                            onClick={() => handleViewIPODetail(ipo)}
+                                                                        >
+                                                                            <div className="flex flex-col gap-1 min-w-0 flex-1">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    {ipo.is_reserved_share && (
+                                                                                        <Badge
+                                                                                            variant="outline"
+                                                                                            title={ipo.reserved_for || "Reserved IPO share"}
+                                                                                            className="px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 shadow-none"
+                                                                                        >
+                                                                                            Reserved
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                    <span className="text-xs font-black text-foreground/80 truncate group-hover/sub:text-primary">
+                                                                                        {ipo.is_reserved_share ? (ipo.reserved_for || "Reserved Share") : "General Share Offering"}
+                                                                                    </span>
+                                                                                    {isApplied && (
+                                                                                        <Badge variant="outline" className="text-[10px] font-black uppercase px-2 py-0.5 border-success/30 bg-success/10 text-success shadow-none">
+                                                                                            Applied
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-3 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter">
+                                                                                    <span>{ipo.units} Units</span>
+                                                                                    <span className="opacity-40 font-normal">•</span>
+                                                                                    <span>{ipo.date_range}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3 shrink-0">
+                                                                                <div className={cn(
+                                                                                    "px-2 py-0.5 rounded-md border text-[9px] font-black uppercase tracking-tight",
+                                                                                    subStatusColor
+                                                                                )}>
+                                                                                    {ipo.status === 'open' ? `${ipo.daysRemaining} days left` : ipo.status}
+                                                                                </div>
+                                                                                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground/30 hover:text-primary hover:bg-primary/5">
+                                                                                    <ArrowUpRight className="w-3.5 h-3.5" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )
                                             }) : (
