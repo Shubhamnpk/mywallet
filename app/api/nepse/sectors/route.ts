@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-    const URL = "https://shubhamnpk.github.io/nepse-scaper/data/nepse_sector_wise_codes.json"
+    const URL = "https://shubhamnpk.github.io/yonepse/data/nepse_sector_wise_codes.json"
 
     try {
         const response = await fetch(URL, {

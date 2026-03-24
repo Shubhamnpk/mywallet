@@ -21,7 +21,7 @@ type ProposedDividendRecord = {
 
 export async function GET() {
   const APIS = [
-    "https://shubhamnpk.github.io/nepse-scaper/data/proposed_dividend/history_all_years.json",
+    "https://shubhamnpk.github.io/yonepse/data/proposed_dividend/history_all_years.json",
   ]
 
   let lastError = "Data source returned empty or invalid data"

@@ -16,6 +16,22 @@ const ALWAYS_ENCRYPT_KEYS = new Set([
   "shareTransactions",
   "portfolios",
   "celebratedAchievements",
+  "deleted_transactions",
+  "deleted_budgets",
+  "deleted_goals",
+  "deleted_debtAccounts",
+  "deleted_creditAccounts",
+  "deleted_debtCreditTransactions",
+  "deleted_categories",
+  "deleted_shareTransactions",
+  "deleted_portfolios",
+  "qrScanHistory",
+  "receiptScanHistory",
+  "transaction-dialog-form",
+  "wallet_pending_transactions",
+  "wallet_pending_budgets",
+  "wallet_pending_goals",
+  "wallet_bill_reminders",
 ])
 
 export function shouldEncryptStorageKey(key: string): boolean {

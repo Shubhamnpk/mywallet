@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { loadFromLocalStorage, saveToLocalStorage } from '@/lib/storage'
 
 interface OfflineModeState {
   isOnline: boolean
@@ -32,7 +33,7 @@ export function useOfflineMode() {
         isOfflineMode: false
       }))
       // Trigger sync when coming back online
-      syncPendingData()
+      void syncPendingData()
     }
 
     const handleOffline = () => {
@@ -47,7 +48,7 @@ export function useOfflineMode() {
     window.addEventListener('offline', handleOffline)
 
     // Check for pending sync items
-    checkPendingSyncItems()
+    void checkPendingSyncItems()
 
     return () => {
       window.removeEventListener('online', handleOnline)
@@ -55,15 +56,24 @@ export function useOfflineMode() {
     }
   }, [])
 
-  const checkPendingSyncItems = () => {
-    const pendingTransactions = localStorage.getItem('wallet_pending_transactions')
-    const pendingGoals = localStorage.getItem('wallet_pending_goals')
-    const pendingBudgets = localStorage.getItem('wallet_pending_budgets')
+  const checkPendingSyncItems = async () => {
+    const stored = await loadFromLocalStorage([
+      'wallet_pending_transactions',
+      'wallet_pending_goals',
+      'wallet_pending_budgets',
+    ])
 
-    let count = 0
-    if (pendingTransactions) count += JSON.parse(pendingTransactions).length
-    if (pendingGoals) count += JSON.parse(pendingGoals).length
-    if (pendingBudgets) count += JSON.parse(pendingBudgets).length
+    const pendingTransactions = Array.isArray(stored.wallet_pending_transactions)
+      ? stored.wallet_pending_transactions
+      : []
+    const pendingGoals = Array.isArray(stored.wallet_pending_goals)
+      ? stored.wallet_pending_goals
+      : []
+    const pendingBudgets = Array.isArray(stored.wallet_pending_budgets)
+      ? stored.wallet_pending_budgets
+      : []
+
+    const count = pendingTransactions.length + pendingGoals.length + pendingBudgets.length
 
     setState(prev => ({
       ...prev,
@@ -74,26 +84,37 @@ export function useOfflineMode() {
   const syncPendingData = async () => {
     try {
       // Get pending data from localStorage
-      const pendingTransactions = localStorage.getItem('wallet_pending_transactions')
-      const pendingGoals = localStorage.getItem('wallet_pending_goals')
-      const pendingBudgets = localStorage.getItem('wallet_pending_budgets')
+      const stored = await loadFromLocalStorage([
+        'wallet_pending_transactions',
+        'wallet_pending_goals',
+        'wallet_pending_budgets',
+      ])
+      const pendingTransactions = Array.isArray(stored.wallet_pending_transactions)
+        ? stored.wallet_pending_transactions
+        : null
+      const pendingGoals = Array.isArray(stored.wallet_pending_goals)
+        ? stored.wallet_pending_goals
+        : null
+      const pendingBudgets = Array.isArray(stored.wallet_pending_budgets)
+        ? stored.wallet_pending_budgets
+        : null
 
       // Sync transactions
       if (pendingTransactions) {
-        const transactions = JSON.parse(pendingTransactions)
+        const transactions = pendingTransactions
         // Here you would sync with your backend
         localStorage.removeItem('wallet_pending_transactions')
       }
 
       // Sync goals
       if (pendingGoals) {
-        const goals = JSON.parse(pendingGoals)
+        const goals = pendingGoals
         localStorage.removeItem('wallet_pending_goals')
       }
 
       // Sync budgets
       if (pendingBudgets) {
-        const budgets = JSON.parse(pendingBudgets)
+        const budgets = pendingBudgets
         localStorage.removeItem('wallet_pending_budgets')
       }
 
@@ -108,28 +129,43 @@ export function useOfflineMode() {
     }
   }
 
-  const addPendingTransaction = (transaction: any) => {
-    const pending = localStorage.getItem('wallet_pending_transactions') || '[]'
-    const transactions = JSON.parse(pending)
-    transactions.push({ ...transaction, offlineId: Date.now() })
-    localStorage.setItem('wallet_pending_transactions', JSON.stringify(transactions))
-    checkPendingSyncItems()
+  const addPendingTransaction = async (transaction: any) => {
+    const stored = await loadFromLocalStorage(['wallet_pending_transactions'])
+    const pending = Array.isArray(stored.wallet_pending_transactions)
+      ? stored.wallet_pending_transactions
+      : []
+    const transactions = [...pending, { ...transaction, offlineId: Date.now() }]
+    try {
+      await saveToLocalStorage('wallet_pending_transactions', transactions, true)
+    } catch {
+    }
+    void checkPendingSyncItems()
   }
 
-  const addPendingGoal = (goal: any) => {
-    const pending = localStorage.getItem('wallet_pending_goals') || '[]'
-    const goals = JSON.parse(pending)
-    goals.push({ ...goal, offlineId: Date.now() })
-    localStorage.setItem('wallet_pending_goals', JSON.stringify(goals))
-    checkPendingSyncItems()
+  const addPendingGoal = async (goal: any) => {
+    const stored = await loadFromLocalStorage(['wallet_pending_goals'])
+    const pending = Array.isArray(stored.wallet_pending_goals)
+      ? stored.wallet_pending_goals
+      : []
+    const goals = [...pending, { ...goal, offlineId: Date.now() }]
+    try {
+      await saveToLocalStorage('wallet_pending_goals', goals, true)
+    } catch {
+    }
+    void checkPendingSyncItems()
   }
 
-  const addPendingBudget = (budget: any) => {
-    const pending = localStorage.getItem('wallet_pending_budgets') || '[]'
-    const budgets = JSON.parse(pending)
-    budgets.push({ ...budget, offlineId: Date.now() })
-    localStorage.setItem('wallet_pending_budgets', JSON.stringify(budgets))
-    checkPendingSyncItems()
+  const addPendingBudget = async (budget: any) => {
+    const stored = await loadFromLocalStorage(['wallet_pending_budgets'])
+    const pending = Array.isArray(stored.wallet_pending_budgets)
+      ? stored.wallet_pending_budgets
+      : []
+    const budgets = [...pending, { ...budget, offlineId: Date.now() }]
+    try {
+      await saveToLocalStorage('wallet_pending_budgets', budgets, true)
+    } catch {
+    }
+    void checkPendingSyncItems()
   }
 
   return {

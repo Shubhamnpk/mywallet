@@ -3,6 +3,7 @@
 
 import { SecureWallet } from "./security"
 import { SecurePinManager } from "./secure-pin-manager"
+import { SessionManager } from "./session-manager"
 
 export interface KeyMetadata {
   keyId: string
@@ -25,7 +26,7 @@ export class SecureKeyManager {
   private static readonly DEFAULT_KEY_SECRET = "Sdskfjdsfkj()"
   private static readonly DEFAULT_KEY_SALT_STORAGE_KEY = "wallet_default_key_salt"
   private static readonly SESSION_PIN_KEY = "wallet_session_pin"
-  private static readonly SESSION_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+  private static readonly SESSION_TIMEOUT = 5 * 60 * 1000 // 5 minutes (aligned with session inactivity timeout)
 
   private static keyCache = new Map<string, { key: CryptoKey; expires: number }>()
 
@@ -115,6 +116,15 @@ export class SecureKeyManager {
       if (typeof window === "undefined") return
       sessionStorage.setItem(this.SESSION_PIN_KEY, pin)
     } catch {
+    }
+  }
+
+  static getCachedSessionPin(): string | null {
+    try {
+      if (typeof window === "undefined") return null
+      return sessionStorage.getItem(this.SESSION_PIN_KEY)
+    } catch {
+      return null
     }
   }
 
@@ -274,6 +284,7 @@ export class SecureKeyManager {
 
   // Check if key cache is valid
   static isKeyCacheValid(keyId: string = this.MASTER_KEY_ID): boolean {
+    if (!SessionManager.isSessionValid()) return false
     const cached = this.keyCache.get(keyId)
     return cached !== undefined && cached.expires > Date.now()
   }

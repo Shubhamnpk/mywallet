@@ -73,6 +73,8 @@ export function PortfolioList() {
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState("holdings")
     const [chartView, setChartView] = useState<"sector" | "scrip">("sector")
+    const [chartMetric, setChartMetric] = useState<"value" | "units">("value")
+    const [chartMode, setChartMode] = useState<"allocation" | "movers">("allocation")
     const [selectedTxs, setSelectedTxs] = useState<string[]>([])
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
@@ -110,6 +112,9 @@ export function PortfolioList() {
         }
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
     }
+    const isFiniteNumber = (value: unknown): value is number =>
+        typeof value === "number" && Number.isFinite(value)
+    const safeNumber = (value?: number) => (isFiniteNumber(value) ? value : 0)
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -523,80 +528,150 @@ export function PortfolioList() {
         [portfolio, activePortfolioId],
     )
 
-      const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
-          const safePrice = (value?: number) => (Number.isFinite(value) ? value : 0)
-          const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safePrice(item.buyPrice ?? 0), 0)
-          const current = activePortfolioItems.reduce((sum, item) => {
-              const price = Number.isFinite(item.currentPrice) ? item.currentPrice : safePrice(item.buyPrice ?? 0)
-              return sum + item.units * price
-          }, 0)
-          const profitLoss = current - investment
-          const today = activePortfolioItems.reduce((sum, item) => {
-              if (Number.isFinite(item.currentPrice) && Number.isFinite(item.previousClose)) {
-                  return sum + item.units * ((item.currentPrice ?? 0) - (item.previousClose ?? 0))
-              }
-              return sum
-          }, 0)
-  
-          return {
-              totalInvestment: investment,
-              currentValue: current,
-              totalProfitLoss: profitLoss,
-              totalProfitLossPercentage: investment > 0 ? (profitLoss / investment) * 100 : 0,
-              todayChange: today,
-              todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
-          }
-      }, [activePortfolioItems])
+    const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
+        const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
+        const current = activePortfolioItems.reduce((sum, item) => {
+            const price = isFiniteNumber(item.currentPrice) ? item.currentPrice : safeNumber(item.buyPrice)
+            return sum + item.units * price
+        }, 0)
+        const profitLoss = current - investment
+        const today = activePortfolioItems.reduce((sum, item) => {
+            const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : null
+            const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
+            if (currentPrice !== null && previousClose !== null) {
+                return sum + item.units * (currentPrice - previousClose)
+            }
+            return sum
+        }, 0)
+
+        return {
+            totalInvestment: investment,
+            currentValue: current,
+            totalProfitLoss: profitLoss,
+            totalProfitLossPercentage: investment > 0 ? (profitLoss / investment) * 100 : 0,
+            todayChange: today,
+            todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
+        }
+    }, [activePortfolioItems])
 
     const { sectorData, scripData } = useMemo(() => {
-        const sectorMap = new Map<string, { value: number; count: number }>()
-        const scripMap = new Map<string, number>()
+        const sectorMap = new Map<string, { value: number; count: number; units: number }>()
+        const scripMap = new Map<string, { value: number; units: number }>()
+        let unitsSum = 0
 
         activePortfolioItems.forEach((item) => {
             const sector = item.sector || "Others"
-            const value = item.units * (item.currentPrice ?? item.buyPrice)
-            const currentSector = sectorMap.get(sector) || { value: 0, count: 0 }
+            const safePrice = isFiniteNumber(item.currentPrice)
+                ? item.currentPrice
+                : safeNumber(item.buyPrice)
+            const safeUnits = safeNumber(item.units)
+            const value = safeUnits * safePrice
+            unitsSum += safeUnits
+            const currentSector = sectorMap.get(sector) || { value: 0, count: 0, units: 0 }
 
             sectorMap.set(sector, {
                 value: currentSector.value + value,
                 count: currentSector.count + 1,
+                units: currentSector.units + safeUnits,
             })
-            scripMap.set(item.symbol, (scripMap.get(item.symbol) || 0) + value)
+            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0 }
+            scripMap.set(item.symbol, {
+                value: currentScrip.value + value,
+                units: currentScrip.units + safeUnits,
+            })
         })
+
+        const totalBase = chartMetric === "units" ? unitsSum : currentValue
 
         const memoSectorData = Array.from(sectorMap.entries())
             .map(([name, data]) => ({
                 name,
                 value: data.value,
                 count: data.count,
-                percentage: currentValue > 0 ? (data.value / currentValue) * 100 : 0,
+                units: data.units,
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
             }))
-            .sort((a, b) => b.value - a.value)
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         const memoScripData = Array.from(scripMap.entries())
-            .map(([name, value]) => ({
+            .map(([name, data]) => ({
                 name,
-                value,
-                percentage: currentValue > 0 ? (value / currentValue) * 100 : 0,
+                value: data.value,
+                units: data.units,
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
             }))
-            .sort((a, b) => b.value - a.value)
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         return { sectorData: memoSectorData, scripData: memoScripData }
-    }, [activePortfolioItems, currentValue])
+    }, [activePortfolioItems, currentValue, chartMetric])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
     const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
 
+    const portfolioMovers = useMemo(() => {
+        const rows = activePortfolioItems
+            .map((item) => {
+                const symbol = item.symbol?.trim().toUpperCase() || ""
+                if (!symbol) return null
+                const safeUnits = safeNumber(item.units)
+                const currentPrice = isFiniteNumber(item.currentPrice)
+                    ? item.currentPrice
+                    : safeNumber(item.buyPrice)
+                const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : undefined
+                const changePerUnit = isFiniteNumber(item.change)
+                    ? item.change
+                    : (previousClose !== undefined ? currentPrice - previousClose : 0)
+                const percentChange = isFiniteNumber(item.percentChange)
+                    ? item.percentChange
+                    : (previousClose ? (changePerUnit / previousClose) * 100 : 0)
+                if (!Number.isFinite(percentChange) || percentChange === 0) return null
+
+                const displayName = item.assetType === "crypto" || item.cryptoId
+                    ? (item.assetName || symbol)
+                    : (scripNamesMap[symbol] || "")
+
+                return {
+                    id: item.id,
+                    symbol,
+                    name: displayName,
+                    percentChange,
+                    units: safeUnits,
+                }
+            })
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+        const gainers = rows
+            .filter((row) => row.percentChange > 0)
+            .sort((a, b) => b.percentChange - a.percentChange)
+            .slice(0, 5)
+
+        const losers = rows
+            .filter((row) => row.percentChange < 0)
+            .sort((a, b) => a.percentChange - b.percentChange)
+            .slice(0, 5)
+
+        return { gainers, losers }
+    }, [activePortfolioItems, scripNamesMap])
+
     const portfolioSummaryById = useMemo(() => {
-        const summaries = new Map<string, { investment: number; current: number; count: number }>()
-        portfolios.forEach((p) => summaries.set(p.id, { investment: 0, current: 0, count: 0 }))
+        const summaries = new Map<string, { investment: number; current: number; count: number; todayChange: number }>()
+        portfolios.forEach((p) => summaries.set(p.id, { investment: 0, current: 0, count: 0, todayChange: 0 }))
 
         portfolio.forEach((item) => {
-            const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0 }
+            const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0, todayChange: 0 }
+            const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0)
+            const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : currentPrice
+            const itemTodayChange = item.units * (currentPrice - previousClose)
+
             summaries.set(item.portfolioId, {
-                investment: prev.investment + item.units * item.buyPrice,
-                current: prev.current + item.units * (item.currentPrice ?? item.buyPrice),
+                investment: prev.investment + item.units * (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0),
+                current: prev.current + item.units * currentPrice,
                 count: prev.count + 1,
+                todayChange: prev.todayChange + itemTodayChange,
             })
         })
 
@@ -793,8 +868,20 @@ export function PortfolioList() {
             (sum, p) => sum + (portfolioSummaryById.get(p.id)?.current || 0),
             0,
         )
+        const totalTodayChange = portfolios.reduce(
+            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.todayChange || 0),
+            0,
+        )
         const totalPl = totalCurrent - totalInvest
         const totalPlPerc = totalInvest > 0 ? (totalPl / totalInvest) * 100 : 0
+        const previousTotalValue = totalCurrent - totalTodayChange
+        const totalTodayChangePerc = previousTotalValue > 0 ? (totalTodayChange / previousTotalValue) * 100 : 0
+
+        // Calculate diversification
+        const uniqueSectors = new Set(portfolio.map(p => p.sector || "Others")).size
+        const uniqueStocks = new Set(portfolio.map(p => p.symbol)).size
+        const diversificationLabel = uniqueStocks > 15 ? "High" : uniqueStocks > 7 ? "Moderate" : "Low"
+        const diversificationColor = uniqueStocks > 15 ? "text-success" : uniqueStocks > 7 ? "text-info" : "text-amber-500"
 
         return (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -819,12 +906,36 @@ export function PortfolioList() {
                 </Card>
 
                 <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
-                    <CardHeader className="pb-2 px-3 sm:px-6">
-                        <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Portfolios</CardDescription>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">{portfolios.length}</CardTitle>
+                    <CardHeader className="pb-1 px-3 sm:px-6">
+                        <div className="flex items-center justify-between mb-1">
+                            <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Today's Move</CardDescription>
+                            <div className={cn(
+                                "p-1 sm:p-1.5 rounded-lg",
+                                totalTodayChange >= 0 ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                            )}>
+                                {totalTodayChange >= 0 ? <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                            </div>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <CardTitle className={cn(
+                                "text-xl sm:text-2xl font-black font-mono tracking-tight",
+                                totalTodayChange >= 0 ? "text-success" : "text-error"
+                            )}>
+                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString()}
+                            </CardTitle>
+                            <div className={cn(
+                                "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-tight",
+                                totalTodayChange >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                            )}>
+                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChangePerc.toFixed(1)}%
+                            </div>
+                        </div>
                     </CardHeader>
-                    <CardContent className="px-3 sm:px-6">
-                        <Badge variant="secondary" className="bg-primary/5 text-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wide">Active</Badge>
+                    <CardContent className="px-3 sm:px-6 pb-4">
+                        <div className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-widest ml-1 mt-1">
+                            <span>Across:</span>
+                            <span className="text-primary font-black">{portfolios.length} Portfolios</span>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -841,15 +952,20 @@ export function PortfolioList() {
                 <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Diversification</CardDescription>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">High</CardTitle>
+                        <CardTitle className={cn("text-xl sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
-                        <div className="flex -space-x-2">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-background bg-primary/20 flex items-center justify-center text-[8px] font-black text-primary">
-                                    {i}
-                                </div>
-                            ))}
+                        <div className="flex items-center gap-2">
+                            <div className="flex -space-x-2">
+                                {[...Array(Math.min(uniqueSectors, 4))].map((_, i) => (
+                                    <div key={i} className="w-6 h-6 rounded-full border-2 border-background bg-primary/10 flex items-center justify-center">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
+                                    </div>
+                                ))}
+                            </div>
+                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
+                                {uniqueSectors} Sectors
+                            </span>
                         </div>
                     </CardContent>
                 </Card>
@@ -858,10 +974,12 @@ export function PortfolioList() {
     }
 
     const renderPortfolioCard = (p: Portfolio) => {
-        const summary = portfolioSummaryById.get(p.id) || { investment: 0, current: 0, count: 0 };
+        const summary = portfolioSummaryById.get(p.id) || { investment: 0, current: 0, count: 0, todayChange: 0 };
         const profitLoss = summary.current - summary.investment;
         const profitPerc = summary.investment > 0 ? (profitLoss / summary.investment) * 100 : 0;
         const isProfit = profitLoss >= 0;
+        const previousValue = summary.current - summary.todayChange;
+        const todayPerc = previousValue > 0 ? (summary.todayChange / previousValue) * 100 : 0;
 
         return (
             <Card
@@ -903,12 +1021,12 @@ export function PortfolioList() {
                             <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString()}</span>
                         </div>
                         <div className="flex flex-col gap-0.5 items-end">
-                            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">Return</span>
+                            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">today move</span>
                             <span className={cn(
-                                "text-base sm:text-lg font-black font-mono",
-                                isProfit ? "text-success" : "text-error"
+                                "text-sm sm:text-base font-black font-mono leading-tight",
+                                summary.todayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {isProfit ? "+" : ""}{profitPerc.toFixed(1)}%
+                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString()}
                             </span>
                         </div>
                     </div>
@@ -1659,13 +1777,23 @@ export function PortfolioList() {
                         <div className="flex items-center justify-between font-black">
                             <div className="min-w-0 flex-1">
                                 <CardTitle className="text-base sm:text-lg font-black flex items-center gap-2">
-                                    <PieChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                                    <span className="truncate">{chartView === "sector" ? "Sector Allocation" : "Stock Allocation"}</span>
+                                    {chartMode === "allocation" ? (
+                                        <PieChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                                    ) : (
+                                        <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                                    )}
+                                    <span className="truncate">
+                                        {chartMode === "allocation"
+                                            ? (chartView === "sector" ? "Sector Allocation" : "Stock Allocation")
+                                            : "Top Movers"}
+                                    </span>
                                 </CardTitle>
                                 <CardDescription className="text-xs font-medium hidden sm:block">
-                                    {chartView === "sector"
-                                        ? "Portfolio distribution by industry sector"
-                                        : "Portfolio weighting by individual scrip"}
+                                    {chartMode === "allocation"
+                                        ? (chartView === "sector"
+                                            ? "Portfolio distribution by industry sector"
+                                            : "Portfolio weighting by individual scrip")
+                                        : "Best and worst performers in your portfolio today"}
                                 </CardDescription>
                             </div>
                             <div className="flex items-center gap-1 sm:gap-2">
@@ -1681,22 +1809,64 @@ export function PortfolioList() {
                                 </Button>
                                 <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
                                     <Button
-                                        variant={chartView === "sector" ? "secondary" : "ghost"}
+                                        variant={chartMode === "allocation" ? "secondary" : "ghost"}
                                         size="sm"
-                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
-                                        onClick={() => setChartView("sector")}
+                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "allocation" && "bg-background shadow-sm")}
+                                        onClick={() => setChartMode("allocation")}
                                     >
-                                        Sectors
+                                        Allocation
                                     </Button>
                                     <Button
-                                        variant={chartView === "scrip" ? "secondary" : "ghost"}
+                                        variant={chartMode === "movers" ? "secondary" : "ghost"}
                                         size="sm"
-                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
-                                        onClick={() => setChartView("scrip")}
+                                        className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "movers" && "bg-background shadow-sm")}
+                                        onClick={() => setChartMode("movers")}
                                     >
-                                        Stocks
+                                        Movers
                                     </Button>
                                 </div>
+                                {chartMode === "allocation" && (
+                                    <div className="flex flex-col items-center gap-1">
+                                        <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Button
+                                                variant={chartView === "sector" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
+                                                onClick={() => setChartView("sector")}
+                                            >
+                                                Sectors
+                                            </Button>
+                                            <Button
+                                                variant={chartView === "scrip" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
+                                                onClick={() => setChartView("scrip")}
+                                            >
+                                                Stocks
+                                            </Button>
+                                        </div>
+                                        <div className="hidden sm:flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-muted/50 self-center w-fit">
+                                            <Button
+                                                variant={chartMetric === "value" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "value" && "bg-background shadow-sm")}
+                                                onClick={() => setChartMetric("value")}
+                                                title="Allocation by value"
+                                            >
+                                                Value
+                                            </Button>
+                                            <Button
+                                                variant={chartMetric === "units" ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "units" && "bg-background shadow-sm")}
+                                                onClick={() => setChartMetric("units")}
+                                                title="Allocation by units"
+                                            >
+                                                Units
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </CardHeader>
@@ -1710,11 +1880,17 @@ export function PortfolioList() {
                             "lg:hidden absolute inset-0 flex flex-col items-center justify-center bg-card/50 backdrop-blur-sm transition-opacity cursor-pointer",
                             isChartExpanded ? "opacity-0 pointer-events-none" : "opacity-100"
                         )} onClick={() => setIsChartExpanded(true)}>
-                            <PieChartIcon className="w-8 h-8 text-primary/40 mb-2" />
-                            <span className="text-xs font-bold text-muted-foreground">Tap to view chart</span>
+                            {chartMode === "allocation" ? (
+                                <PieChartIcon className="w-8 h-8 text-primary/40 mb-2" />
+                            ) : (
+                                <TrendingUp className="w-8 h-8 text-primary/40 mb-2" />
+                            )}
+                            <span className="text-xs font-bold text-muted-foreground">
+                                Tap to view {chartMode === "allocation" ? "chart" : "movers"}
+                            </span>
                         </div>
                         {activePortfolioItems.length > 0 ? (
-                            <>
+                            chartMode === "allocation" ? (
                                 <div className="flex h-full items-center justify-center relative">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
@@ -1725,7 +1901,7 @@ export function PortfolioList() {
                                                 innerRadius={75}
                                                 outerRadius={105}
                                                 paddingAngle={4}
-                                                dataKey="value"
+                                                dataKey={chartMetric}
                                                 stroke="none"
                                                 animationBegin={0}
                                                 animationDuration={1000}
@@ -1754,8 +1930,24 @@ export function PortfolioList() {
                                                                         <span className="text-[10px] font-black text-right">{data.percentage.toFixed(2)}%</span>
                                                                     </div>
                                                                     <div className="flex justify-between gap-8">
-                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Value</span>
-                                                                        <span className="text-[10px] font-black text-right">रु{data.value.toLocaleString()}</span>
+                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                                            {chartMetric === "units" ? "Units" : "Value"}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-black text-right">
+                                                                            {chartMetric === "units"
+                                                                                ? formatUnits(data.units || 0)
+                                                                                : `रु${data.value.toLocaleString()}`}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex justify-between gap-8">
+                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                                            {chartMetric === "units" ? "Value" : "Units"}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-black text-right">
+                                                                            {chartMetric === "units"
+                                                                                ? `रु${data.value.toLocaleString()}`
+                                                                                : formatUnits(data.units || 0)}
+                                                                        </span>
                                                                     </div>
                                                                     {chartView === "sector" && (
                                                                         <div className="flex justify-between gap-8">
@@ -1790,7 +1982,62 @@ export function PortfolioList() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                            </>
+                            ) : (
+                                <div className="h-full w-full p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
+                                            <TrendingUp className="w-3.5 h-3.5 text-success" />
+                                        </div>
+                                        {portfolioMovers.gainers.length > 0 ? (
+                                            portfolioMovers.gainers.map((row) => (
+                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-success">
+                                                            +{row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">No gainers found.</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
+                                            <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                        </div>
+                                        {portfolioMovers.losers.length > 0 ? (
+                                            portfolioMovers.losers.map((row) => (
+                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-error">
+                                                            {row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">No losers found.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />
@@ -2107,7 +2354,7 @@ export function PortfolioList() {
                                                         "w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border shadow-sm shrink-0",
                                                         tx.type === 'buy' ? "bg-blue-500/10 text-blue-600 border-blue-500/10" :
                                                             tx.type === 'sell' ? "bg-orange-500/10 text-orange-600 border-orange-500/10" :
-                                                            tx.type === 'bonus' || tx.type === 'gift' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
+                                                                tx.type === 'bonus' || tx.type === 'gift' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
                                                                     tx.type === 'ipo' ? "bg-green-500/10 text-green-600 border-green-500/10" :
                                                                         "bg-muted text-foreground border-muted-foreground/20"
                                                     )}>

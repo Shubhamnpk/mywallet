@@ -30,10 +30,12 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Viewer, Worker } from "@react-pdf-viewer/core"
+import { zoomPlugin } from "@react-pdf-viewer/zoom"
 
 type ProposedDividendRecord = {
     id: number
@@ -46,6 +48,18 @@ type ProposedDividendRecord = {
     scraped_at?: string
 }
 
+type BtcNewsItem = {
+    id: string
+    title: string
+    link: string
+    publishedAt?: string
+    summary?: string
+    author?: string
+    categories?: string[]
+}
+
+const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
+
 interface StockDetailModalProps {
     item: PortfolioItem | null
     open: boolean
@@ -53,11 +67,24 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalProps) {
-    const { scripNamesMap, shareTransactions, noticesBundle, disclosures } = useWalletData()
+    const { scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
     const [expandedNoticeId, setExpandedNoticeId] = useState<number | null>(null)
+    const [showCashInfo, setShowCashInfo] = useState(false)
+    const [showBonusInfo, setShowBonusInfo] = useState(false)
+    const [selectedDividendKey, setSelectedDividendKey] = useState<string | null>(null)
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+    const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
+    const [isPdfOpen, setIsPdfOpen] = useState(false)
+    const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
+    const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
+    const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
+    const zoomPluginInstance = zoomPlugin()
+    const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
+
+    const isPdfLink = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
     useEffect(() => {
         if (!open || typeof document === "undefined") return
@@ -74,7 +101,25 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
         }
     }, [open])
 
+    useEffect(() => {
+        if (!open) {
+            setShowCashInfo(false)
+            setShowBonusInfo(false)
+            setSelectedDividendKey(null)
+            setIsPdfOpen(false)
+            setPdfUrl(null)
+            setPdfSourceUrl(null)
+        }
+    }, [open])
+
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
+    const isBitcoin = Boolean(
+        isCrypto &&
+        item &&
+        (item.symbol?.trim().toUpperCase() === "BTC" ||
+            (item.cryptoId || "").toLowerCase() === "bitcoin" ||
+            (item.assetName || "").toLowerCase().includes("bitcoin"))
+    )
     const currencySymbol = isCrypto ? "$" : "रु"
     const safeBuyPrice = Number.isFinite(item?.buyPrice) ? (item?.buyPrice ?? 0) : 0
     const safeCurrent = Number.isFinite(item?.currentPrice) ? (item?.currentPrice ?? safeBuyPrice) : safeBuyPrice
@@ -170,6 +215,40 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
         setExpandedNoticeId((prev) => (prev === noticeId ? null : noticeId))
     }
 
+    const handleOpenDocument = (url: string) => {
+        if (isPdfLink(url)) {
+            setPdfSourceUrl(url)
+            setPdfUrl(`/api/proxy/pdf?url=${encodeURIComponent(url)}`)
+            setIsPdfOpen(true)
+            return
+        }
+        window.open(url, "_blank", "noopener,noreferrer")
+    }
+
+    const loadBtcNews = useCallback(async () => {
+        if (btcNews.length > 0 || isBtcNewsLoading) return
+        setIsBtcNewsLoading(true)
+        setBtcNewsError(null)
+        try {
+            const response = await fetch("/api/crypto/btc-news")
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error || "Failed to fetch Bitcoin news")
+            }
+            const items = Array.isArray(data?.items) ? data.items : []
+            setBtcNews(items as BtcNewsItem[])
+        } catch (error: any) {
+            setBtcNewsError(error?.message || "Could not load Bitcoin news right now.")
+        } finally {
+            setIsBtcNewsLoading(false)
+        }
+    }, [btcNews.length, isBtcNewsLoading])
+
+    useEffect(() => {
+        if (!open || !isBitcoin) return
+        loadBtcNews()
+    }, [open, isBitcoin, loadBtcNews])
+
     const loadDividendHistory = async () => {
         if (dividendHistory || isDividendHistoryLoading) return
         setIsDividendHistoryLoading(true)
@@ -202,6 +281,9 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
         return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
     }
 
+    const getDividendKey = (record: ProposedDividendRecord) =>
+        `${record.id}-${record.fiscal_year || ""}-${record.announcement_date || ""}`
+
     const matchedDividendHistory = useMemo(() => {
         return (dividendHistory || [])
             .filter((record) => {
@@ -218,10 +300,20 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     }, [dividendHistory, symbol, normalizedHoldingName])
 
     const latestDividend = matchedDividendHistory[0]
-    const latestCashPercent = parsePositiveNumber(latestDividend?.cash_dividend)
-    const latestBonusPercent = parsePositiveNumber(latestDividend?.bonus_share)
+    const selectedDividend = useMemo(() => {
+        if (!selectedDividendKey) return undefined
+        return matchedDividendHistory.find((record) => getDividendKey(record) === selectedDividendKey)
+    }, [matchedDividendHistory, selectedDividendKey])
+    const activeDividend = selectedDividend || latestDividend
+    const isUsingSelectedDividend = Boolean(selectedDividend)
+    const latestCashPercent = parsePositiveNumber(activeDividend?.cash_dividend)
+    const latestBonusPercent = parsePositiveNumber(activeDividend?.bonus_share)
     const heldUnits = item?.units ?? 0
-    const estimatedCashAmount = latestCashPercent * heldUnits
+    const faceValue = !isCrypto
+        ? (item?.sector === "Mutual Fund" ? 10 : getFaceValue(symbol))
+        : 0
+    const cashPerUnit = (latestCashPercent / 100) * faceValue
+    const estimatedCashAmount = cashPerUnit * heldUnits
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
 
     const matchedTransactions = useMemo(() => {
@@ -506,18 +598,54 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                 <>
                                                     <div className="grid grid-cols-2 gap-3">
                                                         <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/5">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Latest Cash</p>
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-green-700">
+                                                                    {isUsingSelectedDividend ? "Selected Cash" : "Latest Cash"}
+                                                                </p>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-5 w-5 rounded-full text-green-700/80 hover:text-green-700 hover:bg-green-500/10"
+                                                                    onClick={() => setShowCashInfo((prev) => !prev)}
+                                                                    aria-label="Show cash dividend info"
+                                                                >
+                                                                    <Info className="w-3 h-3" />
+                                                                </Button>
+                                                            </div>
                                                             <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
                                                             <p className="text-[10px] text-green-700/80 mt-0.5">
-                                                                Est. NPR {estimatedCashAmount.toFixed(2)}
+                                                                Est. {currencySymbol} {estimatedCashAmount.toFixed(2)}
                                                             </p>
+                                                            {showCashInfo && (
+                                                                <p className="text-[9px] text-green-700/60 mt-0.5">
+                                                                    Face value {currencySymbol} {faceValue.toFixed(0)} • {cashPerUnit.toFixed(2)} per unit
+                                                                </p>
+                                                            )}
                                                         </div>
                                                         <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Latest Bonus</p>
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">
+                                                                    {isUsingSelectedDividend ? "Selected Bonus" : "Latest Bonus"}
+                                                                </p>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-5 w-5 rounded-full text-blue-700/80 hover:text-blue-700 hover:bg-blue-500/10"
+                                                                    onClick={() => setShowBonusInfo((prev) => !prev)}
+                                                                    aria-label="Show bonus dividend info"
+                                                                >
+                                                                    <Info className="w-3 h-3" />
+                                                                </Button>
+                                                            </div>
                                                             <p className="text-sm font-black text-blue-700 mt-1">{latestBonusPercent.toFixed(2)}%</p>
                                                             <p className="text-[10px] text-blue-700/80 mt-0.5">
                                                                 Est. {estimatedBonusUnits.toFixed(2)} units
                                                             </p>
+                                                            {showBonusInfo && (
+                                                                <p className="text-[9px] text-blue-700/60 mt-0.5">
+                                                                    {latestBonusPercent.toFixed(2)}% • {(latestBonusPercent / 100).toFixed(4)} per unit
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -532,14 +660,41 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-muted/10">
-                                                                {matchedDividendHistory.slice(0, 15).map((record) => (
-                                                                    <tr key={`${record.id}-${record.fiscal_year}`} className="hover:bg-muted/5">
-                                                                        <td className="px-3 py-2 text-[11px] font-semibold">{record.fiscal_year || "N/A"}</td>
-                                                                        <td className="px-3 py-2 text-[11px] font-semibold text-green-700">{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
-                                                                        <td className="px-3 py-2 text-[11px] font-semibold text-blue-700">{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
-                                                                        <td className="px-3 py-2 text-[11px] text-muted-foreground">{record.announcement_date || "N/A"}</td>
+                                                                {matchedDividendHistory.slice(0, 15).map((record) => {
+                                                                    const recordKey = getDividendKey(record)
+                                                                    const isSelected = recordKey === selectedDividendKey
+                                                                    const cellBaseClass = "px-3 py-2 text-[11px] font-semibold transition-colors"
+                                                                    const cellHoverClass = "group-hover:bg-muted/10 group-hover:text-foreground"
+                                                                    const selectedCellClass = isSelected ? "bg-muted/20" : ""
+                                                                    const firstCellClass = cn(
+                                                                        cellBaseClass,
+                                                                        cellHoverClass,
+                                                                        selectedCellClass,
+                                                                        isSelected && "border-l-2 border-primary"
+                                                                    )
+                                                                    const cellClass = cn(cellBaseClass, cellHoverClass, selectedCellClass)
+                                                                    const dateCellClass = cn(
+                                                                        "px-3 py-2 text-[11px] text-muted-foreground transition-colors",
+                                                                        "group-hover:bg-muted/10 group-hover:text-foreground",
+                                                                        selectedCellClass
+                                                                    )
+                                                                    return (
+                                                                    <tr
+                                                                        key={recordKey}
+                                                                        className={cn(
+                                                                            "group cursor-pointer"
+                                                                        )}
+                                                                        onClick={() =>
+                                                                            setSelectedDividendKey((prev) => (prev === recordKey ? null : recordKey))
+                                                                        }
+                                                                        aria-selected={isSelected}
+                                                                    >
+                                                                        <td className={firstCellClass}>{record.fiscal_year || "N/A"}</td>
+                                                                        <td className={cn(cellClass, "text-green-700")}>{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
+                                                                        <td className={cn(cellClass, "text-blue-700")}>{parsePositiveNumber(record.bonus_share).toFixed(2)}%</td>
+                                                                        <td className={dateCellClass}>{record.announcement_date || "N/A"}</td>
                                                                     </tr>
-                                                                ))}
+                                                                )})}
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -549,7 +704,48 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                     )}
 
                                     <TabsContent value="notices" className="m-0 space-y-3">
-                                        {matchedNotices.length > 0 ? (
+                                        {isBitcoin ? (
+                                            isBtcNewsLoading ? (
+                                                <p className="text-xs text-muted-foreground">Loading Bitcoin news...</p>
+                                            ) : btcNewsError ? (
+                                                <p className="text-xs text-destructive">{btcNewsError}</p>
+                                            ) : btcNews.length > 0 ? (
+                                                btcNews.map((news) => (
+                                                    <div key={news.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
+                                                                {news.title}
+                                                            </h4>
+                                                            <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
+                                                                {news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : "Recent"}
+                                                            </span>
+                                                        </div>
+                                                        {news.summary ? (
+                                                            <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                                                {news.summary}
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs text-muted-foreground">No summary available for this article.</p>
+                                                        )}
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+                                                                {news.author ? `By ${news.author}` : "Bitcoin Magazine"}
+                                                            </span>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent"
+                                                                onClick={() => window.open(news.link, "_blank", "noopener,noreferrer")}
+                                                            >
+                                                                Read Article
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-xs text-center text-muted-foreground py-8">No Bitcoin news found.</p>
+                                            )
+                                        ) : matchedNotices.length > 0 ? (
                                             matchedNotices.map((notice) => (
                                                 <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                     <div className="flex justify-between items-start gap-2">
@@ -587,7 +783,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                                                 variant="outline"
                                                                                 size="sm"
                                                                                 className="justify-start text-xs"
-                                                                                onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}
+                                                                                onClick={() => handleOpenDocument(doc.url)}
                                                                             >
                                                                                 <ExternalLink className="w-3 h-3 mr-2" />
                                                                                 {doc.label}
@@ -629,6 +825,57 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                     </Tabs>
                     </DialogContent>
                 )}
+            </Dialog>
+            <Dialog
+                open={isPdfOpen}
+                onOpenChange={(next) => {
+                    setIsPdfOpen(next)
+                    if (!next) {
+                        setPdfUrl(null)
+                        setPdfSourceUrl(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col">
+                    <DialogHeader className="px-5 pt-5 pb-3 border-b border-muted/20">
+                        <div className="flex items-center justify-between gap-3">
+                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
+                                Document Preview
+                            </DialogTitle>
+                            {(pdfSourceUrl || pdfUrl) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-[10px] font-black uppercase tracking-wider"
+                                    onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                >
+                                    <ExternalLink className="w-3 h-3 mr-2" />
+                                    Open in New Tab
+                                </Button>
+                            )}
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 min-h-0 bg-muted/10 relative">
+                        {pdfUrl ? (
+                            <>
+                                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-muted/50 bg-card/90 backdrop-blur px-1 py-1 shadow-lg
+                                    [&_.rpv-core__minimal-button]:text-foreground [&_.rpv-core__minimal-button]:h-7 [&_.rpv-core__minimal-button]:w-7
+                                    [&_.rpv-core__minimal-button:hover]:bg-muted/40 [&_.rpv-zoom__popover-target]:text-foreground">
+                                    <ZoomOutButton />
+                                    <ZoomPopover />
+                                    <ZoomInButton />
+                                </div>
+                                <Worker workerUrl={PDF_WORKER_URL}>
+                                    <Viewer fileUrl={pdfUrl} plugins={[zoomPluginInstance]} />
+                                </Worker>
+                            </>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                                No document selected.
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
             </Dialog>
         </>
     )

@@ -18,7 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import type { Transaction, ShareTransaction } from "@/types/wallet"
 
 export function CombinedBalanceCard() {
-  const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange, shareTransactions } =
+  const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange } =
     useWalletData()
 
   const [showBalance, setShowBalance] = useState(true)
@@ -68,27 +68,9 @@ export function CombinedBalanceCard() {
       },
       { ...initialAcc },
     )
-    const finalResult = (shareTransactions || []).reduce((acc: typeof initialAcc, tx: ShareTransaction) => {
-      const txAmount = (tx.quantity || 0) * (tx.price || 0)
-      if (typeof txAmount !== "number" || txAmount < 0) return acc
+    return txResult
+  }, [transactions])
 
-      const txDate = new Date(tx.date)
-      if (Number.isNaN(txDate.getTime())) return acc
-
-      const isCurrentMonth = txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear
-      if (tx.type === "buy" || tx.type === "ipo") {
-        acc.allTimeExpenses += txAmount
-        if (isCurrentMonth) acc.monthlyExpenses += txAmount
-      } else if (tx.type === "sell") {
-        acc.allTimeIncome += txAmount
-        if (isCurrentMonth) acc.monthlyIncome += txAmount
-      }
-
-      return acc
-    }, txResult)
-
-    return finalResult
-  }, [transactions, shareTransactions])
   const totalIncome = incomeExpenseRange === "monthly" ? monthlyIncome : allTimeIncome
   const totalExpenses = incomeExpenseRange === "monthly" ? monthlyExpenses : allTimeExpenses
 

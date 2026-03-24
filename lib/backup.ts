@@ -9,6 +9,7 @@ export interface BackupEnvelope {
 }
 
 const BACKUP_VERSION = "1.0"
+export const DEFAULT_BACKUP_PIN = "mywallet-default-backup-key"
 
 /**
  * Create an encrypted backup for the provided data using a PIN.

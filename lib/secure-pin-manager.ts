@@ -3,6 +3,7 @@
 
 import { SecureWallet } from "./security"
 import { SecureKeyManager } from "./key-manager"
+import { SecurityLogger } from "./security-logger"
 
 export interface PinSecurityConfig {
   minLength: number
@@ -119,6 +120,15 @@ export class SecurePinManager {
       // Reset attempt counters
       this.resetAttempts()
 
+      // If PIN changes, biometric wrapping must be re-enrolled.
+      if (localStorage.getItem('wallet_biometric_enabled') === 'true') {
+        localStorage.removeItem('wallet_biometric_credential_id')
+        localStorage.removeItem('wallet_biometric_enabled')
+        localStorage.removeItem('wallet_biometric_user_id')
+        localStorage.removeItem('wallet_biometric_pin_wrapped')
+        localStorage.removeItem('wallet_biometric_prf_salt')
+      }
+
       return true
     } catch (error) {
       return false
@@ -220,6 +230,7 @@ export class SecurePinManager {
       if (isValid) {
         // Success - reset attempts and security level
         this.resetAttempts()
+        SecurityLogger.logEvent({ type: 'pin_success' })
         return {
           success: true,
           attemptsRemaining: this.PROGRESSIVE_LEVELS[0].attempts,
@@ -229,6 +240,7 @@ export class SecurePinManager {
         // Failed - increment attempts
         const newAttempts = attempts + 1
         this.setAttempts(newAttempts)
+        SecurityLogger.logEvent({ type: 'pin_failed', details: `Attempt ${newAttempts}` })
 
         if (newAttempts >= levelConfig.attempts) {
           // Escalate security level
@@ -236,6 +248,7 @@ export class SecurePinManager {
           this.setSecurityLevel(newLevel)
           const newLevelConfig = this.getCurrentLevelConfig(newLevel)
           this.setProgressiveLockout(newLevelConfig.timeout)
+          SecurityLogger.logEvent({ type: 'lockout', details: `Level ${newLevel}` })
 
           return {
             success: false,
@@ -322,6 +335,7 @@ export class SecurePinManager {
       if (isValid) {
         // Success - reset attempts and security level
         this.resetEmergencyAttempts()
+        SecurityLogger.logEvent({ type: 'emergency_pin_used' })
         return {
           success: true,
           attemptsRemaining: 3, // Emergency always starts with 3 attempts
@@ -614,6 +628,8 @@ export class SecurePinManager {
     localStorage.removeItem('wallet_biometric_credential_id')
     localStorage.removeItem('wallet_biometric_enabled')
     localStorage.removeItem('wallet_biometric_user_id')
+    localStorage.removeItem('wallet_biometric_pin_wrapped')
+    localStorage.removeItem('wallet_biometric_prf_salt')
 
     // Clear session data
     localStorage.removeItem('wallet_session')
@@ -621,6 +637,7 @@ export class SecurePinManager {
     // Clear authentication timestamp
     localStorage.removeItem('wallet_last_auth')
     SecureKeyManager.clearSessionPin()
+    SecurityLogger.logEvent({ type: 'security_reset' })
 
   }
 

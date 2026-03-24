@@ -18,6 +18,7 @@ import {
   Trash2
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
+import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import type { UserProfile } from "@/types/wallet"
 
 interface BillReminder {
@@ -51,15 +52,27 @@ export function BillReminderSystem({ userProfile }: BillReminderSystemProps) {
 
   // Load bills from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('wallet_bill_reminders')
-    if (saved) {
-      setBills(JSON.parse(saved))
+    const loadBills = async () => {
+      try {
+        const stored = await loadFromLocalStorage(['wallet_bill_reminders'])
+        const saved = stored.wallet_bill_reminders
+        if (Array.isArray(saved)) {
+          setBills(saved)
+        }
+      } catch {
+      }
     }
+    void loadBills()
   }, [])
 
   // Save bills to localStorage
   useEffect(() => {
-    localStorage.setItem('wallet_bill_reminders', JSON.stringify(bills))
+    void (async () => {
+      try {
+        await saveToLocalStorage('wallet_bill_reminders', bills, true)
+      } catch {
+      }
+    })()
   }, [bills])
 
   const upcomingBills = useMemo(() => {

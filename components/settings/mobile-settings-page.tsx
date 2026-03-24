@@ -14,6 +14,7 @@ import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { MeroShareSettings } from "./mero-share-settings"
 import { NotificationSettings } from "./notification-settings"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -80,12 +81,17 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
   }
 
   const isSecurityEnabled = () => {
-    return false
+    return !!userProfile?.securityEnabled && (!!userProfile?.pin || SecurePinManager.hasPin())
   }
 
   const isNotificationEnabled = () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return true
-    return Notification.permission === "granted"
+    if (typeof window === "undefined") return true
+    
+    // Check both browser permission and app settings
+    const browserPerm = "Notification" in window ? Notification.permission === "granted" : true
+    const appSettings = userProfile?.notificationSettings?.enabled ?? true
+    
+    return browserPerm && appSettings
   }
 
   const suggestions: Suggestion[] = [

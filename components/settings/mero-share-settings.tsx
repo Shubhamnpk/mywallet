@@ -694,11 +694,16 @@ export function MeroShareSettings() {
                                             <SelectValue placeholder={testMode === 'apply' ? (openIpos.length > 0 ? "Select an open IPO" : "No open IPOs found") : "Select a closed IPO"} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {(testMode === 'apply' ? openIpos : upcomingIPOs.filter(i => i.status === 'closed')).map((ipo) => (
-                                                <SelectItem key={ipo.company} value={ipo.company}>
-                                                    {ipo.company}
-                                                </SelectItem>
-                                            ))}
+                                            {(testMode === 'apply' ? openIpos : upcomingIPOs.filter(i => i.status === 'closed')).map((ipo, index) => {
+                                                const ipoKey = [ipo.company, ipo.url, ipo.date_range, ipo.scraped_at, String(index)]
+                                                    .filter(Boolean)
+                                                    .join("|")
+                                                return (
+                                                    <SelectItem key={ipoKey} value={ipo.company}>
+                                                        {ipo.company}
+                                                    </SelectItem>
+                                                )
+                                            })}
                                         </SelectContent>
                                     </Select>
                                 )}

@@ -9,61 +9,6 @@ import { SecureKeyManager } from "@/lib/key-manager"
 import { SessionManager } from "@/lib/session-manager"
 import { toast } from "@/hooks/use-toast"
 
-// Sound generation utilities
-const generateTone = (frequency: number, duration: number, type: OscillatorType = "sine") => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-  const oscillator = audioContext.createOscillator()
-  const gainNode = audioContext.createGain()
-
-  oscillator.connect(gainNode)
-  gainNode.connect(audioContext.destination)
-
-  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-  oscillator.type = type
-
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-
-  oscillator.start(audioContext.currentTime)
-  oscillator.stop(audioContext.currentTime + duration)
-}
-
-const PRESET_SOUNDS = {
-  "gentle-chime": { name: "Gentle Chime", generator: () => generateTone(800, 0.3) },
-  "soft-click": { name: "Soft Click", generator: () => generateTone(1000, 0.1, "square") },
-  "success-tone": {
-    name: "Success Tone",
-    generator: () => {
-      generateTone(523, 0.2)
-      setTimeout(() => generateTone(659, 0.2), 100)
-    },
-  },
-  notification: { name: "Notification", generator: () => generateTone(440, 0.4) },
-  none: { name: "No Sound", generator: () => {} },
-}
-
-const playAuthSuccessSound = () => {
-  const soundEffectsEnabled = localStorage.getItem("wallet_sound_effects") !== "false"
-  if (!soundEffectsEnabled) return
-
-  const pinSuccessEnabled = localStorage.getItem("wallet_pin_success_enabled")
-  const enabled = pinSuccessEnabled === null ? true : pinSuccessEnabled === "true"
-  if (!enabled) return
-
-  const pinSuccessSelectedSound = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
-  const pinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
-
-  if (pinSuccessSelectedSound === "custom" && pinSuccessCustomUrl) {
-    const audio = new Audio(pinSuccessCustomUrl)
-    audio.play().catch(console.error)
-  } else if (pinSuccessSelectedSound !== "none") {
-    const soundConfig = PRESET_SOUNDS[pinSuccessSelectedSound as keyof typeof PRESET_SOUNDS]
-    if (soundConfig?.generator) {
-      soundConfig.generator()
-    }
-  }
-}
-
 export interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
@@ -264,7 +209,7 @@ export function useAuthentication(): AuthState & AuthActions {
     setAuthState(prev => ({ ...prev, isLoading: true }))
 
     try {
-      const result = await SecurePinManager.validateEmergencyPin(pin)
+       const result = await SecurePinManager.validateEmergencyPin(pin)
 
       if (result.success) {
         // Get master key after successful validation
@@ -341,6 +286,29 @@ export function useAuthentication(): AuthState & AuthActions {
 
         // Load master key for biometric authentication
         const masterKey = await SecureKeyManager.getMasterKey("")
+        if (!masterKey) {
+          const status = SecurePinManager.getAuthStatus()
+          setAuthState(prev => ({
+            ...prev,
+            isLoading: false,
+            isLocked: status.isLocked,
+            attemptsRemaining: status.attemptsRemaining,
+            lockoutTimeRemaining: status.lockoutTimeRemaining,
+          }))
+
+          toast({
+            title: "Biometric Unlock Unavailable",
+            description: "Please unlock once with your PIN to enable biometric access.",
+            variant: "destructive",
+          })
+
+          return {
+            success: false,
+            attemptsRemaining: status.attemptsRemaining,
+            isLocked: status.isLocked,
+            lockoutTimeRemaining: status.lockoutTimeRemaining,
+          }
+        }
 
         setAuthState({
           isAuthenticated: true,
@@ -373,6 +341,10 @@ export function useAuthentication(): AuthState & AuthActions {
       const result = await SecurePinManager.validatePin(pin)
 
 	      if (result.success) {
+          if (!SecureKeyManager.hasMasterKey()) {
+            await SecureKeyManager.createMasterKey(pin)
+            await SecureKeyManager.migrateFromDefaultKeyToMasterKey(pin)
+          }
 	        // Get master key after successful validation
 	        const masterKey = await SecureKeyManager.getMasterKey(pin)
 	        SecureKeyManager.cacheSessionPin(pin)

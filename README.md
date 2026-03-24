@@ -153,7 +153,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Coinlore API](https://www.coinlore.com/cryptocurrency-data-api) for free cryptocurrency market data
 - [Frankfurter API](https://frankfurter.dev/) for currency conversion rates
 - [Open Exchange Rates API (open.er-api.com)](https://www.exchangerate-api.com/docs/free) as currency conversion fallback
-- [yonepsescaper](https://shubhamnpk.github.io/nepse-scaper/) for public market datasets used in the app
+- [yonepsescaper](https://shubhamnpk.github.io/yonepse/) for public market datasets used in the app
 ## 📞 Support
 
 If you have any questions or need help, please:

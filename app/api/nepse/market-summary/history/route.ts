@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-const URL = "https://shubhamnpk.github.io/nepse-scaper/data/market_summary_history.json"
+const URL = "https://shubhamnpk.github.io/yonepse/data/market_summary_history.json"
 
 export async function GET() {
   try {
