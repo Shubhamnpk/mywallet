@@ -130,30 +130,29 @@ export function PortfolioList() {
 
     // Auto-refresh data on mount and every 2 minutes
     useEffect(() => {
-        if (!activePortfolioId) return
-        const activeItems = portfolio.filter((p) => p.portfolioId === activePortfolioId)
-        const stockItems = activeItems.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
-        const cryptoItems = activeItems.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
+        if (portfolio.length === 0) return
+
+        const stockItems = portfolio.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
+        const cryptoItems = portfolio.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
         const shouldFetchStocks = isShareFeaturesEnabled && stockItems.length > 0
         const shouldFetchCrypto = cryptoItems.length > 0
 
         if (!shouldFetchStocks && !shouldFetchCrypto) return
 
-        const itemsToFetch = shouldFetchStocks
-            ? (shouldFetchCrypto ? [...stockItems, ...cryptoItems] : stockItems)
-            : cryptoItems
+        // Always fetch for all items to keep global stats (overview) consistent
+        const itemsToFetch = portfolio
 
         // Initial fetch
         fetchPortfolioPrices(itemsToFetch)
 
-        // Set interval for 2 minutes
+        // Set interval for 5 minutes
         const interval = setInterval(() => {
             if (typeof document !== "undefined" && document.hidden) return
             fetchPortfolioPrices(itemsToFetch)
-        }, 2 * 60 * 1000)
+        }, 3 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled, portfolioSymbols, activePortfolioId])
+    }, [isShareFeaturesEnabled, portfolioSymbols, viewMode])
 
     const enableShareFeatures = () => {
         updateUserProfile({
@@ -299,10 +298,13 @@ export function PortfolioList() {
     const handleRefresh = async () => {
         setIsRefreshing(true)
         try {
-            await fetchPortfolioPrices(undefined, true) // Force refresh bypasses cache
-            toast.success("Prices updated successfully")
+            // Recalculate units and cost basis from transactions
+            await recomputePortfolio()
+            // Fetch latest prices for all items
+            await fetchPortfolioPrices(undefined, true)
+            toast.success("Portfolio sync completed")
         } catch (error: any) {
-            toast.error(error.message || "Failed to update prices")
+            toast.error(error.message || "Failed to sync portfolio")
         } finally {
             setIsRefreshing(false)
         }
@@ -1143,13 +1145,28 @@ export function PortfolioList() {
                             <h2 className="text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent uppercase">My Portfolios</h2>
                             <p className="text-muted-foreground text-sm font-medium">Select a portfolio to view detailed analysis</p>
                         </div>
-                        <Button
-                            onClick={() => setIsCreatePortfolioOpen(true)}
-                            className="rounded-xl font-bold shadow-lg shadow-primary/20 px-6"
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Create New
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleRefresh}
+                                disabled={isRefreshing}
+                                title="Refresh Price & Sync Portfolio"
+                                className="rounded-xl h-10 w-10 border-primary/20 hover:bg-primary/5 shadow-md shadow-primary/5 bg-card/40 backdrop-blur-sm group"
+                            >
+                                <RefreshCcw className={cn(
+                                    "w-4 h-4 text-primary",
+                                    isRefreshing && "animate-spin"
+                                )} />
+                            </Button>
+                            <Button
+                                onClick={() => setIsCreatePortfolioOpen(true)}
+                                className="rounded-xl font-bold shadow-lg shadow-primary/20 px-6"
+                            >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Create New
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="mt-8">

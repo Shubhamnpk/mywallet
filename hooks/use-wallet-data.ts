@@ -1177,20 +1177,20 @@ export function useWalletData() {
     }
   }
 
-    const updateUserProfile = (updates: Partial<UserProfile>) => {
-      if (!userProfile) return
+  const updateUserProfile = (updates: Partial<UserProfile>) => {
+    if (!userProfile) return
 
-      const previousProfile = userProfile
-      const updatedProfile = {
-        ...userProfile,
+    const previousProfile = userProfile
+    const updatedProfile = {
+      ...userProfile,
       ...updates,
       notificationSettings: normalizeNotificationSettings({
         ...userProfile.notificationSettings,
         ...(updates.notificationSettings || {}),
       }),
-      }
-      setUserProfile(updatedProfile)
-      void (async () => {
+    }
+    setUserProfile(updatedProfile)
+    void (async () => {
       const result = await saveDataWithIntegrityDetailed("userProfile", updatedProfile)
       if (!result.success) {
         setUserProfile(previousProfile)
@@ -1208,8 +1208,8 @@ export function useWalletData() {
           })
         }
       }
-      })()
-    }
+    })()
+  }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
   const addDebtAccount = (debt: Omit<DebtAccount, "id">) => {
@@ -2181,7 +2181,7 @@ export function useWalletData() {
     if (targetPortfolio.length === 0) return
 
     try {
-      const CACHE_DURATION = 2 * 60 * 1000
+      const CACHE_DURATION = 3 * 60 * 1000
       const now = Date.now()
       const nowIso = new Date().toISOString()
       const isCryptoAsset = (item: PortfolioItem) => normalizeAssetType(item.assetType) === "crypto" || Boolean(item.cryptoId?.trim())
@@ -2297,645 +2297,686 @@ export function useWalletData() {
             assetType: "stock",
             sector: sector
           }
-        })
-
-        return { updatedPortfolio, symbolToSector, symbolToName }
-      }
-
-      if (isCacheValid && !forceRefresh && globalPortfolioCache) {
-        const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
-          globalPortfolioCache.stockPriceData,
-          globalPortfolioCache.sectorData,
-          globalPortfolioCache.cryptoPrices,
-          {},
-        )
-        const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
-
-        // Only update state if data actually changed (excluding timestamps)
-        const hasSubstantialChange = JSON.stringify(mergedPortfolio.map(({ lastUpdated, ...rest }) => rest)) !==
-          JSON.stringify(portfolio.map(({ lastUpdated, ...rest }) => rest))
-
-        if (hasSubstantialChange) {
-          setPortfolio(mergedPortfolio)
-          await saveDataWithIntegrity("portfolio", mergedPortfolio)
-        }
-        if (Object.keys(symbolToSector).length > 0) {
-          setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
-          setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
-        }
-        return mergedPortfolio
-      }
-
-      const stockItems = targetPortfolio.filter((item) => !isCryptoAsset(item))
-      const cryptoItems = targetPortfolio.filter((item) => isCryptoAsset(item))
-      const resolveNeeded = cryptoItems.filter((item) => !(item.cryptoId || "").trim())
-
-      const resolveMissingCryptoIds = async () => {
-        const MAX_CRYPTO_RESOLVE = 20
-        const symbols = Array.from(
-          new Set(
-            resolveNeeded
-              .map((item) => item.symbol.trim().toUpperCase())
-              .filter(Boolean)
+          const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+            globalPortfolioCache.stockPriceData,
+            globalPortfolioCache.sectorData,
+            globalPortfolioCache.cryptoPrices,
+            {},
           )
-        ).slice(0, MAX_CRYPTO_RESOLVE)
 
-        if (symbols.length === 0) return {}
+          if (isCacheValid && !forceRefresh && globalPortfolioCache) {
+            const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+              globalPortfolioCache.stockPriceData,
+              globalPortfolioCache.sectorData,
+              globalPortfolioCache.cryptoPrices,
+              {},
+            )
+            const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
 
-        const entries = await Promise.all(
-          symbols.map(async (symbol) => {
-            try {
-              const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
-              const payload = await response.json()
-              if (!response.ok) return null
-              const id = payload?.id ? String(payload.id) : ""
-              if (!id) return null
-              return [symbol, id] as const
-            } catch {
-              return null
+            // Only update state if data actually changed (excluding timestamps)
+            const hasSubstantialChange = JSON.stringify(mergedPortfolio.map(({ lastUpdated, ...rest }) => rest)) !==
+              JSON.stringify(portfolio.map(({ lastUpdated, ...rest }) => rest))
+
+            if (hasSubstantialChange) {
+              setPortfolio(mergedPortfolio)
+              await saveDataWithIntegrity("portfolio", mergedPortfolio)
             }
-          })
-        )
-
-        const resolved: Record<string, string> = {}
-        entries.forEach((entry) => {
-          if (entry) resolved[entry[0]] = entry[1]
-        })
-        return resolved
-      }
-
-      const resolvedCryptoIds = await resolveMissingCryptoIds()
-      const cryptoIds = Array.from(
-        new Set(
-          cryptoItems
-            .map((item) => (item.cryptoId || resolvedCryptoIds[item.symbol.trim().toUpperCase()] || "").trim())
-            .filter(Boolean)
-        )
-      )
-
-      let stockPriceData: any[] = []
-      let sectorData: Record<string, string[]> = {}
-      let cryptoPrices: Record<string, any> = {}
-      let stockError: string | null = null
-      let cryptoError: string | null = null
-
-      await Promise.all([
-        (async () => {
-          if (stockItems.length === 0) return
-          try {
-            const [priceRes, sectorRes] = await Promise.all([
-              fetch("/api/nepse/today"),
-              fetch("/api/nepse/sectors"),
-            ])
-            const pricePayload = await priceRes.json()
-            if (!priceRes.ok) {
-              throw new Error(pricePayload?.message || pricePayload?.error || "Nepal Stock APIs are currently unavailable")
+            if (Object.keys(symbolToSector).length > 0) {
+              setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+              setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
             }
-            if (!Array.isArray(pricePayload)) {
-              throw new Error("Received invalid data format from stock exchange")
-            }
-            stockPriceData = pricePayload
-            if (sectorRes.ok) {
+            return mergedPortfolio
+          }
+
+          const stockItems = targetPortfolio.filter((item) => !isCryptoAsset(item))
+          const cryptoItems = targetPortfolio.filter((item) => isCryptoAsset(item))
+          const resolveNeeded = cryptoItems.filter((item) => !(item.cryptoId || "").trim())
+
+          const resolveMissingCryptoIds = async () => {
+            const MAX_CRYPTO_RESOLVE = 20
+            const symbols = Array.from(
+              new Set(
+                resolveNeeded
+                  .map((item) => item.symbol.trim().toUpperCase())
+                  .filter(Boolean)
+              )
+            ).slice(0, MAX_CRYPTO_RESOLVE)
+
+            if (symbols.length === 0) return {}
+
+            const entries = await Promise.all(
+              symbols.map(async (symbol) => {
+                try {
+                  const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`, {
+                    signal: AbortSignal.timeout(5000)
+                  })
+                  const payload = await response.json()
+                  if (!response.ok) return null
+                  const id = payload?.id ? String(payload.id) : ""
+                  if (!id) return null
+                  return [symbol, id] as const
+                } catch {
+                  return null
+                }
+              })
+            )
+
+            const resolved: Record<string, string> = {}
+            entries.forEach((entry) => {
+              if (entry) resolved[entry[0]] = entry[1]
+            })
+            return resolved
+          }
+
+          const resolvedCryptoIds = await resolveMissingCryptoIds()
+          const cryptoIds = Array.from(
+            new Set(
+              cryptoItems
+                .map((item) => (item.cryptoId || resolvedCryptoIds[item.symbol.trim().toUpperCase()] || "").trim())
+                .filter(Boolean)
+            )
+          )
+
+          let stockPriceData: any[] = []
+          let sectorData: Record<string, string[]> = {}
+          let cryptoPrices: Record<string, any> = {}
+          let stockError: string | null = null
+          let cryptoError: string | null = null
+
+          await Promise.all([
+            (async () => {
+              if (stockItems.length === 0) return
               try {
-                sectorData = await sectorRes.json()
-              } catch {
+                const [priceRes, sectorRes] = await Promise.all([
+                  fetch("/api/nepse/today", { signal: AbortSignal.timeout(10000) }),
+                  fetch("/api/nepse/sectors", { signal: AbortSignal.timeout(10000) }),
+                ])
+                const pricePayload = await priceRes.json()
+                if (!priceRes.ok) {
+                  throw new Error(pricePayload?.message || pricePayload?.error || "Nepal Stock APIs are currently unavailable")
+                }
+                if (!Array.isArray(pricePayload)) {
+                  throw new Error("Received invalid data format from stock exchange")
+                }
+                stockPriceData = pricePayload
+                if (sectorRes.ok) {
+                  try {
+                    sectorData = await sectorRes.json()
+                  } catch {
+                  }
+                }
+              } catch (error: any) {
+                stockError = error?.message || "Failed to load stock prices"
               }
+            })(),
+            (async () => {
+              if (cryptoIds.length === 0) return
+              try {
+                const response = await fetch(`/api/crypto/coinlore?ids=${cryptoIds.join(",")}`, {
+                  signal: AbortSignal.timeout(10000)
+                })
+                const payload = await response.json()
+                if (!response.ok) {
+                  throw new Error(payload?.error || "Failed to load crypto prices")
+                }
+                cryptoPrices = payload?.prices && typeof payload.prices === "object" ? payload.prices : {}
+              } catch (error: any) {
+                cryptoError = error?.message || "Failed to load crypto prices"
+              }
+            })(),
+          ])
+
+          const hasStockFetchFailed = stockItems.length > 0 && stockPriceData.length === 0
+          const hasCryptoFetchFailed = cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0
+
+          // If fetch failed but we have a cache (even if expired), fallback to it
+          if ((hasStockFetchFailed || hasCryptoFetchFailed) && globalPortfolioCache) {
+            console.warn("Live price fetch failed, falling back to stale cache")
+            const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+              globalPortfolioCache.stockPriceData,
+              globalPortfolioCache.sectorData,
+              globalPortfolioCache.cryptoPrices,
+              {},
+            )
+            const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+            setPortfolio(mergedPortfolio)
+
+            if (Object.keys(symbolToSector).length > 0) {
+              setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+              setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
             }
-          } catch (error: any) {
-            stockError = error?.message || "Failed to load stock prices"
+            return mergedPortfolio
           }
-        })(),
-        (async () => {
-          if (cryptoIds.length === 0) return
-          try {
-            const response = await fetch(`/api/crypto/coinlore?ids=${cryptoIds.join(",")}`)
-            const payload = await response.json()
-            if (!response.ok) {
-              throw new Error(payload?.error || "Failed to load crypto prices")
+
+          // If no cache and fetch failed, only then throw
+          if (stockItems.length > 0 && stockPriceData.length === 0 && cryptoIds.length === 0 && !globalPortfolioCache) {
+            throw new Error(stockError || "Stock prices are currently unavailable")
+          }
+          if (cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0 && stockItems.length === 0 && !globalPortfolioCache) {
+            throw new Error(cryptoError || "Crypto prices are currently unavailable")
+          }
+          if (hasStockFetchFailed && hasCryptoFetchFailed && !globalPortfolioCache) {
+            throw new Error(stockError || cryptoError || "Price services are currently unavailable")
+          }
+
+          globalPortfolioCache = {
+            stockPriceData,
+            sectorData,
+            cryptoPrices,
+            timestamp: now,
+          }
+
+          const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+            stockPriceData,
+            sectorData,
+            cryptoPrices,
+            resolvedCryptoIds,
+          )
+          const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+
+          setPortfolio(mergedPortfolio)
+          if (Object.keys(symbolToSector).length > 0) {
+            setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+            setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
+            saveToLocalStorage("sectorsMap", symbolToSector)
+            saveToLocalStorage("scripNamesMap", symbolToName)
+          }
+          await saveDataWithIntegrity("portfolio", mergedPortfolio)
+          return mergedPortfolio
+        } catch (error: any) {
+          // Final emergency fallback to existing cache or current status
+          if (globalPortfolioCache) {
+            const { updatedPortfolio } = applyLivePrices(
+              globalPortfolioCache.stockPriceData,
+              globalPortfolioCache.sectorData,
+              globalPortfolioCache.cryptoPrices,
+              {},
+            )
+            const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+            setPortfolio(mergedPortfolio)
+            return mergedPortfolio
+          }
+          throw error // Propagate only if absolutely no data available
+        }
+      }
+
+      const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
+        const normalizedSymbol = tx.symbol.trim().toUpperCase()
+        const normalizedPrice =
+          tx.type === "bonus" || tx.type === "gift"
+            ? 0
+            : (Number.isFinite(tx.price) ? tx.price : 0)
+        const newTx: ShareTransaction = {
+          ...tx,
+          symbol: normalizedSymbol,
+          assetType: normalizeAssetType(tx.assetType),
+          cryptoId: tx.cryptoId?.trim() || undefined,
+          price: normalizedPrice,
+          id: generateId('stx'),
+        }
+        const updatedTransactions = [...shareTransactions, newTx]
+        setShareTransactions(updatedTransactions)
+        await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+        const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+        return { newTx, updatedPortfolio }
+      }
+
+      const deleteShareTransaction = async (id: string) => {
+        return await deleteMultipleShareTransactions([id])
+      }
+
+      const recomputePortfolio = async (transactionsToUse?: ShareTransaction[]) => {
+        const txs = transactionsToUse || shareTransactions
+        const newPortfolio: PortfolioItem[] = []
+
+        // Group by portfolioId + (symbol, assetType, cryptoId)
+        const groupedByPortfolio = txs.reduce((acc, tx) => {
+          if (!acc[tx.portfolioId]) acc[tx.portfolioId] = {}
+          const holdingKey = getHoldingKey(tx.portfolioId, tx.symbol, tx.assetType, tx.cryptoId)
+          if (!acc[tx.portfolioId][holdingKey]) acc[tx.portfolioId][holdingKey] = []
+          acc[tx.portfolioId][holdingKey].push(tx)
+          return acc
+        }, {} as Record<string, Record<string, ShareTransaction[]>>)
+
+        for (const [pId, symbolMap] of Object.entries(groupedByPortfolio)) {
+          for (const [, symbolTxs] of Object.entries(symbolMap)) {
+            let totalUnits = 0
+            let totalCost = 0
+
+            const sortedSymbolTxs = [...symbolTxs].sort(
+              (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+            )
+            const refTx = sortedSymbolTxs[0]
+            const symbol = refTx?.symbol || ""
+            const assetType = normalizeAssetType(refTx?.assetType)
+            const cryptoId = refTx?.cryptoId?.trim() || undefined
+
+            sortedSymbolTxs.forEach((t) => {
+              if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
+                totalUnits = normalizeUnits(totalUnits + t.quantity)
+                const unitPrice = (t.type === "bonus" || t.type === "gift")
+                  ? 0
+                  : (Number.isFinite(t.price) ? t.price : 0)
+                totalCost += t.quantity * unitPrice
+              } else if (t.type === "sell" || t.type === "merger_out") {
+                totalUnits = normalizeUnits(totalUnits - t.quantity)
+              }
+            })
+
+            if (totalUnits > 0) {
+              const key = getHoldingKey(pId, symbol, assetType, cryptoId)
+              const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
+              newPortfolio.push({
+                id: existing?.id || generateId("port"),
+                portfolioId: pId,
+                symbol: symbol,
+                assetType,
+                cryptoId,
+                units: totalUnits,
+                buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
+                currentPrice: existing?.currentPrice,
+                previousClose: existing?.previousClose,
+                sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[symbol.toUpperCase()] || "Others")),
+                lastUpdated: new Date().toISOString(),
+              })
             }
-            cryptoPrices = payload?.prices && typeof payload.prices === "object" ? payload.prices : {}
-          } catch (error: any) {
-            cryptoError = error?.message || "Failed to load crypto prices"
           }
-        })(),
-      ])
+        }
 
-      if (stockItems.length > 0 && stockPriceData.length === 0 && cryptoIds.length === 0) {
-        throw new Error(stockError || "Stock prices are currently unavailable")
-      }
-      if (cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0 && stockItems.length === 0) {
-        throw new Error(cryptoError || "Crypto prices are currently unavailable")
-      }
-      if (stockItems.length > 0 && cryptoIds.length > 0 && stockPriceData.length === 0 && Object.keys(cryptoPrices).length === 0) {
-        throw new Error(stockError || cryptoError || "Price services are currently unavailable")
+        setPortfolio(newPortfolio)
+        await saveDataWithIntegrity("portfolio", newPortfolio)
+        return newPortfolio
       }
 
-      globalPortfolioCache = {
-        stockPriceData,
-        sectorData,
-        cryptoPrices,
-        timestamp: now,
+      const deleteMultipleShareTransactions = async (ids: string[]) => {
+        if (ids.length === 0) return
+
+        const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
+        setShareTransactions(updatedTransactions)
+        await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+        await recordDeletion(TOMBSTONE_KEYS.shareTransactions, ids)
+        const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+        return updatedPortfolio
       }
 
-      const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
-        stockPriceData,
-        sectorData,
-        cryptoPrices,
-        resolvedCryptoIds,
-      )
-      const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
-
-      setPortfolio(mergedPortfolio)
-      if (Object.keys(symbolToSector).length > 0) {
-        setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
-        setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
-        saveToLocalStorage("sectorsMap", symbolToSector)
-        saveToLocalStorage("scripNamesMap", symbolToName)
+      const clearPortfolioHistory = async () => {
+        if (!activePortfolioId) return
+        const removedShareIds = shareTransactions.filter(t => t.portfolioId === activePortfolioId).map((t) => t.id)
+        const updatedTransactions = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
+        setShareTransactions(updatedTransactions)
+        await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+        await recordDeletion(TOMBSTONE_KEYS.shareTransactions, removedShareIds)
+        const updatedPortfolio = portfolio.filter(p => p.portfolioId !== activePortfolioId)
+        setPortfolio(updatedPortfolio)
+        await saveDataWithIntegrity("portfolio", updatedPortfolio)
       }
-      await saveDataWithIntegrity("portfolio", mergedPortfolio)
-      return mergedPortfolio
-    } catch (error: any) {
-      throw error // Propagate specialized error
-    }
-  }
 
-  const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
-    const normalizedSymbol = tx.symbol.trim().toUpperCase()
-    const normalizedPrice =
-      tx.type === "bonus" || tx.type === "gift"
-        ? 0
-        : (Number.isFinite(tx.price) ? tx.price : 0)
-    const newTx: ShareTransaction = {
-      ...tx,
-      symbol: normalizedSymbol,
-      assetType: normalizeAssetType(tx.assetType),
-      cryptoId: tx.cryptoId?.trim() || undefined,
-      price: normalizedPrice,
-      id: generateId('stx'),
-    }
-    const updatedTransactions = [...shareTransactions, newTx]
-    setShareTransactions(updatedTransactions)
-    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
-    return { newTx, updatedPortfolio }
-  }
+      const importShareData = async (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => {
+        const rows = csvData.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()))
+        if (rows.length < 2) return
 
-  const deleteShareTransaction = async (id: string) => {
-    return await deleteMultipleShareTransactions([id])
-  }
-
-  const recomputePortfolio = async (transactionsToUse?: ShareTransaction[]) => {
-    const txs = transactionsToUse || shareTransactions
-    const newPortfolio: PortfolioItem[] = []
-
-    // Group by portfolioId + (symbol, assetType, cryptoId)
-    const groupedByPortfolio = txs.reduce((acc, tx) => {
-      if (!acc[tx.portfolioId]) acc[tx.portfolioId] = {}
-      const holdingKey = getHoldingKey(tx.portfolioId, tx.symbol, tx.assetType, tx.cryptoId)
-      if (!acc[tx.portfolioId][holdingKey]) acc[tx.portfolioId][holdingKey] = []
-      acc[tx.portfolioId][holdingKey].push(tx)
-      return acc
-    }, {} as Record<string, Record<string, ShareTransaction[]>>)
-
-    for (const [pId, symbolMap] of Object.entries(groupedByPortfolio)) {
-      for (const [, symbolTxs] of Object.entries(symbolMap)) {
-        let totalUnits = 0
-        let totalCost = 0
-
-        const sortedSymbolTxs = [...symbolTxs].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        )
-        const refTx = sortedSymbolTxs[0]
-        const symbol = refTx?.symbol || ""
-        const assetType = normalizeAssetType(refTx?.assetType)
-        const cryptoId = refTx?.cryptoId?.trim() || undefined
-
-        sortedSymbolTxs.forEach((t) => {
-          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
-            totalUnits = normalizeUnits(totalUnits + t.quantity)
-            const unitPrice = (t.type === "bonus" || t.type === "gift")
-              ? 0
-              : (Number.isFinite(t.price) ? t.price : 0)
-            totalCost += t.quantity * unitPrice
-          } else if (t.type === "sell" || t.type === "merger_out") {
-            totalUnits = normalizeUnits(totalUnits - t.quantity)
+        let detectedType = type
+        if (type === 'auto') {
+          const header = rows[0].join(',')
+          if (header.includes('Current Balance') || header.includes('Last Closing Price')) {
+            detectedType = 'portfolio'
+          } else if (header.includes('Transaction Date') || header.includes('History Description')) {
+            detectedType = 'history'
+          } else {
+            throw new Error("Could not detect CSV format. Please ensure it is a Mero Share export.")
           }
-        })
+        }
 
-        if (totalUnits > 0) {
-          const key = getHoldingKey(pId, symbol, assetType, cryptoId)
-          const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
-          newPortfolio.push({
-            id: existing?.id || generateId("port"),
-            portfolioId: pId,
-            symbol: symbol,
-            assetType,
-            cryptoId,
-            units: totalUnits,
-            buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
-            currentPrice: existing?.currentPrice,
-            previousClose: existing?.previousClose,
-            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[symbol.toUpperCase()] || "Others")),
-            lastUpdated: new Date().toISOString(),
+        const getFaceValue = (symbol: string) => {
+          const sector = sectorsMap[symbol.toUpperCase()]
+          return sector === "Mutual Fund" ? 10 : 100
+        }
+
+        if (detectedType === 'portfolio') {
+          // S.N, Scrip, Current Balance, Last Closing Price, Value..., Last Transaction Price (LTP), Value...
+          const newItems: PortfolioItem[] = []
+          rows.slice(1).forEach(row => {
+            if (row.length < 7 || row[0].toLowerCase().includes('total')) return
+            const symbol = row[1]
+            const units = parseFloat(row[2])
+            const price = parseFloat(row[5]) || parseFloat(row[3])
+            if (symbol && !isNaN(units)) {
+              // Use provided resolved price, otherwise fallback to LTP
+              const buyPrice = resolvedPrices && resolvedPrices[symbol] !== undefined
+                ? resolvedPrices[symbol]
+                : price
+
+              newItems.push({
+                id: generateId('port'),
+                portfolioId: activePortfolioId!,
+                symbol,
+                units,
+                buyPrice: buyPrice,
+                currentPrice: price,
+                sector: sectorsMap[symbol.toUpperCase()] || "Others",
+                lastUpdated: new Date().toISOString()
+              })
+            }
           })
-        }
-      }
-    }
-
-    setPortfolio(newPortfolio)
-    await saveDataWithIntegrity("portfolio", newPortfolio)
-    return newPortfolio
-  }
-
-  const deleteMultipleShareTransactions = async (ids: string[]) => {
-    if (ids.length === 0) return
-
-    const updatedTransactions = shareTransactions.filter((t) => !ids.includes(t.id))
-    setShareTransactions(updatedTransactions)
-    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, ids)
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
-    return updatedPortfolio
-  }
-
-  const clearPortfolioHistory = async () => {
-    if (!activePortfolioId) return
-    const removedShareIds = shareTransactions.filter(t => t.portfolioId === activePortfolioId).map((t) => t.id)
-    const updatedTransactions = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
-    setShareTransactions(updatedTransactions)
-    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    await recordDeletion(TOMBSTONE_KEYS.shareTransactions, removedShareIds)
-    const updatedPortfolio = portfolio.filter(p => p.portfolioId !== activePortfolioId)
-    setPortfolio(updatedPortfolio)
-    await saveDataWithIntegrity("portfolio", updatedPortfolio)
-  }
-
-  const importShareData = async (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => {
-    const rows = csvData.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()))
-    if (rows.length < 2) return
-
-    let detectedType = type
-    if (type === 'auto') {
-      const header = rows[0].join(',')
-      if (header.includes('Current Balance') || header.includes('Last Closing Price')) {
-        detectedType = 'portfolio'
-      } else if (header.includes('Transaction Date') || header.includes('History Description')) {
-        detectedType = 'history'
-      } else {
-        throw new Error("Could not detect CSV format. Please ensure it is a Mero Share export.")
-      }
-    }
-
-    const getFaceValue = (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
-      return sector === "Mutual Fund" ? 10 : 100
-    }
-
-    if (detectedType === 'portfolio') {
-      // S.N, Scrip, Current Balance, Last Closing Price, Value..., Last Transaction Price (LTP), Value...
-      const newItems: PortfolioItem[] = []
-      rows.slice(1).forEach(row => {
-        if (row.length < 7 || row[0].toLowerCase().includes('total')) return
-        const symbol = row[1]
-        const units = parseFloat(row[2])
-        const price = parseFloat(row[5]) || parseFloat(row[3])
-        if (symbol && !isNaN(units)) {
-          // Use provided resolved price, otherwise fallback to LTP
-          const buyPrice = resolvedPrices && resolvedPrices[symbol] !== undefined
-            ? resolvedPrices[symbol]
-            : price
-
-          newItems.push({
-            id: generateId('port'),
-            portfolioId: activePortfolioId!,
-            symbol,
-            units,
-            buyPrice: buyPrice,
-            currentPrice: price,
-            sector: sectorsMap[symbol.toUpperCase()] || "Others",
-            lastUpdated: new Date().toISOString()
-          })
-        }
-      })
-      const otherPortfolioItems = portfolio.filter(p => p.portfolioId !== activePortfolioId)
-      const updatedPortfolio = [...otherPortfolioItems, ...newItems]
-      setPortfolio(updatedPortfolio)
-      await saveDataWithIntegrity("portfolio", updatedPortfolio)
-      return updatedPortfolio
-    } else {
-      // S.N, Scrip, Transaction Date, Credit Quantity, Debit Quantity, Balance After Transaction, History Description
-      const newTxs: ShareTransaction[] = []
-      rows.slice(1).forEach(row => {
-        if (row.length < 7) return
-        const symbol = row[1]
-        const date = row[2]
-        const credit = parseFloat(row[3]) || 0
-        const debit = parseFloat(row[4]) || 0
-        const desc = row[6]
-
-        let txType: ShareTransaction['type'] = 'buy'
-        if (desc.includes('BONUS') || desc.includes('Bonus')) txType = 'bonus'
-        else if (desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')) txType = 'ipo'
-        else if (desc.includes('Merger')) txType = credit > 0 ? 'merger_in' : 'merger_out'
-        else if (debit > 0) txType = 'sell'
-
-        let price = 0
-        if (txType === 'ipo' || txType === 'buy' || txType === 'merger_in') {
-          const defaultPrice = (txType === 'ipo' || txType === 'merger_in') ? getFaceValue(symbol) : 0
-          price = resolvedPrices && resolvedPrices[symbol] !== undefined
-            ? resolvedPrices[symbol]
-            : defaultPrice
-        }
-
-        if (symbol && date) {
-          newTxs.push({
-            id: generateId('stx'),
-            portfolioId: activePortfolioId!,
-            symbol,
-            date,
-            quantity: credit || debit,
-            price: price,
-            type: txType,
-            description: desc
-          })
-        }
-      })
-      const otherPortfolioTxs = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
-      const updatedTxs = [...otherPortfolioTxs, ...newTxs]
-      setShareTransactions(updatedTxs)
-      await saveDataWithIntegrity("shareTransactions", updatedTxs)
-      return await recomputePortfolio(updatedTxs)
-    }
-  }
-
-  const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
-    const portId = targetPortfolioId || activePortfolioId
-    if (!portId) {
-      throw new Error("No target portfolio selected")
-    }
-
-    try {
-      const response = await fetch('/api/meroshare/portfolio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials })
-      })
-
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || "Failed to sync portfolio")
-
-      const meroPortfolio = data.portfolio as any[]
-      let updatedCount = 0
-      let addedCount = 0
-
-      // Get current portfolio items for comparison
-      const currentPortfolio = [...portfolio]
-      const updatedPortfolio = [...currentPortfolio]
-
-      for (const item of meroPortfolio) {
-        const existingIdx = updatedPortfolio.findIndex(
-          p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
-        )
-
-        if (existingIdx > -1) {
-          updatedPortfolio[existingIdx] = {
-            ...updatedPortfolio[existingIdx],
-            units: item.units,
-            currentPrice: item.currentPrice,
-            lastUpdated: new Date().toISOString()
-          }
-          updatedCount++
+          const otherPortfolioItems = portfolio.filter(p => p.portfolioId !== activePortfolioId)
+          const updatedPortfolio = [...otherPortfolioItems, ...newItems]
+          setPortfolio(updatedPortfolio)
+          await saveDataWithIntegrity("portfolio", updatedPortfolio)
+          return updatedPortfolio
         } else {
-          const newItem: PortfolioItem = {
-            id: generateId('port_item'),
-            portfolioId: portId,
-            symbol: item.symbol,
-            units: item.units,
-            buyPrice: 0, // Users will need to update cost manually or it stays 0
-            currentPrice: item.currentPrice,
-            lastUpdated: new Date().toISOString(),
-            sector: "Others"
-          }
-          updatedPortfolio.push(newItem)
-          addedCount++
+          // S.N, Scrip, Transaction Date, Credit Quantity, Debit Quantity, Balance After Transaction, History Description
+          const newTxs: ShareTransaction[] = []
+          rows.slice(1).forEach(row => {
+            if (row.length < 7) return
+            const symbol = row[1]
+            const date = row[2]
+            const credit = parseFloat(row[3]) || 0
+            const debit = parseFloat(row[4]) || 0
+            const desc = row[6]
+
+            let txType: ShareTransaction['type'] = 'buy'
+            if (desc.includes('BONUS') || desc.includes('Bonus')) txType = 'bonus'
+            else if (desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')) txType = 'ipo'
+            else if (desc.includes('Merger')) txType = credit > 0 ? 'merger_in' : 'merger_out'
+            else if (debit > 0) txType = 'sell'
+
+            let price = 0
+            if (txType === 'ipo' || txType === 'buy' || txType === 'merger_in') {
+              const defaultPrice = (txType === 'ipo' || txType === 'merger_in') ? getFaceValue(symbol) : 0
+              price = resolvedPrices && resolvedPrices[symbol] !== undefined
+                ? resolvedPrices[symbol]
+                : defaultPrice
+            }
+
+            if (symbol && date) {
+              newTxs.push({
+                id: generateId('stx'),
+                portfolioId: activePortfolioId!,
+                symbol,
+                date,
+                quantity: credit || debit,
+                price: price,
+                type: txType,
+                description: desc
+              })
+            }
+          })
+          const otherPortfolioTxs = shareTransactions.filter(t => t.portfolioId !== activePortfolioId)
+          const updatedTxs = [...otherPortfolioTxs, ...newTxs]
+          setShareTransactions(updatedTxs)
+          await saveDataWithIntegrity("shareTransactions", updatedTxs)
+          return await recomputePortfolio(updatedTxs)
         }
       }
 
-      setPortfolio(updatedPortfolio)
-      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+      const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
+        const portId = targetPortfolioId || activePortfolioId
+        if (!portId) {
+          throw new Error("No target portfolio selected")
+        }
 
-      // Trigger a price refresh to update sectors and other metadata
-      await fetchPortfolioPrices(updatedPortfolio)
-      return { updatedCount, addedCount }
-    } catch (error: any) {
-      throw error
-    }
-  }
+        try {
+          const response = await fetch('/api/meroshare/portfolio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credentials })
+          })
 
-  const logMeroShareApplication = async (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => {
-    if (!userProfile) return null
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.error || "Failed to sync portfolio")
 
-    const nextLog: MeroShareApplicationLog = {
-      id: generateId("ipo_log"),
-      createdAt: new Date().toISOString(),
-      ...entry,
-    }
+          const meroPortfolio = data.portfolio as any[]
+          let updatedCount = 0
+          let addedCount = 0
 
-    const existingMeroShare = userProfile.meroShare ?? {
-      dpId: "",
-      username: "",
-      shareFeaturesEnabled: false,
-      shareNotificationsEnabled: false,
-      isAutomatedEnabled: false,
-    }
+          // Get current portfolio items for comparison
+          const currentPortfolio = [...portfolio]
+          const updatedPortfolio = [...currentPortfolio]
 
-    const updatedProfile: UserProfile = {
-      ...userProfile,
-      meroShare: {
-        ...existingMeroShare,
-        applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
-      },
-    }
+          for (const item of meroPortfolio) {
+            const existingIdx = updatedPortfolio.findIndex(
+              p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
+            )
 
-    setUserProfile(updatedProfile)
-    await saveDataWithIntegrity("userProfile", updatedProfile)
-    return nextLog
-  }
+            if (existingIdx > -1) {
+              updatedPortfolio[existingIdx] = {
+                ...updatedPortfolio[existingIdx],
+                units: item.units,
+                currentPrice: item.currentPrice,
+                lastUpdated: new Date().toISOString()
+              }
+              updatedCount++
+            } else {
+              const newItem: PortfolioItem = {
+                id: generateId('port_item'),
+                portfolioId: portId,
+                symbol: item.symbol,
+                units: item.units,
+                buyPrice: 0, // Users will need to update cost manually or it stays 0
+                currentPrice: item.currentPrice,
+                lastUpdated: new Date().toISOString(),
+                sector: "Others"
+              }
+              updatedPortfolio.push(newItem)
+              addedCount++
+            }
+          }
 
-  const applyMeroShareIPO = async (
-    credentials: any,
-    ipoName: string,
-    kitta = 10,
-    source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
-    options?: { showBrowser?: boolean }
-  ) => {
-    try {
-      const response = await fetch('/api/meroshare/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials, ipoName, kitta, options })
-      })
+          setPortfolio(updatedPortfolio)
+          await saveDataWithIntegrity("portfolio", updatedPortfolio)
 
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to apply")
+          // Trigger a price refresh to update sectors and other metadata
+          await fetchPortfolioPrices(updatedPortfolio)
+          return { updatedCount, addedCount }
+        } catch (error: any) {
+          throw error
+        }
       }
 
-      await logMeroShareApplication({
-        ipoName,
-        action: "apply",
-        requestedKitta: kitta,
-        status: "success",
-        message: data.alreadyApplied
-          ? (data.message || "Already applied earlier; no new application was submitted.")
-          : (data.message || "Applied successfully"),
-        source,
-      })
+      const logMeroShareApplication = async (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => {
+        if (!userProfile) return null
 
-      return data
-    } catch (error: any) {
-      const message = error?.message || "Failed to apply"
-      await logMeroShareApplication({
-        ipoName,
-        action: "apply",
-        requestedKitta: kitta,
-        status: "failed",
-        message,
-        source,
-      })
-      throw error
-    }
-  }
+        const nextLog: MeroShareApplicationLog = {
+          id: generateId("ipo_log"),
+          createdAt: new Date().toISOString(),
+          ...entry,
+        }
 
-  const checkIPOAllotmentWithLog = async (
-    credentials: any,
-    ipoName: string,
-    source: "live-check" | "settings-check" = "live-check"
-  ) => {
-    try {
-      const response = await fetch('/api/meroshare/check-allotment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials, ipoName })
-      })
+        const existingMeroShare = userProfile.meroShare ?? {
+          dpId: "",
+          username: "",
+          shareFeaturesEnabled: false,
+          shareNotificationsEnabled: false,
+          isAutomatedEnabled: false,
+        }
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || "Failed to check allotment")
+        const updatedProfile: UserProfile = {
+          ...userProfile,
+          meroShare: {
+            ...existingMeroShare,
+            applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
+          },
+        }
 
-      const statusMessage = data?.status
-        ? `Allotment check: ${data.status}`
-        : "Allotment check completed."
-
-      await logMeroShareApplication({
-        ipoName,
-        action: "report-check",
-        status: "success",
-        message: statusMessage,
-        source,
-      })
-
-      return data
-    } catch (error: any) {
-      const message = error?.message || "Failed to check allotment"
-      await logMeroShareApplication({
-        ipoName,
-        action: "report-check",
-        status: "failed",
-        message,
-        source,
-      })
-      throw error
-    }
-  }
-
-  return {
-    userProfile,
-    transactions,
-    budgets,
-    goals,
-    debtAccounts,
-    creditAccounts,
-    debtCreditTransactions,
-    categories,
-    emergencyFund,
-    balance,
-    isFirstTime,
-    showOnboarding,
-    isAuthenticated,
-    isLoaded,
-    balanceChange,
-    portfolio,
-    shareTransactions,
-    portfolios,
-    activePortfolioId,
-    setShowOnboarding,
-    handleOnboardingComplete,
-    addTransaction,
-    updateUserProfile,
-    addBudget,
-    updateBudget,
-    deleteBudget,
-    addGoal,
-    updateGoal,
-    deleteGoal,
-    deleteTransaction,
-    addDebtAccount,
-    addDebtToAccount,
-    addCreditAccount,
-    deleteDebtAccount,
-    deleteCreditAccount,
-    addToEmergencyFund,
-    updateGoalContribution,
-    transferToGoal,
-    spendFromGoal,
-    makeDebtPayment,
-    updateCreditBalance,
-    createDebtForTransaction,
-    completeTransactionWithDebt,
-    addPortfolioItem,
-    updatePortfolioItem,
-    deletePortfolioItem,
-    addPortfolio,
-    switchPortfolio,
-    deletePortfolio,
-    updatePortfolio,
-    clearPortfolioHistory,
-    fetchPortfolioPrices,
-    syncMeroSharePortfolio,
-    applyMeroShareIPO,
-    checkIPOAllotment: checkIPOAllotmentWithLog,
-    upcomingIPOs,
-    topStocks,
-    marketSummary,
-    marketSummaryHistory,
-    noticesBundle,
-    disclosures,
-    exchangeMessages,
-    scripNamesMap,
-    isIPOsLoading,
-    getFaceValue: (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
-      return sector === "Mutual Fund" ? 10 : 100
-    },
-    addShareTransaction,
-    deleteShareTransaction,
-    deleteMultipleShareTransactions,
-    recomputePortfolio,
-    importShareData,
-    refreshData,
-    clearAllData,
-    exportData,
-    importData,
-    calculateTimeEquivalent: (amount: number) => (userProfile ? calculateTimeEquivalent(amount, userProfile) : 0),
-    addCategory,
-    updateCategory,
-    deleteCategory,
-    updateCategoryStats,
-    settings: userProfile
-      ? {
-        currency: userProfile.currency,
-        customBudgetCategories: {},
+        setUserProfile(updatedProfile)
+        await saveDataWithIntegrity("userProfile", updatedProfile)
+        return nextLog
       }
-      : null,
-  }
-}
+
+      const applyMeroShareIPO = async (
+        credentials: any,
+        ipoName: string,
+        kitta = 10,
+        source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
+        options?: { showBrowser?: boolean }
+      ) => {
+        try {
+          const response = await fetch('/api/meroshare/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credentials, ipoName, kitta, options })
+          })
+
+          const data = await response.json()
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to apply")
+          }
+
+          await logMeroShareApplication({
+            ipoName,
+            action: "apply",
+            requestedKitta: kitta,
+            status: "success",
+            message: data.alreadyApplied
+              ? (data.message || "Already applied earlier; no new application was submitted.")
+              : (data.message || "Applied successfully"),
+            source,
+          })
+
+          return data
+        } catch (error: any) {
+          const message = error?.message || "Failed to apply"
+          await logMeroShareApplication({
+            ipoName,
+            action: "apply",
+            requestedKitta: kitta,
+            status: "failed",
+            message,
+            source,
+          })
+          throw error
+        }
+      }
+
+      const checkIPOAllotmentWithLog = async (
+        credentials: any,
+        ipoName: string,
+        source: "live-check" | "settings-check" = "live-check"
+      ) => {
+        try {
+          const response = await fetch('/api/meroshare/check-allotment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credentials, ipoName })
+          })
+
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.error || "Failed to check allotment")
+
+          const statusMessage = data?.status
+            ? `Allotment check: ${data.status}`
+            : "Allotment check completed."
+
+          await logMeroShareApplication({
+            ipoName,
+            action: "report-check",
+            status: "success",
+            message: statusMessage,
+            source,
+          })
+
+          return data
+        } catch (error: any) {
+          const message = error?.message || "Failed to check allotment"
+          await logMeroShareApplication({
+            ipoName,
+            action: "report-check",
+            status: "failed",
+            message,
+            source,
+          })
+          throw error
+        }
+      }
+
+      return {
+        userProfile,
+        transactions,
+        budgets,
+        goals,
+        debtAccounts,
+        creditAccounts,
+        debtCreditTransactions,
+        categories,
+        emergencyFund,
+        balance,
+        isFirstTime,
+        showOnboarding,
+        isAuthenticated,
+        isLoaded,
+        balanceChange,
+        portfolio,
+        shareTransactions,
+        portfolios,
+        activePortfolioId,
+        setShowOnboarding,
+        handleOnboardingComplete,
+        addTransaction,
+        updateUserProfile,
+        addBudget,
+        updateBudget,
+        deleteBudget,
+        addGoal,
+        updateGoal,
+        deleteGoal,
+        deleteTransaction,
+        addDebtAccount,
+        addDebtToAccount,
+        addCreditAccount,
+        deleteDebtAccount,
+        deleteCreditAccount,
+        addToEmergencyFund,
+        updateGoalContribution,
+        transferToGoal,
+        spendFromGoal,
+        makeDebtPayment,
+        updateCreditBalance,
+        createDebtForTransaction,
+        completeTransactionWithDebt,
+        addPortfolioItem,
+        updatePortfolioItem,
+        deletePortfolioItem,
+        addPortfolio,
+        switchPortfolio,
+        deletePortfolio,
+        updatePortfolio,
+        clearPortfolioHistory,
+        fetchPortfolioPrices,
+        syncMeroSharePortfolio,
+        applyMeroShareIPO,
+        checkIPOAllotment: checkIPOAllotmentWithLog,
+        upcomingIPOs,
+        topStocks,
+        marketSummary,
+        marketSummaryHistory,
+        noticesBundle,
+        disclosures,
+        exchangeMessages,
+        scripNamesMap,
+        isIPOsLoading,
+        getFaceValue: (symbol: string) => {
+          const sector = sectorsMap[symbol.toUpperCase()]
+          return sector === "Mutual Fund" ? 10 : 100
+        },
+        addShareTransaction,
+        deleteShareTransaction,
+        deleteMultipleShareTransactions,
+        recomputePortfolio,
+        importShareData,
+        refreshData,
+        clearAllData,
+        exportData,
+        importData,
+        calculateTimeEquivalent: (amount: number) => (userProfile ? calculateTimeEquivalent(amount, userProfile) : 0),
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        updateCategoryStats,
+        settings: userProfile
+          ? {
+            currency: userProfile.currency,
+            customBudgetCategories: {},
+          }
+          : null,
+      }
+    }
