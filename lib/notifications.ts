@@ -23,6 +23,15 @@ export type AppNotificationInput = {
 export const isBrowserNotificationSupported = () =>
   typeof window !== "undefined" && "Notification" in window
 
+export const isAppInForeground = () => {
+  if (typeof document === "undefined") return false
+  if (document.visibilityState !== "visible") return false
+  if (typeof document.hasFocus === "function") {
+    return document.hasFocus()
+  }
+  return true
+}
+
 export const getDefaultNotificationSettings = (): NotificationSettings => ({
   ...DEFAULT_NOTIFICATION_SETTINGS,
 })
