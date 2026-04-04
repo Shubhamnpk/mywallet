@@ -26,3 +26,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 impovemnt.txt
+
+# pwa
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/fallback-*.js
+public/worker-*.js

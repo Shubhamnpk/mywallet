@@ -36,6 +36,13 @@ export const PRESET_SOUNDS = {
     },
   },
   notification: { name: "Notification", generator: () => generateTone(440, 0.4) },
+  "error-buzz": {
+    name: "Error Buzz",
+    generator: () => {
+      generateTone(200, 0.15, "square")
+      setTimeout(() => generateTone(150, 0.2, "square"), 100)
+    },
+  },
   none: { name: "No Sound", generator: () => {} },
 }
 
@@ -84,7 +91,7 @@ export const playSound = (activity: SoundActivity = "default") => {
       break
     case "pin-failed":
       enabled = localStorage.getItem("wallet_pin_failed_enabled") !== "false"
-      selected = localStorage.getItem("wallet_pin_failed_selected_sound") || "notification"
+      selected = localStorage.getItem("wallet_pin_failed_selected_sound") || "error-buzz"
       customUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
       break
     case "toggle":

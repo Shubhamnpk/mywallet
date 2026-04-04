@@ -16,21 +16,15 @@ export function formatTime(hours: number): string {
   return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`
 }
 
-export function formatCurrency(amount: number, currency: string, customCurrency?: { code: string; symbol: string; name: string; }): string {
-  const numberFormat = localStorage.getItem("wallet_number_format") || "us"
+export function formatCurrency(amount: number, currencyCode: string, customCurrency?: { symbol: string }): string {
+  const numberFormat = typeof window !== 'undefined' ? (localStorage.getItem("wallet_number_format") || "us") : "us"
   const locale = numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'
 
-  if (currency === "CUSTOM" && customCurrency) {
-    return `${customCurrency.symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-  const symbol = getCurrencySymbol(currency, customCurrency)
-  if (symbol && symbol !== currency) {
-    return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: currency,
-  }).format(amount)
+  const symbol = getCurrencySymbol(currencyCode, customCurrency)
+  return `${symbol}${amount.toLocaleString(locale, { 
+    minimumFractionDigits: 0, 
+    maximumFractionDigits: 2 
+  })}`
 }
 
 export function getCurrencySymbol(

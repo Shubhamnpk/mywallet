@@ -188,6 +188,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
   // Function to trigger error animation
   const triggerErrorAnimation = () => {
+    playSound("pin-failed")
     setPinError(true)
     setPin("") // Clear the PIN input
     setErrorMessage(emergencyMode ? "Incorrect Emergency PIN" : "Incorrect PIN")
@@ -558,8 +559,6 @@ export function SessionGuard({ children }: SessionGuardProps) {
             setShowPinScreen(false)
           }
         } else {
-          playSound("pin-failed")
-          // Failures are already logged in SecurePinManager
           throw new Error("PIN validation failed") // Throw error to trigger visual feedback
         }
       }}

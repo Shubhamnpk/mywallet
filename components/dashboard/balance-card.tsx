@@ -100,9 +100,12 @@ export function CombinedBalanceCard() {
     return getTimeEquivalentBreakdown(balance, userProfile)
   }, [balance, userProfile])
   const formatCurrency = (amount: number) => {
-    const numberFormat = localStorage.getItem("wallet_number_format") || "us"
+    const numberFormat = typeof window !== 'undefined' ? (localStorage.getItem("wallet_number_format") || "us") : "us"
     const locale = numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'
-    return `${currencySymbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2 })}`
+    return `${currencySymbol}${amount.toLocaleString(locale, { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 2 
+    })}`
   }
 
   const getThemeBasedBackground = () => {

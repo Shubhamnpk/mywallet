@@ -1,5 +1,40 @@
+/// <reference lib="webworker" />
+
+import { defaultCache } from "@serwist/next/worker";
+import { Serwist } from "serwist";
+import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
+
+declare global {
+  interface ServiceWorkerGlobalScope extends SerwistGlobalConfig {
+    __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
+  }
+}
+
+declare const self: ServiceWorkerGlobalScope;
+
+const serwist = new Serwist({
+  precacheEntries: self.__SW_MANIFEST,
+  precacheOptions: {
+    cleanupOutdatedCaches: true,
+  },
+  skipWaiting: true,
+  clientsClaim: true,
+  navigationPreload: true,
+  runtimeCaching: defaultCache,
+});
+
+interface NotificationPayload {
+  title?: string;
+  body?: string;
+  icon?: string;
+  badge?: string;
+  tag?: string;
+  url?: string;
+}
+
+// Original push notification logic
 self.addEventListener("push", (event) => {
-  let payload = {}
+  let payload: NotificationPayload = {}
   try {
     payload = event.data ? event.data.json() : {}
   } catch {
@@ -24,7 +59,7 @@ self.addEventListener("message", (event) => {
   const data = event.data || {}
   if (data.type !== "SHOW_NOTIFICATION") return
 
-  const payload = data.payload || {}
+  const payload: NotificationPayload = data.payload || {}
   const title = payload.title || "MyWallet"
   const options = {
     body: payload.body || "You have a new reminder.",
@@ -43,25 +78,27 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close()
   const targetUrl =
     event.notification && event.notification.data && event.notification.data.url
-      ? event.notification.data.url
+      ? (event.notification.data.url as string)
       : "/"
 
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ("focus" in client) {
-          client.postMessage({ type: "NOTIFICATION_CLICKED", url: targetUrl })
-          if (client.url === targetUrl) {
-            return client.focus()
+          (client as any).postMessage({ type: "NOTIFICATION_CLICKED", url: targetUrl })
+          if ((client as any).url === targetUrl) {
+            return (client as any).focus()
           }
         }
       }
 
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl)
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl)
       }
 
       return undefined
     }),
   )
 })
+
+serwist.addEventListeners();

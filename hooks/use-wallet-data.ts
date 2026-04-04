@@ -33,6 +33,7 @@ import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
 import {
   getDefaultNotificationSettings,
+  isAppInForeground,
   normalizeNotificationSettings,
   requestBrowserNotificationPermission,
   REMINDER_CACHE_KEY,
@@ -228,6 +229,46 @@ const computePostDeleteState = (snapshot: TransactionDeleteSnapshot, transaction
   }
 }
 
+const rebuildDebtAccountsFromHistory = (
+  accounts: DebtAccount[],
+  history: DebtCreditTransaction[],
+) => {
+  if (accounts.length === 0 || history.length === 0) return accounts
+
+  const latestByAccount = new Map<string, DebtCreditTransaction>()
+
+  history.forEach((entry) => {
+    if (entry.accountType !== "debt" || !entry.accountId) return
+
+    const existing = latestByAccount.get(entry.accountId)
+    if (!existing) {
+      latestByAccount.set(entry.accountId, entry)
+      return
+    }
+
+    const existingTime = Date.parse(existing.date || "")
+    const entryTime = Date.parse(entry.date || "")
+    const normalizedExistingTime = Number.isFinite(existingTime) ? existingTime : 0
+    const normalizedEntryTime = Number.isFinite(entryTime) ? entryTime : 0
+
+    if (normalizedEntryTime >= normalizedExistingTime) {
+      latestByAccount.set(entry.accountId, entry)
+    }
+  })
+
+  return accounts
+    .map((account) => {
+      const latestEntry = latestByAccount.get(account.id)
+      if (!latestEntry) return account
+
+      return {
+        ...account,
+        balance: Math.max(0, latestEntry.balanceAfter),
+      }
+    })
+    .filter((account) => account.balance > 0)
+}
+
 const readReminderCache = (): Record<string, number> => {
   if (typeof window === "undefined") return {}
   try {
@@ -251,6 +292,24 @@ const saveReminderCache = (cache: Record<string, number>) => {
 const shouldSendReminder = (cache: Record<string, number>, key: string, cooldownMs: number) => {
   const lastSentAt = cache[key] ?? 0
   return Date.now() - lastSentAt >= cooldownMs
+}
+
+const normalizeReminderText = (value?: string) =>
+  (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+
+const buildIpoReminderBaseKey = (ipo: UpcomingIPO) => {
+  const company = normalizeReminderText(ipo.company) || "ipo"
+  const dateRange = normalizeReminderText(ipo.date_range)
+  const url = normalizeReminderText(ipo.url)
+  const openingDate = normalizeReminderText(ipo.openingDate)
+  const closingDate = normalizeReminderText(ipo.closingDate)
+
+  return [company, dateRange, openingDate, closingDate, url]
+    .filter(Boolean)
+    .join("|")
 }
 
 
@@ -304,6 +363,7 @@ export function useWalletData() {
       const now = new Date()
       let emittedCount = 0
       const maxPerScan = 3
+      const appInForeground = isAppInForeground()
 
       const emitReminder = (
         key: string,
@@ -314,11 +374,12 @@ export function useWalletData() {
         if (emittedCount >= maxPerScan) return
         if (!shouldSendReminder(cache, key, cooldownMs)) return
 
-        if (notificationSettings.inAppToasts) {
+        if (notificationSettings.inAppToasts && appInForeground) {
           toast(title, { description, duration: 9000 })
         }
 
         if (
+          !appInForeground &&
           notificationSettings.browserNotifications &&
           "Notification" in window &&
           Notification.permission === "granted"
@@ -436,6 +497,7 @@ export function useWalletData() {
       ) {
         upcomingIPOs.forEach((ipo) => {
           const company = ipo.company || "IPO"
+          const ipoReminderBaseKey = buildIpoReminderBaseKey(ipo)
           const daysRemaining =
             ipo.daysRemaining ??
             (ipo.closingDate
@@ -445,14 +507,14 @@ export function useWalletData() {
           if (ipo.status === "open") {
             if (typeof daysRemaining === "number" && daysRemaining <= 1) {
               emitReminder(
-                `ipo-closing-soon-${company}`,
+                `ipo-closing-soon-${ipoReminderBaseKey}`,
                 `IPO closing soon: ${company}`,
                 `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
                 6 * HOUR_MS,
               )
             } else {
               emitReminder(
-                `ipo-open-${company}`,
+                `ipo-open-${ipoReminderBaseKey}`,
                 `IPO is open: ${company}`,
                 "You can apply from the Portfolio section.",
                 24 * HOUR_MS,
@@ -460,7 +522,7 @@ export function useWalletData() {
             }
           } else if (ipo.status === "upcoming" && typeof daysRemaining === "number" && daysRemaining <= 1) {
             emitReminder(
-              `ipo-opening-soon-${company}`,
+              `ipo-opening-soon-${ipoReminderBaseKey}`,
               `IPO opening soon: ${company}`,
               `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
               24 * HOUR_MS,
@@ -648,6 +710,13 @@ export function useWalletData() {
         .catch(err => console.error("Error fetching exchange messages:", err))
     }
   }, [isLoaded])
+
+  // Automatically refresh share and crypto prices on app load if features are enabled
+  useEffect(() => {
+    if (isLoaded && userProfile?.meroShare?.shareFeaturesEnabled) {
+      void fetchPortfolioPrices()
+    }
+  }, [isLoaded, userProfile?.meroShare?.shareFeaturesEnabled])
 
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
@@ -871,6 +940,10 @@ export function useWalletData() {
         sectorsMap: parseLocalJson("sectorsMap", {} as Record<string, string>),
         scripNamesMap: parseLocalJson("scripNamesMap", {} as Record<string, string>),
       }
+      const normalizedDebtAccounts = rebuildDebtAccountsFromHistory(
+        parsedData.debtAccounts,
+        parsedData.debtCreditTransactions,
+      )
 
       if (parsedData.userProfile || parsedData.transactions.length > 0) {
         const validation = await DataIntegrityManager.validateAllData(parsedData)
@@ -919,12 +992,16 @@ export function useWalletData() {
 
       setBudgets(parsedData.budgets)
       setGoals(parsedData.goals)
-      setDebtAccounts(parsedData.debtAccounts)
+      setDebtAccounts(normalizedDebtAccounts)
       setCreditAccounts(parsedData.creditAccounts)
       setDebtCreditTransactions(parsedData.debtCreditTransactions)
       setEmergencyFund(parsedData.emergencyFund)
       setPortfolio(parsedData.portfolio)
       setShareTransactions(parsedData.shareTransactions)
+
+      if (JSON.stringify(normalizedDebtAccounts) !== JSON.stringify(parsedData.debtAccounts)) {
+        await saveDataWithIntegrity("debtAccounts", normalizedDebtAccounts)
+      }
 
       setPortfolios(parsedData.portfolios)
       const finalActiveId = parsedData.activePortfolioId || (parsedData.portfolios.length > 0 ? parsedData.portfolios[0].id : null)
@@ -1177,20 +1254,20 @@ export function useWalletData() {
     }
   }
 
-    const updateUserProfile = (updates: Partial<UserProfile>) => {
-      if (!userProfile) return
+  const updateUserProfile = (updates: Partial<UserProfile>) => {
+    if (!userProfile) return
 
-      const previousProfile = userProfile
-      const updatedProfile = {
-        ...userProfile,
+    const previousProfile = userProfile
+    const updatedProfile = {
+      ...userProfile,
       ...updates,
       notificationSettings: normalizeNotificationSettings({
         ...userProfile.notificationSettings,
         ...(updates.notificationSettings || {}),
       }),
-      }
-      setUserProfile(updatedProfile)
-      void (async () => {
+    }
+    setUserProfile(updatedProfile)
+    void (async () => {
       const result = await saveDataWithIntegrityDetailed("userProfile", updatedProfile)
       if (!result.success) {
         setUserProfile(previousProfile)
@@ -1208,8 +1285,8 @@ export function useWalletData() {
           })
         }
       }
-      })()
-    }
+    })()
+  }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
   const addDebtAccount = (debt: Omit<DebtAccount, "id">) => {
@@ -1870,8 +1947,12 @@ export function useWalletData() {
 
       // Import debt accounts (only if selected)
       if (data.debtAccounts && Array.isArray(data.debtAccounts)) {
-        setDebtAccounts(data.debtAccounts)
-        await ensureSaved("debtAccounts", data.debtAccounts)
+        const normalizedDebtAccounts = rebuildDebtAccountsFromHistory(
+          data.debtAccounts,
+          Array.isArray(data.debtCreditTransactions) ? data.debtCreditTransactions : [],
+        )
+        setDebtAccounts(normalizedDebtAccounts)
+        await ensureSaved("debtAccounts", normalizedDebtAccounts)
       }
 
       // Import credit accounts (only if selected)
@@ -2176,131 +2257,130 @@ export function useWalletData() {
   }
 
 
-  const fetchPortfolioPrices = async (portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) => {
+  async function fetchPortfolioPrices(portfolioOverride?: PortfolioItem[], forceRefresh: boolean = false) {
     const targetPortfolio = portfolioOverride || portfolio
     if (targetPortfolio.length === 0) return
 
-    try {
-      const CACHE_DURATION = 2 * 60 * 1000
-      const now = Date.now()
-      const nowIso = new Date().toISOString()
-      const isCryptoAsset = (item: PortfolioItem) => normalizeAssetType(item.assetType) === "crypto" || Boolean(item.cryptoId?.trim())
+    const CACHE_DURATION = 3 * 60 * 1000
+    const now = Date.now()
+    const nowIso = new Date().toISOString()
+    const isCryptoAsset = (item: PortfolioItem) => normalizeAssetType(item.assetType) === "crypto" || Boolean(item.cryptoId?.trim())
 
-      const isCacheValid = globalPortfolioCache &&
-        (now - globalPortfolioCache.timestamp) < CACHE_DURATION
+    const mergeUpdatedPortfolio = (base: PortfolioItem[], updated: PortfolioItem[]) => {
+      if (updated.length === 0) return base
+      const updatedKeySet = new Set(updated.map((item) => getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+      const filteredBase = base.filter((item) => !updatedKeySet.has(getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
+      return [...filteredBase, ...updated]
+    }
 
-      const mergeUpdatedPortfolio = (base: PortfolioItem[], updated: PortfolioItem[]) => {
-        if (updated.length === 0) return base
-        const updatedKeySet = new Set(updated.map((item) => getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
-        const filteredBase = base.filter((item) => !updatedKeySet.has(getHoldingKey(item.portfolioId, item.symbol, item.assetType, item.cryptoId)))
-        return [...filteredBase, ...updated]
-      }
-
-      const applyLivePrices = (
-        stockPriceData: any[],
-        sectorData: Record<string, string[]>,
-        cryptoPrices: Record<string, any>,
-        resolvedCryptoIds: Record<string, string>,
-      ) => {
-        const symbolToSector: Record<string, string> = {}
-        const symbolToName: Record<string, string> = {}
-        Object.entries(sectorData).forEach(([sector, scrips]) => {
-          if (Array.isArray(scrips)) {
-            scrips.forEach((scrip: any) => {
-              const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
-              if (sym) {
-                symbolToSector[sym] = sector
-                if (scrip.name) {
-                  symbolToName[sym] = scrip.name.trim()
-                }
-              }
-            })
-          }
-        })
-
-        const stockLookup = new Map<string, any>()
-        if (stockPriceData.length > 0) {
-          stockPriceData.forEach((s: any) => {
-            const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
-            if (key) stockLookup.set(key, s)
-          })
-        }
-
-        const updatedPortfolio: PortfolioItem[] = targetPortfolio.map((item): PortfolioItem => {
-          if (isCryptoAsset(item)) {
-            const resolvedId = resolvedCryptoIds[item.symbol.trim().toUpperCase()]
-            const cryptoId = item.cryptoId?.trim() || resolvedId
-            const coin = cryptoId ? cryptoPrices[cryptoId] : null
-            if (!coin) {
-              return {
-                ...item,
-                assetType: "crypto",
-                cryptoId,
-                sector: "Crypto",
+    const applyLivePrices = (
+      stockPriceData: any[],
+      sectorData: Record<string, string[]>,
+      cryptoPrices: Record<string, any>,
+      resolvedCryptoIds: Record<string, string>,
+    ) => {
+      const symbolToSector: Record<string, string> = {}
+      const symbolToName: Record<string, string> = {}
+      Object.entries(sectorData).forEach(([sector, scrips]) => {
+        if (Array.isArray(scrips)) {
+          scrips.forEach((scrip: any) => {
+            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+            if (sym) {
+              symbolToSector[sym] = sector
+              if (scrip.name) {
+                symbolToName[sym] = scrip.name.trim()
               }
             }
+          })
+        }
+      })
 
-            const ltp = Number(coin.price_usd || item.currentPrice || item.buyPrice || 0)
-            const percentChange = Number(coin.percent_change_24h ?? item.percentChange ?? 0)
-            const computedPrev = Number.isFinite(percentChange) && percentChange > -100
-              ? ltp / (1 + (percentChange / 100))
-              : item.previousClose
-            const previousClose = Number(computedPrev || item.previousClose || ltp)
-            const change = Number(item.change ?? (ltp - previousClose))
+      const stockLookup = new Map<string, any>()
+      if (stockPriceData.length > 0) {
+        stockPriceData.forEach((s: any) => {
+          const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
+          if (key) stockLookup.set(key, s)
+        })
+      }
 
+      const updatedPortfolio: PortfolioItem[] = targetPortfolio.map((item): PortfolioItem => {
+        if (isCryptoAsset(item)) {
+          const resolvedId = resolvedCryptoIds[item.symbol.trim().toUpperCase()]
+          const cryptoId = item.cryptoId?.trim() || resolvedId
+          const coin = cryptoId ? cryptoPrices[cryptoId] : null
+          if (!coin) {
             return {
               ...item,
               assetType: "crypto",
               cryptoId,
-              assetName: coin.name || item.assetName || item.symbol,
-              currentPrice: ltp,
-              previousClose,
-              change,
-              percentChange,
-              high: item.high ?? ltp,
-              low: item.low ?? ltp,
               sector: "Crypto",
-              lastUpdated: nowIso,
             }
           }
 
-          const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
+          const ltp = Number(coin.price_usd || item.currentPrice || item.buyPrice || 0)
+          const percentChange = Number(coin.percent_change_24h ?? item.percentChange ?? 0)
+          const computedPrev = Number.isFinite(percentChange) && percentChange > -100
+            ? ltp / (1 + (percentChange / 100))
+            : item.previousClose
+          const previousClose = Number(computedPrev || item.previousClose || ltp)
+          const change = Number(item.change ?? (ltp - previousClose))
 
-          const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
-
-          if (matchingStock) {
-            const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
-            const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
-            const high = Number(matchingStock.high || matchingStock.high_price || item.high)
-            const low = Number(matchingStock.low || matchingStock.low_price || item.low)
-            const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
-            const change = Number(matchingStock.change || (ltp - pc) || item.change)
-            const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
-
-            return {
-              ...item,
-              assetType: "stock",
-              currentPrice: ltp,
-              previousClose: pc,
-              high,
-              low,
-              volume,
-              change,
-              percentChange,
-              sector: sector,
-              lastUpdated: new Date().toISOString()
-            }
+          return {
+            ...item,
+            assetType: "crypto",
+            cryptoId,
+            assetName: coin.name || item.assetName || item.symbol,
+            currentPrice: ltp,
+            previousClose,
+            change,
+            percentChange,
+            high: item.high ?? ltp,
+            low: item.low ?? ltp,
+            sector: "Crypto",
+            lastUpdated: nowIso,
           }
+        }
+
+        const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
+
+        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+
+        if (matchingStock) {
+          const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
+          const pc = Number(matchingStock.previous_close || matchingStock.pc || matchingStock.prev_close || item.previousClose)
+          const high = Number(matchingStock.high || matchingStock.high_price || item.high)
+          const low = Number(matchingStock.low || matchingStock.low_price || item.low)
+          const volume = Number(matchingStock.volume || matchingStock.total_volume || item.volume)
+          const change = Number(matchingStock.change || (ltp - pc) || item.change)
+          const percentChange = Number(matchingStock.percent_change || matchingStock.percentChange || (pc !== 0 ? (change / pc) * 100 : 0) || item.percentChange)
 
           return {
             ...item,
             assetType: "stock",
-            sector: sector
+            currentPrice: ltp,
+            previousClose: pc,
+            high,
+            low,
+            volume,
+            change,
+            percentChange,
+            sector: sector,
+            lastUpdated: new Date().toISOString()
           }
-        })
+        }
 
-        return { updatedPortfolio, symbolToSector, symbolToName }
-      }
+        return {
+          ...item,
+          assetType: "stock",
+          sector: sector
+        }
+      })
+      return { updatedPortfolio, symbolToSector, symbolToName }
+    }
+
+    try {
+      const isCacheValid = globalPortfolioCache &&
+        (now - globalPortfolioCache.timestamp) < CACHE_DURATION
 
       if (isCacheValid && !forceRefresh && globalPortfolioCache) {
         const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
@@ -2311,7 +2391,6 @@ export function useWalletData() {
         )
         const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
 
-        // Only update state if data actually changed (excluding timestamps)
         const hasSubstantialChange = JSON.stringify(mergedPortfolio.map(({ lastUpdated, ...rest }) => rest)) !==
           JSON.stringify(portfolio.map(({ lastUpdated, ...rest }) => rest))
 
@@ -2345,7 +2424,9 @@ export function useWalletData() {
         const entries = await Promise.all(
           symbols.map(async (symbol) => {
             try {
-              const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`)
+              const response = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(symbol)}`, {
+                signal: AbortSignal.timeout(5000)
+              })
               const payload = await response.json()
               if (!response.ok) return null
               const id = payload?.id ? String(payload.id) : ""
@@ -2384,8 +2465,8 @@ export function useWalletData() {
           if (stockItems.length === 0) return
           try {
             const [priceRes, sectorRes] = await Promise.all([
-              fetch("/api/nepse/today"),
-              fetch("/api/nepse/sectors"),
+              fetch("/api/nepse/today", { signal: AbortSignal.timeout(10000) }),
+              fetch("/api/nepse/sectors", { signal: AbortSignal.timeout(10000) }),
             ])
             const pricePayload = await priceRes.json()
             if (!priceRes.ok) {
@@ -2408,7 +2489,9 @@ export function useWalletData() {
         (async () => {
           if (cryptoIds.length === 0) return
           try {
-            const response = await fetch(`/api/crypto/coinlore?ids=${cryptoIds.join(",")}`)
+            const response = await fetch(`/api/crypto/coinlore?ids=${cryptoIds.join(",")}`, {
+              signal: AbortSignal.timeout(10000)
+            })
             const payload = await response.json()
             if (!response.ok) {
               throw new Error(payload?.error || "Failed to load crypto prices")
@@ -2420,13 +2503,34 @@ export function useWalletData() {
         })(),
       ])
 
-      if (stockItems.length > 0 && stockPriceData.length === 0 && cryptoIds.length === 0) {
+      const hasStockFetchFailed = stockItems.length > 0 && stockPriceData.length === 0
+      const hasCryptoFetchFailed = cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0
+
+      if ((hasStockFetchFailed || hasCryptoFetchFailed) && globalPortfolioCache) {
+        console.warn("Live price fetch failed, falling back to stale cache")
+        const { updatedPortfolio, symbolToSector, symbolToName } = applyLivePrices(
+          globalPortfolioCache.stockPriceData,
+          globalPortfolioCache.sectorData,
+          globalPortfolioCache.cryptoPrices,
+          {},
+        )
+        const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+        setPortfolio(mergedPortfolio)
+
+        if (Object.keys(symbolToSector).length > 0) {
+          setSectorsMap(prev => ({ ...prev, ...symbolToSector }))
+          setScripNamesMap(prev => ({ ...prev, ...symbolToName }))
+        }
+        return mergedPortfolio
+      }
+
+      if (stockItems.length > 0 && stockPriceData.length === 0 && cryptoIds.length === 0 && !globalPortfolioCache) {
         throw new Error(stockError || "Stock prices are currently unavailable")
       }
-      if (cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0 && stockItems.length === 0) {
+      if (cryptoIds.length > 0 && Object.keys(cryptoPrices).length === 0 && stockItems.length === 0 && !globalPortfolioCache) {
         throw new Error(cryptoError || "Crypto prices are currently unavailable")
       }
-      if (stockItems.length > 0 && cryptoIds.length > 0 && stockPriceData.length === 0 && Object.keys(cryptoPrices).length === 0) {
+      if (hasStockFetchFailed && hasCryptoFetchFailed && !globalPortfolioCache) {
         throw new Error(stockError || cryptoError || "Price services are currently unavailable")
       }
 
@@ -2455,7 +2559,18 @@ export function useWalletData() {
       await saveDataWithIntegrity("portfolio", mergedPortfolio)
       return mergedPortfolio
     } catch (error: any) {
-      throw error // Propagate specialized error
+      if (globalPortfolioCache) {
+        const { updatedPortfolio } = applyLivePrices(
+          globalPortfolioCache.stockPriceData,
+          globalPortfolioCache.sectorData,
+          globalPortfolioCache.cryptoPrices,
+          {},
+        )
+        const mergedPortfolio = portfolioOverride ? mergeUpdatedPortfolio(portfolio, updatedPortfolio) : updatedPortfolio
+        setPortfolio(mergedPortfolio)
+        return mergedPortfolio
+      }
+      throw error
     }
   }
 
