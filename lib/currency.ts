@@ -68,7 +68,10 @@ export function getCurrencyLabel(currencyCode: string, customCurrency?: { name: 
 export function formatCurrency(amount: number, currencyCode: string, customCurrency?: { symbol: string }): string {
   const symbol = getCurrencySymbol(currencyCode, customCurrency)
   const locale = getLocaleForCurrency(currencyCode)
-  return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2 })}`
+  return `${symbol}${amount.toLocaleString(locale, { 
+    minimumFractionDigits: 0, 
+    maximumFractionDigits: 2 
+  })}`
 }
 
 /**

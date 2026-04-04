@@ -244,7 +244,6 @@ export function ScenarioPlanningCalculator({
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <Label htmlFor="purchase-amount" className="text-[11px] font-black uppercase tracking-widest text-primary/80">Acquisition Cost</Label>
-                  <Badge variant="secondary" className="text-[10px] font-mono">{formatCurrency(Number(purchaseAmount) || 0, userProfile.currency, userProfile.customCurrency)}</Badge>
                 </div>
                 <div className="relative group/input">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-black opacity-40">
@@ -294,7 +293,7 @@ export function ScenarioPlanningCalculator({
                   className="py-4"
                 />
                 <div className="flex justify-between text-[9px] font-black text-muted-foreground/40 uppercase tracking-tighter">
-                  <span>रु 0</span>
+                  <span>रु 0 </span>
                   <span>Max Income</span>
                 </div>
               </div>
