@@ -52,12 +52,17 @@ export function CombinedBalanceCard() {
         if (Number.isNaN(txDate.getTime())) {
           return acc
         }
+        const isTrueExpense =
+          transaction.type === "expense" &&
+          transaction.status !== "repayment" &&
+          transaction.allocationType !== "goal"
+
         if (transaction.type === "income") {
           acc.allTimeIncome += fullAmount
           if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
             acc.monthlyIncome += fullAmount
           }
-        } else if (transaction.type === "expense") {
+        } else if (isTrueExpense) {
           acc.allTimeExpenses += fullAmount
           if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
             acc.monthlyExpenses += fullAmount

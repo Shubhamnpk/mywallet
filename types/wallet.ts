@@ -16,6 +16,7 @@ export interface UserProfile {
   }
   avatar?: string
   notificationSettings?: NotificationSettings
+  sipPlans?: SIPPlan[]
   meroShare?: {
     dpId: string
     username: string
@@ -40,6 +41,28 @@ export interface NotificationSettings {
   budgetReminders: boolean
   goalReminders: boolean
   ipoReminders: boolean
+  sipReminders: boolean
+}
+
+export interface SIPPlan {
+  id: string
+  portfolioId: string
+  symbol: string
+  assetType: "stock"
+  assetName?: string
+  sector?: string
+  installmentAmount: number
+  dpsCharge?: number
+  estimatedUnits?: number
+  referencePrice?: number
+  frequency: "weekly" | "monthly" | "quarterly"
+  startDate: string
+  reminderDays: number
+  mode: "manual" | "auto"
+  status: "active" | "paused"
+  notes?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface MeroShareApplicationLog {
@@ -238,6 +261,11 @@ export interface ShareTransaction {
   price: number
   date: string
   description: string
+  sipPlanId?: string
+  sipDueDate?: string
+  sipGrossAmount?: number
+  sipDpsCharge?: number
+  sipNetAmount?: number
 }
 
 export interface UpcomingIPO {

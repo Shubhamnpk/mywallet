@@ -21,6 +21,7 @@ import type {
   NepseNoticesBundle,
   NepseDisclosure,
   NepseExchangeMessage,
+  SIPPlan,
 } from "@/types/wallet"
 type WalletDataContextType = {
   userProfile: UserProfile | null
@@ -55,6 +56,12 @@ type WalletDataContextType = {
   handleOnboardingComplete: (profileData: UserProfile) => void
   addTransaction: (transaction: Omit<Transaction, "id" | "timeEquivalent">) => Promise<any>
   updateUserProfile: (updates: Partial<UserProfile>) => void
+  saveSipPlan: (plan: Omit<SIPPlan, "id" | "createdAt" | "updatedAt"> & { id?: string }) => SIPPlan | null
+  deleteSipPlan: (id: string) => void
+  completeSipInstallment: (
+    planId: string,
+    options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }
+  ) => Promise<any>
   addBudget: (budget: Omit<Budget, "id">) => void
   updateBudget: (id: string, updates: Partial<Budget>) => void
   deleteBudget: (id: string) => void

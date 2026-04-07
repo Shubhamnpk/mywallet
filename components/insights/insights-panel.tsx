@@ -49,8 +49,14 @@ export function InsightsPanel({
     userProfile.workingHoursPerDay > 0
 
   // Calculate insights
+  // Helper: true-expense filter excludes debt repayments and goal contributions
+  const isTrueExpense = (t: Transaction) =>
+    t.type === "expense" &&
+    t.status !== "repayment" &&
+    t.allocationType !== "goal"
+
   const totalIncome = transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
-  const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
+  const totalExpenses = transactions.filter(isTrueExpense).reduce((sum, t) => sum + t.amount, 0)
   const netWorth = totalIncome - totalExpenses
   const now = new Date()
   const currentMonth = now.getMonth()
@@ -77,8 +83,8 @@ export function InsightsPanel({
   })
 
   const thisMonthIncome = thisMonthTransactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
-  const thisMonthExpenses = thisMonthTransactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
-  const lastMonthExpenses = lastMonthTransactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
+  const thisMonthExpenses = thisMonthTransactions.filter(isTrueExpense).reduce((sum, t) => sum + t.amount, 0)
+  const lastMonthExpenses = lastMonthTransactions.filter(isTrueExpense).reduce((sum, t) => sum + t.amount, 0)
   const expenseChangePercent = lastMonthExpenses > 0 ? ((thisMonthExpenses - lastMonthExpenses) / lastMonthExpenses) * 100 : 0
 
   const atRiskBudgets = budgets
@@ -105,12 +111,12 @@ export function InsightsPanel({
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + calculateTimeFromAmount(t.amount), 0)
   const totalWorkTimeSpent = transactions
-    .filter((t) => t.type === "expense")
+    .filter(isTrueExpense)
     .reduce((sum, t) => sum + calculateTimeFromAmount(t.amount), 0)
 
-  // Category breakdown
+  // Category breakdown (excludes debt repayments & goal contributions)
   const expensesByCategory = transactions
-    .filter((t) => t.type === "expense")
+    .filter(isTrueExpense)
     .reduce(
       (acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + t.amount

@@ -123,6 +123,30 @@ export function PortfolioList() {
         }
     }, [isShareFeaturesEnabled, viewMode])
 
+    useEffect(() => {
+        if (!isStockDetailOpen || !selectedStock) return
+
+        const selectedSymbol = selectedStock.symbol.trim().toUpperCase()
+        const selectedAssetType = selectedStock.assetType || "stock"
+        const selectedCryptoId = (selectedStock.cryptoId || "").trim()
+
+        const latestMatch = portfolio.find((entry) => {
+            const entrySymbol = entry.symbol.trim().toUpperCase()
+            const entryAssetType = entry.assetType || "stock"
+            const entryCryptoId = (entry.cryptoId || "").trim()
+            return (
+                entry.portfolioId === selectedStock.portfolioId &&
+                entrySymbol === selectedSymbol &&
+                entryAssetType === selectedAssetType &&
+                entryCryptoId === selectedCryptoId
+            )
+        })
+
+        if (latestMatch && latestMatch !== selectedStock) {
+            setSelectedStock(latestMatch)
+        }
+    }, [isStockDetailOpen, portfolio, selectedStock])
+
     const portfolioSymbols = useMemo(
         () => portfolio.map((p) => p.symbol).sort().join(","),
         [portfolio]

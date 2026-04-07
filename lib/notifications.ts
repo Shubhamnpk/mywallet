@@ -11,6 +11,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   budgetReminders: true,
   goalReminders: true,
   ipoReminders: true,
+  sipReminders: true,
 }
 
 export type AppNotificationInput = {

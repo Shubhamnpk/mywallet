@@ -115,7 +115,7 @@ export function NotificationSettings() {
             <div className="space-y-1">
               <Label htmlFor="notif-enabled">Enable All Reminders</Label>
               <p className="text-sm text-muted-foreground">
-                Master switch for budget, goal, and IPO reminders.
+                Master switch for budget, goal, IPO, and SIP reminders.
               </p>
             </div>
             <Switch
@@ -233,6 +233,14 @@ export function NotificationSettings() {
             description="Upcoming/open/closing reminders for MeroShare IPO windows."
             checked={settings.ipoReminders}
             onCheckedChange={(checked) => updateSettings({ ipoReminders: checked })}
+            disabled={!settings.enabled}
+          />
+          <SettingToggle
+            id="notif-sip"
+            label="SIP reminders"
+            description="Installment reminders for upcoming, due-today, and recently missed SIP plans."
+            checked={settings.sipReminders}
+            onCheckedChange={(checked) => updateSettings({ sipReminders: checked })}
             disabled={!settings.enabled}
           />
           <div className="pt-2">
