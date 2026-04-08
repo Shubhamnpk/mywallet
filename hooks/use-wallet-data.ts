@@ -335,9 +335,19 @@ export function useWalletData() {
   const [exchangeMessages, setExchangeMessages] = useState<NepseExchangeMessage[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
+  const userProfileRef = useRef<UserProfile | null>(null)
+  const shareTransactionsRef = useRef<ShareTransaction[]>([])
   const normalizeAssetType = (assetType?: "stock" | "crypto") => assetType === "crypto" ? "crypto" : "stock"
   const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) =>
     `${portfolioId}::${symbol.trim().toUpperCase()}::${normalizeAssetType(assetType)}::${(cryptoId || "").trim()}`
+
+  useEffect(() => {
+    userProfileRef.current = userProfile
+  }, [userProfile])
+
+  useEffect(() => {
+    shareTransactionsRef.current = shareTransactions
+  }, [shareTransactions])
 
   // Reminder engine: budgets, goals, and IPO windows.
   useEffect(() => {
@@ -1292,22 +1302,25 @@ export function useWalletData() {
   }
 
   const updateUserProfile = (updates: Partial<UserProfile>) => {
-    if (!userProfile) return
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return
 
-    const previousProfile = userProfile
+    const previousProfile = currentProfile
     const updatedProfile = {
-      ...userProfile,
+      ...currentProfile,
       ...updates,
       notificationSettings: normalizeNotificationSettings({
-        ...userProfile.notificationSettings,
+        ...currentProfile.notificationSettings,
         ...(updates.notificationSettings || {}),
       }),
-      sipPlans: normalizeSipPlans(updates.sipPlans ?? userProfile.sipPlans),
+      sipPlans: normalizeSipPlans(updates.sipPlans ?? currentProfile.sipPlans),
     }
+    userProfileRef.current = updatedProfile
     setUserProfile(updatedProfile)
     void (async () => {
       const result = await saveDataWithIntegrityDetailed("userProfile", updatedProfile)
       if (!result.success) {
+        userProfileRef.current = previousProfile
         setUserProfile(previousProfile)
         if (result.reason === "storage_full") {
           toast.error("Storage full", {
@@ -1327,10 +1340,11 @@ export function useWalletData() {
   }
 
   const saveSipPlan = (planInput: Omit<SIPPlan, "id" | "createdAt" | "updatedAt"> & { id?: string }) => {
-    if (!userProfile) return null
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return null
 
     const nowIso = new Date().toISOString()
-    const existingPlans = normalizeSipPlans(userProfile.sipPlans)
+    const existingPlans = normalizeSipPlans(currentProfile.sipPlans)
     const existingPlan = planInput.id ? existingPlans.find((plan) => plan.id === planInput.id) : undefined
 
     const nextPlan: SIPPlan = {
@@ -1351,12 +1365,14 @@ export function useWalletData() {
   }
 
   const deleteSipPlan = async (id: string) => {
-    if (!userProfile) return
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return
 
-    const updatedPlans = normalizeSipPlans(userProfile.sipPlans).filter((plan) => plan.id !== id)
+    const updatedPlans = normalizeSipPlans(currentProfile.sipPlans).filter((plan) => plan.id !== id)
     updateUserProfile({ sipPlans: updatedPlans })
 
-    const updatedTransactions = shareTransactions.map((tx) => {
+    const currentTransactions = shareTransactionsRef.current
+    const updatedTransactions = currentTransactions.map((tx) => {
       if (tx.sipPlanId !== id) return tx
 
       return {
@@ -1369,6 +1385,7 @@ export function useWalletData() {
       }
     })
 
+    shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
   }
@@ -2724,6 +2741,7 @@ export function useWalletData() {
     const sipGrossAmount = matchingSipPlan && Number.isFinite(sipNetAmount) && Number.isFinite(sipDpsCharge)
       ? Number(((sipNetAmount as number) + (sipDpsCharge as number)).toFixed(2))
       : tx.sipGrossAmount
+    const currentTransactions = shareTransactionsRef.current
     const newTx: ShareTransaction = {
       ...tx,
       symbol: normalizedSymbol,
@@ -2738,7 +2756,8 @@ export function useWalletData() {
       sipGrossAmount,
       id: generateId('stx'),
     }
-    const updatedTransactions = [...shareTransactions, newTx]
+    const updatedTransactions = [...currentTransactions, newTx]
+    shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
     const updatedPortfolio = await recomputePortfolio(updatedTransactions)
@@ -2850,17 +2869,19 @@ export function useWalletData() {
       dpsCharge?: number
     },
   ) => {
-    if (!userProfile) {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
       throw new Error("User profile is not available")
     }
 
-    const sipPlans = normalizeSipPlans(userProfile.sipPlans)
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
     const plan = sipPlans.find((entry) => entry.id === planId)
     if (!plan) {
       throw new Error("SIP plan not found")
     }
 
-    const transaction = shareTransactions.find((entry) => entry.id === transactionId)
+    const currentTransactions = shareTransactionsRef.current
+    const transaction = currentTransactions.find((entry) => entry.id === transactionId)
     if (!transaction) {
       throw new Error("Transaction not found")
     }
@@ -2881,7 +2902,7 @@ export function useWalletData() {
       : Number((netAmount + dpsCharge).toFixed(2))
     const dueDate = options?.dueDate || transaction.date
 
-    const updatedTransactions = shareTransactions.map((entry) =>
+    const updatedTransactions = currentTransactions.map((entry) =>
       entry.id === transactionId
         ? {
             ...entry,
@@ -2899,6 +2920,7 @@ export function useWalletData() {
       throw new Error("Could not update SIP transaction")
     }
 
+    shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
     const updatedPortfolio = await recomputePortfolio(updatedTransactions)

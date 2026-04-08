@@ -67,6 +67,16 @@ type BtcNewsItem = {
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
 
+const formatOrdinalInstallment = (value: number) => {
+    const remainder10 = value % 10
+    const remainder100 = value % 100
+
+    if (remainder10 === 1 && remainder100 !== 11) return `${value}st`
+    if (remainder10 === 2 && remainder100 !== 12) return `${value}nd`
+    if (remainder10 === 3 && remainder100 !== 13) return `${value}rd`
+    return `${value}th`
+}
+
 interface StockDetailModalProps {
     item: PortfolioItem | null
     open: boolean
@@ -393,22 +403,20 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         )
     }, [])
 
+    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => (
+        tx.type === "buy" &&
+        !tx.sipPlanId &&
+        Number.isFinite(tx.quantity) &&
+        (tx.quantity ?? 0) > 0 &&
+        Number.isFinite(tx.price) &&
+        (tx.price ?? 0) > 0
+    ), [])
+
     const sipEnrollmentCandidates = useMemo(() =>
         matchedTransactions
-            .filter((tx) =>
-                tx.type === "buy" &&
-                !tx.sipPlanId &&
-                Number.isFinite(tx.quantity) &&
-                (tx.quantity ?? 0) > 0 &&
-                Number.isFinite(tx.price) &&
-                (tx.price ?? 0) > 0 &&
-                (
-                    item?.sector === "Mutual Fund" ||
-                    isRecognizedSipLikeBuy(tx)
-                )
-            )
+            .filter((tx) => isEligibleForSipEnrollment(tx))
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [isRecognizedSipLikeBuy, item?.sector, matchedTransactions])
+    [isEligibleForSipEnrollment, matchedTransactions])
 
     const handleCompleteSipInstallment = async () => {
         if (!existingSipPlan || !sipSchedule?.nextDate || currentSipInstallment) return
@@ -794,7 +802,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                             {tx.description && (
                                                                 <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
                                                             )}
-                                                            {!existingSipPlan && !tx.sipPlanId && Number.isFinite(tx.quantity) && (tx.quantity ?? 0) > 0 && ((Number.isFinite(tx.price) && (tx.price ?? 0) > 0) || item?.sector === "Mutual Fund") && (tx.type === "buy" || isRecognizedSipLikeBuy(tx)) && (
+                                                            {!existingSipPlan && isEligibleForSipEnrollment(tx) && (
                                                                 <Button
                                                                     type="button"
                                                                     variant="link"
@@ -1040,7 +1048,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                 </div>
                                                 {sipTransactions.length > 0 ? (
                                                     <div className="divide-y divide-muted/10">
-                                                        {sipTransactions.map((tx) => (
+                                                        {sipTransactions.map((tx, index) => {
+                                                            const installmentNumber = sipTransactions.length - index
+                                                            return (
                                                             <div key={tx.id} className="px-3 py-3 flex items-start justify-between gap-3">
                                                                 <div>
                                                                     <p className="text-[11px] font-black uppercase flex items-center gap-2">
@@ -1055,13 +1065,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                     </p>
                                                                 </div>
                                                                 <div className="text-right">
+                                                                    <p className="text-[11px] font-black text-primary">
+                                                                        {formatOrdinalInstallment(installmentNumber)} installment
+                                                                    </p>
+                                                                    <p className="text-[10px] text-muted-foreground">
+                                                                        Paid {installmentNumber} of {sipTransactions.length}
+                                                                    </p>
                                                                     <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity || 0)} units</p>
                                                                     <p className="text-[10px] text-muted-foreground">
                                                                         @ {currencySymbol}{formatValue(tx.price || 0)}
                                                                     </p>
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                        )})}
                                                     </div>
                                                 ) : (
                                                     <p className="px-3 py-6 text-xs text-center text-muted-foreground">No SIP installments completed yet.</p>

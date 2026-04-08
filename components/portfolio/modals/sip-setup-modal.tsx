@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { BellRing, CalendarDays, PiggyBank, TrendingUp } from "lucide-react"
+import { PiggyBank } from "lucide-react"
 import type { PortfolioItem, ShareTransaction, SIPPlan } from "@/types/wallet"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,13 +37,14 @@ interface SIPSetupModalProps {
 
 type SIPFormState = {
   installmentAmount: string
-  estimatedUnits: string
   frequency: SIPPlan["frequency"]
   startDate: string
   reminderDays: string
   mode: SIPPlan["mode"]
   status: SIPPlan["status"]
 }
+
+const NO_ENROLLMENT_VALUE = "__none__"
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear()
@@ -69,17 +70,18 @@ export function SIPSetupModal({
   const { saveSipPlan, deleteSipPlan, enrollShareTransactionInSipPlan } = useWalletData()
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
-    estimatedUnits: "",
     frequency: "monthly",
     startDate: getDefaultStartDate(),
     reminderDays: "3",
     mode: "manual",
     status: "active",
   })
-  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState("")
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState(NO_ENROLLMENT_VALUE)
 
   const selectedEnrollmentTx = useMemo(
-    () => enrollableTransactions.find((tx) => tx.id === selectedEnrollmentId) || null,
+    () => selectedEnrollmentId === NO_ENROLLMENT_VALUE
+      ? null
+      : enrollableTransactions.find((tx) => tx.id === selectedEnrollmentId) || null,
     [enrollableTransactions, selectedEnrollmentId],
   )
 
@@ -103,13 +105,12 @@ export function SIPSetupModal({
     if (!open) return
 
     if (!existingPlan) {
-      setSelectedEnrollmentId(initialEnrollmentTransactionId || enrollableTransactions[0]?.id || "")
+      setSelectedEnrollmentId(initialEnrollmentTransactionId || NO_ENROLLMENT_VALUE)
     }
 
     if (existingPlan) {
       setForm({
         installmentAmount: existingPlan.installmentAmount ? String(existingPlan.installmentAmount) : "",
-        estimatedUnits: existingPlan.estimatedUnits ? String(existingPlan.estimatedUnits) : "",
         frequency: existingPlan.frequency,
         startDate: existingPlan.startDate?.slice(0, 10) || getDefaultStartDate(),
         reminderDays: String(existingPlan.reminderDays || 3),
@@ -119,14 +120,12 @@ export function SIPSetupModal({
       return
     }
 
-    const enrollmentTx = enrollableTransactions.find((tx) => tx.id === (initialEnrollmentTransactionId || enrollableTransactions[0]?.id))
+    const enrollmentTx = initialEnrollmentTransactionId
+      ? enrollableTransactions.find((tx) => tx.id === initialEnrollmentTransactionId)
+      : null
     if (enrollmentTx) {
-      const txPrice = Number.isFinite(enrollmentTx.price) ? enrollmentTx.price : referencePrice
-      const txUnits = Number.isFinite(enrollmentTx.quantity) ? enrollmentTx.quantity : 0
-      const estimatedGross = Number(((txPrice * txUnits) + SIP_DEFAULT_DPS_CHARGE).toFixed(2))
       setForm({
-        installmentAmount: estimatedGross > 0 ? String(estimatedGross) : "",
-        estimatedUnits: txUnits > 0 ? String(Number(txUnits.toFixed(6))) : "",
+        installmentAmount: "1000",
         frequency: "monthly",
         startDate: enrollmentTx.date?.slice(0, 10) || getDefaultStartDate(),
         reminderDays: "3",
@@ -136,39 +135,30 @@ export function SIPSetupModal({
       return
     }
 
-    const defaultAmount = referencePrice > 0 ? Math.max(referencePrice, 1000) : 1000
-    const estimatedUnits = referencePrice > 0 ? (defaultAmount / referencePrice).toFixed(4) : ""
+    const defaultAmount = 1000
     setForm({
       installmentAmount: String(Number(defaultAmount.toFixed(2))),
-      estimatedUnits,
       frequency: "monthly",
       startDate: getDefaultStartDate(),
       reminderDays: "3",
       mode: "manual",
       status: "active",
     })
-  }, [enrollableTransactions, existingPlan, initialEnrollmentTransactionId, open, referencePrice])
+  }, [enrollableTransactions, existingPlan, initialEnrollmentTransactionId, open])
 
   useEffect(() => {
     if (!open || existingPlan || !selectedEnrollmentTx) return
 
-    const txPrice = Number.isFinite(selectedEnrollmentTx.price) ? selectedEnrollmentTx.price : referencePrice
-    const txUnits = Number.isFinite(selectedEnrollmentTx.quantity) ? selectedEnrollmentTx.quantity : 0
-    const estimatedGross = Number(((txPrice * txUnits) + SIP_DEFAULT_DPS_CHARGE).toFixed(2))
-
     setForm((current) => ({
       ...current,
-      installmentAmount: estimatedGross > 0 ? String(estimatedGross) : current.installmentAmount,
-      estimatedUnits: txUnits > 0 ? String(Number(txUnits.toFixed(6))) : current.estimatedUnits,
       startDate: selectedEnrollmentTx.date?.slice(0, 10) || current.startDate,
     }))
-  }, [existingPlan, open, referencePrice, selectedEnrollmentTx])
+  }, [existingPlan, open, selectedEnrollmentTx])
 
   const amount = Number(form.installmentAmount)
-  const units = Number(form.estimatedUnits)
-  const computedUnits = Number.isFinite(units) && units > 0
-    ? units
-    : (referencePrice > 0 && Number.isFinite(amount) && amount > 0 ? calculateSipNetInvestment(amount, SIP_DEFAULT_DPS_CHARGE) / referencePrice : 0)
+  const computedUnits = referencePrice > 0 && Number.isFinite(amount) && amount > 0
+    ? calculateSipNetInvestment(amount, SIP_DEFAULT_DPS_CHARGE) / referencePrice
+    : 0
   const netInvestedAmount = calculateSipNetInvestment(amount, SIP_DEFAULT_DPS_CHARGE)
 
   const nextInstallment = useMemo(
@@ -178,6 +168,7 @@ export function SIPSetupModal({
 
   const assetLabel = item?.assetName || item?.symbol || "Selected asset"
   const priceLabel = item?.sector === "Mutual Fund" ? "Latest NAV" : "Current price"
+  const unitsLabel = item?.sector === "Mutual Fund" ? "Approx units from NAV" : "Approx units from price"
 
   const handleSave = async () => {
     if (!item) return
@@ -236,10 +227,10 @@ export function SIPSetupModal({
           })
         }
       } catch (error: any) {
-        toast.error("SIP created, but history installments could not be linked", {
-          description: error?.message || "You can enroll the transaction later.",
+        await deleteSipPlan(saved.id)
+        toast.error("Could not link existing SIP history", {
+          description: error?.message || "Please try again.",
         })
-        onOpenChange(false)
         return
       }
     }
@@ -287,7 +278,7 @@ export function SIPSetupModal({
             </div>
           </div>
           <DialogDescription>
-            Set a recurring investment plan with reminders and a clear next installment date.
+            Set a recurring investment plan from the amount you want to contribute each cycle.
           </DialogDescription>
         </DialogHeader>
 
@@ -305,6 +296,9 @@ export function SIPSetupModal({
                     <SelectValue placeholder="Skip for now" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={NO_ENROLLMENT_VALUE}>
+                      Skip past buys
+                    </SelectItem>
                     {enrollableTransactions.map((tx) => (
                       <SelectItem key={tx.id} value={tx.id}>
                         {formatSipDate(tx.date)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
@@ -314,7 +308,7 @@ export function SIPSetupModal({
                 </Select>
                 {selectedEnrollmentTx && (
                   <p className="text-[11px] text-muted-foreground">
-                    This buy will be linked after the SIP plan is created.
+                    This buy will be linked after the SIP plan is created. You can still choose your own recurring contribution amount below.
                   </p>
                 )}
               </div>
@@ -334,19 +328,25 @@ export function SIPSetupModal({
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl bg-background/70 p-3">
-                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Approx units</p>
+                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{unitsLabel}</p>
                 <p className="mt-1 font-semibold">{computedUnits > 0 ? computedUnits.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "0"}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Calculated from {priceLabel.toLowerCase()} after the {SIP_DEFAULT_DPS_CHARGE.toLocaleString(undefined, { maximumFractionDigits: 2 })} DP charge.
+                </p>
               </div>
               <div className="rounded-xl bg-background/70 p-3">
                 <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Net invest</p>
                 <p className="mt-1 font-semibold">{netInvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Example: {amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "0"} contribution becomes {netInvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} after DP.
+                </p>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-1">
             <div className="space-y-2">
-              <Label htmlFor="sip-amount">Installment amount</Label>
+              <Label htmlFor="sip-amount">Contribution amount per installment</Label>
               <Input
                 id="sip-amount"
                 type="number"
@@ -355,17 +355,9 @@ export function SIPSetupModal({
                 value={form.installmentAmount}
                 onChange={(event) => setForm((current) => ({ ...current, installmentAmount: event.target.value }))}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sip-units">Estimated units</Label>
-              <Input
-                id="sip-units"
-                type="number"
-                min="0"
-                step="0.0001"
-                value={form.estimatedUnits}
-                onChange={(event) => setForm((current) => ({ ...current, estimatedUnits: event.target.value }))}
-              />
+              <p className="text-[11px] text-muted-foreground">
+                Units are calculated automatically from the current price or NAV. The fixed DP charge is {SIP_DEFAULT_DPS_CHARGE.toLocaleString(undefined, { maximumFractionDigits: 2 })} per installment.
+              </p>
             </div>
           </div>
 
