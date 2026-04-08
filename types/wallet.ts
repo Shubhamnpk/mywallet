@@ -151,6 +151,45 @@ export interface Goal {
   contributionAmount?: number
   contributionFrequency?: "daily" | "weekly" | "monthly"
   description?: string
+  challengePlan?: GoalChallengePlan
+  challengePoints?: GoalChallengePoints
+  challengePenaltyHistory?: GoalChallengePenaltySnapshot[]
+}
+
+export interface GoalChallengePlan {
+  type: "hard-plan"
+  mode: "easy" | "hard"
+  baseTargetAmount: number
+  penaltyAmount: number
+  graceMonths: number
+  allocation: {
+    nepalPercent: number
+    ukPercent: number
+  }
+  hardModeRewardPoints: number
+}
+
+export interface GoalChallengePoints {
+  total: number
+  history: GoalChallengePointEntry[]
+}
+
+export interface GoalChallengePointEntry {
+  id: string
+  type: "investment_reward"
+  points: number
+  awardedAt: string
+  description?: string
+}
+
+export interface GoalChallengePenaltySnapshot {
+  id: string
+  cycleNumber: number
+  penaltyAmount: number
+  previousDeadline: string
+  newDeadline: string
+  effectiveTargetAmount: number
+  appliedAt: string
 }
 
 export interface WalletSettings {

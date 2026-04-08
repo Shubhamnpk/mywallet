@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -44,6 +45,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
+import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -59,7 +61,7 @@ type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
-  const { transferToGoal, balance, updateGoal, deleteGoal } = useWalletData()
+  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment } = useWalletData()
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -74,6 +76,14 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     goalName: "",
   })
   const [transferAmount, setTransferAmount] = useState("")
+  const [investmentDialog, setInvestmentDialog] = useState<{ open: boolean; goalId: string; goalName: string }>({
+    open: false,
+    goalId: "",
+    goalName: "",
+  })
+  const [investmentAmount, setInvestmentAmount] = useState("")
+  const [investmentMarket, setInvestmentMarket] = useState<"nepal" | "uk" | "split">("split")
+  const [investmentNotes, setInvestmentNotes] = useState("")
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<FilterType>("all")
@@ -87,7 +97,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         goal.name?.toLowerCase()?.includes(searchQuery.toLowerCase()) ||
         (goal.category?.toLowerCase()?.includes(searchQuery.toLowerCase()) ?? false)
 
-      const progress = (goal.currentAmount / goal.targetAmount) * 100
+      const progress = getGoalEffectiveProgress(goal)
       const isCompleted = progress >= 100
       const isOverdue = new Date(goal.targetDate) < new Date() && !isCompleted
 
@@ -108,8 +118,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     const sorted = filtered.sort((a, b) => {
       switch (sortType) {
         case "progress":
-          const progressA = (a.currentAmount / a.targetAmount) * 100
-          const progressB = (b.currentAmount / b.targetAmount) * 100
+          const progressA = getGoalEffectiveProgress(a)
+          const progressB = getGoalEffectiveProgress(b)
           return progressB - progressA
         case "target-date":
           return new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()
@@ -193,6 +203,28 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     }
   }
 
+  const handleInvestmentUse = async () => {
+    const amount = Number.parseFloat(investmentAmount)
+    if (amount <= 0) return
+
+    try {
+      const result = await useGoalForInvestment(investmentDialog.goalId, amount, {
+        market: investmentMarket,
+        notes: investmentNotes.trim() || undefined,
+      })
+      if (result?.success) {
+        setInvestmentDialog({ open: false, goalId: "", goalName: "" })
+        setInvestmentAmount("")
+        setInvestmentMarket("split")
+        setInvestmentNotes("")
+      } else {
+        alert(result?.error || "Investment action failed")
+      }
+    } catch (error) {
+      alert("Investment action failed: " + (error instanceof Error ? error.message : "Unknown error"))
+    }
+  }
+
   const toggleGoalExpansion = (goalId: string) => {
     const newExpanded = new Set(expandedGoals)
     if (newExpanded.has(goalId)) {
@@ -204,7 +236,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   }
 
   const getGoalStatus = (goal: Goal) => {
-    const progress = (goal.currentAmount / goal.targetAmount) * 100
+    const progress = getGoalEffectiveProgress(goal)
     const isCompleted = progress >= 100
     const isOverdue = new Date(goal.targetDate) < new Date() && !isCompleted
 
@@ -351,15 +383,18 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
           ) : (
             <div className="grid gap-4 md:gap-6">
               {filteredAndSortedGoals.map((goal) => {
-                const progress = (goal.currentAmount / goal.targetAmount) * 100
-                const remaining = goal.targetAmount - goal.currentAmount
-                const isCompleted = goal.currentAmount >= goal.targetAmount
+                const challengeSummary = getGoalChallengeSummary(goal)
+                const effectiveTargetAmount = getGoalEffectiveTargetAmount(goal)
+                const progress = getGoalEffectiveProgress(goal)
+                const remaining = getGoalEffectiveRemainingAmount(goal)
+                const isCompleted = progress >= 100
                 const isExpanded = expandedGoals.has(goal.id)
                 const goalStatus = getGoalStatus(goal)
                 const StatusIcon = goalStatus.icon
                 const CategoryIcon = getCategoryIcon(goal.category)
                 const isSelected = selectedGoals.has(goal.id)
-                const daysRemaining = Math.max(0, Math.ceil((new Date(goal.targetDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+                const activeDeadline = challengeSummary?.currentDeadline || new Date(goal.targetDate)
+                const daysRemaining = Math.max(0, Math.ceil((new Date(activeDeadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
 
                 return (
                   <Card
@@ -423,7 +458,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               <div className="text-left md:text-right flex-1 md:flex-none">
                                 <p className="text-xs text-muted-foreground">Target</p>
                                 <p className="font-bold text-base md:text-lg">
-                                  {formatCurrency(goal.targetAmount, userProfile.currency, userProfile.customCurrency)}
+                                  {formatCurrency(effectiveTargetAmount, userProfile.currency, userProfile.customCurrency)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)} saved
@@ -516,6 +551,50 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
                           </div>
 
+                          {challengeSummary && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
+                              <div className="rounded-lg border bg-muted/20 p-3">
+                                <p className="text-xs text-muted-foreground">Challenge mode</p>
+                                <p className="mt-1 text-sm font-semibold capitalize">{challengeSummary.plan.mode}</p>
+                              </div>
+                              <div className="rounded-lg border bg-muted/20 p-3">
+                                <p className="text-xs text-muted-foreground">Penalty status</p>
+                                <p className="mt-1 text-sm font-semibold">
+                                  {challengeSummary.penaltiesApplied > 0
+                                    ? `${challengeSummary.penaltiesApplied} active`
+                                    : "No penalty yet"}
+                                </p>
+                              </div>
+                              <div className="rounded-lg border bg-muted/20 p-3">
+                                <p className="text-xs text-muted-foreground">Investment split</p>
+                                <p className="mt-1 text-sm font-semibold">
+                                  {challengeSummary.utilization.nepalPercent}% NEP / {challengeSummary.utilization.ukPercent}% UK
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {challengeSummary && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
+                              <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 p-3">
+                                <p className="text-xs text-muted-foreground">Challenge points</p>
+                                <p className="mt-1 text-lg font-bold text-blue-600">{challengeSummary.points.total}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Hard mode investment rewards are saved here.
+                                </p>
+                              </div>
+                              <div className="rounded-lg border bg-muted/20 p-3">
+                                <p className="text-xs text-muted-foreground">Penalty total added</p>
+                                <p className="mt-1 text-lg font-bold">
+                                  {formatCurrency(challengeSummary.penaltyTotal, userProfile.currency, userProfile.customCurrency)}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Based on missed deadlines and one-month grace cycles.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Goal Insights */}
                           {!isCompleted && (
                             <div className="p-2 md:p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -539,7 +618,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                 <div>
                                   <p className="text-amber-700 dark:text-amber-300 mb-1">Target Date</p>
                                   <p className="text-amber-700 dark:text-amber-300 mb-1">
-                                    {new Date(goal.targetDate).toLocaleDateString()}
+                                    {new Date(activeDeadline).toLocaleDateString()}
                                   </p>
                                 </div>
                                 <div>
@@ -552,6 +631,19 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                   💡 <strong>Tip:</strong> Save {formatCurrency(remaining / Math.max(daysRemaining, 1), userProfile.currency, userProfile.customCurrency)} per day to reach your goal on time!
                                 </p>
                               </div>
+                              {challengeSummary && (
+                                <div className="mt-2 md:mt-3 rounded bg-background/70 p-2 text-xs md:text-sm text-amber-900 dark:text-amber-100">
+                                  <p>
+                                    Penalty adds {formatCurrency(challengeSummary.plan.penaltyAmount, userProfile.currency, userProfile.customCurrency)}
+                                    {" "}after each missed deadline, with {challengeSummary.plan.graceMonths} month grace.
+                                  </p>
+                                  <p className="mt-1">
+                                    {challengeSummary.utilization.countsInvestmentAsExpense
+                                      ? `Hard mode: investment usage reduces saved progress and earns ${challengeSummary.utilization.hardModeRewardPoints} points per use.`
+                                      : "Easy mode: investment usage does not reduce saved progress."}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -581,6 +673,22 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                 </Badge>
                               </Button>
 
+                              {challengeSummary && (
+                                <Button
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setInvestmentDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })
+                                    setInvestmentAmount("")
+                                    setInvestmentMarket("split")
+                                    setInvestmentNotes("")
+                                  }}
+                                  className="flex items-center gap-2 text-sm md:text-base"
+                                >
+                                  <TrendingUp className="w-3 h-3 md:w-4 md:h-4" />
+                                  Use for Investment
+                                </Button>
+                              )}
+
                               <Button
                                 variant="outline"
                                 onClick={() => handleEditGoal(goal)}
@@ -589,6 +697,49 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                 <Edit className="w-3 h-3 md:w-4 md:h-4" />
                                 Edit Goal
                               </Button>
+                            </div>
+                          )}
+
+                          {challengeSummary && challengeSummary.penaltyHistory.length > 0 && (
+                            <div className="p-2 md:p-4 bg-muted/30 rounded-lg border">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                                <h4 className="font-medium text-sm md:text-base text-muted-foreground">Penalty History</h4>
+                              </div>
+                              <div className="space-y-2">
+                                {challengeSummary.penaltyHistory.slice().reverse().map((snapshot) => (
+                                  <div key={snapshot.id} className="rounded-md border bg-background/80 p-2 text-xs md:text-sm">
+                                    <p className="font-medium">
+                                      Cycle {snapshot.cycleNumber}: +{formatCurrency(snapshot.penaltyAmount, userProfile.currency, userProfile.customCurrency)}
+                                    </p>
+                                    <p className="mt-1 text-muted-foreground">
+                                      Missed {new Date(snapshot.previousDeadline).toLocaleDateString()} and extended to {new Date(snapshot.newDeadline).toLocaleDateString()}.
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                      Target became {formatCurrency(snapshot.effectiveTargetAmount, userProfile.currency, userProfile.customCurrency)}.
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {challengeSummary && challengeSummary.points.history.length > 0 && (
+                            <div className="p-2 md:p-4 bg-muted/30 rounded-lg border">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Sparkles className="w-4 h-4 text-muted-foreground" />
+                                <h4 className="font-medium text-sm md:text-base text-muted-foreground">Challenge Points History</h4>
+                              </div>
+                              <div className="space-y-2">
+                                {challengeSummary.points.history.slice().reverse().map((entry) => (
+                                  <div key={entry.id} className="rounded-md border bg-background/80 p-2 text-xs md:text-sm">
+                                    <p className="font-medium">+{entry.points} points</p>
+                                    <p className="mt-1 text-muted-foreground">
+                                      {new Date(entry.awardedAt).toLocaleDateString()} {entry.description ? `• ${entry.description}` : ""}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
 
@@ -719,6 +870,88 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
               >
                 <ArrowRight className="w-4 h-4 mr-2" />
                 Transfer
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={investmentDialog.open} onOpenChange={(open) => setInvestmentDialog({ ...investmentDialog, open })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Use for Investment
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">Using goal fund:</p>
+              <p className="font-semibold">{investmentDialog.goalName}</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Investment amount</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                  {getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
+                </span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="pl-8"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Market allocation</label>
+              <Select value={investmentMarket} onValueChange={(value: "nepal" | "uk" | "split") => setInvestmentMarket(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="split">50 / 50 Split</SelectItem>
+                  <SelectItem value="nepal">Nepal Only</SelectItem>
+                  <SelectItem value="uk">UK Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea
+                value={investmentNotes}
+                onChange={(e) => setInvestmentNotes(e.target.value)}
+                placeholder="Optional note about this investment use"
+                rows={3}
+              />
+            </div>
+
+            <div className="rounded-lg border bg-primary/5 p-3 text-xs text-muted-foreground">
+              Easy mode keeps goal savings unchanged. Hard mode reduces saved balance and awards challenge points automatically.
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setInvestmentDialog({ open: false, goalId: "", goalName: "" })}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleInvestmentUse}
+                disabled={!investmentAmount || Number.parseFloat(investmentAmount) <= 0}
+                className="flex-1"
+              >
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Confirm
               </Button>
             </div>
           </div>

@@ -82,6 +82,11 @@ type WalletDataContextType = {
   addGoal: (goal: Omit<Goal, "id" | "currentAmount">) => Goal
   updateGoal: (id: string, updates: Partial<Goal>) => void
   deleteGoal: (id: string) => void
+  useGoalForInvestment: (
+    goalId: string,
+    amount: number,
+    options?: { market?: "nepal" | "uk" | "split"; notes?: string }
+  ) => Promise<any>
   deleteTransaction: (id: string) => void
   addDebtAccount: (debt: Omit<DebtAccount, "id">) => DebtAccount
   addCreditAccount: (credit: Omit<CreditAccount, "id">) => CreditAccount

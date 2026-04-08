@@ -41,6 +41,7 @@ import {
   showAppNotification,
 } from "@/lib/notifications"
 import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
+import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { toast } from "sonner"
 
 const HOUR_MS = 60 * 60 * 1000
@@ -1673,6 +1674,7 @@ export function useWalletData() {
       contributionAmount: goal.contributionAmount,
       contributionFrequency: goal.contributionFrequency,
       description: goal.description || "",
+      challengePlan: goal.challengePlan,
     }
 
     const updatedGoals = [...goals, newGoal]
@@ -1692,6 +1694,123 @@ export function useWalletData() {
     setGoals(updatedGoals)
     await saveDataWithIntegrity("goals", updatedGoals)
     await recordDeletion(TOMBSTONE_KEYS.goals, [id])
+  }
+
+  useEffect(() => {
+    const syncedGoals = goals.map((goal) => syncGoalChallengeState(goal))
+    const hasChanges = syncedGoals.some((goal, index) => goal !== goals[index])
+    if (!hasChanges) return
+
+    setGoals(syncedGoals)
+    void saveDataWithIntegrity("goals", syncedGoals)
+  }, [goals])
+
+  const useGoalForInvestment = async (
+    goalId: string,
+    amount: number,
+    options?: { market?: "nepal" | "uk" | "split"; notes?: string },
+  ) => {
+    if (amount <= 0) {
+      return {
+        error: "Investment amount must be greater than zero",
+        success: false,
+      }
+    }
+
+    const goal = goals.find((entry) => entry.id === goalId)
+    if (!goal) {
+      return {
+        error: "Goal not found",
+        success: false,
+      }
+    }
+
+    const challengeSummary = getGoalChallengeSummary(goal)
+    if (!challengeSummary) {
+      return {
+        error: "This goal does not support investment mode",
+        success: false,
+      }
+    }
+
+    if (goal.currentAmount < amount) {
+      return {
+        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${goal.currentAmount.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
+        success: false,
+      }
+    }
+
+    const market = options?.market || "split"
+    const completedAt = new Date().toISOString()
+    const modeLabel = challengeSummary.plan.mode === "hard" ? "Hard mode" : "Easy mode"
+    const marketLabel = market === "split"
+      ? `${challengeSummary.utilization.nepalPercent}% Nepal / ${challengeSummary.utilization.ukPercent}% UK`
+      : market === "nepal"
+        ? "Nepal market"
+        : "UK market"
+
+    const investmentTransaction: Transaction = {
+      id: generateId("tx"),
+      type: "expense",
+      amount,
+      description: `Goal investment (${modeLabel}): ${goal.title} - ${marketLabel}${options?.notes ? ` - ${options.notes}` : ""}`,
+      category: "Goal Investment",
+      date: completedAt,
+      allocationType: "goal",
+      allocationTarget: goalId,
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: 0,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
+    }
+
+    const pointsAwarded = challengeSummary.plan.mode === "hard"
+      ? challengeSummary.utilization.hardModeRewardPoints
+      : 0
+
+    const updatedGoals = goals.map((entry) => {
+      if (entry.id !== goalId) return entry
+
+      const currentPoints = entry.challengePoints || { total: 0, history: [] }
+      return {
+        ...entry,
+        currentAmount: challengeSummary.plan.mode === "hard"
+          ? Math.max(0, entry.currentAmount - amount)
+          : entry.currentAmount,
+        challengePoints: challengeSummary.plan.mode === "hard"
+          ? {
+              total: currentPoints.total + pointsAwarded,
+              history: [
+                ...currentPoints.history,
+                {
+                  id: generateId("goal_pts"),
+                  type: "investment_reward" as const,
+                  points: pointsAwarded,
+                  awardedAt: completedAt,
+                  description: `${marketLabel}${options?.notes ? ` - ${options.notes}` : ""}`,
+                },
+              ],
+            }
+          : currentPoints,
+      }
+    })
+
+    setGoals(updatedGoals)
+    await saveDataWithIntegrity("goals", updatedGoals)
+
+    const updatedTransactions = [...transactions, investmentTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    return {
+      success: true,
+      transaction: investmentTransaction,
+      pointsAwarded,
+      remainingGoalAmount: updatedGoals.find((entry) => entry.id === goalId)?.currentAmount ?? goal.currentAmount,
+      mode: challengeSummary.plan.mode,
+    }
   }
 
   useEffect(() => {
@@ -3470,6 +3589,7 @@ export function useWalletData() {
     addGoal,
     updateGoal,
     deleteGoal,
+    useGoalForInvestment,
     deleteTransaction,
     addDebtAccount,
     addDebtToAccount,
