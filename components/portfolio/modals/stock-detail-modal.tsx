@@ -1051,8 +1051,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                         {sipTransactions.map((tx, index) => {
                                                             const installmentNumber = sipTransactions.length - index
                                                             return (
-                                                            <div key={tx.id} className="px-3 py-3 flex items-start justify-between gap-3">
-                                                                <div>
+                                                            <div key={tx.id} className="px-3 py-3 flex items-center justify-between gap-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-[11px] font-black text-primary">
+                                                                        {formatOrdinalInstallment(installmentNumber)}
+                                                                    </div>
+                                                                    <div>
                                                                     <p className="text-[11px] font-black uppercase flex items-center gap-2">
                                                                         <PiggyBank className="w-3.5 h-3.5 text-primary" />
                                                                         {formatSipDate(tx.sipDueDate || tx.date)}
@@ -1063,14 +1067,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                     <p className="text-[10px] text-muted-foreground">
                                                                         Completed {new Date(tx.date).toLocaleDateString()}
                                                                     </p>
+                                                                    </div>
                                                                 </div>
                                                                 <div className="text-right">
-                                                                    <p className="text-[11px] font-black text-primary">
-                                                                        {formatOrdinalInstallment(installmentNumber)} installment
-                                                                    </p>
-                                                                    <p className="text-[10px] text-muted-foreground">
-                                                                        Paid {installmentNumber} of {sipTransactions.length}
-                                                                    </p>
                                                                     <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity || 0)} units</p>
                                                                     <p className="text-[10px] text-muted-foreground">
                                                                         @ {currencySymbol}{formatValue(tx.price || 0)}
@@ -1253,6 +1252,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                 existingPlan={existingSipPlan}
                 enrollableTransactions={sipEnrollmentCandidates}
                 initialEnrollmentTransactionId={initialEnrollmentTransactionId}
+                onPlanSaved={(action) => {
+                    setActiveTab(action === "deleted" ? "overview" : "sip")
+                }}
                 open={isSipModalOpen}
                 onOpenChange={(next) => {
                     setIsSipModalOpen(next)

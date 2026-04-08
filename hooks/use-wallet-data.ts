@@ -2928,6 +2928,88 @@ export function useWalletData() {
     return { updatedTransaction, updatedPortfolio }
   }
 
+  const enrollMultipleShareTransactionsInSipPlan = async (
+    enrollments: Array<{
+      transactionId: string
+      planId: string
+      dueDate?: string
+      grossAmount?: number
+      dpsCharge?: number
+    }>,
+  ) => {
+    if (!Array.isArray(enrollments) || enrollments.length === 0) {
+      return { updatedTransactions: [], updatedPortfolio: portfolio }
+    }
+
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
+      throw new Error("User profile is not available")
+    }
+
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
+    const planById = new Map(sipPlans.map((plan) => [plan.id, plan]))
+    const enrollmentByTransactionId = new Map(
+      enrollments.map((entry) => [entry.transactionId, entry]),
+    )
+
+    let updatedCount = 0
+    const currentTransactions = shareTransactionsRef.current
+    const updatedTransactions = currentTransactions.map((transaction) => {
+      const enrollment = enrollmentByTransactionId.get(transaction.id)
+      if (!enrollment) return transaction
+
+      const plan = planById.get(enrollment.planId)
+      if (!plan) {
+        throw new Error("SIP plan not found")
+      }
+
+      if (transaction.type !== "buy") {
+        throw new Error("Only buy transactions can be enrolled into SIP")
+      }
+
+      const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0
+      if (executionPrice <= 0) {
+        throw new Error("Selected transaction must have a valid price")
+      }
+
+      const netAmount = Number((executionPrice * (transaction.quantity || 0)).toFixed(2))
+      const dpsCharge = Number.isFinite(enrollment.dpsCharge) ? Number(enrollment.dpsCharge) : (plan.dpsCharge ?? 5)
+      const grossAmount = Number.isFinite(enrollment.grossAmount) && (enrollment.grossAmount ?? 0) > 0
+        ? Number(enrollment.grossAmount)
+        : Number((netAmount + dpsCharge).toFixed(2))
+
+      updatedCount += 1
+      return {
+        ...transaction,
+        sipPlanId: plan.id,
+        sipDueDate: enrollment.dueDate || transaction.date,
+        sipGrossAmount: grossAmount,
+        sipDpsCharge: dpsCharge,
+        sipNetAmount: netAmount,
+      }
+    })
+
+    if (updatedCount !== enrollments.length) {
+      throw new Error("Could not update all selected SIP transactions")
+    }
+
+    const updatedTransactionMap = new Map(updatedTransactions.map((transaction) => [transaction.id, transaction]))
+    const orderedUpdatedTransactions = enrollments.map((enrollment) => {
+      const transaction = updatedTransactionMap.get(enrollment.transactionId)
+      if (!transaction) {
+        throw new Error("Could not update SIP transaction")
+      }
+      return transaction
+    })
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+
+    return { updatedTransactions: orderedUpdatedTransactions, updatedPortfolio }
+  }
+
   const deleteShareTransaction = async (id: string) => {
     return await deleteMultipleShareTransactions([id])
   }
@@ -3381,6 +3463,7 @@ export function useWalletData() {
     saveSipPlan,
     deleteSipPlan,
     enrollShareTransactionInSipPlan,
+    enrollMultipleShareTransactionsInSipPlan,
     addBudget,
     updateBudget,
     deleteBudget,

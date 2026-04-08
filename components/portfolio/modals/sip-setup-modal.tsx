@@ -33,6 +33,7 @@ interface SIPSetupModalProps {
   initialEnrollmentTransactionId?: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onPlanSaved?: (action: "created" | "updated" | "deleted") => void
 }
 
 type SIPFormState = {
@@ -66,8 +67,9 @@ export function SIPSetupModal({
   initialEnrollmentTransactionId = null,
   open,
   onOpenChange,
+  onPlanSaved,
 }: SIPSetupModalProps) {
-  const { saveSipPlan, deleteSipPlan, enrollShareTransactionInSipPlan } = useWalletData()
+  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan } = useWalletData()
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
     frequency: "monthly",
@@ -77,6 +79,7 @@ export function SIPSetupModal({
     status: "active",
   })
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState(NO_ENROLLMENT_VALUE)
+  const [isSaving, setIsSaving] = useState(false)
 
   const selectedEnrollmentTx = useMemo(
     () => selectedEnrollmentId === NO_ENROLLMENT_VALUE
@@ -172,6 +175,7 @@ export function SIPSetupModal({
 
   const handleSave = async () => {
     if (!item) return
+    if (isSaving) return
 
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error("Enter a valid installment amount")
@@ -183,64 +187,74 @@ export function SIPSetupModal({
       return
     }
 
-    const saved = saveSipPlan({
-      id: existingPlan?.id,
-      portfolioId: item.portfolioId,
-      symbol: item.symbol.trim().toUpperCase(),
-      assetType: "stock",
-      assetName: item.assetName || item.symbol.trim().toUpperCase(),
-      sector: item.sector,
-      installmentAmount: amount,
-      estimatedUnits: Number.isFinite(computedUnits) && computedUnits > 0 ? Number(computedUnits.toFixed(6)) : undefined,
-      dpsCharge: SIP_DEFAULT_DPS_CHARGE,
-      referencePrice: Number.isFinite(selectedEnrollmentTx?.price) && (selectedEnrollmentTx?.price ?? 0) > 0
-        ? selectedEnrollmentTx?.price
-        : (Number.isFinite(referencePrice) && referencePrice > 0 ? referencePrice : undefined),
-      frequency: form.frequency,
-      startDate: form.startDate,
-      reminderDays: Number(form.reminderDays),
-      mode: form.mode,
-      status: form.status,
-    })
+    setIsSaving(true)
+    try {
+      const saved = saveSipPlan({
+        id: existingPlan?.id,
+        portfolioId: item.portfolioId,
+        symbol: item.symbol.trim().toUpperCase(),
+        assetType: "stock",
+        assetName: item.assetName || item.symbol.trim().toUpperCase(),
+        sector: item.sector,
+        installmentAmount: amount,
+        estimatedUnits: Number.isFinite(computedUnits) && computedUnits > 0 ? Number(computedUnits.toFixed(6)) : undefined,
+        dpsCharge: SIP_DEFAULT_DPS_CHARGE,
+        referencePrice: Number.isFinite(selectedEnrollmentTx?.price) && (selectedEnrollmentTx?.price ?? 0) > 0
+          ? selectedEnrollmentTx?.price
+          : (Number.isFinite(referencePrice) && referencePrice > 0 ? referencePrice : undefined),
+        frequency: form.frequency,
+        startDate: form.startDate,
+        reminderDays: Number(form.reminderDays),
+        mode: form.mode,
+        status: form.status,
+      })
 
-    if (!saved) {
-      toast.error("Could not save SIP plan")
-      return
-    }
-
-    if (!existingPlan && selectedEnrollmentTx) {
-      try {
-        for (const [index, tx] of historicalTransactionsToEnroll.entries()) {
-          const dueDate = getSipDueDateAtIndex(
-            { startDate: form.startDate, frequency: form.frequency },
-            index,
-          )?.toISOString() || tx.date
-          const txPrice = Number.isFinite(tx.price) ? tx.price : 0
-          const txGrossAmount = index === 0
-            ? amount
-            : Number(((txPrice * (tx.quantity || 0)) + SIP_DEFAULT_DPS_CHARGE).toFixed(2))
-
-          await enrollShareTransactionInSipPlan(tx.id, saved.id, {
-            dueDate,
-            grossAmount: txGrossAmount,
-            dpsCharge: SIP_DEFAULT_DPS_CHARGE,
-          })
-        }
-      } catch (error: any) {
-        await deleteSipPlan(saved.id)
-        toast.error("Could not link existing SIP history", {
-          description: error?.message || "Please try again.",
-        })
+      if (!saved) {
+        toast.error("Could not save SIP plan")
         return
       }
-    }
 
-    toast.success(existingPlan ? "SIP plan updated" : "SIP plan created", {
-      description: selectedEnrollmentTx && !existingPlan
-        ? `${assetLabel} is scheduled from ${formatSipDate(form.startDate)} and ${historicalTransactionsToEnroll.length} history installment${historicalTransactionsToEnroll.length === 1 ? "" : "s"} were linked.`
-        : `${assetLabel} is now scheduled from ${formatSipDate(form.startDate)}.`,
-    })
-    onOpenChange(false)
+      if (!existingPlan && selectedEnrollmentTx) {
+        try {
+          await enrollMultipleShareTransactionsInSipPlan(
+            historicalTransactionsToEnroll.map((tx, index) => {
+              const dueDate = getSipDueDateAtIndex(
+                { startDate: form.startDate, frequency: form.frequency },
+                index,
+              )?.toISOString() || tx.date
+              const txPrice = Number.isFinite(tx.price) ? tx.price : 0
+              const txGrossAmount = index === 0
+                ? amount
+                : Number(((txPrice * (tx.quantity || 0)) + SIP_DEFAULT_DPS_CHARGE).toFixed(2))
+
+              return {
+                transactionId: tx.id,
+                planId: saved.id,
+                dueDate,
+                grossAmount: txGrossAmount,
+                dpsCharge: SIP_DEFAULT_DPS_CHARGE,
+              }
+            }),
+          )
+        } catch (error: any) {
+          await deleteSipPlan(saved.id)
+          toast.error("Could not link existing SIP history", {
+            description: error?.message || "Please try again.",
+          })
+          return
+        }
+      }
+
+      toast.success(existingPlan ? "SIP plan updated" : "SIP plan created", {
+        description: selectedEnrollmentTx && !existingPlan
+          ? `${assetLabel} is scheduled from ${formatSipDate(form.startDate)} and ${historicalTransactionsToEnroll.length} history installment${historicalTransactionsToEnroll.length === 1 ? "" : "s"} were linked.`
+          : `${assetLabel} is now scheduled from ${formatSipDate(form.startDate)}.`,
+      })
+      onPlanSaved?.(existingPlan ? "updated" : "created")
+      onOpenChange(false)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleDelete = async () => {
@@ -250,6 +264,7 @@ export function SIPSetupModal({
       toast.success("SIP plan removed", {
         description: `${assetLabel} is no longer scheduled for SIP reminders, and linked SIP history was cleared.`,
       })
+      onPlanSaved?.("deleted")
       onOpenChange(false)
     } catch (error: any) {
       toast.error("Could not remove SIP plan", {
@@ -453,8 +468,8 @@ export function SIPSetupModal({
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleSave}>
-              {existingPlan ? "Save Changes" : "Create SIP"}
+            <Button type="button" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : existingPlan ? "Save Changes" : "Create SIP"}
             </Button>
           </div>
         </DialogFooter>

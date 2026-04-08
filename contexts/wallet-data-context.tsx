@@ -63,6 +63,15 @@ type WalletDataContextType = {
     grossAmount?: number
     dpsCharge?: number
   }) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
+  enrollMultipleShareTransactionsInSipPlan: (
+    enrollments: Array<{
+      transactionId: string
+      planId: string
+      dueDate?: string
+      grossAmount?: number
+      dpsCharge?: number
+    }>
+  ) => Promise<{ updatedTransactions: ShareTransaction[], updatedPortfolio: PortfolioItem[] }>
   completeSipInstallment: (
     planId: string,
     options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }

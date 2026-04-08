@@ -190,6 +190,17 @@ const GOAL_TEMPLATES = [
     description: "Save for festive shopping and family celebrations.",
     priority: "low" as const,
   },
+  {
+    name: "Hard Plan Challenge",
+    category: "savings",
+    targetAmount: 300,
+    description: "Save 300 in 3 months. If you miss the target, add 50 extra before completion and keep the fund split 50% NEP and 50% UK.",
+    priority: "high" as const,
+    targetMonths: 3,
+    autoContribute: true,
+    contributionAmount: 100,
+    contributionFrequency: "monthly" as const,
+  },
 ]
 
 type GoalCreationMode = "template" | "custom"
@@ -298,17 +309,24 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
   }
 
   const applyTemplate = (template: (typeof GOAL_TEMPLATES)[0]) => {
-    const oneYearFromNow = new Date()
-    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
+    const targetDate = new Date()
+    targetDate.setMonth(targetDate.getMonth() + ("targetMonths" in template && template.targetMonths ? template.targetMonths : 12))
 
     setFormData((prev) => ({
       ...prev,
       title: template.name,
       targetAmount: template.targetAmount.toString(),
-      targetDate: oneYearFromNow.toISOString().split("T")[0],
+      targetDate: targetDate.toISOString().split("T")[0],
       description: template.description,
       category: template.category,
       priority: template.priority,
+      autoContribute: "autoContribute" in template ? Boolean(template.autoContribute) : prev.autoContribute,
+      contributionAmount: "contributionAmount" in template && template.contributionAmount
+        ? template.contributionAmount.toString()
+        : "",
+      contributionFrequency: "contributionFrequency" in template && template.contributionFrequency
+        ? template.contributionFrequency
+        : "monthly",
     }))
     setSelectedTemplateName(template.name)
     setGoalCreationMode("custom")
@@ -434,6 +452,23 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 Using template: <span className="font-medium text-foreground">{selectedTemplateName}</span>
               </div>
+            )}
+
+            {!editingGoal && goalCreationMode === "custom" && selectedTemplateName === "Hard Plan Challenge" && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="pt-5">
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">Hard plan rules</p>
+                    <p className="text-xs text-muted-foreground">
+                      Save {currencySymbol}300 within 3 months. If the goal is missed, add an extra 50 before marking it complete.
+                      Use the notes to track that top-up manually for now.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Suggested split after funding: 50% for NEP and 50% for UK.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {isFormMode && (
