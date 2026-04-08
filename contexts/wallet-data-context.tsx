@@ -57,7 +57,12 @@ type WalletDataContextType = {
   addTransaction: (transaction: Omit<Transaction, "id" | "timeEquivalent">) => Promise<any>
   updateUserProfile: (updates: Partial<UserProfile>) => void
   saveSipPlan: (plan: Omit<SIPPlan, "id" | "createdAt" | "updatedAt"> & { id?: string }) => SIPPlan | null
-  deleteSipPlan: (id: string) => void
+  deleteSipPlan: (id: string) => Promise<void>
+  enrollShareTransactionInSipPlan: (transactionId: string, planId: string, options?: {
+    dueDate?: string
+    grossAmount?: number
+    dpsCharge?: number
+  }) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
   completeSipInstallment: (
     planId: string,
     options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }

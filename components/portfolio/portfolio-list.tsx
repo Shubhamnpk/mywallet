@@ -2279,9 +2279,16 @@ export function PortfolioList() {
                                         const profitLoss = value - investment
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
                                         const isProfit = profitLoss >= 0
-                                        const dailyChange = item.change ?? ((item.currentPrice != null && item.previousClose != null) ? item.currentPrice - item.previousClose : 0)
-                                        const dailyChangePerc = item.percentChange ?? ((item.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
-                                        const isDailyProfit = dailyChange >= 0
+                                        const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
+                                        const dailyChange = isFiniteNumber(item.change)
+                                            ? item.change
+                                            : (isFiniteNumber(item.currentPrice) && previousClose !== null ? item.currentPrice - previousClose : 0)
+                                        const dailyChangePerc = isFiniteNumber(item.percentChange)
+                                            ? item.percentChange
+                                            : (previousClose !== null && previousClose !== 0 ? (dailyChange / previousClose) * 100 : 0)
+                                        const showDailyChange = previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange)
+                                        const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
+                                        const isDailyProfit = dailyChange > 0
 
                                         return (
                                             <div
@@ -2314,11 +2321,15 @@ export function PortfolioList() {
                                                                     <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
                                                                         {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
                                                                     </span>
-                                                                    {item.previousClose != null && (
+                                                                    {showDailyChange && (
                                                                         <span
                                                                             className={cn(
                                                                                 "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
-                                                                                isDailyProfit ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                                                                                isDailyNeutral
+                                                                                    ? "bg-muted text-muted-foreground"
+                                                                                    : isDailyProfit
+                                                                                        ? "bg-success/10 text-success"
+                                                                                        : "bg-error/10 text-error"
                                                                             )}
                                                                         >
                                                                             {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%
@@ -2336,7 +2347,11 @@ export function PortfolioList() {
                                                             </div>
                                                             <div className={cn(
                                                                 "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
-                                                                isDailyProfit ? "text-success" : "text-error"
+                                                                isDailyNeutral
+                                                                    ? "text-muted-foreground"
+                                                                    : isDailyProfit
+                                                                        ? "text-success"
+                                                                        : "text-error"
                                                             )}>
                                                                 <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
                                                                 <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>

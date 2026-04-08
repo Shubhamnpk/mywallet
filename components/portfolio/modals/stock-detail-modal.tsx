@@ -86,6 +86,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
     const [isPdfOpen, setIsPdfOpen] = useState(false)
     const [isSipModalOpen, setIsSipModalOpen] = useState(false)
+    const [initialEnrollmentTransactionId, setInitialEnrollmentTransactionId] = useState<string | null>(null)
     const [isCompletingSip, setIsCompletingSip] = useState(false)
     const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null)
     const [activeTab, setActiveTab] = useState("overview")
@@ -169,11 +170,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const dailyChangePerc = Number.isFinite(item?.percentChange)
         ? (item?.percentChange ?? 0)
         : (safePreviousClose !== 0 ? (dailyChange / safePreviousClose) * 100 : 0)
-    const isDailyProfit = dailyChange >= 0
+    const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
+    const isDailyProfit = dailyChange > 0
     const companyName = item
         ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
         : ""
-    const transactionPriceLabel = !isCrypto && item?.sector === "Mutual Fund" ? "NAV" : "Price"
 
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
@@ -382,6 +383,33 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         return getSipTransactionsForPlan(existingSipPlan, matchedTransactions)
     }, [existingSipPlan, matchedTransactions])
 
+    const isRecognizedSipLikeBuy = useCallback((tx: ShareTransaction) => {
+        const upperDescription = (tx.description || "").trim().toUpperCase()
+        const normalizedSymbol = tx.symbol.trim().toUpperCase()
+        return (
+            upperDescription.includes("CA-REARRANGEMENT") ||
+            upperDescription.includes("SIP") ||
+            upperDescription.includes(`UNITS OF ${normalizedSymbol}`)
+        )
+    }, [])
+
+    const sipEnrollmentCandidates = useMemo(() =>
+        matchedTransactions
+            .filter((tx) =>
+                tx.type === "buy" &&
+                !tx.sipPlanId &&
+                Number.isFinite(tx.quantity) &&
+                (tx.quantity ?? 0) > 0 &&
+                Number.isFinite(tx.price) &&
+                (tx.price ?? 0) > 0 &&
+                (
+                    item?.sector === "Mutual Fund" ||
+                    isRecognizedSipLikeBuy(tx)
+                )
+            )
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [isRecognizedSipLikeBuy, item?.sector, matchedTransactions])
+
     const handleCompleteSipInstallment = async () => {
         if (!existingSipPlan || !sipSchedule?.nextDate || currentSipInstallment) return
         setIsCompletingSip(true)
@@ -534,9 +562,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                 </div>
                                 <div className={cn(
                                     "text-[10px] font-black uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1",
-                                    isDailyProfit ? "text-green-600 bg-green-500/10" : "text-red-600 bg-red-500/10"
+                                    isDailyNeutral
+                                        ? "text-muted-foreground bg-muted"
+                                        : isDailyProfit
+                                            ? "text-green-600 bg-green-500/10"
+                                            : "text-red-600 bg-red-500/10"
                                 )}>
-                                    {isDailyProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                    {!isDailyNeutral && (isDailyProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
                                     {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
                                 </div>
                             </div>
@@ -602,13 +634,21 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                             </div>
                                             <div className={cn(
                                                 "p-4 rounded-2xl border flex flex-col gap-2",
-                                                isDailyProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                                isDailyNeutral
+                                                    ? "bg-muted/20 border-muted/50"
+                                                    : isDailyProfit
+                                                        ? "bg-green-500/5 border-green-500/10"
+                                                        : "bg-red-500/5 border-red-500/10"
                                             )}>
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
                                                     <span className={cn(
                                                         "text-[10px] font-bold",
-                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                        isDailyNeutral
+                                                            ? "text-muted-foreground"
+                                                            : isDailyProfit
+                                                                ? "text-green-600"
+                                                                : "text-red-600"
                                                     )}>
                                                         {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
                                                     </span>
@@ -616,7 +656,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                 <div>
                                                     <div className={cn(
                                                         "text-lg font-black font-mono",
-                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                        isDailyNeutral
+                                                            ? "text-muted-foreground"
+                                                            : isDailyProfit
+                                                                ? "text-green-600"
+                                                                : "text-red-600"
                                                     )}>
                                                         {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
                                                     </div>
@@ -700,13 +744,30 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                             Track installments, deduct the fixed DPS charge, and turn each completed cycle into a real buy transaction.
                                                         </p>
                                                     </div>
-                                                    <Button
-                                                        className="rounded-xl"
-                                                        onClick={() => setIsSipModalOpen(true)}
-                                                    >
-                                                        <PiggyBank className="w-4 h-4 mr-2" />
-                                                        Start SIP
-                                                    </Button>
+                                                    <div className="flex flex-col gap-2">
+                                                        <Button
+                                                            className="rounded-xl"
+                                                            onClick={() => {
+                                                                setInitialEnrollmentTransactionId(null)
+                                                                setIsSipModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <PiggyBank className="w-4 h-4 mr-2" />
+                                                            Start SIP
+                                                        </Button>
+                                                        {sipEnrollmentCandidates.length > 0 && (
+                                                            <Button
+                                                                variant="outline"
+                                                                className="rounded-xl"
+                                                                onClick={() => {
+                                                                    setInitialEnrollmentTransactionId(sipEnrollmentCandidates[0]?.id || null)
+                                                                    setIsSipModalOpen(true)
+                                                                }}
+                                                            >
+                                                                Already Started?
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -733,9 +794,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                             {tx.description && (
                                                                 <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
                                                             )}
-                                                            <p className="text-[10px] text-muted-foreground">
-                                                                {transactionPriceLabel}: {currencySymbol}{formatValue(tx.price)}
-                                                            </p>
+                                                            {!existingSipPlan && !tx.sipPlanId && Number.isFinite(tx.quantity) && (tx.quantity ?? 0) > 0 && ((Number.isFinite(tx.price) && (tx.price ?? 0) > 0) || item?.sector === "Mutual Fund") && (tx.type === "buy" || isRecognizedSipLikeBuy(tx)) && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="link"
+                                                                    className="h-auto px-0 py-0 text-[10px] font-bold text-primary"
+                                                                    onClick={() => {
+                                                                        setInitialEnrollmentTransactionId(tx.id)
+                                                                        setIsSipModalOpen(true)
+                                                                    }}
+                                                                >
+                                                                    Use this as SIP start
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">
@@ -928,7 +999,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                             <Wallet className="w-3.5 h-3.5 text-primary" />
                                                             SIP Action
                                                         </p>
-                                                        <p className="mt-1 text-sm font-semibold">
+                                                        <p className="mt-1 text-[12.5px] font-semibold">
                                                             {currentSipInstallment
                                                                 ? "This cycle is already completed."
                                                                 : canCompleteSipNow
@@ -1009,9 +1080,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                     <p className="text-[11px] font-black uppercase">{tx.type}</p>
                                                                     <p className="text-[10px] text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
                                                                     <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
-                                                                    <p className="text-[10px] text-muted-foreground">
-                                                                        {transactionPriceLabel}: {currencySymbol}{formatValue(tx.price)}
-                                                                    </p>
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="text-right">
@@ -1167,8 +1235,15 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
             <SIPSetupModal
                 item={item}
                 existingPlan={existingSipPlan}
+                enrollableTransactions={sipEnrollmentCandidates}
+                initialEnrollmentTransactionId={initialEnrollmentTransactionId}
                 open={isSipModalOpen}
-                onOpenChange={setIsSipModalOpen}
+                onOpenChange={(next) => {
+                    setIsSipModalOpen(next)
+                    if (!next) {
+                        setInitialEnrollmentTransactionId(null)
+                    }
+                }}
             />
             <Dialog
                 open={isPdfOpen}

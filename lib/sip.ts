@@ -63,6 +63,22 @@ export const getSipNextInstallmentDate = (
   return next
 }
 
+export const getSipDueDateAtIndex = (
+  plan: Pick<SIPPlan, "startDate" | "frequency">,
+  index: number,
+) => {
+  const start = parseDateOnly(plan.startDate)
+  if (!start || index < 0) return null
+
+  let next = start
+  let cursor = 0
+  while (cursor < index) {
+    next = addFrequency(next, plan.frequency)
+    cursor += 1
+  }
+  return next
+}
+
 export const normalizeSipPlans = (plans?: SIPPlan[] | null): SIPPlan[] => {
   if (!Array.isArray(plans)) return []
 
