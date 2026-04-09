@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
@@ -592,7 +593,7 @@ export function PortfolioList() {
 
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
-        const scripMap = new Map<string, { value: number; units: number }>()
+        const scripMap = new Map<string, { value: number; units: number; sector: string }>()
         let unitsSum = 0
 
         activePortfolioItems.forEach((item) => {
@@ -610,10 +611,11 @@ export function PortfolioList() {
                 count: currentSector.count + 1,
                 units: currentSector.units + safeUnits,
             })
-            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0 }
+            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0, sector }
             scripMap.set(item.symbol, {
                 value: currentScrip.value + value,
                 units: currentScrip.units + safeUnits,
+                sector: currentScrip.sector || sector,
             })
         })
 
@@ -625,6 +627,7 @@ export function PortfolioList() {
                 value: data.value,
                 count: data.count,
                 units: data.units,
+                color: getSectorColor(name),
                 percentage: totalBase > 0
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
@@ -636,6 +639,8 @@ export function PortfolioList() {
                 name,
                 value: data.value,
                 units: data.units,
+                sector: data.sector,
+                color: getSectorVariantColor(data.sector, name),
                 percentage: totalBase > 0
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
@@ -646,7 +651,6 @@ export function PortfolioList() {
     }, [activePortfolioItems, currentValue, chartMetric])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
-    const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
 
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItems
@@ -2019,7 +2023,7 @@ export function PortfolioList() {
                                                 {activeChartData.map((entry, index) => (
                                                     <Cell
                                                         key={`cell-${chartView}-${index}`}
-                                                        fill={SECTOR_COLORS[index % SECTOR_COLORS.length]}
+                                                        fill={entry.color}
                                                         className="hover:opacity-80 transition-opacity cursor-pointer shadow-xl"
                                                     />
                                                 ))}
@@ -2302,7 +2306,11 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isProfit ? "bg-success/5 text-success border-success/10" : "bg-error/5 text-error border-error/10"
+                                                            isDailyNeutral
+                                                                ? "bg-muted/40 text-muted-foreground border-muted/30"
+                                                                : isDailyProfit
+                                                                    ? "bg-success/5 text-success border-success/10"
+                                                                    : "bg-error/5 text-error border-error/10"
                                                         )}>
                                                             {item.symbol.substring(0, 2)}
                                                         </div>
