@@ -17,12 +17,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { UpcomingIPO } from "@/types/wallet"
+
+const isSameCalendarDay = (left: Date, right: Date) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+
+const hasFreshDailyQuote = (item: PortfolioItem) => {
+    if (item.assetType === "crypto" || Boolean(item.cryptoId)) return true
+    if (!item.lastUpdated) return false
+
+    const updatedAt = new Date(item.lastUpdated)
+    if (Number.isNaN(updatedAt.getTime())) return false
+
+    return isSameCalendarDay(updatedAt, new Date())
+}
 
 export function PortfolioList() {
     const showReservedDebugBadge =
@@ -127,12 +143,12 @@ export function PortfolioList() {
     useEffect(() => {
         if (!isStockDetailOpen || !selectedStock) return
 
-        const selectedSymbol = selectedStock.symbol.trim().toUpperCase()
+        const selectedSymbol = normalizeStockSymbol(selectedStock.symbol)
         const selectedAssetType = selectedStock.assetType || "stock"
         const selectedCryptoId = (selectedStock.cryptoId || "").trim()
 
         const latestMatch = portfolio.find((entry) => {
-            const entrySymbol = entry.symbol.trim().toUpperCase()
+            const entrySymbol = normalizeStockSymbol(entry.symbol)
             const entryAssetType = entry.assetType || "stock"
             const entryCryptoId = (entry.cryptoId || "").trim()
             return (
@@ -206,8 +222,8 @@ export function PortfolioList() {
                 .then((updated) => {
                     const match = updated?.find((entry) => {
                         if (entry.id === item.id) return true
-                        const entrySymbol = entry.symbol.trim().toUpperCase()
-                        const itemSymbol = item.symbol.trim().toUpperCase()
+                        const entrySymbol = normalizeStockSymbol(entry.symbol)
+                        const itemSymbol = normalizeStockSymbol(item.symbol)
                         const entryAssetType = entry.assetType || "stock"
                         const itemAssetType = item.assetType || "stock"
                         const entryCryptoId = (entry.cryptoId || "").trim()
@@ -294,7 +310,7 @@ export function PortfolioList() {
             .filter((item) => item.portfolioId === activePortfolioId)
             .filter((item) => item.assetType !== "crypto" && !item.cryptoId)
             .forEach((item) => {
-                const symbol = item.symbol.toUpperCase()
+                const symbol = normalizeStockSymbol(item.symbol)
                 const name = scripNamesMap?.[symbol] || item.assetName || symbol
                 if (!bySymbol.has(symbol)) bySymbol.set(symbol, name)
             })
@@ -573,6 +589,7 @@ export function PortfolioList() {
         }, 0)
         const profitLoss = current - investment
         const today = activePortfolioItems.reduce((sum, item) => {
+            if (!hasFreshDailyQuote(item)) return sum
             const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : null
             const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
             if (currentPrice !== null && previousClose !== null) {
@@ -655,7 +672,8 @@ export function PortfolioList() {
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItems
             .map((item) => {
-                const symbol = item.symbol?.trim().toUpperCase() || ""
+                if (!hasFreshDailyQuote(item)) return null
+                const symbol = normalizeStockSymbol(item.symbol)
                 if (!symbol) return null
                 const safeUnits = safeNumber(item.units)
                 const currentPrice = isFiniteNumber(item.currentPrice)
@@ -672,7 +690,7 @@ export function PortfolioList() {
 
                 const displayName = item.assetType === "crypto" || item.cryptoId
                     ? (item.assetName || symbol)
-                    : (scripNamesMap[symbol] || "")
+                    : (scripNamesMap[symbol] || item.assetName || symbol)
 
                 return {
                     id: item.id,
@@ -705,7 +723,7 @@ export function PortfolioList() {
             const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0, todayChange: 0 }
             const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0)
             const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : currentPrice
-            const itemTodayChange = item.units * (currentPrice - previousClose)
+            const itemTodayChange = hasFreshDailyQuote(item) ? item.units * (currentPrice - previousClose) : 0
 
             summaries.set(item.portfolioId, {
                 investment: prev.investment + item.units * (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0),
@@ -2284,13 +2302,16 @@ export function PortfolioList() {
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
                                         const isProfit = profitLoss >= 0
                                         const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
-                                        const dailyChange = isFiniteNumber(item.change)
+                                        const hasFreshMoveToday = hasFreshDailyQuote(item)
+                                        const dailyChangeRaw = isFiniteNumber(item.change)
                                             ? item.change
                                             : (isFiniteNumber(item.currentPrice) && previousClose !== null ? item.currentPrice - previousClose : 0)
-                                        const dailyChangePerc = isFiniteNumber(item.percentChange)
+                                        const dailyChangePercRaw = isFiniteNumber(item.percentChange)
                                             ? item.percentChange
-                                            : (previousClose !== null && previousClose !== 0 ? (dailyChange / previousClose) * 100 : 0)
-                                        const showDailyChange = previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange)
+                                            : (previousClose !== null && previousClose !== 0 ? (dailyChangeRaw / previousClose) * 100 : 0)
+                                        const dailyChange = hasFreshMoveToday ? dailyChangeRaw : 0
+                                        const dailyChangePerc = hasFreshMoveToday ? dailyChangePercRaw : 0
+                                        const showDailyChange = hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
                                         const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
                                         const isDailyProfit = dailyChange > 0
 

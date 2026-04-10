@@ -32,6 +32,7 @@ import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategor
 import { SessionManager } from "@/lib/session-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import {
   getDefaultNotificationSettings,
   isAppInForeground,
@@ -339,8 +340,13 @@ export function useWalletData() {
   const userProfileRef = useRef<UserProfile | null>(null)
   const shareTransactionsRef = useRef<ShareTransaction[]>([])
   const normalizeAssetType = (assetType?: "stock" | "crypto") => assetType === "crypto" ? "crypto" : "stock"
-  const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) =>
-    `${portfolioId}::${symbol.trim().toUpperCase()}::${normalizeAssetType(assetType)}::${(cryptoId || "").trim()}`
+  const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) => {
+    const normalizedAssetType = normalizeAssetType(assetType)
+    const normalizedSymbol = normalizedAssetType === "stock"
+      ? normalizeStockSymbol(symbol)
+      : symbol.trim().toUpperCase()
+    return `${portfolioId}::${normalizedSymbol}::${normalizedAssetType}::${(cryptoId || "").trim()}`
+  }
 
   useEffect(() => {
     userProfileRef.current = userProfile
@@ -620,7 +626,7 @@ export function useWalletData() {
           Object.entries(data).forEach(([sector, scrips]) => {
             if (Array.isArray(scrips)) {
               scrips.forEach((scrip: any) => {
-                const symbol = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+                const symbol = normalizeStockSymbol(typeof scrip === 'string' ? scrip : (scrip.symbol || ""))
                 if (symbol) {
                   sMap[symbol] = sector
                   if (scrip.name) {
@@ -643,7 +649,7 @@ export function useWalletData() {
             const nMap: Record<string, string> = {}
             data.forEach((item: any) => {
               if (item.symbol && item.name) {
-                nMap[item.symbol.trim().toUpperCase()] = item.name.trim()
+                nMap[normalizeStockSymbol(item.symbol)] = item.name.trim()
               }
             })
             setScripNamesMap(prev => ({ ...prev, ...nMap }))
@@ -767,11 +773,11 @@ export function useWalletData() {
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
     if (isLoaded && sectorsMap && portfolio.length > 0) {
-      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
+      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[normalizeStockSymbol(p.symbol)])
       if (needsUpdate) {
         setPortfolio(prev => prev.map(p => ({
           ...p,
-          sector: p.sector || sectorsMap[p.symbol.trim().toUpperCase()] || "Others"
+          sector: p.sector || sectorsMap[normalizeStockSymbol(p.symbol)] || "Others"
         })))
       }
     }
@@ -2495,7 +2501,7 @@ export function useWalletData() {
       Object.entries(sectorData).forEach(([sector, scrips]) => {
         if (Array.isArray(scrips)) {
           scrips.forEach((scrip: any) => {
-            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+            const sym = normalizeStockSymbol(typeof scrip === 'string' ? scrip : (scrip.symbol || ""))
             if (sym) {
               symbolToSector[sym] = sector
               if (scrip.name) {
@@ -2509,8 +2515,14 @@ export function useWalletData() {
       const stockLookup = new Map<string, any>()
       if (stockPriceData.length > 0) {
         stockPriceData.forEach((s: any) => {
-          const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
-          if (key) stockLookup.set(key, s)
+          const key = normalizeStockSymbol(s.symbol || s.ticker || s.scrip || "")
+          const quoteName = typeof s?.name === "string" ? s.name.trim() : ""
+          if (key) {
+            stockLookup.set(key, s)
+            if (quoteName && !symbolToName[key]) {
+              symbolToName[key] = quoteName
+            }
+          }
         })
       }
 
@@ -2552,9 +2564,10 @@ export function useWalletData() {
           }
         }
 
-        const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
+        const normalizedStockSymbol = normalizeStockSymbol(item.symbol)
+        const matchingStock = stockLookup.get(normalizedStockSymbol)
 
-        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+        const sector = symbolToSector[normalizedStockSymbol] || item.sector || "Others"
 
         if (matchingStock) {
           const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
@@ -2568,6 +2581,7 @@ export function useWalletData() {
           return {
             ...item,
             assetType: "stock",
+            assetName: symbolToName[normalizedStockSymbol] || item.assetName || item.symbol,
             currentPrice: ltp,
             previousClose: pc,
             high,
@@ -2583,6 +2597,7 @@ export function useWalletData() {
         return {
           ...item,
           assetType: "stock",
+          assetName: symbolToName[normalizedStockSymbol] || item.assetName || item.symbol,
           sector: sector
         }
       })
@@ -2787,7 +2802,7 @@ export function useWalletData() {
 
   const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
     const getFaceValue = (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
       return sector === "Mutual Fund" ? 10 : 100
     }
 
@@ -2814,14 +2829,14 @@ export function useWalletData() {
         return null
       }
 
-      const normalizedEntrySymbol = entry.symbol.trim().toUpperCase()
+      const normalizedEntrySymbol = normalizeStockSymbol(entry.symbol)
       const targetDate = parseCorporateActionPurchaseDate(entry.description) || entry.date
       const targetTime = targetDate ? new Date(targetDate).getTime() : Number.NaN
 
       return normalizeSipPlans(userProfile?.sipPlans)
         .filter((plan) =>
           plan.portfolioId === entry.portfolioId &&
-          plan.symbol.trim().toUpperCase() === normalizedEntrySymbol
+          normalizeStockSymbol(plan.symbol) === normalizedEntrySymbol
         )
         .sort((a, b) => {
           if (a.status !== b.status) return a.status === "active" ? -1 : 1
@@ -2840,7 +2855,7 @@ export function useWalletData() {
     else if (upperDescription.includes("INITIAL PUBLIC OFFERING") || upperDescription.includes(" IPO ")) normalizedType = "ipo"
     else if (isRecognizedSipLikeBuy(tx.description, tx.symbol)) normalizedType = "buy"
 
-    const normalizedSymbol = tx.symbol.trim().toUpperCase()
+    const normalizedSymbol = normalizeStockSymbol(tx.symbol)
     const matchingSipPlan = normalizedType === "buy" ? getMatchingSipPlanForTransaction({ ...tx, type: normalizedType, symbol: normalizedSymbol }) : null
     const normalizedPrice =
       normalizedType === "bonus" || normalizedType === "gift"
@@ -3184,7 +3199,7 @@ export function useWalletData() {
             buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
             currentPrice: existing?.currentPrice,
             previousClose: existing?.previousClose,
-            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[symbol.toUpperCase()] || "Others")),
+            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[normalizeStockSymbol(symbol)] || "Others")),
             lastUpdated: new Date().toISOString(),
           })
         }
@@ -3237,7 +3252,7 @@ export function useWalletData() {
     }
 
     const getFaceValue = (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
       return sector === "Mutual Fund" ? 10 : 100
     }
 
@@ -3262,7 +3277,7 @@ export function useWalletData() {
             units,
             buyPrice: buyPrice,
             currentPrice: price,
-            sector: sectorsMap[symbol.toUpperCase()] || "Others",
+            sector: sectorsMap[normalizeStockSymbol(symbol)] || "Others",
             lastUpdated: new Date().toISOString()
           })
         }
@@ -3298,14 +3313,14 @@ export function useWalletData() {
           return undefined
         }
 
-        const normalizedSymbol = symbol.trim().toUpperCase()
+        const normalizedSymbol = normalizeStockSymbol(symbol)
         const targetDate = parseCorporateActionPurchaseDate(description) || date
         const targetTime = targetDate ? new Date(targetDate).getTime() : Number.NaN
 
         const match = normalizeSipPlans(userProfile?.sipPlans)
           .filter((plan) =>
             plan.portfolioId === activePortfolioId &&
-            plan.symbol.trim().toUpperCase() === normalizedSymbol
+            normalizeStockSymbol(plan.symbol) === normalizedSymbol
           )
           .sort((a, b) => {
             if (a.status !== b.status) return a.status === "active" ? -1 : 1
@@ -3401,7 +3416,7 @@ export function useWalletData() {
 
       for (const item of meroPortfolio) {
         const existingIdx = updatedPortfolio.findIndex(
-          p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
+          p => p.portfolioId === portId && normalizeStockSymbol(p.symbol) === normalizeStockSymbol(item.symbol)
         )
 
         if (existingIdx > -1) {
@@ -3626,7 +3641,7 @@ export function useWalletData() {
     scripNamesMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
       return sector === "Mutual Fund" ? 10 : 100
     },
     addShareTransaction,

@@ -32,6 +32,7 @@ import {
     Trash2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -65,7 +66,7 @@ type BtcNewsItem = {
     categories?: string[]
 }
 
-const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
+const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
 
 const formatOrdinalInstallment = (value: number) => {
     const remainder10 = value % 10
@@ -109,12 +110,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const item = useMemo(() => {
         if (!initialItem) return null
 
-        const initialSymbol = initialItem.symbol.trim().toUpperCase()
+        const initialSymbol = normalizeStockSymbol(initialItem.symbol)
         const initialAssetType = initialItem.assetType || "stock"
         const initialCryptoId = (initialItem.cryptoId || "").trim()
 
         return portfolio.find((entry) => {
-            const entrySymbol = entry.symbol.trim().toUpperCase()
+            const entrySymbol = normalizeStockSymbol(entry.symbol)
             const entryAssetType = entry.assetType || "stock"
             const entryCryptoId = (entry.cryptoId || "").trim()
             return (
@@ -183,7 +184,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
     const isDailyProfit = dailyChange > 0
     const companyName = item
-        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
+        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol))
         : ""
 
     const formatUnits = (units: number) => {
@@ -315,7 +316,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         }
     }
 
-    const symbol = item?.symbol?.trim().toUpperCase() || ""
+    const symbol = normalizeStockSymbol(item?.symbol)
     const normalizedHoldingName = normalizeCompany(companyName)
     const getDividendRecordTime = (record: ProposedDividendRecord) => {
         const rawDate = (record.announcement_date || "").trim()
@@ -332,7 +333,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const matchedDividendHistory = useMemo(() => {
         return (dividendHistory || [])
             .filter((record) => {
-                const recordSymbol = record.symbol?.trim().toUpperCase() || ""
+                const recordSymbol = normalizeStockSymbol(record.symbol)
                 if (symbol && recordSymbol === symbol) return true
                 const recordName = normalizeCompany(record.company_name)
                 return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
@@ -365,7 +366,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         if (!item) return null
         return normalizeSipPlans(userProfile?.sipPlans).find((plan) =>
             plan.portfolioId === item.portfolioId &&
-            plan.symbol.trim().toUpperCase() === symbol &&
+            normalizeStockSymbol(plan.symbol) === symbol &&
             plan.assetType === "stock"
         ) || null
     }, [item, symbol, userProfile?.sipPlans])
@@ -384,7 +385,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         if (!item || !shareTransactions) return []
         const portfolioId = item.portfolioId
         return shareTransactions
-            .filter((tx) => tx.portfolioId === portfolioId && tx.symbol.toUpperCase() === symbol)
+            .filter((tx) => tx.portfolioId === portfolioId && normalizeStockSymbol(tx.symbol) === symbol)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [item, shareTransactions, symbol])
 
@@ -395,7 +396,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
 
     const isRecognizedSipLikeBuy = useCallback((tx: ShareTransaction) => {
         const upperDescription = (tx.description || "").trim().toUpperCase()
-        const normalizedSymbol = tx.symbol.trim().toUpperCase()
+        const normalizedSymbol = normalizeStockSymbol(tx.symbol)
         return (
             upperDescription.includes("CA-REARRANGEMENT") ||
             upperDescription.includes("SIP") ||

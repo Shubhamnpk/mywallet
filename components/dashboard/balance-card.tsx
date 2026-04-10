@@ -54,7 +54,6 @@ export function CombinedBalanceCard() {
         }
         const isTrueExpense =
           transaction.type === "expense" &&
-          transaction.status !== "repayment" &&
           transaction.allocationType !== "goal"
 
         if (transaction.type === "income") {
