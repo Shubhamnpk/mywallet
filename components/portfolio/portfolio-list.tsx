@@ -686,11 +686,12 @@ export function PortfolioList() {
                 const percentChange = isFiniteNumber(item.percentChange)
                     ? item.percentChange
                     : (previousClose ? (changePerUnit / previousClose) * 100 : 0)
-                if (!Number.isFinite(percentChange) || percentChange === 0) return null
+                if (!Number.isFinite(percentChange)) return null
 
                 const displayName = item.assetType === "crypto" || item.cryptoId
                     ? (item.assetName || symbol)
                     : (scripNamesMap[symbol] || item.assetName || symbol)
+                const valueChange = safeUnits * changePerUnit
 
                 return {
                     id: item.id,
@@ -698,6 +699,8 @@ export function PortfolioList() {
                     name: displayName,
                     percentChange,
                     units: safeUnits,
+                    valueChange,
+                    item,
                 }
             })
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -712,8 +715,18 @@ export function PortfolioList() {
             .sort((a, b) => a.percentChange - b.percentChange)
             .slice(0, 5)
 
-        return { gainers, losers }
+        const noMovers = rows
+            .filter((row) => Math.abs(row.percentChange) < 0.0001)
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 5)
+
+        const topMoversProfit = gainers.reduce((sum, row) => sum + row.valueChange, 0)
+        const topLosersLoss = losers.reduce((sum, row) => sum + Math.abs(row.valueChange), 0)
+
+        return { gainers, losers, noMovers, topMoversProfit, topLosersLoss }
     }, [activePortfolioItems, scripNamesMap])
+    const hasMoverData = portfolioMovers.gainers.length > 0 || portfolioMovers.losers.length > 0
+    const hasNoMoverData = portfolioMovers.noMovers.length > 0
 
     const portfolioSummaryById = useMemo(() => {
         const summaries = new Map<string, { investment: number; current: number; count: number; todayChange: number }>()
@@ -1958,44 +1971,34 @@ export function PortfolioList() {
                                     </Button>
                                 </div>
                                 {chartMode === "allocation" && (
-                                    <div className="flex flex-col items-center gap-1">
-                                        <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
-                                            <Button
-                                                variant={chartView === "sector" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
-                                                onClick={() => setChartView("sector")}
+                                    <div className="hidden sm:flex items-center gap-1 sm:gap-2">
+                                        <div className="bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Select
+                                                value={chartView}
+                                                onValueChange={(value) => setChartView(value as "sector" | "scrip")}
                                             >
-                                                Sectors
-                                            </Button>
-                                            <Button
-                                                variant={chartView === "scrip" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
-                                                onClick={() => setChartView("scrip")}
-                                            >
-                                                Stocks
-                                            </Button>
+                                                <SelectTrigger className="h-6 sm:h-7 min-w-[120px] px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg border-0 bg-background shadow-sm focus:ring-0 focus:ring-offset-0">
+                                                    <SelectValue placeholder="View" />
+                                                </SelectTrigger>
+                                                <SelectContent className="text-[10px] font-bold uppercase tracking-wider">
+                                                    <SelectItem value="sector">Sectors</SelectItem>
+                                                    <SelectItem value="scrip">Stocks</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                        <div className="hidden sm:flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-muted/50 self-center w-fit">
-                                            <Button
-                                                variant={chartMetric === "value" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "value" && "bg-background shadow-sm")}
-                                                onClick={() => setChartMetric("value")}
-                                                title="Allocation by value"
+                                        <div className="bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Select
+                                                value={chartMetric}
+                                                onValueChange={(value) => setChartMetric(value as "value" | "units")}
                                             >
-                                                Value
-                                            </Button>
-                                            <Button
-                                                variant={chartMetric === "units" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "units" && "bg-background shadow-sm")}
-                                                onClick={() => setChartMetric("units")}
-                                                title="Allocation by units"
-                                            >
-                                                Units
-                                            </Button>
+                                                <SelectTrigger className="h-6 sm:h-7 min-w-[110px] px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg border-0 bg-background shadow-sm focus:ring-0 focus:ring-offset-0">
+                                                    <SelectValue placeholder="Metric" />
+                                                </SelectTrigger>
+                                                <SelectContent className="text-[10px] font-bold uppercase tracking-wider">
+                                                    <SelectItem value="value">Value</SelectItem>
+                                                    <SelectItem value="units">Units</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 )}
@@ -2114,18 +2117,34 @@ export function PortfolioList() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                            ) : (
-                                <div className="h-full w-full p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
-                                            <TrendingUp className="w-3.5 h-3.5 text-success" />
-                                        </div>
-                                        {portfolioMovers.gainers.length > 0 ? (
-                                            portfolioMovers.gainers.map((row) => (
-                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                            ) : hasMoverData || hasNoMoverData ? (
+                                <div className={cn(
+                                    "h-full w-full p-4 sm:p-6 grid grid-cols-1 gap-4",
+                                    hasNoMoverData ? "lg:grid-cols-3" : "lg:grid-cols-2",
+                                )}>
+                                    {portfolioMovers.gainers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
+                                                        +{portfolioMovers.topMoversProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <TrendingUp className="w-3.5 h-3.5 text-success" />
+                                                </div>
+                                            </div>
+                                            {portfolioMovers.gainers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
                                                     <div className="min-w-0">
-                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
                                                         {row.name ? (
                                                             <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
                                                         ) : null}
@@ -2134,24 +2153,35 @@ export function PortfolioList() {
                                                         <p className="text-[11px] font-black text-success">
                                                             +{row.percentChange.toFixed(2)}%
                                                         </p>
-                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                        <p className="text-[9px] text-success">+{row.valueChange.toFixed(2)}</p>
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground">No gainers found.</p>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
-                                            <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                            ))}
                                         </div>
-                                        {portfolioMovers.losers.length > 0 ? (
-                                            portfolioMovers.losers.map((row) => (
-                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                    )}
+                                    {portfolioMovers.losers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
+                                                        -{portfolioMovers.topLosersLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                                </div>
+                                            </div>
+                                            {portfolioMovers.losers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
                                                     <div className="min-w-0">
-                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
                                                         {row.name ? (
                                                             <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
                                                         ) : null}
@@ -2160,16 +2190,49 @@ export function PortfolioList() {
                                                         <p className="text-[11px] font-black text-error">
                                                             {row.percentChange.toFixed(2)}%
                                                         </p>
-                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                        <p className="text-[9px] text-error">{row.valueChange.toFixed(2)}</p>
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground">No losers found.</p>
-                                        )}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {portfolioMovers.noMovers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No Movers</span>
+                                                <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                                            </div>
+                                            {portfolioMovers.noMovers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-muted-foreground">
+                                                            {row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{row.valueChange.toFixed(2)}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
+                            ) : (
+                                null
                             )
+                            
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />

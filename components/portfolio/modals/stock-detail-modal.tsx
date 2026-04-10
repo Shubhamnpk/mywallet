@@ -1,13 +1,7 @@
 "use client"
 
 import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import {
     Activity,
@@ -941,7 +935,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                         onClick={() =>
                                                                             setSelectedDividendKey((prev) => (prev === recordKey ? null : recordKey))
                                                                         }
-                                                                        aria-selected={isSelected}
+                                                                        data-selected={isSelected ? "true" : "false"}
                                                                     >
                                                                         <td className={firstCellClass}>{record.fiscal_year || "N/A"}</td>
                                                                         <td className={cn(cellClass, "text-green-700")}>{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
@@ -1132,9 +1126,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                 btcNews.map((news) => (
                                                     <div key={news.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
-                                                                {news.title}
-                                                            </h4>
+                                                        <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
+                                                            {news.title}
+                                                        </h4>
                                                             <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
                                                                 {news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : "Recent"}
                                                             </span>
@@ -1168,7 +1162,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                             matchedNotices.map((notice) => (
                                                 <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                     <div className="flex justify-between items-start gap-2">
-                                                        <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
+                                                        <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
                                                             {notice.newsHeadline}
                                                         </h4>
                                                         <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
@@ -1274,23 +1268,39 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                     }
                 }}
             >
-                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col">
+                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col [&>button]:hidden">
                     <DialogHeader className="px-5 pt-5 pb-3 border-b border-muted/20">
                         <div className="flex items-center justify-between gap-3">
                             <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
                                 Document Preview
                             </DialogTitle>
-                            {(pdfSourceUrl || pdfUrl) && (
+                            <div className="flex items-center gap-2">
+                                {(pdfSourceUrl || pdfUrl) && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-[10px] font-black uppercase tracking-wider"
+                                        onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                    >
+                                        <ExternalLink className="w-3 h-3 mr-2" />
+                                        Open in New Tab
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     className="h-8 text-[10px] font-black uppercase tracking-wider"
-                                    onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                    aria-label="Close preview"
+                                    title="Close preview"
+                                    onClick={() => {
+                                        setIsPdfOpen(false)
+                                        setPdfUrl(null)
+                                        setPdfSourceUrl(null)
+                                    }}
                                 >
-                                    <ExternalLink className="w-3 h-3 mr-2" />
-                                    Open in New Tab
+                                    <X className="w-3 h-3" />
                                 </Button>
-                            )}
+                            </div>
                         </div>
                     </DialogHeader>
                     <div className="flex-1 min-h-0 bg-muted/10 relative">

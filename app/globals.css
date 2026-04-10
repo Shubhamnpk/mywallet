@@ -447,6 +447,20 @@ html.show-scrollbars * {
   height: 0 !important;
 }
 
+/* Force-hide native browser scrollbar on Radix ScrollArea viewport */
+[data-slot="scroll-area-viewport"],
+[data-radix-scroll-area-viewport] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+[data-slot="scroll-area-viewport"]::-webkit-scrollbar,
+[data-radix-scroll-area-viewport]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Mobile modals: allow scroll but hide visible scrollbars across all modal content */
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
   [data-slot="dialog-content"],

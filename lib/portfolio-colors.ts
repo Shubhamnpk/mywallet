@@ -25,9 +25,17 @@ const SECTOR_COLOR_FAMILIES: Record<string, string[]> = {
   others: ["#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1"],
 }
 
+const SECTOR_ALIASES: Record<string, string> = {
+  "hydro power": "hydropower",
+  hydro: "hydropower",
+}
+
 const normalizeSectorKey = (sector?: string | null) => {
   const normalized = sector?.trim().toLowerCase()
   if (!normalized) return DEFAULT_SECTOR_KEY
+
+  const alias = SECTOR_ALIASES[normalized]
+  if (alias) return alias
 
   for (const key of Object.keys(SECTOR_COLOR_FAMILIES)) {
     if (normalized.includes(key)) return key
