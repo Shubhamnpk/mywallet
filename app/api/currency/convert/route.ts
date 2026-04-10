@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, getRequestId } from "@/lib/api-error"
 
 function badRequest(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 })
+  return errorResponse({ status: 400, code: "BAD_REQUEST", message })
 }
 
 async function fetchFromFrankfurter(from: string, to: string) {
@@ -44,6 +45,7 @@ async function fetchFromOpenErApi(from: string, to: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const { searchParams } = new URL(request.url)
   const from = (searchParams.get("from") || "").trim().toUpperCase()
   const to = (searchParams.get("to") || "").trim().toUpperCase()
@@ -72,16 +74,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(fallback)
     }
     return NextResponse.json(
-      { error: "No conversion rate found for this pair from available providers." },
+      {
+        error: {
+          code: "UPSTREAM_ERROR",
+          message: "No conversion rate found for this pair from available providers.",
+          requestId,
+        },
+      },
       { status: 502 }
     )
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: "Currency providers are currently unreachable.",
-        details: e?.message || "Unknown network error",
-      },
-      { status: 503 }
-    )
+  } catch {
+    return errorResponse({
+      status: 503,
+      code: "UPSTREAM_UNREACHABLE",
+      message: "Currency providers are currently unreachable.",
+      requestId,
+    })
   }
 }

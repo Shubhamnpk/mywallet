@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 const URL = "https://shubhamnpk.github.io/yonepse/data/market_summary_history.json"
 
@@ -10,22 +11,28 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch market summary history" }, { status: response.status })
+      return errorResponse({
+        status: response.status,
+        code: "UPSTREAM_ERROR",
+        message: "Failed to fetch market summary history",
+      })
     }
 
     const data = await response.json()
     if (!Array.isArray(data)) {
-      return NextResponse.json({ error: "Invalid market summary history data format" }, { status: 502 })
+      return errorResponse({
+        status: 502,
+        code: "UPSTREAM_ERROR",
+        message: "Invalid market summary history data format",
+      })
     }
 
     return NextResponse.json(data)
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: "Market summary history is currently unreachable",
-        details: e?.message || "Unknown network error",
-      },
-      { status: 503 },
-    )
+  } catch {
+    return errorResponse({
+      status: 503,
+      code: "UPSTREAM_UNREACHABLE",
+      message: "Market summary history is currently unreachable",
+    })
   }
 }

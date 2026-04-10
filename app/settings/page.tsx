@@ -15,7 +15,7 @@ import { MobileSettingsPage } from "@/components/settings/mobile-settings-page"
 import { Share2 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useIsMobile } from "@/hooks/use-mobile"
 
@@ -24,8 +24,9 @@ export default function SettingsPage() {
   const searchParams = useSearchParams()
   const { userProfile, showOnboarding } = useWalletData()
   const isMobile = useIsMobile()
-  const [showMobileSettings, setShowMobileSettings] = useState(false)
-  const [activeSettingsTab, setActiveSettingsTab] = useState("profile")
+  const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "accessibility", "about"])
+  const tab = searchParams.get("tab")
+  const activeSettingsTab = tab && validTabs.has(tab) ? tab : "profile"
 
   // SEO metadata for settings page
   const pageMetadata = {
@@ -60,20 +61,11 @@ export default function SettingsPage() {
     }
   }, [userProfile, showOnboarding, router])
 
-  // Show mobile settings on mobile devices
-  useEffect(() => {
-    if (isMobile && userProfile && !showOnboarding) {
-      setShowMobileSettings(true)
-    }
-  }, [isMobile, userProfile, showOnboarding])
-
-  useEffect(() => {
-    const tab = searchParams.get("tab")
-    const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "accessibility", "about"])
-    if (tab && validTabs.has(tab)) {
-      setActiveSettingsTab(tab)
-    }
-  }, [searchParams])
+  const showMobileSettings = Boolean(isMobile && userProfile && !showOnboarding)
+  const handleTabChange = (value: string) => {
+    if (!validTabs.has(value)) return
+    router.replace(`/settings?tab=${value}`)
+  }
 
   // Show loading while redirecting
   if (!userProfile || showOnboarding) {
@@ -118,7 +110,7 @@ export default function SettingsPage() {
           <p className="text-muted-foreground mt-2">Manage your account, security, and preferences</p>
         </div>
 
-        <Tabs value={activeSettingsTab} onValueChange={setActiveSettingsTab} className="space-y-6">
+        <Tabs value={activeSettingsTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>

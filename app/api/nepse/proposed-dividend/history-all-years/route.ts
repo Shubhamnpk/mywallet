@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 type ProposedDividendRecord = {
   id: number
@@ -44,18 +45,14 @@ export async function GET() {
       }
 
       lastError = `Source ${url} returned empty data`
-    } catch (error: any) {
-      console.warn(`Failed to fetch proposed dividend history from ${url}:`, error?.message)
+    } catch {
       lastError = `Connection timeout or network error on ${url}`
     }
   }
 
-  return NextResponse.json(
-    {
-      error: "Proposed dividend history is currently unreachable",
-      details: lastError,
-      message: "Please try again later.",
-    },
-    { status: 503 }
-  )
+  return errorResponse({
+    status: 503,
+    code: "UPSTREAM_UNREACHABLE",
+    message: `Proposed dividend history is currently unreachable. ${lastError}`,
+  })
 }

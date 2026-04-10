@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 type CoinloreListItem = {
   id: string | number
@@ -21,7 +22,11 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: `Coinlore responded ${response.status}` }, { status: 502 })
+      return errorResponse({
+        status: 502,
+        code: "UPSTREAM_ERROR",
+        message: `Coinlore responded ${response.status}`,
+      })
     }
 
     const payload = (await response.json()) as CoinloreTickersResponse
@@ -44,10 +49,11 @@ export async function GET(request: NextRequest) {
       }))
 
     return NextResponse.json({ coins: filtered })
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "Failed to load popular coins" },
-      { status: 502 }
-    )
+  } catch {
+    return errorResponse({
+      status: 502,
+      code: "UPSTREAM_ERROR",
+      message: "Failed to load popular coins",
+    })
   }
 }

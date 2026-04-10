@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 const URL = "https://shubhamnpk.github.io/yonepse/data/top_stocks.json"
 
@@ -10,23 +11,29 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch top stocks" }, { status: response.status })
+      return errorResponse({
+        status: response.status,
+        code: "UPSTREAM_ERROR",
+        message: "Failed to fetch top stocks",
+      })
     }
 
     const data = await response.json()
     const isValidObject = data && typeof data === "object"
     if (!isValidObject) {
-      return NextResponse.json({ error: "Invalid top stocks data format" }, { status: 502 })
+      return errorResponse({
+        status: 502,
+        code: "UPSTREAM_ERROR",
+        message: "Invalid top stocks data format",
+      })
     }
 
     return NextResponse.json(data)
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: "Top stocks data is currently unreachable",
-        details: e?.message || "Unknown network error",
-      },
-      { status: 503 },
-    )
+  } catch {
+    return errorResponse({
+      status: 503,
+      code: "UPSTREAM_UNREACHABLE",
+      message: "Top stocks data is currently unreachable",
+    })
   }
 }

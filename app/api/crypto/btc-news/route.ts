@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 const RSS_URL = "https://bitcoinmagazine.com/.rss/full/"
 const MAX_ITEMS = 12
@@ -93,23 +94,29 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch Bitcoin news" }, { status: response.status })
+      return errorResponse({
+        status: response.status,
+        code: "UPSTREAM_ERROR",
+        message: "Failed to fetch Bitcoin news",
+      })
     }
 
     const xml = await response.text()
     if (!xml || !xml.includes("<item>")) {
-      return NextResponse.json({ error: "Invalid Bitcoin RSS data" }, { status: 502 })
+      return errorResponse({
+        status: 502,
+        code: "UPSTREAM_ERROR",
+        message: "Invalid Bitcoin RSS data",
+      })
     }
 
     const items = parseRss(xml)
     return NextResponse.json({ source: "Bitcoin Magazine", items })
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: "Bitcoin news is currently unreachable",
-        details: e?.message || "Unknown network error",
-      },
-      { status: 503 },
-    )
+  } catch {
+    return errorResponse({
+      status: 503,
+      code: "UPSTREAM_UNREACHABLE",
+      message: "Bitcoin news is currently unreachable",
+    })
   }
 }
