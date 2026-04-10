@@ -16,12 +16,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { UpcomingIPO } from "@/types/wallet"
+
+const isSameCalendarDay = (left: Date, right: Date) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+
+const hasFreshDailyQuote = (item: PortfolioItem) => {
+    if (item.assetType === "crypto" || Boolean(item.cryptoId)) return true
+    if (!item.lastUpdated) return false
+
+    const updatedAt = new Date(item.lastUpdated)
+    if (Number.isNaN(updatedAt.getTime())) return false
+
+    return isSameCalendarDay(updatedAt, new Date())
+}
 
 export function PortfolioList() {
     const showReservedDebugBadge =
@@ -123,6 +140,30 @@ export function PortfolioList() {
         }
     }, [isShareFeaturesEnabled, viewMode])
 
+    useEffect(() => {
+        if (!isStockDetailOpen || !selectedStock) return
+
+        const selectedSymbol = normalizeStockSymbol(selectedStock.symbol)
+        const selectedAssetType = selectedStock.assetType || "stock"
+        const selectedCryptoId = (selectedStock.cryptoId || "").trim()
+
+        const latestMatch = portfolio.find((entry) => {
+            const entrySymbol = normalizeStockSymbol(entry.symbol)
+            const entryAssetType = entry.assetType || "stock"
+            const entryCryptoId = (entry.cryptoId || "").trim()
+            return (
+                entry.portfolioId === selectedStock.portfolioId &&
+                entrySymbol === selectedSymbol &&
+                entryAssetType === selectedAssetType &&
+                entryCryptoId === selectedCryptoId
+            )
+        })
+
+        if (latestMatch && latestMatch !== selectedStock) {
+            setSelectedStock(latestMatch)
+        }
+    }, [isStockDetailOpen, portfolio, selectedStock])
+
     const portfolioSymbols = useMemo(
         () => portfolio.map((p) => p.symbol).sort().join(","),
         [portfolio]
@@ -181,8 +222,8 @@ export function PortfolioList() {
                 .then((updated) => {
                     const match = updated?.find((entry) => {
                         if (entry.id === item.id) return true
-                        const entrySymbol = entry.symbol.trim().toUpperCase()
-                        const itemSymbol = item.symbol.trim().toUpperCase()
+                        const entrySymbol = normalizeStockSymbol(entry.symbol)
+                        const itemSymbol = normalizeStockSymbol(item.symbol)
                         const entryAssetType = entry.assetType || "stock"
                         const itemAssetType = item.assetType || "stock"
                         const entryCryptoId = (entry.cryptoId || "").trim()
@@ -269,7 +310,7 @@ export function PortfolioList() {
             .filter((item) => item.portfolioId === activePortfolioId)
             .filter((item) => item.assetType !== "crypto" && !item.cryptoId)
             .forEach((item) => {
-                const symbol = item.symbol.toUpperCase()
+                const symbol = normalizeStockSymbol(item.symbol)
                 const name = scripNamesMap?.[symbol] || item.assetName || symbol
                 if (!bySymbol.has(symbol)) bySymbol.set(symbol, name)
             })
@@ -548,6 +589,7 @@ export function PortfolioList() {
         }, 0)
         const profitLoss = current - investment
         const today = activePortfolioItems.reduce((sum, item) => {
+            if (!hasFreshDailyQuote(item)) return sum
             const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : null
             const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
             if (currentPrice !== null && previousClose !== null) {
@@ -568,7 +610,7 @@ export function PortfolioList() {
 
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
-        const scripMap = new Map<string, { value: number; units: number }>()
+        const scripMap = new Map<string, { value: number; units: number; sector: string }>()
         let unitsSum = 0
 
         activePortfolioItems.forEach((item) => {
@@ -586,10 +628,11 @@ export function PortfolioList() {
                 count: currentSector.count + 1,
                 units: currentSector.units + safeUnits,
             })
-            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0 }
+            const currentScrip = scripMap.get(item.symbol) || { value: 0, units: 0, sector }
             scripMap.set(item.symbol, {
                 value: currentScrip.value + value,
                 units: currentScrip.units + safeUnits,
+                sector: currentScrip.sector || sector,
             })
         })
 
@@ -601,6 +644,7 @@ export function PortfolioList() {
                 value: data.value,
                 count: data.count,
                 units: data.units,
+                color: getSectorColor(name),
                 percentage: totalBase > 0
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
@@ -612,6 +656,8 @@ export function PortfolioList() {
                 name,
                 value: data.value,
                 units: data.units,
+                sector: data.sector,
+                color: getSectorVariantColor(data.sector, name),
                 percentage: totalBase > 0
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
@@ -622,12 +668,12 @@ export function PortfolioList() {
     }, [activePortfolioItems, currentValue, chartMetric])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
-    const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
 
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItems
             .map((item) => {
-                const symbol = item.symbol?.trim().toUpperCase() || ""
+                if (!hasFreshDailyQuote(item)) return null
+                const symbol = normalizeStockSymbol(item.symbol)
                 if (!symbol) return null
                 const safeUnits = safeNumber(item.units)
                 const currentPrice = isFiniteNumber(item.currentPrice)
@@ -640,11 +686,12 @@ export function PortfolioList() {
                 const percentChange = isFiniteNumber(item.percentChange)
                     ? item.percentChange
                     : (previousClose ? (changePerUnit / previousClose) * 100 : 0)
-                if (!Number.isFinite(percentChange) || percentChange === 0) return null
+                if (!Number.isFinite(percentChange)) return null
 
                 const displayName = item.assetType === "crypto" || item.cryptoId
                     ? (item.assetName || symbol)
-                    : (scripNamesMap[symbol] || "")
+                    : (scripNamesMap[symbol] || item.assetName || symbol)
+                const valueChange = safeUnits * changePerUnit
 
                 return {
                     id: item.id,
@@ -652,6 +699,8 @@ export function PortfolioList() {
                     name: displayName,
                     percentChange,
                     units: safeUnits,
+                    valueChange,
+                    item,
                 }
             })
             .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -666,8 +715,18 @@ export function PortfolioList() {
             .sort((a, b) => a.percentChange - b.percentChange)
             .slice(0, 5)
 
-        return { gainers, losers }
+        const noMovers = rows
+            .filter((row) => Math.abs(row.percentChange) < 0.0001)
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 5)
+
+        const topMoversProfit = gainers.reduce((sum, row) => sum + row.valueChange, 0)
+        const topLosersLoss = losers.reduce((sum, row) => sum + Math.abs(row.valueChange), 0)
+
+        return { gainers, losers, noMovers, topMoversProfit, topLosersLoss }
     }, [activePortfolioItems, scripNamesMap])
+    const hasMoverData = portfolioMovers.gainers.length > 0 || portfolioMovers.losers.length > 0
+    const hasNoMoverData = portfolioMovers.noMovers.length > 0
 
     const portfolioSummaryById = useMemo(() => {
         const summaries = new Map<string, { investment: number; current: number; count: number; todayChange: number }>()
@@ -677,7 +736,7 @@ export function PortfolioList() {
             const prev = summaries.get(item.portfolioId) || { investment: 0, current: 0, count: 0, todayChange: 0 }
             const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0)
             const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : currentPrice
-            const itemTodayChange = item.units * (currentPrice - previousClose)
+            const itemTodayChange = hasFreshDailyQuote(item) ? item.units * (currentPrice - previousClose) : 0
 
             summaries.set(item.portfolioId, {
                 investment: prev.investment + item.units * (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0),
@@ -1912,44 +1971,34 @@ export function PortfolioList() {
                                     </Button>
                                 </div>
                                 {chartMode === "allocation" && (
-                                    <div className="flex flex-col items-center gap-1">
-                                        <div className="flex items-center gap-1 sm:gap-2 bg-muted/30 p-1 rounded-xl border border-muted/50">
-                                            <Button
-                                                variant={chartView === "sector" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "sector" && "bg-background shadow-sm")}
-                                                onClick={() => setChartView("sector")}
+                                    <div className="hidden sm:flex items-center gap-1 sm:gap-2">
+                                        <div className="bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Select
+                                                value={chartView}
+                                                onValueChange={(value) => setChartView(value as "sector" | "scrip")}
                                             >
-                                                Sectors
-                                            </Button>
-                                            <Button
-                                                variant={chartView === "scrip" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartView === "scrip" && "bg-background shadow-sm")}
-                                                onClick={() => setChartView("scrip")}
-                                            >
-                                                Stocks
-                                            </Button>
+                                                <SelectTrigger className="h-6 sm:h-7 min-w-[120px] px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg border-0 bg-background shadow-sm focus:ring-0 focus:ring-offset-0">
+                                                    <SelectValue placeholder="View" />
+                                                </SelectTrigger>
+                                                <SelectContent className="text-[10px] font-bold uppercase tracking-wider">
+                                                    <SelectItem value="sector">Sectors</SelectItem>
+                                                    <SelectItem value="scrip">Stocks</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                        <div className="hidden sm:flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-muted/50 self-center w-fit">
-                                            <Button
-                                                variant={chartMetric === "value" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "value" && "bg-background shadow-sm")}
-                                                onClick={() => setChartMetric("value")}
-                                                title="Allocation by value"
+                                        <div className="bg-muted/30 p-1 rounded-xl border border-muted/50">
+                                            <Select
+                                                value={chartMetric}
+                                                onValueChange={(value) => setChartMetric(value as "value" | "units")}
                                             >
-                                                Value
-                                            </Button>
-                                            <Button
-                                                variant={chartMetric === "units" ? "secondary" : "ghost"}
-                                                size="sm"
-                                                className={cn("h-6 px-2 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all", chartMetric === "units" && "bg-background shadow-sm")}
-                                                onClick={() => setChartMetric("units")}
-                                                title="Allocation by units"
-                                            >
-                                                Units
-                                            </Button>
+                                                <SelectTrigger className="h-6 sm:h-7 min-w-[110px] px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg border-0 bg-background shadow-sm focus:ring-0 focus:ring-offset-0">
+                                                    <SelectValue placeholder="Metric" />
+                                                </SelectTrigger>
+                                                <SelectContent className="text-[10px] font-bold uppercase tracking-wider">
+                                                    <SelectItem value="value">Value</SelectItem>
+                                                    <SelectItem value="units">Units</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 )}
@@ -1995,7 +2044,7 @@ export function PortfolioList() {
                                                 {activeChartData.map((entry, index) => (
                                                     <Cell
                                                         key={`cell-${chartView}-${index}`}
-                                                        fill={SECTOR_COLORS[index % SECTOR_COLORS.length]}
+                                                        fill={entry.color}
                                                         className="hover:opacity-80 transition-opacity cursor-pointer shadow-xl"
                                                     />
                                                 ))}
@@ -2068,18 +2117,34 @@ export function PortfolioList() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                            ) : (
-                                <div className="h-full w-full p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
-                                            <TrendingUp className="w-3.5 h-3.5 text-success" />
-                                        </div>
-                                        {portfolioMovers.gainers.length > 0 ? (
-                                            portfolioMovers.gainers.map((row) => (
-                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                            ) : hasMoverData || hasNoMoverData ? (
+                                <div className={cn(
+                                    "h-full w-full p-4 sm:p-6 grid grid-cols-1 gap-4",
+                                    hasNoMoverData ? "lg:grid-cols-3" : "lg:grid-cols-2",
+                                )}>
+                                    {portfolioMovers.gainers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
+                                                        +{portfolioMovers.topMoversProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <TrendingUp className="w-3.5 h-3.5 text-success" />
+                                                </div>
+                                            </div>
+                                            {portfolioMovers.gainers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
                                                     <div className="min-w-0">
-                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
                                                         {row.name ? (
                                                             <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
                                                         ) : null}
@@ -2088,24 +2153,35 @@ export function PortfolioList() {
                                                         <p className="text-[11px] font-black text-success">
                                                             +{row.percentChange.toFixed(2)}%
                                                         </p>
-                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                        <p className="text-[9px] text-success">+{row.valueChange.toFixed(2)}</p>
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground">No gainers found.</p>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
-                                            <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                            ))}
                                         </div>
-                                        {portfolioMovers.losers.length > 0 ? (
-                                            portfolioMovers.losers.map((row) => (
-                                                <div key={row.id} className="flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2">
+                                    )}
+                                    {portfolioMovers.losers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
+                                                        -{portfolioMovers.topLosersLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </span>
+                                                    <TrendingDown className="w-3.5 h-3.5 text-error" />
+                                                </div>
+                                            </div>
+                                            {portfolioMovers.losers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
                                                     <div className="min-w-0">
-                                                        <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
                                                         {row.name ? (
                                                             <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
                                                         ) : null}
@@ -2114,16 +2190,49 @@ export function PortfolioList() {
                                                         <p className="text-[11px] font-black text-error">
                                                             {row.percentChange.toFixed(2)}%
                                                         </p>
-                                                        <p className="text-[9px] text-muted-foreground">{formatUnits(row.units)} units</p>
+                                                        <p className="text-[9px] text-error">{row.valueChange.toFixed(2)}</p>
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground">No losers found.</p>
-                                        )}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {portfolioMovers.noMovers.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No Movers</span>
+                                                <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                                            </div>
+                                            {portfolioMovers.noMovers.map((row) => (
+                                                <div
+                                                    key={row.id}
+                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                {formatUnits(row.units)} units
+                                                            </Badge>
+                                                        </div>
+                                                        {row.name ? (
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[11px] font-black text-muted-foreground">
+                                                            {row.percentChange.toFixed(2)}%
+                                                        </p>
+                                                        <p className="text-[9px] text-muted-foreground">{row.valueChange.toFixed(2)}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
+                            ) : (
+                                null
                             )
+                            
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />
@@ -2255,9 +2364,19 @@ export function PortfolioList() {
                                         const profitLoss = value - investment
                                         const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
                                         const isProfit = profitLoss >= 0
-                                        const dailyChange = item.change ?? ((item.currentPrice != null && item.previousClose != null) ? item.currentPrice - item.previousClose : 0)
-                                        const dailyChangePerc = item.percentChange ?? ((item.previousClose != null && item.previousClose !== 0) ? (dailyChange / item.previousClose) * 100 : 0)
-                                        const isDailyProfit = dailyChange >= 0
+                                        const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
+                                        const hasFreshMoveToday = hasFreshDailyQuote(item)
+                                        const dailyChangeRaw = isFiniteNumber(item.change)
+                                            ? item.change
+                                            : (isFiniteNumber(item.currentPrice) && previousClose !== null ? item.currentPrice - previousClose : 0)
+                                        const dailyChangePercRaw = isFiniteNumber(item.percentChange)
+                                            ? item.percentChange
+                                            : (previousClose !== null && previousClose !== 0 ? (dailyChangeRaw / previousClose) * 100 : 0)
+                                        const dailyChange = hasFreshMoveToday ? dailyChangeRaw : 0
+                                        const dailyChangePerc = hasFreshMoveToday ? dailyChangePercRaw : 0
+                                        const showDailyChange = hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
+                                        const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
+                                        const isDailyProfit = dailyChange > 0
 
                                         return (
                                             <div
@@ -2271,7 +2390,11 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isProfit ? "bg-success/5 text-success border-success/10" : "bg-error/5 text-error border-error/10"
+                                                            isDailyNeutral
+                                                                ? "bg-muted/40 text-muted-foreground border-muted/30"
+                                                                : isDailyProfit
+                                                                    ? "bg-success/5 text-success border-success/10"
+                                                                    : "bg-error/5 text-error border-error/10"
                                                         )}>
                                                             {item.symbol.substring(0, 2)}
                                                         </div>
@@ -2290,11 +2413,15 @@ export function PortfolioList() {
                                                                     <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
                                                                         {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
                                                                     </span>
-                                                                    {item.previousClose != null && (
+                                                                    {showDailyChange && (
                                                                         <span
                                                                             className={cn(
                                                                                 "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
-                                                                                isDailyProfit ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                                                                                isDailyNeutral
+                                                                                    ? "bg-muted text-muted-foreground"
+                                                                                    : isDailyProfit
+                                                                                        ? "bg-success/10 text-success"
+                                                                                        : "bg-error/10 text-error"
                                                                             )}
                                                                         >
                                                                             {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%
@@ -2312,7 +2439,11 @@ export function PortfolioList() {
                                                             </div>
                                                             <div className={cn(
                                                                 "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
-                                                                isDailyProfit ? "text-success" : "text-error"
+                                                                isDailyNeutral
+                                                                    ? "text-muted-foreground"
+                                                                    : isDailyProfit
+                                                                        ? "text-success"
+                                                                        : "text-error"
                                                             )}>
                                                                 <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
                                                                 <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>

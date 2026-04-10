@@ -15,6 +15,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { cn } from "@/lib/utils"
 import type { Goal, UserProfile } from "@/types/wallet"
 import { getCurrencySymbol } from "@/lib/currency"
+import { getGoalChallengeSummary } from "@/lib/goal-challenge"
 import {
   AlertTriangle,
   Briefcase,
@@ -190,6 +191,18 @@ const GOAL_TEMPLATES = [
     description: "Save for festive shopping and family celebrations.",
     priority: "low" as const,
   },
+  {
+    name: "Hard Plan Challenge",
+    category: "savings",
+    targetAmount: 300,
+    description: "Save 300 in 3 months. If you miss the target, add 50 extra before completion and keep the fund split 50% NEP and 50% UK.",
+    priority: "high" as const,
+    targetMonths: 3,
+    autoContribute: true,
+    contributionAmount: 100,
+    contributionFrequency: "monthly" as const,
+    challengeMode: "easy" as const,
+  },
 ]
 
 type GoalCreationMode = "template" | "custom"
@@ -207,6 +220,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
     autoContribute: false,
     contributionAmount: "",
     contributionFrequency: "monthly" as "daily" | "weekly" | "monthly",
+    challengeMode: "easy" as "easy" | "hard",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [goalCreationMode, setGoalCreationMode] = useState<GoalCreationMode>("template")
@@ -234,6 +248,52 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
     }
   }, [formData.targetAmount, formData.targetDate])
 
+  const challengePreview = useMemo(() => {
+    if (selectedTemplateName !== "Hard Plan Challenge" && !editingGoal?.challengePlan) return null
+
+    const previewGoal: Goal = {
+      id: "preview",
+      title: formData.title || "Hard Plan Challenge",
+      targetAmount: Number.parseFloat(formData.targetAmount || "0"),
+      currentAmount: 0,
+      targetDate: formData.targetDate || new Date().toISOString(),
+      category: formData.category,
+      priority: formData.priority,
+      createdAt: new Date().toISOString(),
+      autoContribute: formData.autoContribute,
+      contributionAmount: formData.contributionAmount ? Number.parseFloat(formData.contributionAmount) : undefined,
+      contributionFrequency: formData.contributionFrequency,
+      description: formData.description,
+      challengePlan: {
+        type: "hard-plan",
+        mode: formData.challengeMode,
+        baseTargetAmount: Number.parseFloat(formData.targetAmount || "0") || 300,
+        penaltyAmount: 50,
+        graceMonths: 1,
+        allocation: {
+          nepalPercent: 50,
+          ukPercent: 50,
+        },
+        hardModeRewardPoints: 10,
+      },
+    }
+
+    return getGoalChallengeSummary(previewGoal)
+  }, [
+    editingGoal?.challengePlan,
+    formData.autoContribute,
+    formData.category,
+    formData.challengeMode,
+    formData.contributionAmount,
+    formData.contributionFrequency,
+    formData.description,
+    formData.priority,
+    formData.targetAmount,
+    formData.targetDate,
+    formData.title,
+    selectedTemplateName,
+  ])
+
   useEffect(() => {
     if (editingGoal) {
       setFormData({
@@ -246,6 +306,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
         autoContribute: editingGoal.autoContribute || false,
         contributionAmount: editingGoal.contributionAmount?.toString() || "",
         contributionFrequency: editingGoal.contributionFrequency || "monthly",
+        challengeMode: editingGoal.challengePlan?.mode === "hard" ? "hard" : "easy",
       })
       setGoalCreationMode("custom")
     } else {
@@ -259,6 +320,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
         autoContribute: false,
         contributionAmount: "",
         contributionFrequency: "monthly",
+        challengeMode: "easy",
       })
       setGoalCreationMode("template")
     }
@@ -298,17 +360,25 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
   }
 
   const applyTemplate = (template: (typeof GOAL_TEMPLATES)[0]) => {
-    const oneYearFromNow = new Date()
-    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
+    const targetDate = new Date()
+    targetDate.setMonth(targetDate.getMonth() + ("targetMonths" in template && template.targetMonths ? template.targetMonths : 12))
 
     setFormData((prev) => ({
       ...prev,
       title: template.name,
       targetAmount: template.targetAmount.toString(),
-      targetDate: oneYearFromNow.toISOString().split("T")[0],
+      targetDate: targetDate.toISOString().split("T")[0],
       description: template.description,
       category: template.category,
       priority: template.priority,
+      autoContribute: "autoContribute" in template ? Boolean(template.autoContribute) : prev.autoContribute,
+      contributionAmount: "contributionAmount" in template && template.contributionAmount
+        ? template.contributionAmount.toString()
+        : "",
+      contributionFrequency: "contributionFrequency" in template && template.contributionFrequency
+        ? template.contributionFrequency
+        : "monthly",
+      challengeMode: template.name === "Hard Plan Challenge" ? "easy" : prev.challengeMode,
     }))
     setSelectedTemplateName(template.name)
     setGoalCreationMode("custom")
@@ -329,6 +399,20 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
       ...(formData.autoContribute && {
         contributionAmount: Number.parseFloat(formData.contributionAmount),
         contributionFrequency: formData.contributionFrequency,
+      }),
+      ...((selectedTemplateName === "Hard Plan Challenge" || editingGoal?.challengePlan) && {
+        challengePlan: {
+          type: "hard-plan" as const,
+          mode: formData.challengeMode,
+          baseTargetAmount: Number.parseFloat(formData.targetAmount),
+          penaltyAmount: 50,
+          graceMonths: 1,
+          allocation: {
+            nepalPercent: 50,
+            ukPercent: 50,
+          },
+          hardModeRewardPoints: 10,
+        },
       }),
     }
 
@@ -434,6 +518,66 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 Using template: <span className="font-medium text-foreground">{selectedTemplateName}</span>
               </div>
+            )}
+
+            {((!editingGoal && goalCreationMode === "custom" && selectedTemplateName === "Hard Plan Challenge") || editingGoal?.challengePlan) && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="pt-5">
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-foreground">Hard plan rules</p>
+                    <p className="text-xs text-muted-foreground">
+                      Save toward the target on time. If the active deadline is missed, the plan adds an extra 50 and gives one more month to complete.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Suggested split after funding: 50% for NEP and 50% for UK.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Challenge mode</Label>
+                        <Select
+                          value={formData.challengeMode}
+                          onValueChange={(value: "easy" | "hard") => setFormData((prev) => ({ ...prev, challengeMode: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="easy">Easy mode</SelectItem>
+                            <SelectItem value="hard">Hard mode</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="rounded-md border bg-background/80 p-3 text-xs text-muted-foreground">
+                        {formData.challengeMode === "easy"
+                          ? "Easy mode: using the fund for investment does not reduce saved progress."
+                          : "Hard mode: investment usage counts like expense, reduces saved progress, and earns 10 points per use."}
+                      </div>
+                    </div>
+                    {challengePreview && (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-md border bg-background/80 p-3">
+                          <p className="text-[11px] text-muted-foreground">Current target</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {currencySymbol}{challengePreview.effectiveTargetAmount.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="rounded-md border bg-background/80 p-3">
+                          <p className="text-[11px] text-muted-foreground">Penalty rule</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {currencySymbol}{challengePreview.plan.penaltyAmount} every {challengePreview.plan.graceMonths} month
+                          </p>
+                        </div>
+                        <div className="rounded-md border bg-background/80 p-3">
+                          <p className="text-[11px] text-muted-foreground">Utilization split</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {challengePreview.utilization.nepalPercent}% NEP / {challengePreview.utilization.ukPercent}% UK
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {isFormMode && (

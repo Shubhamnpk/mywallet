@@ -21,6 +21,7 @@ import type {
   NepseNoticesBundle,
   NepseDisclosure,
   NepseExchangeMessage,
+  SIPPlan,
 } from "@/types/wallet"
 type WalletDataContextType = {
   userProfile: UserProfile | null
@@ -55,12 +56,37 @@ type WalletDataContextType = {
   handleOnboardingComplete: (profileData: UserProfile) => void
   addTransaction: (transaction: Omit<Transaction, "id" | "timeEquivalent">) => Promise<any>
   updateUserProfile: (updates: Partial<UserProfile>) => void
+  saveSipPlan: (plan: Omit<SIPPlan, "id" | "createdAt" | "updatedAt"> & { id?: string }) => SIPPlan | null
+  deleteSipPlan: (id: string) => Promise<void>
+  enrollShareTransactionInSipPlan: (transactionId: string, planId: string, options?: {
+    dueDate?: string
+    grossAmount?: number
+    dpsCharge?: number
+  }) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
+  enrollMultipleShareTransactionsInSipPlan: (
+    enrollments: Array<{
+      transactionId: string
+      planId: string
+      dueDate?: string
+      grossAmount?: number
+      dpsCharge?: number
+    }>
+  ) => Promise<{ updatedTransactions: ShareTransaction[], updatedPortfolio: PortfolioItem[] }>
+  completeSipInstallment: (
+    planId: string,
+    options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }
+  ) => Promise<any>
   addBudget: (budget: Omit<Budget, "id">) => void
   updateBudget: (id: string, updates: Partial<Budget>) => void
   deleteBudget: (id: string) => void
   addGoal: (goal: Omit<Goal, "id" | "currentAmount">) => Goal
   updateGoal: (id: string, updates: Partial<Goal>) => void
   deleteGoal: (id: string) => void
+  useGoalForInvestment: (
+    goalId: string,
+    amount: number,
+    options?: { market?: "nepal" | "uk" | "split"; notes?: string }
+  ) => Promise<any>
   deleteTransaction: (id: string) => void
   addDebtAccount: (debt: Omit<DebtAccount, "id">) => DebtAccount
   addCreditAccount: (credit: Omit<CreditAccount, "id">) => CreditAccount

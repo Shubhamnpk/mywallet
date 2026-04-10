@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import type { Goal, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
+import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
 
 interface GoalProgressVisualizationProps {
   goals: Goal[]
@@ -48,9 +49,11 @@ interface Milestone {
 export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVisualizationProps) {
   const goalProjections = useMemo(() => {
     return goals.map((goal): GoalProjection => {
-      const progress = (goal.currentAmount / goal.targetAmount) * 100
-      const remaining = goal.targetAmount - goal.currentAmount
-      const targetDate = new Date(goal.targetDate)
+      const challengeSummary = getGoalChallengeSummary(goal)
+      const effectiveTargetAmount = getGoalEffectiveTargetAmount(goal)
+      const progress = getGoalEffectiveProgress(goal)
+      const remaining = getGoalEffectiveRemainingAmount(goal)
+      const targetDate = new Date(challengeSummary?.currentDeadline || goal.targetDate)
       const today = new Date()
       const daysRemaining = Math.max(1, Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
       const monthsRemaining = Math.max(1, daysRemaining / 30)
@@ -67,28 +70,28 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
       const milestones: Milestone[] = [
         {
           percentage: 25,
-          amount: goal.targetAmount * 0.25,
+          amount: effectiveTargetAmount * 0.25,
           achieved: progress >= 25,
           label: "Quarter Complete",
           icon: <Star className="w-4 h-4" />
         },
         {
           percentage: 50,
-          amount: goal.targetAmount * 0.5,
+          amount: effectiveTargetAmount * 0.5,
           achieved: progress >= 50,
           label: "Halfway There",
           icon: <Target className="w-4 h-4" />
         },
         {
           percentage: 75,
-          amount: goal.targetAmount * 0.75,
+          amount: effectiveTargetAmount * 0.75,
           achieved: progress >= 75,
           label: "Three Quarters",
           icon: <Award className="w-4 h-4" />
         },
         {
           percentage: 100,
-          amount: goal.targetAmount,
+          amount: effectiveTargetAmount,
           achieved: progress >= 100,
           label: "Goal Complete!",
           icon: <Trophy className="w-4 h-4" />
@@ -185,7 +188,7 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                 <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/20 rounded-xl">
                   <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Done</p>
                   <p className="text-lg font-bold font-mono text-emerald-600">
-                    {goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length}
+                    {goals.filter(g => getGoalEffectiveProgress(g) >= 100).length}
                   </p>
                 </div>
                 <div className="p-3 bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 rounded-xl">
@@ -203,11 +206,11 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                     {formatCurrency(goals.reduce((sum, g) => sum + g.currentAmount, 0), userProfile.currency, userProfile.customCurrency)}
                   </p>
                   <p className="text-xs font-bold text-blue-600/70 shrink-0">
-                    {Math.round(goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length) || 0}%
+                    {Math.round(goals.reduce((sum, g) => sum + getGoalEffectiveProgress(g), 0) / goals.length) || 0}%
                   </p>
                 </div>
                 <Progress
-                  value={goals.reduce((sum, g) => sum + (g.currentAmount / g.targetAmount) * 100, 0) / goals.length || 0}
+                  value={goals.reduce((sum, g) => sum + getGoalEffectiveProgress(g), 0) / goals.length || 0}
                   className="h-1 bg-blue-100 dark:bg-blue-900/30"
                 />
               </div>

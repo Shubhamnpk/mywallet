@@ -16,6 +16,7 @@ export interface UserProfile {
   }
   avatar?: string
   notificationSettings?: NotificationSettings
+  sipPlans?: SIPPlan[]
   meroShare?: {
     dpId: string
     username: string
@@ -40,6 +41,28 @@ export interface NotificationSettings {
   budgetReminders: boolean
   goalReminders: boolean
   ipoReminders: boolean
+  sipReminders: boolean
+}
+
+export interface SIPPlan {
+  id: string
+  portfolioId: string
+  symbol: string
+  assetType: "stock"
+  assetName?: string
+  sector?: string
+  installmentAmount: number
+  dpsCharge?: number
+  estimatedUnits?: number
+  referencePrice?: number
+  frequency: "weekly" | "monthly" | "quarterly"
+  startDate: string
+  reminderDays: number
+  mode: "manual" | "auto"
+  status: "active" | "paused"
+  notes?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface MeroShareApplicationLog {
@@ -128,6 +151,45 @@ export interface Goal {
   contributionAmount?: number
   contributionFrequency?: "daily" | "weekly" | "monthly"
   description?: string
+  challengePlan?: GoalChallengePlan
+  challengePoints?: GoalChallengePoints
+  challengePenaltyHistory?: GoalChallengePenaltySnapshot[]
+}
+
+export interface GoalChallengePlan {
+  type: "hard-plan"
+  mode: "easy" | "hard"
+  baseTargetAmount: number
+  penaltyAmount: number
+  graceMonths: number
+  allocation: {
+    nepalPercent: number
+    ukPercent: number
+  }
+  hardModeRewardPoints: number
+}
+
+export interface GoalChallengePoints {
+  total: number
+  history: GoalChallengePointEntry[]
+}
+
+export interface GoalChallengePointEntry {
+  id: string
+  type: "investment_reward"
+  points: number
+  awardedAt: string
+  description?: string
+}
+
+export interface GoalChallengePenaltySnapshot {
+  id: string
+  cycleNumber: number
+  penaltyAmount: number
+  previousDeadline: string
+  newDeadline: string
+  effectiveTargetAmount: number
+  appliedAt: string
 }
 
 export interface WalletSettings {
@@ -238,6 +300,11 @@ export interface ShareTransaction {
   price: number
   date: string
   description: string
+  sipPlanId?: string
+  sipDueDate?: string
+  sipGrossAmount?: number
+  sipDpsCharge?: number
+  sipNetAmount?: number
 }
 
 export interface UpcomingIPO {

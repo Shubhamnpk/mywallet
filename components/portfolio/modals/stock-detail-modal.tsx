@@ -1,13 +1,7 @@
 "use client"
 
 import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import {
     Activity,
@@ -25,9 +19,14 @@ import {
     ArrowUpRight,
     ArrowDownLeft,
     Gift,
-    Banknote
+    Banknote,
+    PiggyBank,
+    CheckCircle2,
+    Wallet,
+    Trash2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -36,6 +35,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
+import { SIPSetupModal } from "./sip-setup-modal"
+import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, getSipTransactionsForPlan, normalizeSipPlans } from "@/lib/sip"
+import { toast } from "sonner"
 
 type ProposedDividendRecord = {
     id: number
@@ -58,7 +60,17 @@ type BtcNewsItem = {
     categories?: string[]
 }
 
-const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"
+const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
+
+const formatOrdinalInstallment = (value: number) => {
+    const remainder10 = value % 10
+    const remainder100 = value % 100
+
+    if (remainder10 === 1 && remainder100 !== 11) return `${value}st`
+    if (remainder10 === 2 && remainder100 !== 12) return `${value}nd`
+    if (remainder10 === 3 && remainder100 !== 13) return `${value}rd`
+    return `${value}th`
+}
 
 interface StockDetailModalProps {
     item: PortfolioItem | null
@@ -66,8 +78,8 @@ interface StockDetailModalProps {
     onOpenChange: (open: boolean) => void
 }
 
-export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalProps) {
-    const { scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue } = useWalletData()
+export function StockDetailModal({ item: initialItem, open, onOpenChange }: StockDetailModalProps) {
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue, completeSipInstallment, deleteShareTransaction } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -78,11 +90,36 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const [pdfUrl, setPdfUrl] = useState<string | null>(null)
     const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
     const [isPdfOpen, setIsPdfOpen] = useState(false)
+    const [isSipModalOpen, setIsSipModalOpen] = useState(false)
+    const [initialEnrollmentTransactionId, setInitialEnrollmentTransactionId] = useState<string | null>(null)
+    const [isCompletingSip, setIsCompletingSip] = useState(false)
+    const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null)
+    const [activeTab, setActiveTab] = useState("overview")
     const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
+
+    const item = useMemo(() => {
+        if (!initialItem) return null
+
+        const initialSymbol = normalizeStockSymbol(initialItem.symbol)
+        const initialAssetType = initialItem.assetType || "stock"
+        const initialCryptoId = (initialItem.cryptoId || "").trim()
+
+        return portfolio.find((entry) => {
+            const entrySymbol = normalizeStockSymbol(entry.symbol)
+            const entryAssetType = entry.assetType || "stock"
+            const entryCryptoId = (entry.cryptoId || "").trim()
+            return (
+                entry.portfolioId === initialItem.portfolioId &&
+                entrySymbol === initialSymbol &&
+                entryAssetType === initialAssetType &&
+                entryCryptoId === initialCryptoId
+            )
+        }) || initialItem
+    }, [initialItem, portfolio])
 
     const isPdfLink = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
@@ -107,6 +144,8 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
             setShowBonusInfo(false)
             setSelectedDividendKey(null)
             setIsPdfOpen(false)
+            setIsSipModalOpen(false)
+            setActiveTab("overview")
             setPdfUrl(null)
             setPdfSourceUrl(null)
         }
@@ -136,9 +175,10 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const dailyChangePerc = Number.isFinite(item?.percentChange)
         ? (item?.percentChange ?? 0)
         : (safePreviousClose !== 0 ? (dailyChange / safePreviousClose) * 100 : 0)
-    const isDailyProfit = dailyChange >= 0
+    const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
+    const isDailyProfit = dailyChange > 0
     const companyName = item
-        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[item.symbol.trim().toUpperCase()] || ""))
+        ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol))
         : ""
 
     const formatUnits = (units: number) => {
@@ -270,7 +310,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
         }
     }
 
-    const symbol = item?.symbol?.trim().toUpperCase() || ""
+    const symbol = normalizeStockSymbol(item?.symbol)
     const normalizedHoldingName = normalizeCompany(companyName)
     const getDividendRecordTime = (record: ProposedDividendRecord) => {
         const rawDate = (record.announcement_date || "").trim()
@@ -287,7 +327,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const matchedDividendHistory = useMemo(() => {
         return (dividendHistory || [])
             .filter((record) => {
-                const recordSymbol = record.symbol?.trim().toUpperCase() || ""
+                const recordSymbol = normalizeStockSymbol(record.symbol)
                 if (symbol && recordSymbol === symbol) return true
                 const recordName = normalizeCompany(record.company_name)
                 return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
@@ -316,13 +356,118 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
     const estimatedCashAmount = cashPerUnit * heldUnits
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
 
+    const existingSipPlan = useMemo(() => {
+        if (!item) return null
+        return normalizeSipPlans(userProfile?.sipPlans).find((plan) =>
+            plan.portfolioId === item.portfolioId &&
+            normalizeStockSymbol(plan.symbol) === symbol &&
+            plan.assetType === "stock"
+        ) || null
+    }, [item, symbol, userProfile?.sipPlans])
+
+    const sipSchedule = useMemo(() => {
+        if (!existingSipPlan) return null
+        return getSipScheduleSummary(existingSipPlan, shareTransactions, new Date())
+    }, [existingSipPlan, shareTransactions])
+
+    const currentSipInstallment = useMemo(() => {
+        if (!existingSipPlan || !sipSchedule?.nextDate) return null
+        return getSipCompletedTransactionForDueDate(existingSipPlan, shareTransactions, sipSchedule.nextDate)
+    }, [existingSipPlan, shareTransactions, sipSchedule?.nextDate])
+
     const matchedTransactions = useMemo(() => {
         if (!item || !shareTransactions) return []
         const portfolioId = item.portfolioId
         return shareTransactions
-            .filter((tx) => tx.portfolioId === portfolioId && tx.symbol.toUpperCase() === symbol)
+            .filter((tx) => tx.portfolioId === portfolioId && normalizeStockSymbol(tx.symbol) === symbol)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [item, shareTransactions, symbol])
+
+    const sipTransactions = useMemo(() => {
+        if (!existingSipPlan) return []
+        return getSipTransactionsForPlan(existingSipPlan, matchedTransactions)
+    }, [existingSipPlan, matchedTransactions])
+
+    const isRecognizedSipLikeBuy = useCallback((tx: ShareTransaction) => {
+        const upperDescription = (tx.description || "").trim().toUpperCase()
+        const normalizedSymbol = normalizeStockSymbol(tx.symbol)
+        return (
+            upperDescription.includes("CA-REARRANGEMENT") ||
+            upperDescription.includes("SIP") ||
+            upperDescription.includes(`UNITS OF ${normalizedSymbol}`)
+        )
+    }, [])
+
+    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => (
+        tx.type === "buy" &&
+        !tx.sipPlanId &&
+        Number.isFinite(tx.quantity) &&
+        (tx.quantity ?? 0) > 0 &&
+        Number.isFinite(tx.price) &&
+        (tx.price ?? 0) > 0
+    ), [])
+
+    const sipEnrollmentCandidates = useMemo(() =>
+        matchedTransactions
+            .filter((tx) => isEligibleForSipEnrollment(tx))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [isEligibleForSipEnrollment, matchedTransactions])
+
+    const handleCompleteSipInstallment = async () => {
+        if (!existingSipPlan || !sipSchedule?.nextDate || currentSipInstallment) return
+        setIsCompletingSip(true)
+        try {
+            const executionPrice = Number.isFinite(item?.currentPrice) ? (item?.currentPrice ?? 0) : safeCurrent
+            const result = await completeSipInstallment(existingSipPlan.id, {
+                dueDate: sipSchedule.nextDate.toISOString(),
+                price: executionPrice,
+            })
+            toast.success("SIP installment completed", {
+                description: `${result.installment.investedAmount.toFixed(2)} invested into ${item?.symbol} after ${(result.installment.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE).toFixed(2)} DPS charge.`,
+            })
+        } catch (error: any) {
+            toast.error("Could not complete SIP installment", {
+                description: error?.message || "Please try again.",
+            })
+        } finally {
+            setIsCompletingSip(false)
+        }
+    }
+
+    const handleDeleteTransaction = async (transactionId: string) => {
+        if (deletingTransactionId) return
+        setDeletingTransactionId(transactionId)
+        try {
+            await deleteShareTransaction(transactionId)
+            toast.success("Transaction deleted", {
+                description: "Linked SIP installment history was updated too.",
+            })
+        } catch (error: any) {
+            toast.error("Could not delete transaction", {
+                description: error?.message || "Please try again.",
+            })
+        } finally {
+            setDeletingTransactionId(null)
+        }
+    }
+
+    const totalSipGross = useMemo(() =>
+        sipTransactions.reduce((sum, tx) => sum + (tx.sipGrossAmount ?? 0), 0),
+    [sipTransactions])
+
+    const totalSipNet = useMemo(() =>
+        sipTransactions.reduce((sum, tx) => sum + (tx.sipNetAmount ?? calculateSipNetInvestment(tx.sipGrossAmount ?? 0, tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)), 0),
+    [sipTransactions])
+
+    const totalSipUnits = useMemo(() =>
+        sipTransactions.reduce((sum, tx) => sum + (tx.quantity || 0), 0),
+    [sipTransactions])
+    const canCompleteSipNow = Boolean(
+        existingSipPlan &&
+        sipSchedule?.nextDate &&
+        (sipSchedule.isDueToday || sipSchedule.isOverdue) &&
+        !currentSipInstallment
+    )
 
     const holdingStartDate = useMemo(() => {
         if (matchedTransactions.length === 0) return null
@@ -404,6 +549,15 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 <DialogDescription className="text-sm font-medium mt-1 text-left">
                                     {formatUnits(item.units)} Units Held in Portfolio
                                 </DialogDescription>
+                                {!isCrypto && existingSipPlan && (
+                                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary">
+                                        <PiggyBank className="h-3.5 w-3.5" />
+                                        {existingSipPlan.status === "paused" ? "SIP Paused" : "SIP Active"}
+                                        <span className="text-primary/70">
+                                            {sipSchedule?.nextDate ? `Next ${formatSipDate(sipSchedule.nextDate.toISOString())}` : "Schedule ready"}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <div className="text-right ml-4">
                                 <div className="text-2xl font-black font-mono">
@@ -411,16 +565,20 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                 </div>
                                 <div className={cn(
                                     "text-[10px] font-black uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1",
-                                    isDailyProfit ? "text-green-600 bg-green-500/10" : "text-red-600 bg-red-500/10"
+                                    isDailyNeutral
+                                        ? "text-muted-foreground bg-muted"
+                                        : isDailyProfit
+                                            ? "text-green-600 bg-green-500/10"
+                                            : "text-red-600 bg-red-500/10"
                                 )}>
-                                    {isDailyProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                    {!isDailyNeutral && (isDailyProfit ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
                                     {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
                                 </div>
                             </div>
                         </div>
                     </DialogHeader>
 
-                    <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
                         <div className="px-6 py-1 border-b border-muted/20 bg-muted/5">
                             <TabsList className="bg-transparent h-9 w-full justify-start gap-4 p-0">
                                 <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
@@ -438,6 +596,14 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                         }}
                                     >
                                         Dividends
+                                    </TabsTrigger>
+                                )}
+                                {!isCrypto && existingSipPlan && (
+                                    <TabsTrigger
+                                        value="sip"
+                                        className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
+                                    >
+                                        SIP
                                     </TabsTrigger>
                                 )}
                                 <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
@@ -471,13 +637,21 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                             </div>
                                             <div className={cn(
                                                 "p-4 rounded-2xl border flex flex-col gap-2",
-                                                isDailyProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
+                                                isDailyNeutral
+                                                    ? "bg-muted/20 border-muted/50"
+                                                    : isDailyProfit
+                                                        ? "bg-green-500/5 border-green-500/10"
+                                                        : "bg-red-500/5 border-red-500/10"
                                             )}>
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
                                                     <span className={cn(
                                                         "text-[10px] font-bold",
-                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                        isDailyNeutral
+                                                            ? "text-muted-foreground"
+                                                            : isDailyProfit
+                                                                ? "text-green-600"
+                                                                : "text-red-600"
                                                     )}>
                                                         {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
                                                     </span>
@@ -485,7 +659,11 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                 <div>
                                                     <div className={cn(
                                                         "text-lg font-black font-mono",
-                                                        isDailyProfit ? "text-green-600" : "text-red-600"
+                                                        isDailyNeutral
+                                                            ? "text-muted-foreground"
+                                                            : isDailyProfit
+                                                                ? "text-green-600"
+                                                                : "text-red-600"
                                                     )}>
                                                         {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
                                                     </div>
@@ -553,6 +731,49 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                 </div>
                                             </div>
                                         )}
+
+                                        {!isCrypto && !existingSipPlan && (
+                                            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                                                            <PiggyBank className="w-3.5 h-3.5" />
+                                                            SIP Plan
+                                                        </p>
+                                                        <p className="mt-1 text-sm font-semibold">
+                                                            Start a recurring investment plan for this stock.
+                                                        </p>
+                                                        <p className="mt-1 text-[10px] text-muted-foreground">
+                                                            Track installments, deduct the fixed DPS charge, and turn each completed cycle into a real buy transaction.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex flex-col gap-2">
+                                                        <Button
+                                                            className="rounded-xl"
+                                                            onClick={() => {
+                                                                setInitialEnrollmentTransactionId(null)
+                                                                setIsSipModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <PiggyBank className="w-4 h-4 mr-2" />
+                                                            Start SIP
+                                                        </Button>
+                                                        {sipEnrollmentCandidates.length > 0 && (
+                                                            <Button
+                                                                variant="outline"
+                                                                className="rounded-xl"
+                                                                onClick={() => {
+                                                                    setInitialEnrollmentTransactionId(sipEnrollmentCandidates[0]?.id || null)
+                                                                    setIsSipModalOpen(true)
+                                                                }}
+                                                            >
+                                                                Already Started?
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </TabsContent>
 
                                     <TabsContent value="history" className="m-0 space-y-3">
@@ -573,11 +794,38 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                         <div>
                                                             <p className="text-[11px] font-black uppercase">{tx.type}</p>
                                                             <p className="text-[9px] font-bold text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                            {tx.description && (
+                                                                <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
+                                                            )}
+                                                            {!existingSipPlan && isEligibleForSipEnrollment(tx) && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="link"
+                                                                    className="h-auto px-0 py-0 text-[10px] font-bold text-primary"
+                                                                    onClick={() => {
+                                                                        setInitialEnrollmentTransactionId(tx.id)
+                                                                        setIsSipModalOpen(true)
+                                                                    }}
+                                                                >
+                                                                    Use this as SIP start
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
-                                                        <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
+                                                            <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+                                                            onClick={() => void handleDeleteTransaction(tx.id)}
+                                                            disabled={deletingTransactionId === tx.id}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             ))
@@ -687,7 +935,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                                         onClick={() =>
                                                                             setSelectedDividendKey((prev) => (prev === recordKey ? null : recordKey))
                                                                         }
-                                                                        aria-selected={isSelected}
+                                                                        data-selected={isSelected ? "true" : "false"}
                                                                     >
                                                                         <td className={firstCellClass}>{record.fiscal_year || "N/A"}</td>
                                                                         <td className={cn(cellClass, "text-green-700")}>{parsePositiveNumber(record.cash_dividend).toFixed(2)}%</td>
@@ -703,6 +951,171 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                         </TabsContent>
                                     )}
 
+                                    {!isCrypto && existingSipPlan && (
+                                        <TabsContent value="sip" className="m-0 space-y-4">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Next installment</p>
+                                                    <p className="mt-1 text-sm font-black">
+                                                        {sipSchedule?.nextDate ? formatSipDate(sipSchedule.nextDate.toISOString()) : "Not scheduled"}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                        {sipSchedule?.isDueToday
+                                                            ? "Due today"
+                                                            : sipSchedule?.isOverdue
+                                                                ? "Pending from previous cycle"
+                                                                : sipSchedule?.daysUntilNext != null
+                                                                    ? `${sipSchedule.daysUntilNext} day${sipSchedule.daysUntilNext === 1 ? "" : "s"} left`
+                                                                    : "Waiting for schedule"}
+                                                    </p>
+                                                </div>
+                                                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment split</p>
+                                                    <p className="mt-1 text-sm font-black">
+                                                        {currencySymbol} {formatValue(existingSipPlan.installmentAmount)}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Invests {currencySymbol} {formatValue(calculateSipNetInvestment(existingSipPlan.installmentAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Completed</p>
+                                                    <p className="mt-1 text-sm font-black">{sipTransactions.length}</p>
+                                                </div>
+                                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Gross total</p>
+                                                    <p className="mt-1 text-sm font-black">{currencySymbol} {formatValue(totalSipGross)}</p>
+                                                </div>
+                                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Units from SIP</p>
+                                                    <p className="mt-1 text-sm font-black">{formatUnits(totalSipUnits)}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-muted/30 bg-muted/5 p-4 space-y-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                                            <Wallet className="w-3.5 h-3.5 text-primary" />
+                                                            SIP Action
+                                                        </p>
+                                                        <p className="mt-1 text-[12.5px] font-semibold">
+                                                            {currentSipInstallment
+                                                                ? "This cycle is already completed."
+                                                                : canCompleteSipNow
+                                                                    ? "Mark this cycle done to buy shares at the current price after the DPS charge."
+                                                                    : "The next SIP cycle is not due yet."}
+                                                        </p>
+                                                        <p className="mt-1 text-[10px] text-muted-foreground">
+                                                            Current execution price: {currencySymbol} {formatValue(safeCurrent)} • Net buy amount: {currencySymbol} {formatValue(calculateSipNetInvestment(existingSipPlan.installmentAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex flex-col gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            className="rounded-xl"
+                                                            onClick={() => setIsSipModalOpen(true)}
+                                                        >
+                                                            <PiggyBank className="w-4 h-4 mr-2" />
+                                                            Manage SIP
+                                                        </Button>
+                                                        <Button
+                                                            className="rounded-xl"
+                                                            onClick={handleCompleteSipInstallment}
+                                                            disabled={isCompletingSip || !canCompleteSipNow}
+                                                        >
+                                                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                                                            {currentSipInstallment ? "Completed" : isCompletingSip ? "Processing..." : "Mark Installment Done"}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-muted/20">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment ledger</p>
+                                                    <p className="text-[10px] font-bold text-muted-foreground">
+                                                        Net invested {currencySymbol} {formatValue(totalSipNet)}
+                                                    </p>
+                                                </div>
+                                                {sipTransactions.length > 0 ? (
+                                                    <div className="divide-y divide-muted/10">
+                                                        {sipTransactions.map((tx, index) => {
+                                                            const installmentNumber = sipTransactions.length - index
+                                                            return (
+                                                            <div key={tx.id} className="px-3 py-3 flex items-center justify-between gap-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-[11px] font-black text-primary">
+                                                                        {formatOrdinalInstallment(installmentNumber)}
+                                                                    </div>
+                                                                    <div>
+                                                                    <p className="text-[11px] font-black uppercase flex items-center gap-2">
+                                                                        <PiggyBank className="w-3.5 h-3.5 text-primary" />
+                                                                        {formatSipDate(tx.sipDueDate || tx.date)}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                                                        Gross {currencySymbol} {formatValue(tx.sipGrossAmount ?? 0)} • DPS {currencySymbol} {formatValue(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {currencySymbol} {formatValue(tx.sipNetAmount ?? calculateSipNetInvestment(tx.sipGrossAmount ?? 0, tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-muted-foreground">
+                                                                        Completed {new Date(tx.date).toLocaleDateString()}
+                                                                    </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity || 0)} units</p>
+                                                                    <p className="text-[10px] text-muted-foreground">
+                                                                        @ {currencySymbol}{formatValue(tx.price || 0)}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        )})}
+                                                    </div>
+                                                ) : (
+                                                    <p className="px-3 py-6 text-xs text-center text-muted-foreground">No SIP installments completed yet.</p>
+                                                )}
+                                            </div>
+
+                                            <div className="rounded-xl border border-muted/30 overflow-hidden">
+                                                <div className="px-3 py-2 bg-muted/50 border-b border-muted/20">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">SIP buy transactions</p>
+                                                </div>
+                                                {sipTransactions.length > 0 ? (
+                                                    <div className="divide-y divide-muted/10">
+                                                        {sipTransactions.map((tx) => (
+                                                            <div key={tx.id} className="px-3 py-3 flex items-center justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[11px] font-black uppercase">{tx.type}</p>
+                                                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                                    <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="text-right">
+                                                                        <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity)} Units</p>
+                                                                        <p className="text-[10px] text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
+                                                                    </div>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+                                                                        onClick={() => void handleDeleteTransaction(tx.id)}
+                                                                        disabled={deletingTransactionId === tx.id}
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="px-3 py-6 text-xs text-center text-muted-foreground">No SIP buy transactions yet.</p>
+                                                )}
+                                            </div>
+                                        </TabsContent>
+                                    )}
+
                                     <TabsContent value="notices" className="m-0 space-y-3">
                                         {isBitcoin ? (
                                             isBtcNewsLoading ? (
@@ -713,9 +1126,9 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                                 btcNews.map((news) => (
                                                     <div key={news.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
-                                                                {news.title}
-                                                            </h4>
+                                                        <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
+                                                            {news.title}
+                                                        </h4>
                                                             <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
                                                                 {news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : "Recent"}
                                                             </span>
@@ -749,7 +1162,7 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                                             matchedNotices.map((notice) => (
                                                 <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                     <div className="flex justify-between items-start gap-2">
-                                                        <h4 className="text-[11px] font-black leading-tight uppercase line-clamp-2">
+                                                        <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
                                                             {notice.newsHeadline}
                                                         </h4>
                                                         <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
@@ -804,7 +1217,10 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                             </ScrollArea>
                         </div>
 
-                        <div className="p-6 pt-2 grid grid-cols-2 gap-3 border-t border-muted/20">
+                        <div className={cn(
+                            "p-6 pt-2 grid gap-3 border-t border-muted/20",
+                            !isCrypto ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
+                        )}>
                             {!isCrypto && (
                                 <Button
                                     variant="outline"
@@ -826,6 +1242,22 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                     </DialogContent>
                 )}
             </Dialog>
+            <SIPSetupModal
+                item={item}
+                existingPlan={existingSipPlan}
+                enrollableTransactions={sipEnrollmentCandidates}
+                initialEnrollmentTransactionId={initialEnrollmentTransactionId}
+                onPlanSaved={(action) => {
+                    setActiveTab(action === "deleted" ? "overview" : "sip")
+                }}
+                open={isSipModalOpen}
+                onOpenChange={(next) => {
+                    setIsSipModalOpen(next)
+                    if (!next) {
+                        setInitialEnrollmentTransactionId(null)
+                    }
+                }}
+            />
             <Dialog
                 open={isPdfOpen}
                 onOpenChange={(next) => {
@@ -836,23 +1268,39 @@ export function StockDetailModal({ item, open, onOpenChange }: StockDetailModalP
                     }
                 }}
             >
-                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col">
+                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col [&>button]:hidden">
                     <DialogHeader className="px-5 pt-5 pb-3 border-b border-muted/20">
                         <div className="flex items-center justify-between gap-3">
                             <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
                                 Document Preview
                             </DialogTitle>
-                            {(pdfSourceUrl || pdfUrl) && (
+                            <div className="flex items-center gap-2">
+                                {(pdfSourceUrl || pdfUrl) && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-[10px] font-black uppercase tracking-wider"
+                                        onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                    >
+                                        <ExternalLink className="w-3 h-3 mr-2" />
+                                        Open in New Tab
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     className="h-8 text-[10px] font-black uppercase tracking-wider"
-                                    onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
+                                    aria-label="Close preview"
+                                    title="Close preview"
+                                    onClick={() => {
+                                        setIsPdfOpen(false)
+                                        setPdfUrl(null)
+                                        setPdfSourceUrl(null)
+                                    }}
                                 >
-                                    <ExternalLink className="w-3 h-3 mr-2" />
-                                    Open in New Tab
+                                    <X className="w-3 h-3" />
                                 </Button>
-                            )}
+                            </div>
                         </div>
                     </DialogHeader>
                     <div className="flex-1 min-h-0 bg-muted/10 relative">

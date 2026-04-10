@@ -23,6 +23,7 @@ import type {
   NepseNoticesBundle,
   NepseDisclosure,
   NepseExchangeMessage,
+  SIPPlan,
 } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
@@ -31,6 +32,7 @@ import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategor
 import { SessionManager } from "@/lib/session-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import {
   getDefaultNotificationSettings,
   isAppInForeground,
@@ -39,6 +41,8 @@ import {
   REMINDER_CACHE_KEY,
   showAppNotification,
 } from "@/lib/notifications"
+import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
+import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { toast } from "sonner"
 
 const HOUR_MS = 60 * 60 * 1000
@@ -233,37 +237,26 @@ const rebuildDebtAccountsFromHistory = (
   accounts: DebtAccount[],
   history: DebtCreditTransaction[],
 ) => {
-  if (accounts.length === 0 || history.length === 0) return accounts
-
-  const latestByAccount = new Map<string, DebtCreditTransaction>()
-
-  history.forEach((entry) => {
-    if (entry.accountType !== "debt" || !entry.accountId) return
-
-    const existing = latestByAccount.get(entry.accountId)
-    if (!existing) {
-      latestByAccount.set(entry.accountId, entry)
-      return
-    }
-
-    const existingTime = Date.parse(existing.date || "")
-    const entryTime = Date.parse(entry.date || "")
-    const normalizedExistingTime = Number.isFinite(existingTime) ? existingTime : 0
-    const normalizedEntryTime = Number.isFinite(entryTime) ? entryTime : 0
-
-    if (normalizedEntryTime >= normalizedExistingTime) {
-      latestByAccount.set(entry.accountId, entry)
-    }
-  })
+  if (accounts.length === 0) return accounts
 
   return accounts
     .map((account) => {
-      const latestEntry = latestByAccount.get(account.id)
-      if (!latestEntry) return account
+      // Calculate balance based on originalBalance + all charges/interest - all payments
+      let calculatedBalance = account.originalBalance ?? 0
+
+      history.forEach((tx) => {
+        if (tx.accountId === account.id && tx.accountType === "debt") {
+          if (tx.type === "charge" || tx.type === "interest") {
+            calculatedBalance += tx.amount
+          } else if (tx.type === "payment") {
+            calculatedBalance -= tx.amount
+          }
+        }
+      })
 
       return {
         ...account,
-        balance: Math.max(0, latestEntry.balanceAfter),
+        balance: Math.max(0, calculatedBalance),
       }
     })
     .filter((account) => account.balance > 0)
@@ -344,9 +337,24 @@ export function useWalletData() {
   const [exchangeMessages, setExchangeMessages] = useState<NepseExchangeMessage[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
+  const userProfileRef = useRef<UserProfile | null>(null)
+  const shareTransactionsRef = useRef<ShareTransaction[]>([])
   const normalizeAssetType = (assetType?: "stock" | "crypto") => assetType === "crypto" ? "crypto" : "stock"
-  const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) =>
-    `${portfolioId}::${symbol.trim().toUpperCase()}::${normalizeAssetType(assetType)}::${(cryptoId || "").trim()}`
+  const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) => {
+    const normalizedAssetType = normalizeAssetType(assetType)
+    const normalizedSymbol = normalizedAssetType === "stock"
+      ? normalizeStockSymbol(symbol)
+      : symbol.trim().toUpperCase()
+    return `${portfolioId}::${normalizedSymbol}::${normalizedAssetType}::${(cryptoId || "").trim()}`
+  }
+
+  useEffect(() => {
+    userProfileRef.current = userProfile
+  }, [userProfile])
+
+  useEffect(() => {
+    shareTransactionsRef.current = shareTransactions
+  }, [shareTransactions])
 
   // Reminder engine: budgets, goals, and IPO windows.
   useEffect(() => {
@@ -405,7 +413,7 @@ export function useWalletData() {
         const permissionNudgeKey = "notification-permission-nudge"
         if (shouldSendReminder(cache, permissionNudgeKey, 7 * 24 * HOUR_MS)) {
           toast("Enable browser reminders", {
-            description: "Get alerts for budgets, goals, and IPO opening/closing windows.",
+            description: "Get alerts for budgets, goals, IPO windows, and SIP installments.",
             action: {
               label: "Enable",
               onClick: () => {
@@ -531,6 +539,48 @@ export function useWalletData() {
         })
       }
 
+      if (notificationSettings.sipReminders) {
+        const sipPlans = normalizeSipPlans(userProfile?.sipPlans).filter((plan) => plan.status === "active")
+
+        sipPlans.forEach((plan) => {
+          const schedule = getSipScheduleSummary(plan, shareTransactions, now)
+          if (!schedule) return
+
+          const planLabel = plan.assetName || plan.symbol || "SIP"
+          const amountLabel = Number.isFinite(plan.installmentAmount)
+            ? `${userProfile?.currency || "Rs."}${plan.installmentAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+            : "your selected amount"
+
+          if (schedule.isDueToday) {
+            emitReminder(
+              `sip-due-today-${plan.id}`,
+              `SIP due today: ${planLabel}`,
+              `Your ${amountLabel} ${plan.frequency} SIP is scheduled for today.`,
+              10 * HOUR_MS,
+            )
+            return
+          }
+
+          if (schedule.shouldSendUpcomingReminder) {
+            emitReminder(
+              `sip-upcoming-${plan.id}-${schedule.daysUntilNext}`,
+              `SIP due in ${schedule.daysUntilNext} day${schedule.daysUntilNext === 1 ? "" : "s"}`,
+              `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString())}. Keep ${amountLabel} ready.`,
+              18 * HOUR_MS,
+            )
+          }
+
+          if (schedule.isRecentlyMissed && schedule.previousDate) {
+            emitReminder(
+              `sip-missed-${plan.id}-${formatSipDate(schedule.previousDate.toISOString())}`,
+              `SIP missed: ${planLabel}`,
+              `The installment scheduled on ${formatSipDate(schedule.previousDate.toISOString())} may still be pending.`,
+              24 * HOUR_MS,
+            )
+          }
+        })
+      }
+
       saveReminderCache(cache)
     }
 
@@ -545,7 +595,9 @@ export function useWalletData() {
     budgets,
     goals,
     upcomingIPOs,
+    shareTransactions,
     userProfile?.notificationSettings,
+    userProfile?.sipPlans,
     userProfile?.meroShare?.shareFeaturesEnabled,
     userProfile?.meroShare?.shareNotificationsEnabled,
   ])
@@ -574,7 +626,7 @@ export function useWalletData() {
           Object.entries(data).forEach(([sector, scrips]) => {
             if (Array.isArray(scrips)) {
               scrips.forEach((scrip: any) => {
-                const symbol = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+                const symbol = normalizeStockSymbol(typeof scrip === 'string' ? scrip : (scrip.symbol || ""))
                 if (symbol) {
                   sMap[symbol] = sector
                   if (scrip.name) {
@@ -597,7 +649,7 @@ export function useWalletData() {
             const nMap: Record<string, string> = {}
             data.forEach((item: any) => {
               if (item.symbol && item.name) {
-                nMap[item.symbol.trim().toUpperCase()] = item.name.trim()
+                nMap[normalizeStockSymbol(item.symbol)] = item.name.trim()
               }
             })
             setScripNamesMap(prev => ({ ...prev, ...nMap }))
@@ -721,11 +773,11 @@ export function useWalletData() {
   // Automatically update portfolio if sectors are missing but map is available
   useEffect(() => {
     if (isLoaded && sectorsMap && portfolio.length > 0) {
-      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[p.symbol.trim().toUpperCase()])
+      const needsUpdate = portfolio.some(p => !p.sector && sectorsMap[normalizeStockSymbol(p.symbol)])
       if (needsUpdate) {
         setPortfolio(prev => prev.map(p => ({
           ...p,
-          sector: p.sector || sectorsMap[p.symbol.trim().toUpperCase()] || "Others"
+          sector: p.sector || sectorsMap[normalizeStockSymbol(p.symbol)] || "Others"
         })))
       }
     }
@@ -957,6 +1009,7 @@ export function useWalletData() {
         const normalizedProfile: UserProfile = {
           ...parsedData.userProfile,
           notificationSettings: normalizeNotificationSettings(parsedData.userProfile.notificationSettings),
+          sipPlans: normalizeSipPlans(parsedData.userProfile.sipPlans),
         }
         setUserProfile(normalizedProfile)
         setIsFirstTime(false)
@@ -1056,6 +1109,7 @@ export function useWalletData() {
       ...profileData,
       securityEnabled: profileData.securityEnabled,
       notificationSettings: normalizeNotificationSettings(profileData.notificationSettings ?? getDefaultNotificationSettings()),
+      sipPlans: normalizeSipPlans(profileData.sipPlans),
       createdAt: new Date().toISOString(),
     }
 
@@ -1255,21 +1309,25 @@ export function useWalletData() {
   }
 
   const updateUserProfile = (updates: Partial<UserProfile>) => {
-    if (!userProfile) return
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return
 
-    const previousProfile = userProfile
+    const previousProfile = currentProfile
     const updatedProfile = {
-      ...userProfile,
+      ...currentProfile,
       ...updates,
       notificationSettings: normalizeNotificationSettings({
-        ...userProfile.notificationSettings,
+        ...currentProfile.notificationSettings,
         ...(updates.notificationSettings || {}),
       }),
+      sipPlans: normalizeSipPlans(updates.sipPlans ?? currentProfile.sipPlans),
     }
+    userProfileRef.current = updatedProfile
     setUserProfile(updatedProfile)
     void (async () => {
       const result = await saveDataWithIntegrityDetailed("userProfile", updatedProfile)
       if (!result.success) {
+        userProfileRef.current = previousProfile
         setUserProfile(previousProfile)
         if (result.reason === "storage_full") {
           toast.error("Storage full", {
@@ -1286,6 +1344,57 @@ export function useWalletData() {
         }
       }
     })()
+  }
+
+  const saveSipPlan = (planInput: Omit<SIPPlan, "id" | "createdAt" | "updatedAt"> & { id?: string }) => {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return null
+
+    const nowIso = new Date().toISOString()
+    const existingPlans = normalizeSipPlans(currentProfile.sipPlans)
+    const existingPlan = planInput.id ? existingPlans.find((plan) => plan.id === planInput.id) : undefined
+
+    const nextPlan: SIPPlan = {
+      ...existingPlan,
+      ...planInput,
+      id: existingPlan?.id || planInput.id || generateId("sip"),
+      assetType: "stock",
+      createdAt: existingPlan?.createdAt || nowIso,
+      updatedAt: nowIso,
+    }
+
+    const updatedPlans = existingPlan
+      ? existingPlans.map((plan) => (plan.id === nextPlan.id ? nextPlan : plan))
+      : [...existingPlans, nextPlan]
+
+    updateUserProfile({ sipPlans: updatedPlans })
+    return nextPlan
+  }
+
+  const deleteSipPlan = async (id: string) => {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return
+
+    const updatedPlans = normalizeSipPlans(currentProfile.sipPlans).filter((plan) => plan.id !== id)
+    updateUserProfile({ sipPlans: updatedPlans })
+
+    const currentTransactions = shareTransactionsRef.current
+    const updatedTransactions = currentTransactions.map((tx) => {
+      if (tx.sipPlanId !== id) return tx
+
+      return {
+        ...tx,
+        sipPlanId: undefined,
+        sipDueDate: undefined,
+        sipNetAmount: undefined,
+        sipDpsCharge: undefined,
+        sipGrossAmount: undefined,
+      }
+    })
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
   }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
@@ -1312,16 +1421,6 @@ export function useWalletData() {
     const debt = debtAccounts.find((d) => d.id === debtId)
     if (!debt) return { success: false, error: 'Debt account not found' }
 
-    const updatedDebts = debtAccounts.map((d) => {
-      if (d.id === debtId) {
-        return { ...d, balance: d.balance + amount }
-      }
-      return d
-    })
-
-    setDebtAccounts(updatedDebts)
-    saveToLocalStorage('debtAccounts', updatedDebts, true)
-
     const debtAdditionTransactionId = generateId('tx')
     const debtCharge: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -1331,13 +1430,18 @@ export function useWalletData() {
       amount,
       description: description || `Added to ${debt?.name || 'debt'}`,
       date: new Date().toISOString(),
-      balanceAfter: (debt ? debt.balance : 0) + amount,
+      balanceAfter: debt.balance + amount,
       sourceTransactionId: debtAdditionTransactionId,
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
     setDebtCreditTransactions(updatedDebtTransactions)
     saveToLocalStorage('debtCreditTransactions', updatedDebtTransactions, true)
+
+    // Rebuild debt accounts from updated history - this ensures balance is derived
+    const updatedDebts = rebuildDebtAccountsFromHistory(debtAccounts, updatedDebtTransactions)
+    setDebtAccounts(updatedDebts)
+    saveToLocalStorage('debtAccounts', updatedDebts, true)
 
     // Also create a regular transaction for main transactions list
     const debtAdditionTransaction: Transaction = {
@@ -1483,22 +1587,6 @@ export function useWalletData() {
     }, 0)
     setBalance(newBalance)
 
-    const updatedDebts = debtAccounts.map((d) => {
-      if (d.id === debtId) {
-        return {
-          ...d,
-          balance: Math.max(0, d.balance - paymentAmount),
-        }
-      }
-      return d
-    })
-
-    // If any debt reaches zero balance, remove it and add a congratulatory record
-    const debtsAfterCleanup = updatedDebts.filter((d) => d.balance > 0)
-
-    setDebtAccounts(debtsAfterCleanup)
-    saveToLocalStorage("debtAccounts", debtsAfterCleanup, true)
-
     const debtTransaction: DebtCreditTransaction = {
       id: generateId('debt_tx'),
       accountId: debtId,
@@ -1512,11 +1600,12 @@ export function useWalletData() {
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
-    setDebtCreditTransactions(updatedDebtTransactions)
-    saveToLocalStorage("debtCreditTransactions", updatedDebtTransactions, true)
 
-    // If balanceAfter is zero, add a congratulatory transaction note and remove account already handled above
-    if (debtTransaction.balanceAfter === 0) {
+    // If balanceAfter is zero (calculated locally first), add congratulatory record
+    let finalDebtTransactions = updatedDebtTransactions
+    const currentCalculatedBalance = Math.max(0, debt.balance - paymentAmount)
+
+    if (currentCalculatedBalance === 0) {
       const congrats: DebtCreditTransaction = {
         id: generateId('debt_tx'),
         accountId: debtId,
@@ -1527,11 +1616,16 @@ export function useWalletData() {
         date: new Date().toISOString(),
         balanceAfter: 0,
       }
-
-      const withCongrats = [...updatedDebtTransactions, congrats]
-      setDebtCreditTransactions(withCongrats)
-      saveToLocalStorage('debtCreditTransactions', withCongrats, true)
+      finalDebtTransactions = [...updatedDebtTransactions, congrats]
     }
+
+    setDebtCreditTransactions(finalDebtTransactions)
+    saveToLocalStorage("debtCreditTransactions", finalDebtTransactions, true)
+
+    // Rebuild debt accounts from updated history - this ensures balance is derived
+    const updatedDebts = rebuildDebtAccountsFromHistory(debtAccounts, finalDebtTransactions)
+    setDebtAccounts(updatedDebts)
+    saveToLocalStorage("debtAccounts", updatedDebts, true)
 
     return {
       success: true,
@@ -1586,6 +1680,7 @@ export function useWalletData() {
       contributionAmount: goal.contributionAmount,
       contributionFrequency: goal.contributionFrequency,
       description: goal.description || "",
+      challengePlan: goal.challengePlan,
     }
 
     const updatedGoals = [...goals, newGoal]
@@ -1605,6 +1700,123 @@ export function useWalletData() {
     setGoals(updatedGoals)
     await saveDataWithIntegrity("goals", updatedGoals)
     await recordDeletion(TOMBSTONE_KEYS.goals, [id])
+  }
+
+  useEffect(() => {
+    const syncedGoals = goals.map((goal) => syncGoalChallengeState(goal))
+    const hasChanges = syncedGoals.some((goal, index) => goal !== goals[index])
+    if (!hasChanges) return
+
+    setGoals(syncedGoals)
+    void saveDataWithIntegrity("goals", syncedGoals)
+  }, [goals])
+
+  const useGoalForInvestment = async (
+    goalId: string,
+    amount: number,
+    options?: { market?: "nepal" | "uk" | "split"; notes?: string },
+  ) => {
+    if (amount <= 0) {
+      return {
+        error: "Investment amount must be greater than zero",
+        success: false,
+      }
+    }
+
+    const goal = goals.find((entry) => entry.id === goalId)
+    if (!goal) {
+      return {
+        error: "Goal not found",
+        success: false,
+      }
+    }
+
+    const challengeSummary = getGoalChallengeSummary(goal)
+    if (!challengeSummary) {
+      return {
+        error: "This goal does not support investment mode",
+        success: false,
+      }
+    }
+
+    if (goal.currentAmount < amount) {
+      return {
+        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${goal.currentAmount.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
+        success: false,
+      }
+    }
+
+    const market = options?.market || "split"
+    const completedAt = new Date().toISOString()
+    const modeLabel = challengeSummary.plan.mode === "hard" ? "Hard mode" : "Easy mode"
+    const marketLabel = market === "split"
+      ? `${challengeSummary.utilization.nepalPercent}% Nepal / ${challengeSummary.utilization.ukPercent}% UK`
+      : market === "nepal"
+        ? "Nepal market"
+        : "UK market"
+
+    const investmentTransaction: Transaction = {
+      id: generateId("tx"),
+      type: "expense",
+      amount,
+      description: `Goal investment (${modeLabel}): ${goal.title} - ${marketLabel}${options?.notes ? ` - ${options.notes}` : ""}`,
+      category: "Goal Investment",
+      date: completedAt,
+      allocationType: "goal",
+      allocationTarget: goalId,
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: 0,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
+    }
+
+    const pointsAwarded = challengeSummary.plan.mode === "hard"
+      ? challengeSummary.utilization.hardModeRewardPoints
+      : 0
+
+    const updatedGoals = goals.map((entry) => {
+      if (entry.id !== goalId) return entry
+
+      const currentPoints = entry.challengePoints || { total: 0, history: [] }
+      return {
+        ...entry,
+        currentAmount: challengeSummary.plan.mode === "hard"
+          ? Math.max(0, entry.currentAmount - amount)
+          : entry.currentAmount,
+        challengePoints: challengeSummary.plan.mode === "hard"
+          ? {
+              total: currentPoints.total + pointsAwarded,
+              history: [
+                ...currentPoints.history,
+                {
+                  id: generateId("goal_pts"),
+                  type: "investment_reward" as const,
+                  points: pointsAwarded,
+                  awardedAt: completedAt,
+                  description: `${marketLabel}${options?.notes ? ` - ${options.notes}` : ""}`,
+                },
+              ],
+            }
+          : currentPoints,
+      }
+    })
+
+    setGoals(updatedGoals)
+    await saveDataWithIntegrity("goals", updatedGoals)
+
+    const updatedTransactions = [...transactions, investmentTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    return {
+      success: true,
+      transaction: investmentTransaction,
+      pointsAwarded,
+      remainingGoalAmount: updatedGoals.find((entry) => entry.id === goalId)?.currentAmount ?? goal.currentAmount,
+      mode: challengeSummary.plan.mode,
+    }
   }
 
   useEffect(() => {
@@ -1882,8 +2094,13 @@ export function useWalletData() {
 
       // Import user profile (only if selected)
       if (data.userProfile) {
-        setUserProfile(data.userProfile)
-        await ensureSaved("userProfile", data.userProfile)
+        const normalizedImportedProfile: UserProfile = {
+          ...data.userProfile,
+          notificationSettings: normalizeNotificationSettings(data.userProfile.notificationSettings),
+          sipPlans: normalizeSipPlans(data.userProfile.sipPlans),
+        }
+        setUserProfile(normalizedImportedProfile)
+        await ensureSaved("userProfile", normalizedImportedProfile)
 
         const hasPinData = Boolean(data.userProfile.securityEnabled && data.userProfile.pin && data.userProfile.pinSalt)
         if (hasPinData) {
@@ -2284,7 +2501,7 @@ export function useWalletData() {
       Object.entries(sectorData).forEach(([sector, scrips]) => {
         if (Array.isArray(scrips)) {
           scrips.forEach((scrip: any) => {
-            const sym = (typeof scrip === 'string' ? scrip : (scrip.symbol || "")).trim().toUpperCase()
+            const sym = normalizeStockSymbol(typeof scrip === 'string' ? scrip : (scrip.symbol || ""))
             if (sym) {
               symbolToSector[sym] = sector
               if (scrip.name) {
@@ -2298,8 +2515,14 @@ export function useWalletData() {
       const stockLookup = new Map<string, any>()
       if (stockPriceData.length > 0) {
         stockPriceData.forEach((s: any) => {
-          const key = (s.symbol || s.ticker || s.scrip || "").trim().toUpperCase()
-          if (key) stockLookup.set(key, s)
+          const key = normalizeStockSymbol(s.symbol || s.ticker || s.scrip || "")
+          const quoteName = typeof s?.name === "string" ? s.name.trim() : ""
+          if (key) {
+            stockLookup.set(key, s)
+            if (quoteName && !symbolToName[key]) {
+              symbolToName[key] = quoteName
+            }
+          }
         })
       }
 
@@ -2341,9 +2564,10 @@ export function useWalletData() {
           }
         }
 
-        const matchingStock = stockLookup.get(item.symbol.trim().toUpperCase())
+        const normalizedStockSymbol = normalizeStockSymbol(item.symbol)
+        const matchingStock = stockLookup.get(normalizedStockSymbol)
 
-        const sector = symbolToSector[item.symbol.trim().toUpperCase()] || item.sector || "Others"
+        const sector = symbolToSector[normalizedStockSymbol] || item.sector || "Others"
 
         if (matchingStock) {
           const ltp = Number(matchingStock.last_traded_price || matchingStock.ltp || matchingStock.close || matchingStock.price || item.currentPrice)
@@ -2357,6 +2581,7 @@ export function useWalletData() {
           return {
             ...item,
             assetType: "stock",
+            assetName: symbolToName[normalizedStockSymbol] || item.assetName || item.symbol,
             currentPrice: ltp,
             previousClose: pc,
             high,
@@ -2372,6 +2597,7 @@ export function useWalletData() {
         return {
           ...item,
           assetType: "stock",
+          assetName: symbolToName[normalizedStockSymbol] || item.assetName || item.symbol,
           sector: sector
         }
       })
@@ -2575,24 +2801,347 @@ export function useWalletData() {
   }
 
   const addShareTransaction = async (tx: Omit<ShareTransaction, "id">) => {
-    const normalizedSymbol = tx.symbol.trim().toUpperCase()
+    const getFaceValue = (symbol: string) => {
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
+      return sector === "Mutual Fund" ? 10 : 100
+    }
+
+    const isRecognizedSipLikeBuy = (description?: string, symbol?: string) => {
+      const upperDescription = (description || "").trim().toUpperCase()
+      const normalizedSymbol = (symbol || "").trim().toUpperCase()
+      if (!upperDescription) return false
+      return (
+        upperDescription.includes("CA-REARRANGEMENT") ||
+        upperDescription.includes("SIP") ||
+        (normalizedSymbol.length > 0 && upperDescription.includes(`BUY`) && upperDescription.includes(`UNITS OF ${normalizedSymbol}`))
+      )
+    }
+
+    const parseCorporateActionPurchaseDate = (description?: string) => {
+      const match = description?.match(/PUR-(\d{2})-(\d{2})-(\d{4})/i)
+      if (!match) return undefined
+      const [, day, month, year] = match
+      return `${year}-${month}-${day}`
+    }
+
+    const getMatchingSipPlanForTransaction = (entry: Omit<ShareTransaction, "id">) => {
+      if (!isRecognizedSipLikeBuy(entry.description, entry.symbol)) {
+        return null
+      }
+
+      const normalizedEntrySymbol = normalizeStockSymbol(entry.symbol)
+      const targetDate = parseCorporateActionPurchaseDate(entry.description) || entry.date
+      const targetTime = targetDate ? new Date(targetDate).getTime() : Number.NaN
+
+      return normalizeSipPlans(userProfile?.sipPlans)
+        .filter((plan) =>
+          plan.portfolioId === entry.portfolioId &&
+          normalizeStockSymbol(plan.symbol) === normalizedEntrySymbol
+        )
+        .sort((a, b) => {
+          if (a.status !== b.status) return a.status === "active" ? -1 : 1
+          const aTime = new Date(a.startDate).getTime()
+          const bTime = new Date(b.startDate).getTime()
+          const aDistance = Number.isFinite(targetTime) ? Math.abs(targetTime - aTime) : aTime
+          const bDistance = Number.isFinite(targetTime) ? Math.abs(targetTime - bTime) : bTime
+          return aDistance - bDistance
+        })[0] || null
+    }
+
+    const upperDescription = (tx.description || "").trim().toUpperCase()
+    let normalizedType = tx.type
+    if (upperDescription.includes("CA-BONUS")) normalizedType = "bonus"
+    else if (upperDescription.includes("CA-RIGHTS")) normalizedType = "bonus"
+    else if (upperDescription.includes("INITIAL PUBLIC OFFERING") || upperDescription.includes(" IPO ")) normalizedType = "ipo"
+    else if (isRecognizedSipLikeBuy(tx.description, tx.symbol)) normalizedType = "buy"
+
+    const normalizedSymbol = normalizeStockSymbol(tx.symbol)
+    const matchingSipPlan = normalizedType === "buy" ? getMatchingSipPlanForTransaction({ ...tx, type: normalizedType, symbol: normalizedSymbol }) : null
     const normalizedPrice =
-      tx.type === "bonus" || tx.type === "gift"
+      normalizedType === "bonus" || normalizedType === "gift"
         ? 0
-        : (Number.isFinite(tx.price) ? tx.price : 0)
+        : (Number.isFinite(tx.price) && tx.price > 0
+            ? tx.price
+            : ((isRecognizedSipLikeBuy(tx.description, tx.symbol) || normalizedType === "ipo" || normalizedType === "merger_in")
+                ? getFaceValue(normalizedSymbol)
+                : 0))
+    const sipDueDate = tx.sipDueDate || parseCorporateActionPurchaseDate(tx.description)
+    const sipNetAmount = matchingSipPlan && normalizedPrice > 0 && tx.quantity > 0
+      ? Number((normalizedPrice * tx.quantity).toFixed(2))
+      : tx.sipNetAmount
+    const sipDpsCharge = matchingSipPlan
+      ? (tx.sipDpsCharge ?? matchingSipPlan.dpsCharge ?? 5)
+      : tx.sipDpsCharge
+    const sipGrossAmount = matchingSipPlan && Number.isFinite(sipNetAmount) && Number.isFinite(sipDpsCharge)
+      ? Number(((sipNetAmount as number) + (sipDpsCharge as number)).toFixed(2))
+      : tx.sipGrossAmount
+    const currentTransactions = shareTransactionsRef.current
     const newTx: ShareTransaction = {
       ...tx,
       symbol: normalizedSymbol,
       assetType: normalizeAssetType(tx.assetType),
       cryptoId: tx.cryptoId?.trim() || undefined,
+      type: normalizedType,
       price: normalizedPrice,
+      sipPlanId: tx.sipPlanId || matchingSipPlan?.id,
+      sipDueDate,
+      sipNetAmount,
+      sipDpsCharge,
+      sipGrossAmount,
       id: generateId('stx'),
     }
-    const updatedTransactions = [...shareTransactions, newTx]
+    const updatedTransactions = [...currentTransactions, newTx]
+    shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
     const updatedPortfolio = await recomputePortfolio(updatedTransactions)
     return { newTx, updatedPortfolio }
+  }
+
+  const completeSipInstallment = async (
+    planId: string,
+    options?: {
+      dueDate?: string
+      price?: number
+      grossAmount?: number
+      notes?: string
+    },
+  ) => {
+    if (!userProfile) {
+      throw new Error("User profile is not available")
+    }
+
+    const sipPlans = normalizeSipPlans(userProfile.sipPlans)
+    const plan = sipPlans.find((entry) => entry.id === planId)
+    if (!plan) {
+      throw new Error("SIP plan not found")
+    }
+
+    const schedule = getSipScheduleSummary(plan, shareTransactions, new Date())
+    const dueDate = options?.dueDate || schedule?.nextDate?.toISOString() || new Date().toISOString()
+    const existingInstallmentTx = getSipCompletedTransactionForDueDate(plan, shareTransactions, dueDate)
+    if (existingInstallmentTx) {
+      throw new Error("This SIP installment is already completed")
+    }
+
+    const fallbackPrice = Number.isFinite(plan.referencePrice) && (plan.referencePrice ?? 0) > 0
+      ? (plan.referencePrice ?? 0)
+      : 0
+    const executionPrice = Number.isFinite(options?.price) && (options?.price ?? 0) > 0
+      ? Number(options?.price)
+      : fallbackPrice
+
+    if (!Number.isFinite(executionPrice) || executionPrice <= 0) {
+      throw new Error("A valid execution price is required")
+    }
+
+    const grossAmount = Number.isFinite(options?.grossAmount) && (options?.grossAmount ?? 0) > 0
+      ? Number(options?.grossAmount)
+      : plan.installmentAmount
+    const dpsCharge = plan.dpsCharge ?? 5
+    const investedAmount = calculateSipNetInvestment(grossAmount, dpsCharge)
+    if (investedAmount <= 0) {
+      throw new Error("Installment amount must be greater than the DPS charge")
+    }
+
+    const quantity = Number((investedAmount / executionPrice).toFixed(8))
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error("Installment amount is too small for the selected price")
+    }
+
+    const completedAt = new Date().toISOString()
+    const executionLabel = plan.sector === "Mutual Fund" ? "NAV" : "Price"
+    const shareDescription = `SIP installment${options?.notes ? `: ${options.notes}` : ""} (${executionLabel} ${executionPrice.toFixed(2)}, Gross ${grossAmount.toFixed(2)}, DPS ${dpsCharge.toFixed(2)})`
+    const { newTx, updatedPortfolio } = await addShareTransaction({
+      portfolioId: plan.portfolioId,
+      symbol: plan.symbol,
+      assetType: "stock",
+      type: "buy",
+      quantity,
+      price: executionPrice,
+      date: completedAt,
+      description: shareDescription,
+      sipPlanId: plan.id,
+      sipDueDate: dueDate,
+      sipGrossAmount: grossAmount,
+      sipDpsCharge: dpsCharge,
+      sipNetAmount: investedAmount,
+    })
+
+    const updatedPlans = sipPlans.map((entry) =>
+      entry.id === planId
+        ? {
+            ...entry,
+            referencePrice: executionPrice,
+            updatedAt: completedAt,
+          }
+        : entry,
+    )
+
+    updateUserProfile({ sipPlans: updatedPlans })
+    return {
+      installment: {
+        dueDate,
+        grossAmount,
+        dpsCharge,
+        investedAmount,
+        unitsBought: quantity,
+        price: executionPrice,
+        completedAt,
+      },
+      shareTransaction: newTx,
+      updatedPortfolio,
+    }
+  }
+
+  const enrollShareTransactionInSipPlan = async (
+    transactionId: string,
+    planId: string,
+    options?: {
+      dueDate?: string
+      grossAmount?: number
+      dpsCharge?: number
+    },
+  ) => {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
+      throw new Error("User profile is not available")
+    }
+
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
+    const plan = sipPlans.find((entry) => entry.id === planId)
+    if (!plan) {
+      throw new Error("SIP plan not found")
+    }
+
+    const currentTransactions = shareTransactionsRef.current
+    const transaction = currentTransactions.find((entry) => entry.id === transactionId)
+    if (!transaction) {
+      throw new Error("Transaction not found")
+    }
+
+    if (transaction.type !== "buy") {
+      throw new Error("Only buy transactions can be enrolled into SIP")
+    }
+
+    const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0
+    if (executionPrice <= 0) {
+      throw new Error("Selected transaction must have a valid price")
+    }
+
+    const netAmount = Number((executionPrice * (transaction.quantity || 0)).toFixed(2))
+    const dpsCharge = Number.isFinite(options?.dpsCharge) ? Number(options?.dpsCharge) : (plan.dpsCharge ?? 5)
+    const grossAmount = Number.isFinite(options?.grossAmount) && (options?.grossAmount ?? 0) > 0
+      ? Number(options?.grossAmount)
+      : Number((netAmount + dpsCharge).toFixed(2))
+    const dueDate = options?.dueDate || transaction.date
+
+    const updatedTransactions = currentTransactions.map((entry) =>
+      entry.id === transactionId
+        ? {
+            ...entry,
+            sipPlanId: plan.id,
+            sipDueDate: dueDate,
+            sipGrossAmount: grossAmount,
+            sipDpsCharge: dpsCharge,
+            sipNetAmount: netAmount,
+          }
+        : entry,
+    )
+
+    const updatedTransaction = updatedTransactions.find((entry) => entry.id === transactionId)
+    if (!updatedTransaction) {
+      throw new Error("Could not update SIP transaction")
+    }
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+
+    return { updatedTransaction, updatedPortfolio }
+  }
+
+  const enrollMultipleShareTransactionsInSipPlan = async (
+    enrollments: Array<{
+      transactionId: string
+      planId: string
+      dueDate?: string
+      grossAmount?: number
+      dpsCharge?: number
+    }>,
+  ) => {
+    if (!Array.isArray(enrollments) || enrollments.length === 0) {
+      return { updatedTransactions: [], updatedPortfolio: portfolio }
+    }
+
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
+      throw new Error("User profile is not available")
+    }
+
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
+    const planById = new Map(sipPlans.map((plan) => [plan.id, plan]))
+    const enrollmentByTransactionId = new Map(
+      enrollments.map((entry) => [entry.transactionId, entry]),
+    )
+
+    let updatedCount = 0
+    const currentTransactions = shareTransactionsRef.current
+    const updatedTransactions = currentTransactions.map((transaction) => {
+      const enrollment = enrollmentByTransactionId.get(transaction.id)
+      if (!enrollment) return transaction
+
+      const plan = planById.get(enrollment.planId)
+      if (!plan) {
+        throw new Error("SIP plan not found")
+      }
+
+      if (transaction.type !== "buy") {
+        throw new Error("Only buy transactions can be enrolled into SIP")
+      }
+
+      const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0
+      if (executionPrice <= 0) {
+        throw new Error("Selected transaction must have a valid price")
+      }
+
+      const netAmount = Number((executionPrice * (transaction.quantity || 0)).toFixed(2))
+      const dpsCharge = Number.isFinite(enrollment.dpsCharge) ? Number(enrollment.dpsCharge) : (plan.dpsCharge ?? 5)
+      const grossAmount = Number.isFinite(enrollment.grossAmount) && (enrollment.grossAmount ?? 0) > 0
+        ? Number(enrollment.grossAmount)
+        : Number((netAmount + dpsCharge).toFixed(2))
+
+      updatedCount += 1
+      return {
+        ...transaction,
+        sipPlanId: plan.id,
+        sipDueDate: enrollment.dueDate || transaction.date,
+        sipGrossAmount: grossAmount,
+        sipDpsCharge: dpsCharge,
+        sipNetAmount: netAmount,
+      }
+    })
+
+    if (updatedCount !== enrollments.length) {
+      throw new Error("Could not update all selected SIP transactions")
+    }
+
+    const updatedTransactionMap = new Map(updatedTransactions.map((transaction) => [transaction.id, transaction]))
+    const orderedUpdatedTransactions = enrollments.map((enrollment) => {
+      const transaction = updatedTransactionMap.get(enrollment.transactionId)
+      if (!transaction) {
+        throw new Error("Could not update SIP transaction")
+      }
+      return transaction
+    })
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+
+    return { updatedTransactions: orderedUpdatedTransactions, updatedPortfolio }
   }
 
   const deleteShareTransaction = async (id: string) => {
@@ -2650,7 +3199,7 @@ export function useWalletData() {
             buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
             currentPrice: existing?.currentPrice,
             previousClose: existing?.previousClose,
-            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[symbol.toUpperCase()] || "Others")),
+            sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[normalizeStockSymbol(symbol)] || "Others")),
             lastUpdated: new Date().toISOString(),
           })
         }
@@ -2669,6 +3218,7 @@ export function useWalletData() {
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
     await recordDeletion(TOMBSTONE_KEYS.shareTransactions, ids)
+
     const updatedPortfolio = await recomputePortfolio(updatedTransactions)
     return updatedPortfolio
   }
@@ -2702,7 +3252,7 @@ export function useWalletData() {
     }
 
     const getFaceValue = (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
       return sector === "Mutual Fund" ? 10 : 100
     }
 
@@ -2727,7 +3277,7 @@ export function useWalletData() {
             units,
             buyPrice: buyPrice,
             currentPrice: price,
-            sector: sectorsMap[symbol.toUpperCase()] || "Others",
+            sector: sectorsMap[normalizeStockSymbol(symbol)] || "Others",
             lastUpdated: new Date().toISOString()
           })
         }
@@ -2740,29 +3290,81 @@ export function useWalletData() {
     } else {
       // S.N, Scrip, Transaction Date, Credit Quantity, Debit Quantity, Balance After Transaction, History Description
       const newTxs: ShareTransaction[] = []
+      const isRecognizedSipLikeBuy = (description?: string, symbol?: string) => {
+        const upperDescription = (description || "").trim().toUpperCase()
+        const normalizedSymbol = (symbol || "").trim().toUpperCase()
+        if (!upperDescription) return false
+        return (
+          upperDescription.includes("CA-REARRANGEMENT") ||
+          upperDescription.includes("SIP") ||
+          (normalizedSymbol.length > 0 && upperDescription.includes("BUY") && upperDescription.includes(`UNITS OF ${normalizedSymbol}`))
+        )
+      }
+
+      const parseCorporateActionPurchaseDate = (description?: string) => {
+        const match = description?.match(/PUR-(\d{2})-(\d{2})-(\d{4})/i)
+        if (!match) return undefined
+        const [, day, month, year] = match
+        return `${year}-${month}-${day}`
+      }
+
+      const getMatchingSipPlanId = (symbol: string, date: string, description: string) => {
+        if (!isRecognizedSipLikeBuy(description, symbol)) {
+          return undefined
+        }
+
+        const normalizedSymbol = normalizeStockSymbol(symbol)
+        const targetDate = parseCorporateActionPurchaseDate(description) || date
+        const targetTime = targetDate ? new Date(targetDate).getTime() : Number.NaN
+
+        const match = normalizeSipPlans(userProfile?.sipPlans)
+          .filter((plan) =>
+            plan.portfolioId === activePortfolioId &&
+            normalizeStockSymbol(plan.symbol) === normalizedSymbol
+          )
+          .sort((a, b) => {
+            if (a.status !== b.status) return a.status === "active" ? -1 : 1
+            const aTime = new Date(a.startDate).getTime()
+            const bTime = new Date(b.startDate).getTime()
+            const aDistance = Number.isFinite(targetTime) ? Math.abs(targetTime - aTime) : aTime
+            const bDistance = Number.isFinite(targetTime) ? Math.abs(targetTime - bTime) : bTime
+            return aDistance - bDistance
+          })[0]
+
+        return match?.id
+      }
+
       rows.slice(1).forEach(row => {
         if (row.length < 7) return
         const symbol = row[1]
         const date = row[2]
         const credit = parseFloat(row[3]) || 0
         const debit = parseFloat(row[4]) || 0
-        const desc = row[6]
+        const desc = row[6] || ""
 
         let txType: ShareTransaction['type'] = 'buy'
-        if (desc.includes('BONUS') || desc.includes('Bonus')) txType = 'bonus'
-        else if (desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')) txType = 'ipo'
-        else if (desc.includes('Merger')) txType = credit > 0 ? 'merger_in' : 'merger_out'
+        const upperDesc = desc.toUpperCase()
+        if (upperDesc.includes('CA-BONUS') || upperDesc.includes('BONUS')) txType = 'bonus'
+        else if (upperDesc.includes('CA-RIGHTS')) txType = 'bonus'
+        else if (upperDesc.includes('IPO') || upperDesc.includes('INITIAL PUBLIC OFFERING')) txType = 'ipo'
+        else if (upperDesc.includes('MERGER')) txType = credit > 0 ? 'merger_in' : 'merger_out'
+        else if (isRecognizedSipLikeBuy(desc, symbol)) txType = 'buy'
         else if (debit > 0) txType = 'sell'
 
         let price = 0
         if (txType === 'ipo' || txType === 'buy' || txType === 'merger_in') {
-          const defaultPrice = (txType === 'ipo' || txType === 'merger_in') ? getFaceValue(symbol) : 0
+          const defaultPrice = (txType === 'ipo' || txType === 'merger_in' || isRecognizedSipLikeBuy(desc, symbol)) ? getFaceValue(symbol) : 0
           price = resolvedPrices && resolvedPrices[symbol] !== undefined
             ? resolvedPrices[symbol]
             : defaultPrice
         }
 
         if (symbol && date) {
+          const sipPlanId = txType === 'buy' ? getMatchingSipPlanId(symbol, date, desc) : undefined
+          const sipDueDate = sipPlanId ? parseCorporateActionPurchaseDate(desc) : undefined
+          const sipNetAmount = sipPlanId && price > 0 && (credit || debit) > 0
+            ? Number((price * (credit || debit)).toFixed(2))
+            : undefined
           newTxs.push({
             id: generateId('stx'),
             portfolioId: activePortfolioId!,
@@ -2771,7 +3373,12 @@ export function useWalletData() {
             quantity: credit || debit,
             price: price,
             type: txType,
-            description: desc
+            description: desc,
+            sipPlanId,
+            sipDueDate,
+            sipNetAmount,
+            sipDpsCharge: sipPlanId ? 5 : undefined,
+            sipGrossAmount: sipPlanId && Number.isFinite(sipNetAmount) ? Number(((sipNetAmount ?? 0) + 5).toFixed(2)) : undefined,
           })
         }
       })
@@ -2809,7 +3416,7 @@ export function useWalletData() {
 
       for (const item of meroPortfolio) {
         const existingIdx = updatedPortfolio.findIndex(
-          p => p.portfolioId === portId && p.symbol.trim().toUpperCase() === item.symbol.trim().toUpperCase()
+          p => p.portfolioId === portId && normalizeStockSymbol(p.symbol) === normalizeStockSymbol(item.symbol)
         )
 
         if (existingIdx > -1) {
@@ -2987,12 +3594,17 @@ export function useWalletData() {
     handleOnboardingComplete,
     addTransaction,
     updateUserProfile,
+    saveSipPlan,
+    deleteSipPlan,
+    enrollShareTransactionInSipPlan,
+    enrollMultipleShareTransactionsInSipPlan,
     addBudget,
     updateBudget,
     deleteBudget,
     addGoal,
     updateGoal,
     deleteGoal,
+    useGoalForInvestment,
     deleteTransaction,
     addDebtAccount,
     addDebtToAccount,
@@ -3029,10 +3641,11 @@ export function useWalletData() {
     scripNamesMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {
-      const sector = sectorsMap[symbol.toUpperCase()]
+      const sector = sectorsMap[normalizeStockSymbol(symbol)]
       return sector === "Mutual Fund" ? 10 : 100
     },
     addShareTransaction,
+    completeSipInstallment,
     deleteShareTransaction,
     deleteMultipleShareTransactions,
     recomputePortfolio,
