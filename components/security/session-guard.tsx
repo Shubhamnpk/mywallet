@@ -499,34 +499,20 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
 export function SessionGuard({ children }: SessionGuardProps) {
   const { isAuthenticated, hasPin, validatePin, validateEmergencyPin } = useAuthentication()
-  const [showPinScreen, setShowPinScreen] = useState(false)
+  const [sessionInvalidated, setSessionInvalidated] = useState(false)
   const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
   const [showNewPinSetup, setShowNewPinSetup] = useState(false)
 
   useEffect(() => {
-
-    // If no PIN is set up, allow access
-    if (!hasPin) {
-      setShowPinScreen(false)
-      return
-    }
-
-    // If PIN is set up, check authentication status
-    if (isAuthenticated) {
-      setShowPinScreen(false)
-    } else {
-      setShowPinScreen(true)
-    }
-
     // Listen for session expiry events
     const handleSessionExpiry = () => {
-      setShowPinScreen(true)
+      setSessionInvalidated(true)
     }
 
     // Listen for window focus events to validate session
     const handleWindowFocus = () => {
       if (hasPin && !SessionManager.isSessionValid()) {
-        setShowPinScreen(true)
+        setSessionInvalidated(true)
       }
     }
 
@@ -537,7 +523,9 @@ export function SessionGuard({ children }: SessionGuardProps) {
       window.removeEventListener('wallet-session-expired', handleSessionExpiry)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [isAuthenticated, hasPin])
+  }, [hasPin])
+
+  const showPinScreen = hasPin && (!isAuthenticated || (sessionInvalidated && !SessionManager.isSessionValid()))
 
   // If no PIN is required or user is authenticated with valid session, show children
   if (!hasPin || (isAuthenticated && !showPinScreen && !showNewPinSetup)) {
@@ -556,7 +544,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
             setShowNewPinSetup(true)
           } else {
             SessionManager.createSession()
-            setShowPinScreen(false)
+            setSessionInvalidated(false)
           }
         } else {
           throw new Error("PIN validation failed") // Throw error to trigger visual feedback
@@ -567,7 +555,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
         setShowNewPinSetup(true)
       }}
       onNewPinSetupComplete={() => {
-        setShowPinScreen(false)
+        setSessionInvalidated(false)
         setShowNewPinSetup(false)
         setEmergencyPinUsed(false)
       }}

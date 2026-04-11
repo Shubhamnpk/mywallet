@@ -3,18 +3,16 @@
 import { useEffect, useState } from 'react'
 
 export default function InstallButton() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-  const [visible, setVisible] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(() => {
+    if (typeof window === "undefined") return null
+    return (window as any).__deferredPrompt ?? null
+  })
+  const [visible, setVisible] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return Boolean((window as any).__deferredPrompt)
+  })
 
   useEffect(() => {
-    // Prefer a globally captured deferred prompt (set in RegisterSW)
-    const globalPrompt = (window as any).__deferredPrompt
-    if (globalPrompt) {
-      setDeferredPrompt(globalPrompt)
-      setVisible(true)
-      return
-    }
-
     function handler(e: any) {
       e.preventDefault()
       try { (window as any).__deferredPrompt = e } catch {}

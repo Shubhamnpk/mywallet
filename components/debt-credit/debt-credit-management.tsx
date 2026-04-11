@@ -113,7 +113,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
     } else if (!shouldBeFastDebt && debtForm.isFastDebt) {
       // Don't auto-uncheck if user manually checked it
     }
-  }, [debtForm.interestRate, debtForm.minimumPayment])
+  }, [debtForm.interestRate, debtForm.minimumPayment, debtForm.isFastDebt])
 
   // Form validation helpers
   const validateDebtForm = useCallback(() => {

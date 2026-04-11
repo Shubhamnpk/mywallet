@@ -153,7 +153,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
   }
 
   // Settings items data
-  const allSettingsItems = [
+  const allSettingsItems = useMemo(() => [
     {
       id: "profile",
       icon: <User className="w-6 h-6" />,
@@ -227,7 +227,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       keywords: ["about", "version", "support", "legal", "help", "info"]
     },
 
-  ]
+  ], [])
 
   // Filter settings items based on search query
   const filteredSettingsItems = useMemo(() => {
@@ -241,7 +241,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       item.subtitle.toLowerCase().includes(query) ||
       item.keywords.some(keyword => keyword.toLowerCase().includes(query))
     )
-  }, [searchQuery])
+  }, [allSettingsItems, searchQuery])
 
   const renderMainView = () => (
     <div className="flex flex-col h-full">
@@ -431,16 +431,19 @@ function SuggestionsCarousel({ suggestions, onDismiss }: { suggestions: Suggesti
 
   // Handle scroll to update currentIndex
   useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+
     const handleScroll = () => {
-      if (scrollRef.current) {
-        const scrollLeft = scrollRef.current.scrollLeft
-        const itemWidth = scrollRef.current.clientWidth
+      if (scrollEl) {
+        const scrollLeft = scrollEl.scrollLeft
+        const itemWidth = scrollEl.clientWidth
         const index = Math.round(scrollLeft / itemWidth)
         setCurrentIndex(index)
       }
     }
-    scrollRef.current?.addEventListener('scroll', handleScroll)
-    return () => scrollRef.current?.removeEventListener('scroll', handleScroll)
+    scrollEl.addEventListener('scroll', handleScroll)
+    return () => scrollEl.removeEventListener('scroll', handleScroll)
   }, [])
 
   // Swipe handling

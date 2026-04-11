@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
-import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Scissors } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
@@ -16,6 +18,7 @@ interface TransactionDetailsModalProps {
   isOpen: boolean
   onClose: () => void
   onDelete?: (id: string) => void
+  onCreatePartial?: (transaction: Transaction, amount: number, customDate?: string) => Promise<boolean> | boolean
 }
 
 export function TransactionDetailsModal({
@@ -24,7 +27,12 @@ export function TransactionDetailsModal({
   isOpen,
   onClose,
   onDelete,
+  onCreatePartial,
 }: TransactionDetailsModalProps) {
+  const [showMoreDetails, setShowMoreDetails] = useState(false)
+  const [partialAmount, setPartialAmount] = useState("")
+  const [customDate, setCustomDate] = useState(new Date().toISOString().split("T")[0])
+
   const getTimeEquivalentDisplay = (amount: number) => {
     const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
     return breakdown ? breakdown.formatted.userFriendly : ""
@@ -35,6 +43,14 @@ export function TransactionDetailsModal({
       onDelete(transaction.id)
       onClose()
     }
+  }
+
+  const handleCreatePartial = async () => {
+    if (!onCreatePartial) return
+    const amount = Number.parseFloat(partialAmount)
+    if (!Number.isFinite(amount) || amount <= 0) return
+    await onCreatePartial(transaction, amount, customDate)
+    setPartialAmount("")
   }
 
   return (
@@ -171,6 +187,58 @@ export function TransactionDetailsModal({
             )}
           </div>
           <Separator />
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">More Details</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowMoreDetails((prev) => !prev)}
+              >
+                {showMoreDetails ? "Hide" : "Show"}
+              </Button>
+            </div>
+            {showMoreDetails && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    Optional tools for this transaction. Use only when needed.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Create a partial transaction from this one and optionally set a custom date.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={partialAmount}
+                    onChange={(e) => setPartialAmount(e.target.value)}
+                    placeholder="Partial amount"
+                    disabled={!onCreatePartial}
+                  />
+                  <Input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    disabled={!onCreatePartial}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCreatePartial}
+                    disabled={!onCreatePartial || !partialAmount}
+                    className="flex items-center gap-2"
+                  >
+                    <Scissors className="w-4 h-4" />
+                    Create Partial Transaction
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Actions */}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} className="flex-1 bg-transparent">

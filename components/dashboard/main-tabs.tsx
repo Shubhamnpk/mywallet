@@ -231,11 +231,6 @@ export function MainTabs({
             {/* Tools Tab Trigger */}
             <TabsTrigger
               value="tools-menu"
-              onClick={(e) => {
-                e.preventDefault()
-                setActiveTab("tools-menu")
-              }}
-              data-state={['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'active' : 'inactive'}
               className="flex flex-col items-center justify-end p-0 h-14 w-16 gap-1.5 data-[state=active]:bg-transparent transition-all duration-300 ease-out flex-1 group"
             >
               <div className={`relative p-2 rounded-2xl transition-all duration-300 ${['tools-menu', 'debt-credit', 'categories', 'portfolio', 'insights'].includes(activeTab) ? 'bg-primary text-primary-foreground translate-y-[-2px] shadow-lg shadow-primary/25' : 'text-muted-foreground hover:bg-muted/50'}`}>

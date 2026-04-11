@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { OfflineBadge } from "@/components/ui/offline-badge"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -28,22 +28,19 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
-  const [readMap, setReadMap] = useState<Record<string, boolean>>({})
-  const { budgets, goals, upcomingIPOs } = useWalletData()
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
+  const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {}
     try {
       const raw = localStorage.getItem(HEADER_NOTIFICATIONS_READ_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed === "object") {
-          setReadMap(parsed)
-        }
-      }
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === "object" ? parsed : {}
     } catch {
+      return {}
     }
-  }, [])
+  })
+  const { budgets, goals, upcomingIPOs } = useWalletData()
+  const isAutoIpoEnabled = Boolean(userProfile.meroShare?.isAutomatedEnabled)
 
   const notifications = useMemo<HeaderNotification[]>(() => {
     const items: HeaderNotification[] = []
@@ -86,7 +83,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
 
-    if (userProfile.meroShare?.isAutomatedEnabled) {
+    if (isAutoIpoEnabled) {
       upcomingIPOs.forEach((ipo) => {
         const ipoId = ipo.company || ipo.url || ipo.date_range || `ipo-${upcomingIPOs.indexOf(ipo)}`
         if (ipo.status === "open") {
@@ -114,8 +111,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     budgets,
     goals,
     upcomingIPOs,
-    userProfile.meroShare?.shareFeaturesEnabled,
-    userProfile.meroShare?.shareNotificationsEnabled,
+    isAutoIpoEnabled,
   ])
 
   const unreadCount = notifications.filter((n) => !readMap[n.id]).length

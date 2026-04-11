@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 
 export function usePWAUpdate() {
-  const [isSupported, setIsSupported] = useState<boolean>(false)
+  const isSupported = typeof window !== "undefined" && "serviceWorker" in navigator
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false)
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null)
   const [autoUpdate, setAutoUpdateState] = useState<boolean>(() => {
@@ -22,8 +22,6 @@ export function usePWAUpdate() {
   const lastUpdateCheckRef = useRef<number>(0)
 
   useEffect(() => {
-    setIsSupported('serviceWorker' in navigator)
-
     if (!('serviceWorker' in navigator)) return
 
     let regReady = false

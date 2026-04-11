@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react"
+import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
 import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -132,7 +132,7 @@ export function PortfolioList() {
     }
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
-    const safeNumber = (value?: number) => (isFiniteNumber(value) ? value : 0)
+    const safeNumber = useCallback((value?: number) => (isFiniteNumber(value) ? value : 0), [])
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -193,7 +193,7 @@ export function PortfolioList() {
         }, 3 * 60 * 1000)
 
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled, portfolioSymbols, viewMode])
+    }, [isShareFeaturesEnabled, portfolio, fetchPortfolioPrices])
 
     const enableShareFeatures = () => {
         updateUserProfile({
@@ -606,7 +606,7 @@ export function PortfolioList() {
             todayChange: today,
             todayChangePercentage: current - today > 0 ? (today / (current - today)) * 100 : 0,
         }
-    }, [activePortfolioItems])
+    }, [activePortfolioItems, safeNumber])
 
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
@@ -665,7 +665,7 @@ export function PortfolioList() {
             .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         return { sectorData: memoSectorData, scripData: memoScripData }
-    }, [activePortfolioItems, currentValue, chartMetric])
+    }, [activePortfolioItems, currentValue, chartMetric, safeNumber])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
 
@@ -724,7 +724,7 @@ export function PortfolioList() {
         const topLosersLoss = losers.reduce((sum, row) => sum + Math.abs(row.valueChange), 0)
 
         return { gainers, losers, noMovers, topMoversProfit, topLosersLoss }
-    }, [activePortfolioItems, scripNamesMap])
+    }, [activePortfolioItems, scripNamesMap, safeNumber])
     const hasMoverData = portfolioMovers.gainers.length > 0 || portfolioMovers.losers.length > 0
     const hasNoMoverData = portfolioMovers.noMovers.length > 0
 

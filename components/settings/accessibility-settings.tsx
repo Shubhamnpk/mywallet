@@ -52,6 +52,28 @@ export function AccessibilitySettings() {
   const pinFailedFileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
+  function applyAccessibilitySettings(sr: boolean, kn: boolean, fs: number, fi: boolean) {
+    if (sr) {
+      document.documentElement.classList.add("screen-reader-optimized")
+    } else {
+      document.documentElement.classList.remove("screen-reader-optimized")
+    }
+
+    if (kn) {
+      document.documentElement.classList.add("keyboard-nav-enabled")
+    } else {
+      document.documentElement.classList.remove("keyboard-nav-enabled")
+    }
+
+    if (fi) {
+      document.documentElement.classList.add("enhanced-focus")
+    } else {
+      document.documentElement.classList.remove("enhanced-focus")
+    }
+
+    document.documentElement.style.setProperty("--base-font-size", `${fs}px`)
+  }
+
   useEffect(() => {
     // Load saved accessibility preferences
     const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
@@ -118,28 +140,6 @@ export function AccessibilitySettings() {
       window.removeEventListener('wallet-auth-success', handleAuthSuccess)
     }
   }, [])
-
-  const applyAccessibilitySettings = (sr: boolean, kn: boolean, fs: number, fi: boolean) => {
-    if (sr) {
-      document.documentElement.classList.add("screen-reader-optimized")
-    } else {
-      document.documentElement.classList.remove("screen-reader-optimized")
-    }
-
-    if (kn) {
-      document.documentElement.classList.add("keyboard-nav-enabled")
-    } else {
-      document.documentElement.classList.remove("keyboard-nav-enabled")
-    }
-
-    if (fi) {
-      document.documentElement.classList.add("enhanced-focus")
-    } else {
-      document.documentElement.classList.remove("enhanced-focus")
-    }
-
-    document.documentElement.style.setProperty("--base-font-size", `${fs}px`)
-  }
 
   const announceToScreenReader = (message: string) => {
     if (screenReader) {

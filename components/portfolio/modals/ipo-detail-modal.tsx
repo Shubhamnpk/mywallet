@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 interface IPODetailModalProps {
@@ -56,6 +56,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         userProfile?.meroShare?.isAutomatedEnabled &&
         hasMeroShareCredentials
     )
+    const showLiveBrowser = Boolean(userProfile?.meroShare?.showLiveBrowser)
     const applyMode = userProfile?.meroShare?.applyMode || "on-demand"
     const normalizeIpoName = (value?: string) =>
         (value || "")
@@ -78,7 +79,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         router.push("/settings?tab=meroshare")
     }
 
-    const handleAutomatedApply = async (
+    const handleAutomatedApply = useCallback(async (
         showBrowser = false,
         source: "live-apply" | "live-auto" = "live-apply",
         closeOnSuccess = true
@@ -101,7 +102,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
             ipo?.company || "",
             10,
             source,
-            { showBrowser: showBrowser || Boolean(userProfile?.meroShare?.showLiveBrowser) }
+            { showBrowser: showBrowser || showLiveBrowser }
         )
 
         toast.promise(promise, {
@@ -122,15 +123,18 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                 return err.message
             }
         })
-    }
+    }, [applyMeroShareIPO, canAutomate, ipo?.company, onOpenChange, showLiveBrowser, userProfile?.meroShare])
 
     useEffect(() => {
         if (!open || !ipo || ipo.status !== "open" || !canAutomate || applyMode !== "automatic" || isAppliedForIpo) return
         const key = `${ipo.company}|${ipo.status}|${open}`
         if (autoApplySessionRef.current === key || isApplying || isCheckingResult) return
         autoApplySessionRef.current = key
-        void handleAutomatedApply(false, "live-auto", false)
-    }, [open, ipo?.company, ipo?.status, canAutomate, applyMode, isApplying, isCheckingResult, isAppliedForIpo])
+        const timer = setTimeout(() => {
+            void handleAutomatedApply(false, "live-auto", false)
+        }, 0)
+        return () => clearTimeout(timer)
+    }, [open, ipo, canAutomate, applyMode, isApplying, isCheckingResult, isAppliedForIpo, handleAutomatedApply])
 
     const handleCheckAllotment = async () => {
         const credentials = userProfile?.meroShare
