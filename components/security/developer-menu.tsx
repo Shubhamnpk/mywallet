@@ -222,12 +222,8 @@ export function DeveloperMenu() {
   }
 
   return (
-    <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[60]">
-      {!open ? (
-        <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="shadow-md">
-          Dev Menu (Ctrl+Shift+D)
-        </Button>
-      ) : (
+    open ? (
+      <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[60]">
         <Card className="w-[22rem] max-h-[85vh] overflow-y-auto shadow-xl">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -373,7 +369,7 @@ export function DeveloperMenu() {
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
+      </div>
+    ) : null
   )
 }
