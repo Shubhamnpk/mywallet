@@ -13,7 +13,8 @@ import { toast } from "@/hooks/use-toast"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
-import { buildDropboxAuthUrl, clearDropboxToken, downloadDropboxFile, getDropboxAccount, getDropboxAppKey, getDropboxToken, getLatestDropboxBackup, storeDropboxToken, uploadToDropbox, type DropboxAccount } from "@/lib/dropbox"
+import * as Dropbox from "@/lib/dropbox"
+import type { DropboxAccount } from "@/lib/dropbox"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
@@ -44,6 +45,7 @@ export function DataSettings() {
   const [dropboxAccount, setDropboxAccount] = useState<DropboxAccount | null>(null)
   const [dropboxError, setDropboxError] = useState<string | null>(null)
   const [hasDropboxToken, setHasDropboxToken] = useState(false)
+  const [dropboxNeedsReconnect, setDropboxNeedsReconnect] = useState(false)
   const [isDropboxConnecting, setIsDropboxConnecting] = useState(false)
   const [isDropboxPushing, setIsDropboxPushing] = useState(false)
   const [isDropboxPulling, setIsDropboxPulling] = useState(false)
@@ -61,7 +63,7 @@ export function DataSettings() {
   const [pendingDecryptedBackup, setPendingDecryptedBackup] = useState<any | null>(null)
   const [dropboxBackupPinAction, setDropboxBackupPinAction] = useState<"pull">("pull")
   const [dropboxLocalPinAction, setDropboxLocalPinAction] = useState<"import" | "push">("import")
-  const dropboxAppKey = getDropboxAppKey()
+  const dropboxAppKey = Dropbox.getDropboxAppKey()
   const hasDropboxConfig = Boolean(dropboxAppKey)
   const backupSizeModeKey = "wallet_dropbox_backup_size_mode"
   const nonEssentialBackupKeys = [
@@ -98,6 +100,50 @@ export function DataSettings() {
     deleted_portfolios: "Portfolios",
   }
 
+  const getDropboxSession = () => {
+    if (typeof Dropbox.getDropboxAuthSession === "function") {
+      return Dropbox.getDropboxAuthSession()
+    }
+
+    if (typeof window === "undefined") return null
+
+    const accessToken = localStorage.getItem(Dropbox.DROPBOX_TOKEN_KEY)
+    if (!accessToken) return null
+
+    const expiresAtRaw = localStorage.getItem(Dropbox.DROPBOX_TOKEN_EXPIRES_KEY)
+    const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : null
+
+    return {
+      accessToken,
+      refreshToken: localStorage.getItem(Dropbox.DROPBOX_REFRESH_TOKEN_KEY),
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+      scope: localStorage.getItem(Dropbox.DROPBOX_TOKEN_SCOPE_KEY),
+      tokenType: localStorage.getItem(Dropbox.DROPBOX_TOKEN_TYPE_KEY),
+    }
+  }
+
+  const markDropboxReconnectRequired = (message: string) => {
+    Dropbox.clearDropboxToken()
+    setDropboxAccount(null)
+    setHasDropboxToken(false)
+    setDropboxNeedsReconnect(true)
+    setDropboxError(message)
+  }
+
+  const isDropboxAuthorizationError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    const normalized = message.toLowerCase()
+    return (
+      normalized.includes("expired") ||
+      normalized.includes("invalid_access_token") ||
+      normalized.includes("missing_scope") ||
+      normalized.includes("invalid_grant") ||
+      normalized.includes("401") ||
+      normalized.includes("unauthorized") ||
+      normalized.includes("authorization")
+    )
+  }
+
   const handleCreateBackup = (destination: "download" | "dropbox") => {
     if (destination === "dropbox" && !hasDropboxConfig) {
       toast({
@@ -111,15 +157,49 @@ export function DataSettings() {
     setShowBackupModal(true)
   }
 
-  const ensureDropboxToken = async () => {
-    const existing = getDropboxToken()
-    if (existing) return existing
+  const ensureDropboxToken = async ({ interactive = true }: { interactive?: boolean } = {}) => {
     if (!dropboxAppKey) {
       throw new Error("Dropbox is not configured")
     }
 
+    const existingSession = getDropboxSession()
+    if (existingSession && !Dropbox.isDropboxAccessTokenExpired(existingSession, 60_000)) {
+      setHasDropboxToken(true)
+      setDropboxNeedsReconnect(false)
+      setDropboxError(null)
+      return existingSession.accessToken
+    }
+
+    if (existingSession?.refreshToken) {
+      try {
+        const refreshed = await Dropbox.refreshDropboxAccessToken(existingSession.refreshToken)
+        const nextSession = Dropbox.storeDropboxAuthSession(refreshed, {
+          refreshToken: existingSession.refreshToken,
+        })
+        setHasDropboxToken(true)
+        setDropboxNeedsReconnect(false)
+        setDropboxError(null)
+        return nextSession.accessToken
+      } catch (error) {
+        markDropboxReconnectRequired("Dropbox session expired. Reconnect to continue backups.")
+
+        const message = error instanceof Error ? error.message : "Dropbox session refresh failed"
+        if (!message.toLowerCase().includes("expired")) {
+          console.warn("Dropbox refresh failed:", error)
+        }
+
+        if (!interactive) {
+          throw new Error("Dropbox session expired. Reconnect Dropbox to continue.")
+        }
+      }
+    }
+
+    if (!interactive) {
+      throw new Error("Dropbox is not connected")
+    }
+
     const redirectUri = `${window.location.origin}/dropbox-callback`
-    const authUrl = buildDropboxAuthUrl(dropboxAppKey, redirectUri)
+    const { authUrl } = await Dropbox.createDropboxAuthRequest(dropboxAppKey, redirectUri)
     const authWindow = window.open(authUrl, "dropbox-auth", "width=480,height=640")
 
     if (!authWindow) {
@@ -137,11 +217,14 @@ export function DataSettings() {
         if (event.data?.type !== "dropbox-auth") return
         resolved = true
         cleanup()
-        if (event.data?.token) {
-          storeDropboxToken(event.data.token, event.data.expiresIn)
-          resolve(event.data.token)
+        const session = getDropboxSession()
+        if (event.data?.success && session?.accessToken) {
+          setHasDropboxToken(true)
+          setDropboxNeedsReconnect(false)
+          setDropboxError(null)
+          resolve(session.accessToken)
         } else {
-          reject(new Error("Dropbox authorization failed"))
+          reject(new Error(event.data?.error || "Dropbox authorization failed"))
         }
       }
       const timer = window.setInterval(() => {
@@ -158,13 +241,18 @@ export function DataSettings() {
   const refreshDropboxAccount = async (token: string) => {
     setIsDropboxRefreshing(true)
     try {
-      const account = await getDropboxAccount(token)
+      const account = await Dropbox.getDropboxAccount(token)
       setDropboxAccount(account)
       setDropboxError(null)
+      setDropboxNeedsReconnect(false)
       return account
     } catch (error) {
-      setDropboxAccount(null)
-      setDropboxError(error instanceof Error ? error.message : "Unable to load Dropbox account")
+      if (isDropboxAuthorizationError(error)) {
+        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to continue.")
+      } else {
+        setDropboxAccount(null)
+        setDropboxError(error instanceof Error ? error.message : "Unable to load Dropbox account")
+      }
       return null
     } finally {
       setIsDropboxRefreshing(false)
@@ -172,13 +260,26 @@ export function DataSettings() {
   }
 
   useEffect(() => {
-    const token = getDropboxToken()
-    if (!token) {
-      setHasDropboxToken(false)
-      return
+    const initializeDropbox = async () => {
+      const session = getDropboxSession()
+      if (!session) {
+        setHasDropboxToken(false)
+        setDropboxNeedsReconnect(false)
+        return
+      }
+
+      try {
+        const token = await ensureDropboxToken({ interactive: false })
+        setHasDropboxToken(true)
+        await refreshDropboxAccount(token)
+      } catch (error) {
+        setHasDropboxToken(false)
+        setDropboxNeedsReconnect(true)
+        setDropboxError(error instanceof Error ? error.message : "Dropbox needs to be reconnected")
+      }
     }
-    setHasDropboxToken(true)
-    void refreshDropboxAccount(token)
+
+    void initializeDropbox()
   }, [])
 
   useEffect(() => {
@@ -202,6 +303,7 @@ export function DataSettings() {
     try {
       const token = await ensureDropboxToken()
       setHasDropboxToken(true)
+      setDropboxNeedsReconnect(false)
       const account = await refreshDropboxAccount(token)
       toast({
         title: "Dropbox Connected (Beta)",
@@ -220,10 +322,11 @@ export function DataSettings() {
   }
 
   const handleDropboxDisconnect = () => {
-    clearDropboxToken()
+    Dropbox.clearDropboxToken()
     setDropboxAccount(null)
     setDropboxError(null)
     setHasDropboxToken(false)
+    setDropboxNeedsReconnect(false)
     toast({
       title: "Dropbox Disconnected",
       description: "Dropbox access has been removed from this device.",
@@ -525,7 +628,7 @@ export function DataSettings() {
 
       if (backupDestination === "dropbox") {
         const token = await ensureDropboxToken()
-        await uploadToDropbox(backupJson, filename, token)
+        await Dropbox.uploadToDropbox(backupJson, filename, token)
         toast({
           title: "Backup Uploaded to Dropbox (Beta)",
           description: "Your encrypted backup has been saved to your Dropbox.",
@@ -583,12 +686,15 @@ export function DataSettings() {
       const filename = "mywallet-backup.json"
 
       const token = await ensureDropboxToken()
-      await uploadToDropbox(backupJson, filename, token, { overwrite: true })
+      await Dropbox.uploadToDropbox(backupJson, filename, token, { overwrite: true })
       toast({
         title: "Backup Uploaded to Dropbox (Beta)",
         description: "Your encrypted backup has been saved to your Dropbox.",
       })
     } catch (error) {
+      if (isDropboxAuthorizationError(error)) {
+        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to upload backups.")
+      }
       toast({
         title: "Dropbox Backup Failed",
         description: error instanceof Error ? error.message : "Failed to upload backup to Dropbox.",
@@ -603,7 +709,7 @@ export function DataSettings() {
     try {
       setIsDropboxPulling(true)
       const token = await ensureDropboxToken()
-      const latest = await getLatestDropboxBackup(token)
+      const latest = await Dropbox.getLatestDropboxBackup(token)
       if (!latest) {
         if (!options?.auto) {
           toast({
@@ -615,7 +721,7 @@ export function DataSettings() {
         return
       }
 
-      const content = await downloadDropboxFile(latest.path_lower, token)
+      const content = await Dropbox.downloadDropboxFile(latest.path_lower, token)
       const cachedPin = SecureKeyManager.getCachedSessionPin()
       const pinToUse = overridePin || cachedPin
       if (!pinToUse) {
@@ -657,6 +763,9 @@ export function DataSettings() {
       setIsDropboxPulling(false)
       await runDropboxImport(decrypted, pinToUse)
     } catch (error) {
+      if (isDropboxAuthorizationError(error)) {
+        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to download backups.")
+      }
       toast({
         title: "Dropbox Restore Failed",
         description: error instanceof Error ? error.message : "Failed to restore backup from Dropbox.",
@@ -841,10 +950,14 @@ export function DataSettings() {
               </Button>
               <Button
                 onClick={() => {
-                  const token = getDropboxToken()
-                  if (token) {
-                    void refreshDropboxAccount(token)
-                  }
+                  void (async () => {
+                    try {
+                      const token = await ensureDropboxToken({ interactive: false })
+                      await refreshDropboxAccount(token)
+                    } catch (error) {
+                      setDropboxError(error instanceof Error ? error.message : "Dropbox needs to be reconnected")
+                    }
+                  })()
                 }}
                 variant="ghost"
                 size="icon"
@@ -878,6 +991,9 @@ export function DataSettings() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     Essential skips scan history, drafts, and offline queues.
                   </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Dropbox access now refreshes automatically when the local session is still authorized.
+                  </p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button
                       type="button"
@@ -909,11 +1025,18 @@ export function DataSettings() {
           {!hasDropboxToken ? (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Connect your Dropbox account to enable manual backup uploads and downloads.
+                {dropboxNeedsReconnect
+                  ? "Your Dropbox session expired or was revoked. Reconnect to resume backups."
+                  : "Connect your Dropbox account to enable manual backup uploads and downloads."}
               </p>
+              {dropboxError && (
+                <p className="text-xs text-destructive">
+                  {dropboxError}
+                </p>
+              )}
               <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting}>
                 <Cloud className="mr-2 h-4 w-4" />
-                {isDropboxConnecting ? "Connecting..." : "Connect Dropbox"}
+                {isDropboxConnecting ? "Connecting..." : dropboxNeedsReconnect ? "Reconnect Dropbox" : "Connect Dropbox"}
               </Button>
             </div>
           ) : (
