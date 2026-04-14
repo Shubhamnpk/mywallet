@@ -102,6 +102,22 @@ const TOMBSTONE_KEYS = {
 
 const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
+const getCustomCategoriesOnly = (items: Category[]) => items.filter((category) => !category?.isDefault)
+
+const mergeDefaultAndCustomCategories = (customCategories: Category[]) => {
+  const normalizedCustomCategories = getCustomCategoriesOnly(customCategories)
+  const defaults = initializeDefaultCategories()
+  const customNameTypeKeys = new Set(
+    normalizedCustomCategories.map((category) => `${category.type}:${category.name.trim().toLowerCase()}`),
+  )
+
+  const filteredDefaults = defaults.filter(
+    (category) => !customNameTypeKeys.has(`${category.type}:${category.name.trim().toLowerCase()}`),
+  )
+
+  return [...filteredDefaults, ...normalizedCustomCategories]
+}
+
 const recordDeletion = async (tombstoneKey: string, ids: string[]) => {
   if (ids.length === 0) return
   try {
@@ -1082,19 +1098,15 @@ export function useWalletData() {
         const recomputed = await recomputePortfolio(parsedData.shareTransactions)
       }
 
+      const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
+        parsedData.budgets.length > 0 || parsedData.goals.length > 0
       if (parsedData.categories.length > 0) {
-        setCategories(parsedData.categories)
+        setCategories(mergeDefaultAndCustomCategories(parsedData.categories))
+      } else if (hasAnyData) {
+        setCategories(initializeDefaultCategories())
+        await saveDataWithIntegrity("categories", [])
       } else {
-        // Only create default categories if this is NOT a fresh start after clearing
-        const hasAnyData = parsedData.userProfile || parsedData.transactions.length > 0 ||
-          parsedData.budgets.length > 0 || parsedData.goals.length > 0
-        if (hasAnyData) {
-          const defaultCategories = initializeDefaultCategories()
-          setCategories(defaultCategories)
-          await saveDataWithIntegrity("categories", defaultCategories)
-        } else {
-          setCategories([])
-        }
+        setCategories([])
       }
 
       setIsLoaded(true)
@@ -2189,7 +2201,7 @@ export function useWalletData() {
       // Import categories (only if selected)
       if (data.categories && Array.isArray(data.categories)) {
         const importedCustomCategories = data.categories.filter((category: any) => !category?.isDefault)
-        setCategories(importedCustomCategories)
+        setCategories(mergeDefaultAndCustomCategories(importedCustomCategories))
         await ensureSaved("categories", importedCustomCategories)
       }
 
@@ -2250,7 +2262,7 @@ export function useWalletData() {
         }
 
         if (Array.isArray(latest.categories)) {
-          setCategories(latest.categories)
+          setCategories(mergeDefaultAndCustomCategories(latest.categories))
         }
 
         const savedSectors = localStorage.getItem("sectorsMap")
@@ -2336,20 +2348,20 @@ export function useWalletData() {
 
     const updatedCategories = [...categories, newCategory]
     setCategories(updatedCategories)
-    saveDataWithIntegrity("categories", updatedCategories)
+    saveDataWithIntegrity("categories", getCustomCategoriesOnly(updatedCategories))
     return newCategory
   }
 
   const updateCategory = async (id: string, updates: Partial<Category>) => {
     const updatedCategories = categories.map((cat) => (cat.id === id ? { ...cat, ...updates } : cat))
     setCategories(updatedCategories)
-    await saveDataWithIntegrity("categories", updatedCategories)
+    await saveDataWithIntegrity("categories", getCustomCategoriesOnly(updatedCategories))
   }
 
   const deleteCategory = async (id: string) => {
     const updatedCategories = categories.filter((cat) => cat.id !== id)
     setCategories(updatedCategories)
-    await saveDataWithIntegrity("categories", updatedCategories)
+    await saveDataWithIntegrity("categories", getCustomCategoriesOnly(updatedCategories))
     await recordDeletion(TOMBSTONE_KEYS.categories, [id])
   }
 
@@ -2366,7 +2378,7 @@ export function useWalletData() {
     })
 
     setCategories(updatedCategories)
-    await saveDataWithIntegrity("categories", updatedCategories)
+    await saveDataWithIntegrity("categories", getCustomCategoriesOnly(updatedCategories))
   }
 
   const addPortfolioItem = async (item: Omit<PortfolioItem, "id">) => {

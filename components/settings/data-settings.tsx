@@ -499,6 +499,10 @@ export function DataSettings() {
   }
 
   const mergeDropboxData = async (remoteData: any) => {
+    const localCustomCategories = categories.filter((category) => !category?.isDefault)
+    const remoteCustomCategories = Array.isArray(remoteData?.categories)
+      ? remoteData.categories.filter((category: any) => !category?.isDefault)
+      : []
     const localTombstones = await loadTombstones()
     const remoteTombstones = typeof remoteData?.tombstones === "object" && remoteData.tombstones ? remoteData.tombstones : {}
     const mergedTombstones = TOMBSTONE_KEYS.reduce<Record<string, TombstoneRecord[]>>((acc, key) => {
@@ -533,7 +537,7 @@ export function DataSettings() {
       mergedTombstones.deleted_debtCreditTransactions,
     )
     const mergedCategories = applyTombstones(
-      mergeById(categories, Array.isArray(remoteData?.categories) ? remoteData.categories : []),
+      mergeById(localCustomCategories, remoteCustomCategories),
       mergedTombstones.deleted_categories,
     )
     const mergedShareTransactions = applyTombstones(
