@@ -614,9 +614,12 @@ export function useWalletData() {
 
     loadDataWithIntegrityCheck()
   }, [isLoaded])
-  // Fetch sectors and upcoming IPOs once on load
+  // NEPSE market prefetch: only for signed-in profiles with share/portfolio features enabled
+  // (avoids hitting APIs for anonymous welcome visitors and users who do not use stocks)
   useEffect(() => {
-    if (isLoaded) {
+    if (!isLoaded) return
+    if (!userProfile?.meroShare?.shareFeaturesEnabled) return
+
       // Fetch sectors and names from remote API
       fetch("/api/nepse/sectors")
         .then(res => res.json())
@@ -760,8 +763,7 @@ export function useWalletData() {
           }
         })
         .catch(err => console.error("Error fetching exchange messages:", err))
-    }
-  }, [isLoaded])
+  }, [isLoaded, userProfile?.meroShare?.shareFeaturesEnabled, userProfile?.createdAt])
 
   // Automatically refresh share and crypto prices on app load if features are enabled
   useEffect(() => {
@@ -3020,8 +3022,8 @@ export function useWalletData() {
       throw new Error("Transaction not found")
     }
 
-    if (transaction.type !== "buy") {
-      throw new Error("Only buy transactions can be enrolled into SIP")
+    if (transaction.type !== "buy" && transaction.type !== "ipo") {
+      throw new Error("Only buy or IPO transactions can be enrolled into SIP")
     }
 
     const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0
@@ -3097,8 +3099,8 @@ export function useWalletData() {
         throw new Error("SIP plan not found")
       }
 
-      if (transaction.type !== "buy") {
-        throw new Error("Only buy transactions can be enrolled into SIP")
+      if (transaction.type !== "buy" && transaction.type !== "ipo") {
+        throw new Error("Only buy or IPO transactions can be enrolled into SIP")
       }
 
       const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0

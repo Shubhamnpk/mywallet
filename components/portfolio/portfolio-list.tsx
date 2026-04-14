@@ -40,6 +40,26 @@ const hasFreshDailyQuote = (item: PortfolioItem) => {
     return isSameCalendarDay(updatedAt, new Date())
 }
 
+/** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
+const portfolioItemSyncSignature = (entry: PortfolioItem) =>
+    [
+        entry.id,
+        entry.portfolioId,
+        normalizeStockSymbol(entry.symbol),
+        entry.assetType || "stock",
+        (entry.cryptoId || "").trim(),
+        entry.units,
+        entry.buyPrice,
+        entry.currentPrice ?? "",
+        entry.previousClose ?? "",
+        entry.change ?? "",
+        entry.percentChange ?? "",
+        entry.lastUpdated ?? "",
+        entry.high ?? "",
+        entry.low ?? "",
+        entry.volume ?? "",
+    ].join("|")
+
 export function PortfolioList() {
     const showReservedDebugBadge =
         process.env.NODE_ENV !== "production" &&
@@ -159,9 +179,13 @@ export function PortfolioList() {
             )
         })
 
-        if (latestMatch && latestMatch !== selectedStock) {
-            setSelectedStock(latestMatch)
+        if (!latestMatch) return
+
+        if (portfolioItemSyncSignature(latestMatch) === portfolioItemSyncSignature(selectedStock)) {
+            return
         }
+
+        setSelectedStock(latestMatch)
     }, [isStockDetailOpen, portfolio, selectedStock])
 
     const portfolioSymbols = useMemo(
@@ -169,31 +193,35 @@ export function PortfolioList() {
         [portfolio]
     )
 
-    // Auto-refresh data on mount and every 2 minutes
-    useEffect(() => {
-        if (portfolio.length === 0) return
+    // `fetchPortfolioPrices` from context is not useCallback-stable — listing it in deps re-ran this effect every render and could exceed React's max update depth.
+    const portfolioRef = useRef(portfolio)
+    const fetchPortfolioPricesRef = useRef(fetchPortfolioPrices)
+    portfolioRef.current = portfolio
+    fetchPortfolioPricesRef.current = fetchPortfolioPrices
 
-        const stockItems = portfolio.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
-        const cryptoItems = portfolio.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
+    // Auto-refresh data on mount and every 3 minutes (when holdings set or share/crypto fetch rules change)
+    useEffect(() => {
+        const items = portfolioRef.current
+        if (items.length === 0) return
+
+        const stockItems = items.filter((p) => p.assetType !== "crypto" && !p.cryptoId)
+        const cryptoItems = items.filter((p) => p.assetType === "crypto" || Boolean(p.cryptoId))
         const shouldFetchStocks = isShareFeaturesEnabled && stockItems.length > 0
         const shouldFetchCrypto = cryptoItems.length > 0
 
         if (!shouldFetchStocks && !shouldFetchCrypto) return
 
-        // Always fetch for all items to keep global stats (overview) consistent
-        const itemsToFetch = portfolio
-
-        // Initial fetch
-        fetchPortfolioPrices(itemsToFetch)
-
-        // Set interval for 5 minutes
-        const interval = setInterval(() => {
+        const tick = () => {
             if (typeof document !== "undefined" && document.hidden) return
-            fetchPortfolioPrices(itemsToFetch)
-        }, 3 * 60 * 1000)
+            const latest = portfolioRef.current
+            if (latest.length === 0) return
+            void fetchPortfolioPricesRef.current(latest)
+        }
 
+        tick()
+        const interval = setInterval(tick, 3 * 60 * 1000)
         return () => clearInterval(interval)
-    }, [isShareFeaturesEnabled, portfolio, fetchPortfolioPrices])
+    }, [isShareFeaturesEnabled, portfolioSymbols])
 
     const enableShareFeatures = () => {
         updateUserProfile({

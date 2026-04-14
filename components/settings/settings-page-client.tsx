@@ -1,0 +1,150 @@
+"use client"
+
+import { ArrowLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { UserProfileSettings } from "@/components/settings/user-settings"
+import { SecuritySettings } from "@/components/settings/security-settings"
+import { ThemeSettings } from "@/components/settings/theme-settings"
+import { DataSettings } from "@/components/settings/data-settings"
+import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
+import { AboutSettings } from "@/components/settings/about-settings"
+import { MeroShareSettings } from "@/components/settings/mero-share-settings"
+import { NotificationSettings } from "@/components/settings/notification-settings"
+import { MobileSettingsPage, type SettingsView } from "@/components/settings/mobile-settings-page"
+import { Share2 } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { useEffect } from "react"
+import { SessionManager } from "@/lib/session-manager"
+import { useIsMobile } from "@/hooks/use-mobile"
+
+export function SettingsPageClient() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { userProfile, showOnboarding } = useWalletData()
+  const isMobile = useIsMobile()
+  const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "accessibility", "about"])
+  const tab = searchParams.get("tab")
+  const activeSettingsTab = tab && validTabs.has(tab) ? tab : "profile"
+
+  // SEO metadata for settings page
+  const pageMetadata = {
+    title: "Settings - MyWallet | Account, Security & Preferences",
+    description: "Manage your MyWallet account settings, security preferences, theme options, data management, and accessibility features. Customize your personal finance experience.",
+    keywords: "MyWallet settings, account settings, security settings, theme settings, data management, accessibility settings, user preferences",
+    openGraph: {
+      title: "Settings - MyWallet | Account, Security & Preferences",
+      description: "Manage your MyWallet account settings, security preferences, and customize your personal finance experience.",
+      url: "https://mywalletnp.vercel.app/settings",
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title: "Settings - MyWallet | Account, Security & Preferences",
+      description: "Manage your MyWallet account settings, security preferences, and customize your personal finance experience.",
+    },
+  };
+
+  // Redirect to home if no user profile or onboarding is needed
+  useEffect(() => {
+    if (!userProfile || showOnboarding) {
+      router.push('/')
+      return
+    }
+
+    // Validate session on page load
+    if (!SessionManager.isSessionValid()) {
+      console.log('[SettingsPage] Session invalid on page load, dispatching expiry event')
+      const event = new CustomEvent('wallet-session-expired')
+      window.dispatchEvent(event)
+    }
+  }, [userProfile, showOnboarding, router])
+
+  const showMobileSettings = Boolean(isMobile && userProfile && !showOnboarding)
+  const handleTabChange = (value: string) => {
+    if (!validTabs.has(value)) return
+    router.replace(`/settings?tab=${value}`)
+  }
+
+  // Show loading while redirecting
+  if (!userProfile || showOnboarding) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  // Show mobile settings page — open hub unless URL names a section (e.g. /settings?tab=notifications)
+  if (showMobileSettings) {
+    const mobileInitialView: SettingsView =
+      tab && validTabs.has(tab) ? (tab as SettingsView) : "main"
+    return <MobileSettingsPage onClose={() => router.push('/')} initialView={mobileInitialView} />
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-2">
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <p className="text-muted-foreground mt-2">Manage your account, security, and preferences</p>
+        </div>
+
+        <Tabs value={activeSettingsTab} onValueChange={handleTabChange} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
+            <TabsTrigger value="theme">Theme</TabsTrigger>
+            <TabsTrigger value="data">Data</TabsTrigger>
+            <TabsTrigger value="accessibility">A11y</TabsTrigger>
+            <TabsTrigger value="about">About</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile">
+            <UserProfileSettings />
+          </TabsContent>
+
+          <TabsContent value="security">
+            <SecuritySettings />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationSettings />
+          </TabsContent>
+
+          <TabsContent value="meroshare">
+            <MeroShareSettings />
+          </TabsContent>
+
+          <TabsContent value="theme">
+            <ThemeSettings />
+          </TabsContent>
+
+          <TabsContent value="data">
+            <DataSettings />
+          </TabsContent>
+
+          <TabsContent value="accessibility">
+            <AccessibilitySettings />
+          </TabsContent>
+
+          <TabsContent value="about">
+            <AboutSettings />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  )
+}

@@ -46,7 +46,7 @@ interface MobileSettingsPageProps {
   initialView?: SettingsView
 }
 
-type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about"
+export type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about"
 
 export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSettingsPageProps) {
   const [currentView, setCurrentView] = useState<SettingsView>(initialView)

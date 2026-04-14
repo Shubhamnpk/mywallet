@@ -162,7 +162,7 @@ export default function RootLayout({
               </WalletDataProvider>
             </SessionGuard>
           </PrivacyModeProvider>
-          {process.env.NODE_ENV === "development" && <DeveloperMenu />}
+          {process.env.NEXT_PUBLIC_APP_DEV_TOOLS === "1" && <DeveloperMenu />}
           <Toaster />
         </ThemeProviderWrapper>
       </body>
