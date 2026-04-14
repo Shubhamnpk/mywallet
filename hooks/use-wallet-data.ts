@@ -20,6 +20,7 @@ import type {
   TopStocksData,
   MarketSummaryMetric,
   MarketSummaryHistoryItem,
+  MarketStatusData,
   NepseNoticesBundle,
   NepseDisclosure,
   NepseExchangeMessage,
@@ -348,6 +349,7 @@ export function useWalletData() {
   const [topStocks, setTopStocks] = useState<TopStocksData | null>(null)
   const [marketSummary, setMarketSummary] = useState<MarketSummaryMetric[]>([])
   const [marketSummaryHistory, setMarketSummaryHistory] = useState<MarketSummaryHistoryItem[]>([])
+  const [marketStatus, setMarketStatus] = useState<MarketStatusData | null>(null)
   const [noticesBundle, setNoticesBundle] = useState<NepseNoticesBundle | null>(null)
   const [disclosures, setDisclosures] = useState<NepseDisclosure[]>([])
   const [exchangeMessages, setExchangeMessages] = useState<NepseExchangeMessage[]>([])
@@ -721,15 +723,27 @@ export function useWalletData() {
         .finally(() => setIsIPOsLoading(false))
 
       fetch("/api/nepse/top-stocks")
-        .then(res => res.json())
-        .then((data: TopStocksData) => {
+        .then(async (res) => {
+          const data = await res.json()
+          return {
+            data,
+            headerDate: res.headers.get("date"),
+          }
+        })
+        .then(({ data, headerDate }: { data: TopStocksData; headerDate: string | null }) => {
           if (data && typeof data === "object") {
+            const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
+              ? new Date(headerDate).toISOString()
+              : new Date().toISOString()
+
             setTopStocks({
               top_gainer: Array.isArray(data.top_gainer) ? data.top_gainer : [],
               top_loser: Array.isArray(data.top_loser) ? data.top_loser : [],
               top_turnover: Array.isArray(data.top_turnover) ? data.top_turnover : [],
               top_trade: Array.isArray(data.top_trade) ? data.top_trade : [],
               top_transaction: Array.isArray(data.top_transaction) ? data.top_transaction : [],
+              last_updated: typeof data.last_updated === "string" ? data.last_updated : undefined,
+              fetched_at: typeof data.fetched_at === "string" ? data.fetched_at : fetchedAt,
             })
           }
         })
@@ -752,6 +766,54 @@ export function useWalletData() {
           }
         })
         .catch(err => console.error("Error fetching market summary history:", err))
+
+      fetch("/api/nepse/market-status")
+        .then(async (res) => {
+          const data = await res.json()
+          return {
+            data,
+            headerDate: res.headers.get("date"),
+          }
+        })
+        .then(({ data, headerDate }: { data: any; headerDate: string | null }) => {
+          if (!data || typeof data !== "object") return
+
+          const rawStatus = typeof data.status === "string" ? data.status.trim() : ""
+          const statusLower = rawStatus.toLowerCase()
+          const rawIsOpen = data.is_open ?? data.market_open ?? data.open
+
+          const isOpen = typeof rawIsOpen === "boolean"
+            ? rawIsOpen
+            : typeof rawIsOpen === "number"
+              ? rawIsOpen === 1
+              : typeof rawIsOpen === "string"
+                ? ["open", "opened", "true", "1", "yes"].includes(rawIsOpen.trim().toLowerCase())
+                : statusLower.includes("open")
+                  ? true
+                  : statusLower.includes("close")
+                    ? false
+                    : null
+
+          const normalizedLastChecked = typeof data.last_checked === "string"
+            ? data.last_checked
+            : typeof data.lastCheck === "string"
+              ? data.lastCheck
+              : typeof data.last_updated === "string"
+                ? data.last_updated
+                : undefined
+
+          const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
+            ? new Date(headerDate).toISOString()
+            : new Date().toISOString()
+
+          setMarketStatus({
+            isOpen,
+            status: rawStatus || undefined,
+            last_checked: normalizedLastChecked,
+            fetched_at: fetchedAt,
+          })
+        })
+        .catch(err => console.error("Error fetching market status:", err))
 
       fetch("/api/nepse/notices")
         .then(res => res.json())
@@ -2431,6 +2493,7 @@ export function useWalletData() {
       name,
       description,
       color,
+      includeInTotals: true,
       isDefault: portfolios.length === 0,
       createdAt: new Date().toISOString()
     }
@@ -3647,6 +3710,7 @@ export function useWalletData() {
     checkIPOAllotment: checkIPOAllotmentWithLog,
     upcomingIPOs,
     topStocks,
+    marketStatus,
     marketSummary,
     marketSummaryHistory,
     noticesBundle,

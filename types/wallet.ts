@@ -265,6 +265,7 @@ export interface Portfolio {
   name: string
   description?: string
   color?: string
+  includeInTotals?: boolean
   isDefault: boolean
   createdAt: string
 }
@@ -338,6 +339,8 @@ export interface TopStocksData {
   top_turnover: TopStockItem[]
   top_trade: TopStockItem[]
   top_transaction: TopStockItem[]
+  last_updated?: string
+  fetched_at?: string
 }
 
 export interface MarketSummaryMetric {
@@ -351,6 +354,13 @@ export interface MarketSummaryHistoryItem {
   totalTradedShares: number
   totalTransactions: number
   tradedScrips: number
+}
+
+export interface MarketStatusData {
+  isOpen: boolean | null
+  status?: string
+  last_checked?: string
+  fetched_at?: string
 }
 
 export interface NepseNoticeGeneral {

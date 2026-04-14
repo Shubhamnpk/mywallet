@@ -18,6 +18,7 @@ import type {
   TopStocksData,
   MarketSummaryMetric,
   MarketSummaryHistoryItem,
+  MarketStatusData,
   NepseNoticesBundle,
   NepseDisclosure,
   NepseExchangeMessage,
@@ -43,6 +44,7 @@ type WalletDataContextType = {
   shareTransactions: ShareTransaction[]
   upcomingIPOs: UpcomingIPO[]
   topStocks: TopStocksData | null
+  marketStatus: MarketStatusData | null
   marketSummary: MarketSummaryMetric[]
   marketSummaryHistory: MarketSummaryHistoryItem[]
   noticesBundle: NepseNoticesBundle | null

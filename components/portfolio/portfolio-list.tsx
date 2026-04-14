@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { PortfolioItem, ShareTransaction, Portfolio } from "@/types/wallet"
+import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
@@ -39,6 +41,35 @@ const hasFreshDailyQuote = (item: PortfolioItem) => {
 
     return isSameCalendarDay(updatedAt, new Date())
 }
+
+const parseDateToTimestamp = (value?: string) => {
+    if (!value) return null
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? null : parsed
+}
+
+const resolveNepseDocumentUrl = (value?: string | null) => {
+    if (!value) return null
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    if (/^https?:\/\//i.test(trimmed)) return trimmed
+    const normalized = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed
+    return `https://www.nepalstock.com.np/api/nots/security/fetchFiles?fileLocation=${encodeURI(normalized)}`
+}
+
+const stripHtml = (value?: string) => {
+    if (!value) return ""
+    return value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, " ")
+        .trim()
+}
+
+const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
 const portfolioItemSyncSignature = (entry: PortfolioItem) =>
@@ -89,6 +120,7 @@ export function PortfolioList() {
         upcomingIPOs,
         isIPOsLoading,
         topStocks,
+        marketStatus,
         marketSummary,
         marketSummaryHistory,
         noticesBundle,
@@ -120,6 +152,8 @@ export function PortfolioList() {
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
+    const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
+    const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
     const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
@@ -777,19 +811,103 @@ export function PortfolioList() {
         return summaries
     }, [portfolio, portfolios])
 
+    const includedPortfolioIds = useMemo(
+        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
+        [portfolios],
+    )
+
+    const handleTogglePortfolioIncluded = async (portfolioToToggle: Portfolio) => {
+        try {
+            const nextValue = portfolioToToggle.includeInTotals === false
+            await updatePortfolio(portfolioToToggle.id, { includeInTotals: nextValue })
+            toast.success(nextValue ? "Portfolio included in totals" : "Portfolio excluded from totals")
+        } catch (error) {
+            toast.error("Could not update portfolio visibility in totals")
+        }
+    }
+
+    const handleEditPortfolioDetails = async (portfolioToEdit: Portfolio) => {
+        const nextName = window.prompt("Portfolio name", portfolioToEdit.name)?.trim()
+        if (nextName === undefined || nextName === "") {
+            // Cancelled or empty name; keep current value.
+        }
+        const nextDescriptionRaw = window.prompt(
+            "Portfolio description (optional)",
+            portfolioToEdit.description || "",
+        )
+        if (nextDescriptionRaw === null && (nextName === undefined || nextName === "")) return
+
+        const updates: Partial<Portfolio> = {}
+        if (nextName && nextName !== portfolioToEdit.name) updates.name = nextName
+        if (nextDescriptionRaw !== null) {
+            const normalizedDescription = nextDescriptionRaw.trim()
+            updates.description = normalizedDescription || undefined
+        }
+
+        if (Object.keys(updates).length === 0) return
+
+        try {
+            await updatePortfolio(portfolioToEdit.id, updates)
+            toast.success("Portfolio details updated")
+        } catch (error) {
+            toast.error("Failed to update portfolio details")
+        }
+    }
+
     const marketSnapshot = useMemo(() => {
-        const topGainer = topStocks?.top_gainer?.[0]
-        const topLoser = topStocks?.top_loser?.[0]
+        const topGainers = [...(topStocks?.top_gainer || [])]
+            .filter((item) => Number.isFinite(item.percentageChange))
+            .sort((a, b) => b.percentageChange - a.percentageChange)
+            .slice(0, 5)
+        const topLosers = [...(topStocks?.top_loser || [])]
+            .filter((item) => Number.isFinite(item.percentageChange))
+            .sort((a, b) => a.percentageChange - b.percentageChange)
+            .slice(0, 5)
+        const topTurnover = [...(topStocks?.top_turnover || [])]
+            .filter((item) => item.symbol)
+            .slice(0, 5)
         const turnoverMetric = marketSummary.find((metric) =>
             (metric.detail || "").toLowerCase().includes("turnover"),
         )
 
         return {
-            topGainer,
-            topLoser,
+            topGainers,
+            topLosers,
+            topTurnover,
             turnover: typeof turnoverMetric?.value === "number" ? turnoverMetric.value : null,
         }
     }, [topStocks, marketSummary])
+
+    const marketStatusMeta = useMemo(() => {
+        const statusText = marketStatus?.isOpen === true
+            ? "OPEN"
+            : marketStatus?.isOpen === false
+                ? "CLOSED"
+                : (marketStatus?.status || "UNKNOWN").toUpperCase()
+
+        const badgeClass = marketStatus?.isOpen === true
+            ? "border-success/30 bg-success/10 text-success"
+            : marketStatus?.isOpen === false
+                ? "border-error/30 bg-error/10 text-error"
+                : "border-muted/40 bg-muted/20 text-muted-foreground"
+
+        const dotClass = marketStatus?.isOpen === true
+            ? "bg-success animate-pulse"
+            : marketStatus?.isOpen === false
+                ? "bg-error"
+                : "bg-muted-foreground"
+
+        return {
+            statusText,
+            badgeClass,
+            dotClass,
+        }
+    }, [marketStatus])
+
+    const getMarketSymbolName = useCallback((symbol: string) => {
+        const normalized = normalizeStockSymbol(symbol)
+        return scripNamesMap[normalized] || normalized
+    }, [scripNamesMap])
 
     const marketHistorySeries = useMemo(() => {
         if (!Array.isArray(marketSummaryHistory) || marketSummaryHistory.length === 0) return []
@@ -851,27 +969,74 @@ export function PortfolioList() {
     }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
 
     const overviewNotifications = useMemo(() => {
-        const general = (noticesBundle?.general || []).slice(0, 4).map((n) => ({
+        const toDocuments = (docs?: NepseDisclosure["applicationDocumentDetailsList"]) =>
+            (docs || [])
+                .map((doc) => {
+                    const resolvedUrl = resolveNepseDocumentUrl(doc.fileUrl || doc.filePath || null)
+                    if (!resolvedUrl) return null
+                    const label = (doc.fileUrl || doc.filePath || "Document").split("/").pop() || "Document"
+                    return { label, url: resolvedUrl }
+                })
+                .filter((doc): doc is { label: string; url: string } => Boolean(doc))
+
+        const general = (noticesBundle?.general || []).slice(0, 6).map((n) => ({
             id: `general-${n.id}`,
             title: "NEPSE Notice",
             text: n.noticeHeading || "General market notice available.",
             tone: "info" as const,
+            category: "general" as const,
+            timestamp: parseDateToTimestamp((n as { addedDate?: string }).addedDate),
+            details: n.noticeHeading || "No details available for this notice.",
+            documents: [] as Array<{ label: string; url: string }>,
         }))
-        const company = disclosures.slice(0, 4).map((d) => ({
+        const company = disclosures.slice(0, 6).map((d) => ({
             id: `disclosure-${d.id}`,
             title: "Company Disclosure",
             text: d.newsHeadline || "A company disclosure was published.",
             tone: "warning" as const,
+            category: "disclosure" as const,
+            timestamp: parseDateToTimestamp(d.addedDate),
+            details: stripHtml(d.newsBody) || d.newsHeadline || "No details available for this disclosure.",
+            documents: toDocuments(d.applicationDocumentDetailsList),
         }))
-        const exchange = exchangeMessages.slice(0, 4).map((m) => ({
+        const exchange = exchangeMessages.slice(0, 6).map((m) => ({
             id: `exchange-${m.id}`,
             title: "Exchange Message",
             text: m.messageTitle || "A new exchange message is available.",
             tone: "success" as const,
+            category: "exchange" as const,
+            timestamp: parseDateToTimestamp(m.expiryDate),
+            details: stripHtml(m.messageBody) || m.messageTitle || "No details available for this exchange message.",
+            documents: (() => {
+                const url = resolveNepseDocumentUrl(m.filePath || null)
+                return url ? [{ label: "Exchange Circular", url }] : []
+            })(),
         }))
 
-        return [...general, ...company, ...exchange].slice(0, 8)
+        return [...general, ...company, ...exchange]
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+            .slice(0, 14)
     }, [noticesBundle, disclosures, exchangeMessages])
+
+    const overviewNotificationsWithMeta = useMemo(() => {
+        const formatter = new Intl.DateTimeFormat(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        })
+
+        return overviewNotifications.map((item) => ({
+            ...item,
+            dateLabel: item.timestamp ? formatter.format(new Date(item.timestamp)) : "Recently",
+        }))
+    }, [overviewNotifications])
+
+    const selectedOverviewNotification = useMemo(
+        () => overviewNotificationsWithMeta.find((item) => item.id === selectedOverviewNotificationId) || null,
+        [overviewNotificationsWithMeta, selectedOverviewNotificationId],
+    )
 
     const ipoInsights = useMemo(() => {
         const normalizeIpoName = (value?: string) =>
@@ -970,19 +1135,29 @@ export function PortfolioList() {
         }
     }, [ipoFilter, showAllIPOs, upcomingIPOs, userProfile?.meroShare?.applicationLogs])
 
+    const openOverviewNotificationDetails = (id: string) => {
+        setSelectedOverviewNotificationId(id)
+        setSelectedOverviewNotificationDocUrl(null)
+    }
+
+    const closeOverviewNotificationDetails = (open: boolean) => {
+        if (open) return
+        setSelectedOverviewNotificationId(null)
+        setSelectedOverviewNotificationDocUrl(null)
+    }
+
+    const openOverviewNotificationDocument = (url: string) => {
+        const previewUrl = isPdfLikeUrl(url)
+            ? `/api/proxy/pdf?url=${encodeURIComponent(url)}`
+            : url
+        setSelectedOverviewNotificationDocUrl(previewUrl)
+    }
+
     const renderOverviewHeader = () => {
-        const totalInvest = portfolios.reduce(
-            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.investment || 0),
-            0,
-        )
-        const totalCurrent = portfolios.reduce(
-            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.current || 0),
-            0,
-        )
-        const totalTodayChange = portfolios.reduce(
-            (sum, p) => sum + (portfolioSummaryById.get(p.id)?.todayChange || 0),
-            0,
-        )
+        const includedPortfolios = portfolios.filter((p) => includedPortfolioIds.has(p.id))
+        const totalInvest = includedPortfolios.reduce((sum, p) => sum + (portfolioSummaryById.get(p.id)?.investment || 0), 0)
+        const totalCurrent = includedPortfolios.reduce((sum, p) => sum + (portfolioSummaryById.get(p.id)?.current || 0), 0)
+        const totalTodayChange = includedPortfolios.reduce((sum, p) => sum + (portfolioSummaryById.get(p.id)?.todayChange || 0), 0)
         const totalPl = totalCurrent - totalInvest
         const totalPlPerc = totalInvest > 0 ? (totalPl / totalInvest) * 100 : 0
         const previousTotalValue = totalCurrent - totalTodayChange
@@ -1086,6 +1261,7 @@ export function PortfolioList() {
 
     const renderPortfolioCard = (p: Portfolio) => {
         const summary = portfolioSummaryById.get(p.id) || { investment: 0, current: 0, count: 0, todayChange: 0 };
+        const isIncludedInTotals = p.includeInTotals !== false
         const profitLoss = summary.current - summary.investment;
         const profitPerc = summary.investment > 0 ? (profitLoss / summary.investment) * 100 : 0;
         const isProfit = profitLoss >= 0;
@@ -1095,7 +1271,10 @@ export function PortfolioList() {
         return (
             <Card
                 key={p.id}
-                className="group cursor-pointer border-muted/50 hover:border-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 bg-card/40 backdrop-blur-sm overflow-hidden flex flex-col text-left"
+                className={cn(
+                    "group cursor-pointer border-muted/50 hover:border-primary/30 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 bg-card/40 backdrop-blur-sm overflow-hidden flex flex-col text-left",
+                    !isIncludedInTotals && "opacity-75 border-dashed",
+                )}
                 onClick={() => {
                     switchPortfolio(p.id)
                     setViewMode("detail")
@@ -1103,10 +1282,45 @@ export function PortfolioList() {
             >
                 <CardHeader className="pb-3 sm:pb-4 relative px-4 sm:px-6">
                     <div className="flex items-center justify-between mb-2">
-                        <Badge variant="outline" className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
-                            Portfolio
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
+                                Portfolio
+                            </Badge>
+                            <Badge
+                                variant={isIncludedInTotals ? "secondary" : "outline"}
+                                className={cn(
+                                    "text-[9px] sm:text-[10px] font-black uppercase tracking-widest",
+                                    isIncludedInTotals ? "bg-success/10 text-success border-success/20" : "text-muted-foreground border-muted/30",
+                                )}
+                            >
+                                {isIncludedInTotals ? "Included in Total" : "Excluded from Total"}
+                            </Badge>
+                        </div>
                         <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                title="Edit Portfolio Details"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    void handleEditPortfolioDetails(p)
+                                }}
+                            >
+                                <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                title={isIncludedInTotals ? "Exclude from Total" : "Include in Total"}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    void handleTogglePortfolioIncluded(p)
+                                }}
+                            >
+                                {isIncludedInTotals ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </Button>
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -1225,6 +1439,92 @@ export function PortfolioList() {
                     open={isIPODetailOpen}
                     onOpenChange={setIsIPODetailOpen}
                 />
+                <Dialog
+                    open={Boolean(selectedOverviewNotification)}
+                    onOpenChange={closeOverviewNotificationDetails}
+                >
+                    <DialogContent className="max-w-3xl w-[95vw] max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
+                        <DialogHeader className="border-b border-muted/30 px-5 py-4">
+                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
+                                {selectedOverviewNotification?.title || "Notification"}
+                            </DialogTitle>
+                            {selectedOverviewNotification ? (
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                    {selectedOverviewNotification.category} • {selectedOverviewNotification.dateLabel}
+                                </p>
+                            ) : null}
+                        </DialogHeader>
+                        {selectedOverviewNotification && (
+                            <ScrollArea className="flex-1 px-5 py-4">
+                                <div className="space-y-4">
+                                    <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                            Headline
+                                        </p>
+                                        <p className="text-sm font-semibold text-foreground/90">
+                                            {selectedOverviewNotification.text}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-muted/30 bg-background/60 p-3">
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                            Details
+                                        </p>
+                                        <p className="text-sm leading-relaxed text-foreground/90">
+                                            {selectedOverviewNotification.details}
+                                        </p>
+                                    </div>
+                                    {selectedOverviewNotification.documents.length > 0 && (
+                                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                            <div className="mb-2 flex items-center gap-2">
+                                                <FileText className="w-4 h-4 text-primary" />
+                                                <p className="text-xs font-black uppercase tracking-widest text-primary">
+                                                    Filings
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedOverviewNotification.documents.map((doc, index) => (
+                                                    <Button
+                                                        key={`${doc.url}-${index}`}
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 rounded-md text-[10px] font-black uppercase tracking-wider"
+                                                        onClick={() => openOverviewNotificationDocument(doc.url)}
+                                                    >
+                                                        {doc.label}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {selectedOverviewNotificationDocUrl && (
+                                        <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
+                                            <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                    Filing Preview
+                                                </p>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 text-[10px] font-black uppercase tracking-wider"
+                                                    onClick={() => setSelectedOverviewNotificationDocUrl(null)}
+                                                >
+                                                    Close Preview
+                                                </Button>
+                                            </div>
+                                            <iframe
+                                                src={selectedOverviewNotificationDocUrl}
+                                                title="Filing Preview"
+                                                className="w-full h-[60vh] bg-background"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </ScrollArea>
+                        )}
+                    </DialogContent>
+                </Dialog>
 
                 <div className="space-y-8 animate-in fade-in duration-500 text-left">
                     <div className="flex items-center justify-between">
@@ -1258,7 +1558,7 @@ export function PortfolioList() {
 
                     <div className="mt-8">
                         {renderOverviewHeader()}
-                        {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null || overviewNotifications.length > 0) && (
+                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0) && (
                             <div className="mb-6">
                                 <Button
                                     type="button"
@@ -1273,51 +1573,122 @@ export function PortfolioList() {
                                     <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-transparent text-left">
                                         <CardContent className="p-4 sm:p-5">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {(marketSnapshot.topGainer || marketSnapshot.topLoser || marketSnapshot.turnover !== null) && (
+                                                {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null) && (
                                                     <div>
                                                         <div className="flex items-center gap-2 mb-2">
                                                             <BarChart3 className="w-4 h-4 text-primary" />
                                                             <h4 className="text-sm font-black uppercase tracking-widest">Market Snapshot</h4>
                                                         </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3 gap-3">
-                                                            <div className="rounded-xl border border-success/20 bg-success/5 p-3">
-                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Gainer</p>
-                                                                <p className="text-sm font-black truncate">{marketSnapshot.topGainer?.symbol || "-"}</p>
-                                                                <p className="text-xs font-bold text-success">
-                                                                    {typeof marketSnapshot.topGainer?.percentageChange === "number"
-                                                                        ? `+${marketSnapshot.topGainer.percentageChange.toFixed(2)}%`
-                                                                        : "-"}
-                                                                </p>
-                                                            </div>
-                                                            <div className="rounded-xl border border-error/20 bg-error/5 p-3">
-                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Top Loser</p>
-                                                                <p className="text-sm font-black truncate">{marketSnapshot.topLoser?.symbol || "-"}</p>
-                                                                <p className="text-xs font-bold text-error">
-                                                                    {typeof marketSnapshot.topLoser?.percentageChange === "number"
-                                                                        ? `${marketSnapshot.topLoser.percentageChange.toFixed(2)}%`
-                                                                        : "-"}
-                                                                </p>
-                                                            </div>
+                                                        <div className="grid grid-cols-1 gap-3">
                                                             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-                                                                <p className="text-[10px] uppercase font-black text-muted-foreground">Total Turnover</p>
-                                                                <p className="text-sm font-black truncate">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <p className="text-[10px] uppercase font-black text-muted-foreground">Total Turnover</p>
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className={cn(
+                                                                            "h-6 rounded-full px-2.5 text-[10px] font-black tracking-wider border inline-flex items-center gap-1.5",
+                                                                            marketStatusMeta.badgeClass,
+                                                                        )}
+                                                                    >
+                                                                        <span className={cn("inline-block h-1.5 w-1.5 rounded-full", marketStatusMeta.dotClass)} />
+                                                                        MARKET {marketStatusMeta.statusText}
+                                                                    </Badge>
+                                                                </div>
+                                                                <p className="mt-1 text-sm font-black truncate">
                                                                     {typeof marketSnapshot.turnover === "number"
                                                                         ? `NPR ${marketSnapshot.turnover.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                                                                        : "-"}
+                                                                        : "Not available right now"}
                                                                 </p>
-                                                                <p className="text-[10px] font-bold text-primary">From NEPSE summary</p>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                <div className="rounded-xl border border-success/20 bg-success/5 p-3">
+                                                                    <p className="text-[10px] uppercase font-black text-success">Top Gainers</p>
+                                                                    <div className="mt-2 space-y-1.5">
+                                                                        {marketSnapshot.topGainers.slice(0, 5).map((item, index) => (
+                                                                            <div key={`gainer-${item.symbol}-${index}`} className="flex items-center justify-between gap-2 text-xs">
+                                                                                <TooltipProvider>
+                                                                                    <UITooltip>
+                                                                                        <TooltipTrigger asChild>
+                                                                                            <span className="font-black uppercase cursor-help">{item.symbol}</span>
+                                                                                        </TooltipTrigger>
+                                                                                        <TooltipContent side="top">
+                                                                                            {getMarketSymbolName(item.symbol)}
+                                                                                        </TooltipContent>
+                                                                                    </UITooltip>
+                                                                                </TooltipProvider>
+                                                                                <div className="text-right">
+                                                                                    <p className="font-black text-success">+{item.percentageChange.toFixed(2)}%</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                        {marketSnapshot.topGainers.length === 0 && (
+                                                                            <p className="text-[11px] text-muted-foreground">No gainer data available.</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="rounded-xl border border-error/20 bg-error/5 p-3">
+                                                                    <p className="text-[10px] uppercase font-black text-error">Top Losers</p>
+                                                                    <div className="mt-2 space-y-1.5">
+                                                                        {marketSnapshot.topLosers.slice(0, 5).map((item, index) => (
+                                                                            <div key={`loser-${item.symbol}-${index}`} className="flex items-center justify-between gap-2 text-xs">
+                                                                                <TooltipProvider>
+                                                                                    <UITooltip>
+                                                                                        <TooltipTrigger asChild>
+                                                                                            <span className="font-black uppercase cursor-help">{item.symbol}</span>
+                                                                                        </TooltipTrigger>
+                                                                                        <TooltipContent side="top">
+                                                                                            {getMarketSymbolName(item.symbol)}
+                                                                                        </TooltipContent>
+                                                                                    </UITooltip>
+                                                                                </TooltipProvider>
+                                                                                <div className="text-right">
+                                                                                    <p className="font-black text-error">{item.percentageChange.toFixed(2)}%</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                        {marketSnapshot.topLosers.length === 0 && (
+                                                                            <p className="text-[11px] text-muted-foreground">No loser data available.</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                                                                <p className="text-[10px] uppercase font-black text-amber-600 dark:text-amber-300">Top Turnover Symbols</p>
+                                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                    {marketSnapshot.topTurnover.slice(0, 5).map((item, index) => (
+                                                                        <TooltipProvider key={`turnover-${item.symbol}-${index}`}>
+                                                                            <UITooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <Badge variant="outline" className="h-6 rounded-md text-[10px] font-black cursor-help">
+                                                                                        {item.symbol}
+                                                                                    </Badge>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent side="top">
+                                                                                    {getMarketSymbolName(item.symbol)}
+                                                                                </TooltipContent>
+                                                                            </UITooltip>
+                                                                        </TooltipProvider>
+                                                                    ))}
+                                                                    {marketSnapshot.topTurnover.length === 0 && (
+                                                                        <p className="text-[11px] text-muted-foreground">No turnover leaders available.</p>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 )}
-                                                {overviewNotifications.length > 0 && (
+                                                {overviewNotificationsWithMeta.length > 0 && (
                                                     <div>
                                                         <div className="flex items-center gap-2 mb-2">
-                                                            <Activity className="w-4 h-4 text-primary" />
-                                                            <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                            <div className="flex items-center gap-2">
+                                                                <Activity className="w-4 h-4 text-primary" />
+                                                                <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                            </div>
                                                         </div>
-                                                        <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                                                            {overviewNotifications.map((item) => (
+                                                        <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                                                            {overviewNotificationsWithMeta.map((item) => (
                                                                 <div
                                                                     key={item.id}
                                                                     className={cn(
@@ -1327,14 +1698,42 @@ export function PortfolioList() {
                                                                         item.tone === "success" && "border-success/20 bg-success/5",
                                                                     )}
                                                                 >
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                                        {item.title}
-                                                                    </p>
-                                                                    <p className="text-xs font-semibold text-foreground/90 line-clamp-2">
-                                                                        {item.text}
-                                                                    </p>
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <div>
+                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                                {item.title}
+                                                                            </p>
+                                                                            <p className="text-xs font-semibold text-foreground/90 line-clamp-3">
+                                                                                {item.text}
+                                                                            </p>
+                                                                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                                                {item.dateLabel}
+                                                                            </p>
+                                                                        </div>
+                                                                        <Badge variant="secondary" className="h-5 text-[9px] font-black uppercase">
+                                                                            {item.category}
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className="mt-2 flex items-center gap-1.5">
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-wider"
+                                                                            onClick={() => openOverviewNotificationDetails(item.id)}
+                                                                        >
+                                                                            View Details
+                                                                        </Button>
+                                                                    </div>
                                                                 </div>
                                                             ))}
+                                                            {overviewNotificationsWithMeta.length === 0 && (
+                                                                <div className="rounded-xl border border-dashed border-muted/50 bg-muted/10 px-3 py-4 text-center">
+                                                                    <p className="text-xs font-semibold text-muted-foreground">
+                                                                        No notifications right now.
+                                                                    </p>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 )}
