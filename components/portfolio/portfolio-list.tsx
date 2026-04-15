@@ -605,7 +605,9 @@ export function PortfolioList() {
     }
 
     const triggerFileUpload = () => {
-        fileInputRef.current?.click()
+        if (!fileInputRef.current) return
+        fileInputRef.current.value = ""
+        fileInputRef.current.click()
     }
 
     const toggleTxSelection = (id: string) => {
@@ -2546,11 +2548,11 @@ export function PortfolioList() {
                                 </div>
                             ) : hasMoverData || hasNoMoverData ? (
                                 <div className={cn(
-                                    "h-full w-full p-4 sm:p-6 grid grid-cols-1 gap-4",
+                                    "h-full w-full p-4 sm:p-6 grid grid-cols-1 gap-4 min-h-0",
                                     hasNoMoverData ? "lg:grid-cols-3" : "lg:grid-cols-2",
                                 )}>
                                     {portfolioMovers.gainers.length > 0 && (
-                                        <div className="space-y-2">
+                                        <div className="flex flex-col gap-2 min-h-0">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
                                                 <div className="flex items-center gap-1.5">
@@ -2560,34 +2562,36 @@ export function PortfolioList() {
                                                     <TrendingUp className="w-3.5 h-3.5 text-success" />
                                                 </div>
                                             </div>
-                                            {portfolioMovers.gainers.map((row) => (
-                                                <div
-                                                    key={row.id}
-                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
-                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
-                                                                {formatUnits(row.units)} units
-                                                            </Badge>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {portfolioMovers.gainers.map((row) => (
+                                                    <div
+                                                        key={row.id}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} units
+                                                                </Badge>
+                                                            </div>
+                                                            {row.name ? (
+                                                                <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                            ) : null}
                                                         </div>
-                                                        {row.name ? (
-                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
-                                                        ) : null}
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-success">
+                                                                +{row.percentChange.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-success">+{row.valueChange.toFixed(2)}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[11px] font-black text-success">
-                                                            +{row.percentChange.toFixed(2)}%
-                                                        </p>
-                                                        <p className="text-[9px] text-success">+{row.valueChange.toFixed(2)}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     {portfolioMovers.losers.length > 0 && (
-                                        <div className="space-y-2">
+                                        <div className="flex flex-col gap-2 min-h-0">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
                                                 <div className="flex items-center gap-1.5">
@@ -2597,62 +2601,66 @@ export function PortfolioList() {
                                                     <TrendingDown className="w-3.5 h-3.5 text-error" />
                                                 </div>
                                             </div>
-                                            {portfolioMovers.losers.map((row) => (
-                                                <div
-                                                    key={row.id}
-                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
-                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
-                                                                {formatUnits(row.units)} units
-                                                            </Badge>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {portfolioMovers.losers.map((row) => (
+                                                    <div
+                                                        key={row.id}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} units
+                                                                </Badge>
+                                                            </div>
+                                                            {row.name ? (
+                                                                <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                            ) : null}
                                                         </div>
-                                                        {row.name ? (
-                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
-                                                        ) : null}
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-error">
+                                                                {row.percentChange.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-error">{row.valueChange.toFixed(2)}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[11px] font-black text-error">
-                                                            {row.percentChange.toFixed(2)}%
-                                                        </p>
-                                                        <p className="text-[9px] text-error">{row.valueChange.toFixed(2)}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     {portfolioMovers.noMovers.length > 0 && (
-                                        <div className="space-y-2">
+                                        <div className="flex flex-col gap-2 min-h-0">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No Movers</span>
                                                 <Activity className="w-3.5 h-3.5 text-muted-foreground" />
                                             </div>
-                                            {portfolioMovers.noMovers.map((row) => (
-                                                <div
-                                                    key={row.id}
-                                                    className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-[11px] font-black uppercase">{row.symbol}</p>
-                                                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
-                                                                {formatUnits(row.units)} units
-                                                            </Badge>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {portfolioMovers.noMovers.map((row) => (
+                                                    <div
+                                                        key={row.id}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} units
+                                                                </Badge>
+                                                            </div>
+                                                            {row.name ? (
+                                                                <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
+                                                            ) : null}
                                                         </div>
-                                                        {row.name ? (
-                                                            <p className="text-[9px] text-muted-foreground truncate">{row.name}</p>
-                                                        ) : null}
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-muted-foreground">
+                                                                {row.percentChange.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-muted-foreground">{row.valueChange.toFixed(2)}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[11px] font-black text-muted-foreground">
-                                                            {row.percentChange.toFixed(2)}%
-                                                        </p>
-                                                        <p className="text-[9px] text-muted-foreground">{row.valueChange.toFixed(2)}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -2672,6 +2680,14 @@ export function PortfolioList() {
 
             {/* Tabs Section */}
             <Tabs defaultValue="holdings" value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    aria-label="Import portfolio data"
+                />
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-stretch sm:items-center bg-card/60 p-2 rounded-2xl border border-border/50 mb-4 sm:mb-6 shadow-sm backdrop-blur-md">
                     <TabsList className="bg-muted/50 rounded-xl h-10 p-1 w-full sm:w-auto">
                         <TabsTrigger value="holdings" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm px-3 sm:px-4 flex-1 sm:flex-none justify-center">
@@ -2730,14 +2746,6 @@ export function PortfolioList() {
                                 )}
                             </div>
                             <div className="flex gap-2 text-left">
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    className="hidden"
-                                    accept=".csv"
-                                    onChange={handleFileUpload}
-                                    aria-label="Import portfolio data"
-                                />
                                 <Button
                                     variant="secondary"
                                     size="sm"

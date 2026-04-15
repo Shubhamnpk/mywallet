@@ -2094,6 +2094,13 @@ export function useWalletData() {
       scripNamesMap: parseLocalJson("scripNamesMap", {} as Record<string, string>),
       settings: {
         showScrollbars: localStorage.getItem("wallet_show_scrollbars") !== "false",
+        biometric: {
+          enabled: localStorage.getItem("wallet_biometric_enabled") === "true",
+          credentialId: localStorage.getItem("wallet_biometric_credential_id"),
+          userId: localStorage.getItem("wallet_biometric_user_id"),
+          wrappedPin: localStorage.getItem("wallet_biometric_pin_wrapped"),
+          prfSalt: localStorage.getItem("wallet_biometric_prf_salt"),
+        },
       },
       meta: {
         exportedAt: new Date().toISOString(),
@@ -2277,6 +2284,32 @@ export function useWalletData() {
       // Import scrollbar setting (only if userProfile is imported)
       if (data.settings?.showScrollbars !== undefined && data.userProfile && typeof window !== 'undefined') {
         localStorage.setItem("wallet_show_scrollbars", data.settings.showScrollbars.toString())
+      }
+
+      // Import biometric security setting (only if userProfile is imported)
+      if (data.userProfile && data.settings?.biometric && typeof data.settings.biometric === "object" && typeof window !== "undefined") {
+        const biometric = data.settings.biometric
+        if (biometric.enabled === true) {
+          localStorage.setItem("wallet_biometric_enabled", "true")
+          if (typeof biometric.credentialId === "string" && biometric.credentialId) {
+            localStorage.setItem("wallet_biometric_credential_id", biometric.credentialId)
+          }
+          if (typeof biometric.userId === "string" && biometric.userId) {
+            localStorage.setItem("wallet_biometric_user_id", biometric.userId)
+          }
+          if (typeof biometric.wrappedPin === "string" && biometric.wrappedPin) {
+            localStorage.setItem("wallet_biometric_pin_wrapped", biometric.wrappedPin)
+          }
+          if (typeof biometric.prfSalt === "string" && biometric.prfSalt) {
+            localStorage.setItem("wallet_biometric_prf_salt", biometric.prfSalt)
+          }
+        } else if (biometric.enabled === false) {
+          localStorage.removeItem("wallet_biometric_enabled")
+          localStorage.removeItem("wallet_biometric_credential_id")
+          localStorage.removeItem("wallet_biometric_user_id")
+          localStorage.removeItem("wallet_biometric_pin_wrapped")
+          localStorage.removeItem("wallet_biometric_prf_salt")
+        }
       }
 
       if (data.sectorsMap && typeof data.sectorsMap === "object") {

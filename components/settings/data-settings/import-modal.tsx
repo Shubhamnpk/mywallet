@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/hooks/use-toast"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
@@ -23,16 +24,11 @@ type ImportOptions = {
   transactions: boolean
   budgets: boolean
   goals: boolean
-  debtAccounts: boolean
-  creditAccounts: boolean
-  debtCreditTransactions: boolean
+  debtProfile: boolean
+  creditProfile: boolean
   categories: boolean
   emergencyFund: boolean
-  portfolio: boolean
-  shareTransactions: boolean
-  portfolios: boolean
-  activePortfolioId: boolean
-  showScrollbars: boolean
+  portfolioProfile: boolean
 }
 
 type ImportMode = "all" | "custom"
@@ -51,34 +47,35 @@ const defaultOptions: ImportOptions = {
   transactions: false,
   budgets: false,
   goals: false,
-  debtAccounts: false,
-  creditAccounts: false,
-  debtCreditTransactions: false,
+  debtProfile: false,
+  creditProfile: false,
   categories: false,
   emergencyFund: false,
-  portfolio: false,
-  shareTransactions: false,
-  portfolios: false,
-  activePortfolioId: false,
-  showScrollbars: false,
+  portfolioProfile: false,
 }
 
 function getAvailableOptions(data: any): ImportOptions {
+  const debtIds = new Set(Array.isArray(data?.debtAccounts) ? data.debtAccounts.map((item: any) => item.id) : [])
+  const creditIds = new Set(Array.isArray(data?.creditAccounts) ? data.creditAccounts.map((item: any) => item.id) : [])
+  const history = Array.isArray(data?.debtCreditTransactions) ? data.debtCreditTransactions : []
   return {
     userProfile: !!data?.userProfile,
     transactions: Array.isArray(data?.transactions),
     budgets: Array.isArray(data?.budgets),
     goals: Array.isArray(data?.goals),
-    debtAccounts: Array.isArray(data?.debtAccounts),
-    creditAccounts: Array.isArray(data?.creditAccounts),
-    debtCreditTransactions: Array.isArray(data?.debtCreditTransactions),
+    debtProfile:
+      Array.isArray(data?.debtAccounts) ||
+      history.some((item: any) => debtIds.has(item?.accountId) || item?.accountType === "debt"),
+    creditProfile:
+      Array.isArray(data?.creditAccounts) ||
+      history.some((item: any) => creditIds.has(item?.accountId) || item?.accountType === "credit"),
     categories: Array.isArray(data?.categories),
     emergencyFund: typeof data?.emergencyFund === "number" || typeof data?.emergencyFund === "string",
-    portfolio: Array.isArray(data?.portfolio),
-    shareTransactions: Array.isArray(data?.shareTransactions),
-    portfolios: Array.isArray(data?.portfolios),
-    activePortfolioId: Object.prototype.hasOwnProperty.call(data ?? {}, "activePortfolioId"),
-    showScrollbars: data?.settings?.showScrollbars !== undefined,
+    portfolioProfile:
+      Array.isArray(data?.portfolio) ||
+      Array.isArray(data?.shareTransactions) ||
+      Array.isArray(data?.portfolios) ||
+      Object.prototype.hasOwnProperty.call(data ?? {}, "activePortfolioId"),
   }
 }
 
@@ -92,27 +89,59 @@ function buildSelectiveData(source: any, options: ImportOptions) {
   if (options.transactions && source.transactions) selectiveData.transactions = source.transactions
   if (options.budgets && source.budgets) selectiveData.budgets = source.budgets
   if (options.goals && source.goals) selectiveData.goals = source.goals
-  if (options.debtAccounts && source.debtAccounts) selectiveData.debtAccounts = source.debtAccounts
-  if (options.creditAccounts && source.creditAccounts) selectiveData.creditAccounts = source.creditAccounts
-  if (options.debtCreditTransactions && Array.isArray(source.debtCreditTransactions)) {
-    selectiveData.debtCreditTransactions = source.debtCreditTransactions
+  let accountHistory: any[] = []
+  if (options.debtProfile && Array.isArray(source.debtAccounts)) {
+    selectiveData.debtAccounts = source.debtAccounts
+    const debtIds = new Set(source.debtAccounts.map((item: any) => item.id))
+    accountHistory = [
+      ...accountHistory,
+      ...((Array.isArray(source.debtCreditTransactions) ? source.debtCreditTransactions : []).filter(
+        (item: any) => debtIds.has(item?.accountId) || item?.accountType === "debt",
+      )),
+    ]
+  }
+  if (options.creditProfile && Array.isArray(source.creditAccounts)) {
+    selectiveData.creditAccounts = source.creditAccounts
+    const creditIds = new Set(source.creditAccounts.map((item: any) => item.id))
+    accountHistory = [
+      ...accountHistory,
+      ...((Array.isArray(source.debtCreditTransactions) ? source.debtCreditTransactions : []).filter(
+        (item: any) => creditIds.has(item?.accountId) || item?.accountType === "credit",
+      )),
+    ]
+  }
+  if (accountHistory.length > 0) {
+    const unique = new Map<string, any>()
+    accountHistory.forEach((item: any) => {
+      if (item?.id) unique.set(item.id, item)
+    })
+    selectiveData.debtCreditTransactions = unique.size > 0 ? Array.from(unique.values()) : accountHistory
   }
   if (options.categories && source.categories) selectiveData.categories = source.categories
   if (options.emergencyFund && (typeof source.emergencyFund === "number" || typeof source.emergencyFund === "string")) {
     selectiveData.emergencyFund = source.emergencyFund
   }
-  if (options.portfolio && Array.isArray(source.portfolio)) selectiveData.portfolio = source.portfolio
-  if (options.shareTransactions && Array.isArray(source.shareTransactions)) {
-    selectiveData.shareTransactions = source.shareTransactions
+  if (options.portfolioProfile) {
+    if (Array.isArray(source.portfolio)) selectiveData.portfolio = source.portfolio
+    if (Array.isArray(source.shareTransactions)) selectiveData.shareTransactions = source.shareTransactions
+    if (Array.isArray(source.portfolios)) selectiveData.portfolios = source.portfolios
+    if (Object.prototype.hasOwnProperty.call(source, "activePortfolioId")) {
+      selectiveData.activePortfolioId = source.activePortfolioId
+    }
   }
-  if (options.portfolios && Array.isArray(source.portfolios)) selectiveData.portfolios = source.portfolios
-  if (options.activePortfolioId && Object.prototype.hasOwnProperty.call(source, "activePortfolioId")) {
-    selectiveData.activePortfolioId = source.activePortfolioId
-  }
-  if (options.showScrollbars && source.settings?.showScrollbars !== undefined) {
-    selectiveData.settings = {
-      ...selectiveData.settings,
-      showScrollbars: source.settings.showScrollbars,
+  // Profile/settings metadata is imported with profile selection.
+  if (options.userProfile) {
+    if (source.settings?.showScrollbars !== undefined) {
+      selectiveData.settings = {
+        ...selectiveData.settings,
+        showScrollbars: source.settings.showScrollbars,
+      }
+    }
+    if (source.settings?.biometric && typeof source.settings.biometric === "object") {
+      selectiveData.settings = {
+        ...selectiveData.settings,
+        biometric: source.settings.biometric,
+      }
     }
   }
 
@@ -221,6 +250,16 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
       })
       return
     }
+    if (importPin.trim().length !== 6) {
+      const message = "PIN must be 6 digits"
+      setImportError(message)
+      toast({
+        title: "Invalid PIN",
+        description: message,
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsBusy(true)
     setImportError("")
@@ -264,6 +303,9 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     try {
       if (needsWalletPin && !walletPin.trim()) {
         throw new Error("Wallet PIN required to save restored data")
+      }
+      if (needsWalletPin && walletPin.trim().length !== 6) {
+        throw new Error("Wallet PIN must be 6 digits")
       }
       const success = await onImportData(payload, walletPin.trim() || undefined)
       if (!success) {
@@ -309,15 +351,35 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
       </div>
       <div className="space-y-2">
         <Label htmlFor="import-pin">PIN</Label>
+        <div className="flex justify-center py-2">
+          <InputOTP
+            id="import-pin"
+            maxLength={6}
+            value={importPin}
+            onChange={(value) => {
+              setImportPin(value)
+              setImportError("")
+            }}
+          >
+            <InputOTPGroup>
+              <InputOTPSlot index={0} />
+              <InputOTPSlot index={1} />
+              <InputOTPSlot index={2} />
+              <InputOTPSlot index={3} />
+              <InputOTPSlot index={4} />
+              <InputOTPSlot index={5} />
+            </InputOTPGroup>
+          </InputOTP>
+        </div>
         <Input
-          id="import-pin"
           type="password"
-          placeholder="Enter backup PIN"
+          placeholder="Backup PIN"
           value={importPin}
           onChange={(e) => {
             setImportPin(e.target.value)
             setImportError("")
           }}
+          className="sr-only"
         />
       </div>
       <p className="text-xs text-muted-foreground">Step 2 of 3: Decrypt backup.</p>
@@ -363,16 +425,21 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
             ["transactions", "Transaction Data", Array.isArray(availableImportData?.transactions) ? `${availableImportData.transactions.length} items` : "Not in backup"],
             ["budgets", "Budget Data", Array.isArray(availableImportData?.budgets) ? `${availableImportData.budgets.length} items` : "Not in backup"],
             ["goals", "Goals & Savings", Array.isArray(availableImportData?.goals) ? `${availableImportData.goals.length} items` : "Not in backup"],
-            ["debtAccounts", "Debt Accounts", Array.isArray(availableImportData?.debtAccounts) ? `${availableImportData.debtAccounts.length} items` : "Not in backup"],
-            ["creditAccounts", "Credit Accounts", Array.isArray(availableImportData?.creditAccounts) ? `${availableImportData.creditAccounts.length} items` : "Not in backup"],
-            ["debtCreditTransactions", "Debt/Credit History", Array.isArray(availableImportData?.debtCreditTransactions) ? `${availableImportData.debtCreditTransactions.length} items` : "Not in backup"],
+            ["debtProfile", "Debt Account + History", Array.isArray(availableImportData?.debtAccounts) ? `${availableImportData.debtAccounts.length} accounts` : "Not in backup"],
+            ["creditProfile", "Credit Account + History", Array.isArray(availableImportData?.creditAccounts) ? `${availableImportData.creditAccounts.length} accounts` : "Not in backup"],
             ["categories", "Categories", Array.isArray(availableImportData?.categories) ? `${availableImportData.categories.length} items` : "Not in backup"],
             ["emergencyFund", "Emergency Fund", (typeof availableImportData?.emergencyFund === "number" || typeof availableImportData?.emergencyFund === "string") ? String(availableImportData.emergencyFund) : "Not in backup"],
-            ["portfolio", "Portfolio Holdings", Array.isArray(availableImportData?.portfolio) ? `${availableImportData.portfolio.length} items` : "Not in backup"],
-            ["shareTransactions", "Share Transactions", Array.isArray(availableImportData?.shareTransactions) ? `${availableImportData.shareTransactions.length} items` : "Not in backup"],
-            ["portfolios", "Portfolio Lists", Array.isArray(availableImportData?.portfolios) ? `${availableImportData.portfolios.length} items` : "Not in backup"],
-            ["activePortfolioId", "Active Portfolio Selection", Object.prototype.hasOwnProperty.call(availableImportData ?? {}, "activePortfolioId") ? "Available" : "Not in backup"],
-            ["showScrollbars", "Scrollbar Settings", availableImportData?.settings?.showScrollbars !== undefined ? "Available" : "Not in backup"],
+            [
+              "portfolioProfile",
+              "Portfolio Profile",
+              `Holdings ${
+                Array.isArray(availableImportData?.portfolio) ? availableImportData.portfolio.length : 0
+              }, Transactions ${
+                Array.isArray(availableImportData?.shareTransactions) ? availableImportData.shareTransactions.length : 0
+              }, Lists ${
+                Array.isArray(availableImportData?.portfolios) ? availableImportData.portfolios.length : 0
+              }`,
+            ],
           ].map(([key, label, description]) => {
             const typedKey = key as keyof ImportOptions
             return (
@@ -397,15 +464,35 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
           <Label htmlFor="wallet-pin" className="text-sm font-medium">
             Wallet PIN (to save restored data)
           </Label>
+          <div className="flex justify-center py-2">
+            <InputOTP
+              id="wallet-pin"
+              maxLength={6}
+              value={walletPin}
+              onChange={(value) => {
+                setWalletPin(value)
+                setImportError("")
+              }}
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
           <Input
-            id="wallet-pin"
             type="password"
-            placeholder="Enter your current wallet PIN"
+            placeholder="Current wallet PIN"
             value={walletPin}
             onChange={(e) => {
               setWalletPin(e.target.value)
               setImportError("")
             }}
+            className="sr-only"
           />
           <p className="text-xs text-muted-foreground">
             This is required to re-encrypt your data on this device. If your backup PIN is the same, you can reuse it.
@@ -453,7 +540,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
               <Button variant="outline" onClick={() => setStep("file")} disabled={isBusy}>
                 Back
               </Button>
-              <Button onClick={decryptBackup} disabled={!importPin.trim() || isBusy}>
+              <Button onClick={decryptBackup} disabled={importPin.trim().length !== 6 || isBusy}>
                 {isBusy ? "Decrypting..." : "Decrypt & Continue"}
               </Button>
             </>

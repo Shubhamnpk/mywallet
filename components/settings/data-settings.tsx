@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Label } from "@/components/ui/label"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Upload, Trash2, Database, FileText, ShieldCheck, Workflow, Cloud, Loader2, RefreshCw, Info } from "lucide-react"
@@ -464,7 +464,6 @@ export function DataSettings() {
         shareTransactions: true,
         portfolios: true,
         activePortfolioId: true,
-        showScrollbars: true,
       },
       userProfile,
       transactions,
@@ -483,7 +482,18 @@ export function DataSettings() {
     }
 
     const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
-    data.settings = { ...data.settings, showScrollbars }
+    const biometricEnabled = localStorage.getItem("wallet_biometric_enabled") === "true"
+    data.settings = {
+      ...data.settings,
+      showScrollbars,
+      biometric: {
+        enabled: biometricEnabled,
+        credentialId: localStorage.getItem("wallet_biometric_credential_id"),
+        userId: localStorage.getItem("wallet_biometric_user_id"),
+        wrappedPin: localStorage.getItem("wallet_biometric_pin_wrapped"),
+        prfSalt: localStorage.getItem("wallet_biometric_prf_salt"),
+      },
+    }
 
     if (mode === "full") {
       const extras = await loadFromLocalStorage([...nonEssentialBackupKeys])
@@ -1098,14 +1108,23 @@ export function DataSettings() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="dropbox-backup-pin">Backup PIN</Label>
-              <Input
-                id="dropbox-backup-pin"
-                type="password"
-                inputMode="numeric"
-                value={dropboxBackupPin}
-                onChange={(e) => setDropboxBackupPin(e.target.value)}
-                placeholder="Enter the PIN used to create the backup"
-              />
+              <div className="flex justify-center py-1">
+                <InputOTP
+                  id="dropbox-backup-pin"
+                  maxLength={6}
+                  value={dropboxBackupPin}
+                  onChange={setDropboxBackupPin}
+                >
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button
@@ -1125,6 +1144,14 @@ export function DataSettings() {
                     toast({
                       title: "PIN Required",
                       description: "Please enter the backup PIN.",
+                      variant: "destructive",
+                    })
+                    return
+                  }
+                  if (pin.length !== 6) {
+                    toast({
+                      title: "Invalid PIN",
+                      description: "PIN must be 6 digits.",
                       variant: "destructive",
                     })
                     return
@@ -1177,14 +1204,23 @@ export function DataSettings() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="dropbox-local-pin">Wallet PIN</Label>
-              <Input
-                id="dropbox-local-pin"
-                type="password"
-                inputMode="numeric"
-                value={dropboxLocalPin}
-                onChange={(e) => setDropboxLocalPin(e.target.value)}
-                placeholder="Enter your wallet PIN"
-              />
+              <div className="flex justify-center py-1">
+                <InputOTP
+                  id="dropbox-local-pin"
+                  maxLength={6}
+                  value={dropboxLocalPin}
+                  onChange={setDropboxLocalPin}
+                >
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button
@@ -1204,6 +1240,14 @@ export function DataSettings() {
                     toast({
                       title: "PIN Required",
                       description: "Please enter your wallet PIN.",
+                      variant: "destructive",
+                    })
+                    return
+                  }
+                  if (pin.length !== 6) {
+                    toast({
+                      title: "Invalid Wallet PIN",
+                      description: "Wallet PIN must be 6 digits.",
                       variant: "destructive",
                     })
                     return
