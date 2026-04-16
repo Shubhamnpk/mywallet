@@ -39,10 +39,11 @@ import {
   Star,
   Clock,
   Sparkles,
+  Receipt,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import type { Goal, UserProfile } from "@/types/wallet"
+import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
@@ -61,7 +62,7 @@ type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
-  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment } = useWalletData()
+  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -84,6 +85,12 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   const [investmentAmount, setInvestmentAmount] = useState("")
   const [investmentMarket, setInvestmentMarket] = useState<"nepal" | "uk" | "split">("split")
   const [investmentNotes, setInvestmentNotes] = useState("")
+  const [historyDialog, setHistoryDialog] = useState<{ open: boolean; goalId: string; goalName: string }>({
+    open: false,
+    goalId: "",
+    goalName: "",
+  })
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<FilterType>("all")
@@ -276,6 +283,60 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     if (progress >= 50) return "bg-amber-500"
     if (progress >= 25) return "bg-orange-500"
     return "bg-red-500"
+  }
+
+  const getGoalHistory = (goalId: string) =>
+    transactions
+      .filter((transaction) => transaction.allocationType === "goal" && transaction.allocationTarget === goalId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all") => {
+    if (range === "all") return items
+
+    const now = new Date()
+    const start = new Date(now)
+
+    if (range === "active-month") {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+    } else {
+      const day = start.getDay()
+      const diff = day === 0 ? 6 : day - 1
+      start.setDate(start.getDate() - diff)
+      start.setHours(0, 0, 0, 0)
+    }
+
+    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+  }
+
+  const getGoalHistoryMeta = (transaction: Transaction) => {
+    const normalizedDescription = (transaction.description || "").toLowerCase()
+    const normalizedCategory = (transaction.category || "").toLowerCase()
+
+    if (normalizedCategory === "goal investment" || normalizedDescription.includes("goal investment")) {
+      return {
+        badgeClassName: "border-blue-200 bg-blue-50 text-blue-700",
+        label: "Investment Use",
+        signedAmount: `-${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+        signedAmountClassName: "text-blue-600",
+      }
+    }
+
+    if (transaction.actual === 0 || normalizedCategory === "goal spending" || normalizedDescription.includes("spent from goal")) {
+      return {
+        badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
+        label: "Money Out",
+        signedAmount: `-${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+        signedAmountClassName: "text-amber-600",
+      }
+    }
+
+    return {
+      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      label: "Contribution",
+      signedAmount: `+${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+      signedAmountClassName: "text-emerald-600",
+    }
   }
 
   return (
@@ -661,10 +722,10 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                           {/* Action Buttons */}
                           {!isCompleted && (
                             <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-                              <Button
-                                onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
-                                className="flex items-center gap-2 flex-1 text-sm md:text-base"
-                                disabled={balance <= 0}
+                                <Button
+                                  onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
+                                  className="flex items-center gap-2 flex-1 text-sm md:text-base"
+                                  disabled={balance <= 0}
                               >
                                 <Send className="w-3 h-3 md:w-4 md:h-4" />
                                 Add Money to Goal
@@ -696,6 +757,22 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               >
                                 <Edit className="w-3 h-3 md:w-4 md:h-4" />
                                 Edit Goal
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setHistoryRange("active-month")
+                                  setHistoryDialog({
+                                    open: true,
+                                    goalId: goal.id,
+                                    goalName: goal.title || goal.name || "Goal",
+                                  })
+                                }}
+                                className="flex items-center gap-2 text-sm md:text-base"
+                              >
+                                <Receipt className="w-3 h-3 md:w-4 md:h-4" />
+                                View History
                               </Button>
                             </div>
                           )}
@@ -794,6 +871,99 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         userProfile={userProfile}
         editingGoal={editingGoal}
       />
+
+      <Dialog open={historyDialog.open} onOpenChange={(open) => setHistoryDialog((current) => ({ ...current, open }))}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{historyDialog.goalName} Transactions</DialogTitle>
+          </DialogHeader>
+
+          {(() => {
+            const filteredHistory = filterTransactionsByRange(getGoalHistory(historyDialog.goalId), historyRange)
+            const contributionTotal = filteredHistory
+              .filter((transaction) => getGoalHistoryMeta(transaction).label === "Contribution")
+              .reduce((sum, transaction) => sum + transaction.amount, 0)
+            const outflowTotal = filteredHistory
+              .filter((transaction) => getGoalHistoryMeta(transaction).label !== "Contribution")
+              .reduce((sum, transaction) => sum + transaction.amount, 0)
+
+            return (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="grid grid-cols-3 gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Transactions</p>
+                      <p className="font-semibold">{filteredHistory.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Contributed</p>
+                      <p className="font-semibold text-emerald-600">
+                        +{formatCurrency(contributionTotal, userProfile.currency, userProfile.customCurrency)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Money out</p>
+                      <p className="font-semibold text-amber-600">
+                        -{formatCurrency(outflowTotal, userProfile.currency, userProfile.customCurrency)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Select
+                    value={historyRange}
+                    onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                  >
+                    <SelectTrigger className="w-[170px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active-month">Active Month</SelectItem>
+                      <SelectItem value="this-week">This Week</SelectItem>
+                      <SelectItem value="all">All Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {filteredHistory.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No goal transactions in this range.
+                  </div>
+                ) : (
+                  <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                    {filteredHistory.map((transaction) => {
+                      const historyMeta = getGoalHistoryMeta(transaction)
+
+                      return (
+                        <div key={transaction.id} className="rounded-md border bg-background/80 p-3 text-xs md:text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="outline" className={historyMeta.badgeClassName}>
+                                  {historyMeta.label}
+                                </Badge>
+                                <span className="text-muted-foreground">
+                                  {new Date(transaction.date).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <p className="font-medium leading-relaxed">{transaction.description || transaction.category}</p>
+                              <p className="mt-1 text-muted-foreground">
+                                Category: {transaction.category || "Goal Activity"}
+                              </p>
+                            </div>
+                            <p className={`shrink-0 font-semibold ${historyMeta.signedAmountClassName}`}>
+                              {historyMeta.signedAmount}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={transferDialog.open} onOpenChange={(open) => setTransferDialog({ ...transferDialog, open })}>
         <DialogContent className="sm:max-w-md">

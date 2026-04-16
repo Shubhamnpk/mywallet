@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   PlusCircle,
   Target,
@@ -25,13 +26,15 @@ import {
   SortDesc,
   Calendar,
   Edit,
+  Receipt,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
-import type { Budget, UserProfile } from "@/types/wallet"
+import type { Budget, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -42,9 +45,12 @@ interface BudgetsListProps {
 }
 
 export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
+  const { transactions } = useWalletData()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
+  const [historyBudget, setHistoryBudget] = useState<Budget | null>(null)
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -156,6 +162,50 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     const newExpanded = new Set(expandedBudgets)
     newExpanded.has(budgetId) ? newExpanded.delete(budgetId) : newExpanded.add(budgetId)
     setExpandedBudgets(newExpanded)
+  }
+
+  const isTimeWalletEnabled = Boolean(
+    userProfile?.monthlyEarning > 0 &&
+    userProfile?.workingHoursPerDay > 0 &&
+    userProfile?.workingDaysPerMonth > 0,
+  )
+
+  const getBudgetTransactions = (budget: Budget) => {
+    const categorySet = new Set(
+      [budget.category, ...(budget.categories || [])]
+        .filter(Boolean)
+        .map((category) => category.toLowerCase()),
+    )
+
+    return transactions
+      .filter((transaction) =>
+        transaction.type === "expense" &&
+        !(
+          transaction.allocationType === "goal" &&
+          transaction.category === "Goal Contribution"
+        ) &&
+        categorySet.has((transaction.category || "").toLowerCase()),
+      )
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }
+
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all") => {
+    if (range === "all") return items
+
+    const now = new Date()
+    const start = new Date(now)
+
+    if (range === "active-month") {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+    } else {
+      const day = start.getDay()
+      const diff = day === 0 ? 6 : day - 1
+      start.setDate(start.getDate() - diff)
+      start.setHours(0, 0, 0, 0)
+    }
+
+    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
   }
 
   return (
@@ -274,9 +324,12 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
           {filteredAndSortedBudgets.map((budget) => {
             const { status, color, icon: StatusIcon } = getBudgetStatus(budget)
             const percentage = Math.min((budget.spent / budget.limit) * 100, 100)
-            const remaining = Math.max(budget.limit - budget.spent, 0)
+            const rawRemaining = budget.limit - budget.spent
+            const remaining = Math.max(rawRemaining, 0)
+            const overAmount = Math.max(budget.spent - budget.limit, 0)
             const isOverBudget = budget.spent > budget.limit
             const isExpanded = expandedBudgets.has(budget.id)
+            const budgetTransactions = getBudgetTransactions(budget)
 
             const budgetTimeBreakdown = getTimeEquivalentBreakdown(budget.limit, userProfile)
             const spentTimeBreakdown = getTimeEquivalentBreakdown(budget.spent, userProfile)
@@ -286,8 +339,8 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                 {isOverBudget && (
                   <Alert className="m-4 mb-0 border-red-200 bg-red-50">
                     <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800">
-                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(budget.spent - budget.limit, userProfile.currency, userProfile.customCurrency)} over your limit.
+                    <AlertDescription className="text-red-800">
+                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)} over your limit.
                       {budget.emergencyUses > 0 && (
                         <span className="block mt-1">
                           Emergency uses remaining: <Badge variant="destructive">{budget.emergencyUses}</Badge>
@@ -351,9 +404,9 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{percentage.toFixed(1)}% used</span>
                         <span>
-                          {remaining > 0
+                          {rawRemaining >= 0
                             ? `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`
-                            : `${formatCurrency(Math.abs(remaining), userProfile.currency, userProfile.customCurrency)} over`}
+                            : `${formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)} over`}
                         </span>
                       </div>
                     </div>
@@ -361,23 +414,24 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
                   <CollapsibleContent>
                     <CardContent className="space-y-4 pt-0">
-                      {/* Time Investment */}
-                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <Clock className="w-4 h-4 text-amber-600" />
-                          Time Investment
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Budget represents</p>
-                            <p className="font-medium">{budgetTimeBreakdown ? budgetTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                      {isTimeWalletEnabled && (
+                        <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Clock className="w-4 h-4 text-amber-600" />
+                            Time Investment
                           </div>
-                          <div>
-                            <p className="text-muted-foreground">Already spent</p>
-                            <p className="font-medium">{spentTimeBreakdown ? spentTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Budget represents</p>
+                              <p className="font-medium">{budgetTimeBreakdown ? budgetTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Already spent</p>
+                              <p className="font-medium">{spentTimeBreakdown ? spentTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Categories */}
                       <div className="space-y-2">
@@ -392,6 +446,21 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                             </Badge>
                           ))}
                         </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setHistoryRange("active-month")
+                            setHistoryBudget(budget)
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <Receipt className="w-4 h-4" />
+                          View Transactions ({budgetTransactions.length})
+                        </Button>
                       </div>
 
                       {/* Meta Info */}
@@ -423,6 +492,89 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
         editingBudget={editingBudget || undefined}
         onUpdateBudget={handleUpdateBudget}
       />
+
+      <Dialog open={Boolean(historyBudget)} onOpenChange={(open) => { if (!open) setHistoryBudget(null) }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{historyBudget?.name || "Budget"} Transactions</DialogTitle>
+          </DialogHeader>
+
+          {historyBudget && (
+            <div className="space-y-4">
+              {(() => {
+                const filteredHistory = filterTransactionsByRange(getBudgetTransactions(historyBudget), historyRange)
+                const totalSpent = filteredHistory.reduce((sum, transaction) => sum + transaction.amount, 0)
+
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        {(historyBudget.categories || []).map((category) => (
+                          <Badge key={category} variant="outline">{category}</Badge>
+                        ))}
+                      </div>
+
+                      <Select
+                        value={historyRange}
+                        onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                      >
+                        <SelectTrigger className="w-[170px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active-month">Active Month</SelectItem>
+                          <SelectItem value="this-week">This Week</SelectItem>
+                          <SelectItem value="all">All Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Transactions</p>
+                        <p className="font-semibold">{filteredHistory.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Spent in range</p>
+                        <p className="font-semibold text-red-600">
+                          -{formatCurrency(totalSpent, userProfile.currency, userProfile.customCurrency)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {filteredHistory.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                        No budget transactions in this range.
+                      </div>
+                    ) : (
+                      <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                        {filteredHistory.map((transaction: Transaction) => (
+                          <div key={transaction.id} className="rounded-lg border bg-card p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium leading-relaxed">
+                                  {transaction.description || transaction.category}
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                  <span>{new Date(transaction.date).toLocaleDateString()}</span>
+                                  <span>{transaction.category}</span>
+                                </div>
+                              </div>
+                              <p className="shrink-0 font-semibold text-red-600">
+                                -{formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

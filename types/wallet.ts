@@ -147,6 +147,7 @@ export interface Goal {
   category: string
   priority: "low" | "medium" | "high"
   createdAt: string
+  updatedAt?: string
   autoContribute: boolean
   contributionAmount?: number
   contributionFrequency?: "daily" | "weekly" | "monthly"

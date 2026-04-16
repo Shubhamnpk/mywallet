@@ -195,6 +195,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return goals || []
   }, [goals])
 
+  const getGoalLabel = useCallback(
+    (goalId?: string) => {
+      if (!goalId) return "Goal"
+      const goal = goals.find((entry) => entry.id === goalId)
+      return goal?.title || goal?.name || "Goal"
+    },
+    [goals],
+  )
+
   const hasAllocationOptions = useMemo(() => {
     return availableGoals.length > 0 || (debtAccounts?.length || 0) > 0 || (creditAccounts?.length || 0) > 0
   }, [availableGoals, debtAccounts, creditAccounts])
@@ -596,12 +605,17 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           }
         } else {
           // Handle direct or goal allocation
+          const goalLabel = formData.allocationType === "goal" ? getGoalLabel(formData.allocationTarget) : null
+          const fallbackDescription = formData.allocationType === "goal"
+            ? `${type === "income" ? "Income allocated to goal" : "Transfer to goal"}: ${goalLabel}`
+            : `${type === "income" ? "Income" : "Expense"} - ${formData.category}`
+
           transactionResult = await addTransaction({
             type,
             amount: numAmount,
             category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
             subcategory: formData.subcategory || undefined,
-            description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
+            description: formData.description.trim() || fallbackDescription,
             date: getTransactionDate(),
             allocationType: formData.allocationType || "direct",
             allocationTarget: formData.allocationTarget || undefined,
@@ -653,14 +667,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
           description: (type === "expense" && formData.expenseMode === "payment_source")
             ? (formData.allocationType === "goal"
-              ? `${currencySymbol}${numAmount} spent from selected goal`
+              ? `${currencySymbol}${numAmount} spent from ${getGoalLabel(formData.allocationTarget)}`
               : formData.allocationType === "debt"
                 ? `${currencySymbol}${numAmount} charged to selected debt account`
                 : formData.allocationType === "credit"
                   ? `${currencySymbol}${numAmount} charged to selected credit account`
                   : `${currencySymbol}${numAmount} paid from wallet`)
             : (formData.allocationType === "goal"
-              ? `${currencySymbol}${numAmount} contributed to goal`
+              ? `${currencySymbol}${numAmount} contributed to ${getGoalLabel(formData.allocationTarget)}`
               : formData.allocationType === "debt"
                 ? `${currencySymbol}${numAmount} applied to debt repayment`
                 : formData.allocationType === "credit"
@@ -684,7 +698,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         setIsSubmitting(false)
       }
     },
-    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep, walletShortfallGoalOptions, goals, debtAccounts, creditAccounts, addDebtToAccount, updateCreditBalance, makeDebtPayment, spendFromGoal, playSound, getTransactionDate],
+    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep, walletShortfallGoalOptions, goals, debtAccounts, creditAccounts, addDebtToAccount, updateCreditBalance, makeDebtPayment, spendFromGoal, playSound, getTransactionDate, getGoalLabel],
   )
 
   const canSubmitNow = useMemo(() => {

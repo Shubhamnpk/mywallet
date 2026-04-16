@@ -42,8 +42,12 @@ export function updateBudgetSpendingHelper(
   return { updatedBudgets, warnings }
 }
 
-export function updateGoalContributionHelper(goals: Goal[], goalId: string, amount: number) {
-  const updatedGoals = goals.map((g) => (g.id === goalId ? { ...g, currentAmount: g.currentAmount + amount } : g))
+export function updateGoalContributionHelper(goals: Goal[], goalId: string, amount: number, updatedAt: string) {
+  const updatedGoals = goals.map((g) =>
+    g.id === goalId
+      ? { ...g, currentAmount: g.currentAmount + amount, updatedAt }
+      : g,
+  )
   return updatedGoals
 }
 

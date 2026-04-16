@@ -84,6 +84,12 @@ const calculateCashBalanceFromTransactions = (txs: Transaction[]) => {
   }, 0)
 }
 
+const normalizeGoals = (items: Goal[]) =>
+  items.map((goal) => ({
+    ...goal,
+    updatedAt: goal.updatedAt || goal.createdAt || new Date().toISOString(),
+  }))
+
 type TombstoneRecord = {
   id: string
   deletedAt: string
@@ -452,6 +458,8 @@ export function useWalletData() {
           .forEach((budget) => {
             const usage = (budget.spent / budget.limit) * 100
             const budgetLabel = budget.name || budget.category || "Budget"
+            const warningThreshold = Math.min(95, Math.max(1, (budget.alertThreshold || 0.8) * 100))
+            const criticalThreshold = Math.min(99, Math.max(warningThreshold + 5, 90))
 
             if (usage >= 100) {
               emitReminder(
@@ -460,17 +468,17 @@ export function useWalletData() {
                 `Spent ${usage.toFixed(0)}% of limit. Review this budget to prevent further overspending.`,
                 12 * HOUR_MS,
               )
-            } else if (usage >= 90) {
+            } else if (usage >= criticalThreshold) {
               emitReminder(
                 `budget-critical-${budget.id}`,
                 `${budgetLabel} is near limit`,
                 `You've used ${usage.toFixed(0)}% of this budget. Slow spending to stay on track.`,
                 24 * HOUR_MS,
               )
-            } else if (usage >= 80) {
+            } else if (usage >= warningThreshold) {
               emitReminder(
                 `budget-warning-${budget.id}`,
-                `${budgetLabel} crossed 80%`,
+                `${budgetLabel} crossed ${warningThreshold.toFixed(0)}%`,
                 `You've used ${usage.toFixed(0)}% of this budget.`,
                 24 * HOUR_MS,
               )
@@ -1056,7 +1064,7 @@ export function useWalletData() {
         userProfile: storedData.userProfile ?? null,
         transactions: Array.isArray(storedData.transactions) ? storedData.transactions : [],
         budgets: Array.isArray(storedData.budgets) ? storedData.budgets : [],
-        goals: Array.isArray(storedData.goals) ? storedData.goals : [],
+        goals: Array.isArray(storedData.goals) ? normalizeGoals(storedData.goals) : [],
         debtAccounts: Array.isArray(storedData.debtAccounts) ? storedData.debtAccounts : [],
         creditAccounts: Array.isArray(storedData.creditAccounts) ? storedData.creditAccounts : [],
         debtCreditTransactions: Array.isArray(storedData.debtCreditTransactions) ? storedData.debtCreditTransactions : [],
@@ -1312,7 +1320,7 @@ export function useWalletData() {
   }
 
   const updateGoalContribution = (goalId: string, amount: number) => {
-    const updatedGoals = updateGoalContributionHelper(goals, goalId, amount)
+    const updatedGoals = updateGoalContributionHelper(goals, goalId, amount, new Date().toISOString())
     setGoals(updatedGoals)
     saveToLocalStorage("goals", updatedGoals, true)
   }
@@ -1742,6 +1750,7 @@ export function useWalletData() {
   const addGoal = (
     goal: Omit<Goal, "id" | "currentAmount">
   ) => {
+    const createdAt = new Date().toISOString()
     const newGoal: Goal = {
       id: generateId('goal'),
       title: goal.title,
@@ -1751,7 +1760,8 @@ export function useWalletData() {
       targetDate: goal.targetDate,
       category: goal.category,
       priority: goal.priority,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      updatedAt: createdAt,
       autoContribute: goal.autoContribute,
       contributionAmount: goal.contributionAmount,
       contributionFrequency: goal.contributionFrequency,
@@ -1766,7 +1776,8 @@ export function useWalletData() {
   }
 
   const updateGoal = async (id: string, updates: Partial<Goal>) => {
-    const updatedGoals = goals.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal))
+    const updatedAt = new Date().toISOString()
+    const updatedGoals = goals.map((goal) => (goal.id === id ? { ...goal, ...updates, updatedAt } : goal))
     setGoals(updatedGoals)
     await saveDataWithIntegrity("goals", updatedGoals)
   }
@@ -1779,7 +1790,11 @@ export function useWalletData() {
   }
 
   useEffect(() => {
-    const syncedGoals = goals.map((goal) => syncGoalChallengeState(goal))
+    const syncTimestamp = new Date().toISOString()
+    const syncedGoals = goals.map((goal) => {
+      const syncedGoal = syncGoalChallengeState(goal)
+      return syncedGoal === goal ? goal : { ...syncedGoal, updatedAt: syncTimestamp }
+    })
     const hasChanges = syncedGoals.some((goal, index) => goal !== goals[index])
     if (!hasChanges) return
 
@@ -1861,6 +1876,7 @@ export function useWalletData() {
         currentAmount: challengeSummary.plan.mode === "hard"
           ? Math.max(0, entry.currentAmount - amount)
           : entry.currentAmount,
+        updatedAt: completedAt,
         challengePoints: challengeSummary.plan.mode === "hard"
           ? {
               total: currentPoints.total + pointsAwarded,
@@ -2241,8 +2257,9 @@ export function useWalletData() {
 
       // Import goals (only if selected)
       if (data.goals && Array.isArray(data.goals)) {
-        setGoals(data.goals)
-        await ensureSaved("goals", data.goals)
+        const normalizedGoals = normalizeGoals(data.goals)
+        setGoals(normalizedGoals)
+        await ensureSaved("goals", normalizedGoals)
       }
 
       // Import debt accounts (only if selected)
@@ -2395,7 +2412,7 @@ export function useWalletData() {
       id: generateId('tx'),
       type: "expense",
       amount: amount,
-      description: `Goal spending: ${goal.title} - ${description}`,
+      description: `Spent from goal: ${goal.title || goal.name || "Goal"} - ${description}`,
       category: category || "Goal Spending",
       date: new Date().toISOString(),
       allocationType: "goal",
@@ -2410,7 +2427,7 @@ export function useWalletData() {
 
     const updatedGoals = goals.map((g) => {
       if (g.id === goalId) {
-        return { ...g, currentAmount: g.currentAmount - amount }
+        return { ...g, currentAmount: g.currentAmount - amount, updatedAt: new Date().toISOString() }
       }
       return g
     })
