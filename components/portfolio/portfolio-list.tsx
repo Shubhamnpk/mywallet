@@ -35,10 +35,8 @@ const isSameCalendarDay = (left: Date, right: Date) =>
 const hasFreshDailyQuote = (item: PortfolioItem) => {
     if (item.assetType === "crypto" || Boolean(item.cryptoId)) return true
     if (!item.lastUpdated) return false
-
     const updatedAt = new Date(item.lastUpdated)
     if (Number.isNaN(updatedAt.getTime())) return false
-
     return isSameCalendarDay(updatedAt, new Date())
 }
 
@@ -2667,7 +2665,7 @@ export function PortfolioList() {
                             ) : (
                                 null
                             )
-                            
+
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />
