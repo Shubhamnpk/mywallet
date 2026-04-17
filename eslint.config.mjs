@@ -3,7 +3,7 @@ import nextTypescript from "eslint-config-next/typescript"
 
 export default [
   {
-    ignores: ["public/sw.js", "public/workbox-*.js", "public/worker-*.js", "lint-report.json"],
+    ignores: ["public/sw.js", "public/fallback-*.js", "public/worker-*.js", "public/workbox-*.js", "lint-report.json", "eslint-report.json"],
   },
   ...nextVitals,
   ...nextTypescript,

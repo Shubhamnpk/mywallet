@@ -5,6 +5,14 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   quality:
@@ -27,8 +35,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
+      - name: Read app version
+        id: app
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Lint (CI budget)
+        run: pnpm lint:ci
 
       - name: Typecheck
         run: pnpm typecheck
@@ -37,4 +49,7 @@ jobs:
         run: pnpm test
 
       - name: Build
+        env:
+          NEXT_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          NEXT_PUBLIC_APP_VERSION: ${{ steps.app.outputs.version }}
         run: pnpm build
