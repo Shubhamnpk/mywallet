@@ -43,6 +43,10 @@ import {
   REMINDER_CACHE_KEY,
   showAppNotification,
 } from "@/lib/notifications"
+import {
+  recordNotificationDelivery,
+  type NotificationHistorySource,
+} from "@/lib/notification-history"
 import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { toast } from "sonner"
@@ -391,18 +395,44 @@ export function useWalletData() {
       return
     }
 
-    const runReminderScan = () => {
+    const runReminderScan = async () => {
       const cache = readReminderCache()
       const now = new Date()
       let emittedCount = 0
-      const maxPerScan = 3
+      const maxPerScan = 6
       const appInForeground = isAppInForeground()
+
+      type StoredBillReminder = {
+        id: string
+        name: string
+        amount: number
+        dueDate: string
+        isPaid: boolean
+        reminderDays: number
+      }
+
+      let billRows: StoredBillReminder[] = []
+      try {
+        const stored = await loadFromLocalStorage(["wallet_bill_reminders"])
+        const raw = stored.wallet_bill_reminders
+        if (Array.isArray(raw)) {
+          billRows = raw.filter(
+            (b): b is StoredBillReminder =>
+              b &&
+              typeof b === "object" &&
+              typeof (b as StoredBillReminder).id === "string" &&
+              typeof (b as StoredBillReminder).dueDate === "string",
+          )
+        }
+      } catch {
+      }
 
       const emitReminder = (
         key: string,
         title: string,
         description: string,
         browserCooldownMs: number,
+        source: NotificationHistorySource,
       ) => {
         if (emittedCount >= maxPerScan) return
 
@@ -421,6 +451,13 @@ export function useWalletData() {
         ) {
           toast(title, { description, duration: 9000 })
           cache[inAppCacheKey] = Date.now()
+          recordNotificationDelivery({
+            dedupeKey: key,
+            title,
+            body: description,
+            source,
+            channel: "toast",
+          })
           didEmit = true
         }
 
@@ -437,6 +474,13 @@ export function useWalletData() {
             tag: key,
           })
           cache[browserCacheKey] = Date.now()
+          recordNotificationDelivery({
+            dedupeKey: key,
+            title,
+            body: description,
+            source,
+            channel: "browser",
+          })
           didEmit = true
         }
 
@@ -454,7 +498,7 @@ export function useWalletData() {
         const permissionNudgeKey = "notification-permission-nudge"
         if (shouldSendReminder(cache, permissionNudgeKey, 7 * 24 * HOUR_MS)) {
           toast("Enable browser reminders", {
-            description: "Get alerts for budgets, goals, IPO windows, and SIP installments.",
+            description: "Get alerts for budgets, goals, bills, IPO windows, and SIP installments.",
             action: {
               label: "Enable",
               onClick: () => {
@@ -464,6 +508,13 @@ export function useWalletData() {
             duration: 10000,
           })
           cache[permissionNudgeKey] = Date.now()
+          recordNotificationDelivery({
+            dedupeKey: permissionNudgeKey,
+            title: "Enable browser reminders",
+            body: "Get alerts for budgets, goals, bills, IPO windows, and SIP installments.",
+            source: "nudge",
+            channel: "toast",
+          })
           emittedCount += 1
         }
       }
@@ -484,6 +535,7 @@ export function useWalletData() {
                 `${budgetLabel} is over budget`,
                 `Spent ${usage.toFixed(0)}% of limit. Review this budget to prevent further overspending.`,
                 12 * HOUR_MS,
+                "budget",
               )
             } else if (usage >= criticalThreshold) {
               emitReminder(
@@ -491,6 +543,7 @@ export function useWalletData() {
                 `${budgetLabel} is near limit`,
                 `You've used ${usage.toFixed(0)}% of this budget. Slow spending to stay on track.`,
                 24 * HOUR_MS,
+                "budget",
               )
             } else if (usage >= warningThreshold) {
               emitReminder(
@@ -498,6 +551,7 @@ export function useWalletData() {
                 `${budgetLabel} crossed ${warningThreshold.toFixed(0)}%`,
                 `You've used ${usage.toFixed(0)}% of this budget.`,
                 24 * HOUR_MS,
+                "budget",
               )
             }
           })
@@ -521,6 +575,7 @@ export function useWalletData() {
                 `Goal overdue: ${goalLabel}`,
                 `This goal is past target date and is ${progress.toFixed(0)}% complete.`,
                 24 * HOUR_MS,
+                "goal",
               )
             } else if (daysRemaining <= 3) {
               emitReminder(
@@ -528,6 +583,7 @@ export function useWalletData() {
                 `Goal due soon: ${goalLabel}`,
                 `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left. Progress: ${progress.toFixed(0)}%.`,
                 12 * HOUR_MS,
+                "goal",
               )
             } else if (daysRemaining <= 7) {
               emitReminder(
@@ -535,6 +591,7 @@ export function useWalletData() {
                 `Goal deadline in ${daysRemaining} days`,
                 `${goalLabel} is ${progress.toFixed(0)}% complete.`,
                 24 * HOUR_MS,
+                "goal",
               )
             }
           })
@@ -562,6 +619,7 @@ export function useWalletData() {
                 `IPO closing soon: ${company}`,
                 `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
                 6 * HOUR_MS,
+                "ipo",
               )
             } else {
               emitReminder(
@@ -569,6 +627,7 @@ export function useWalletData() {
                 `IPO is open: ${company}`,
                 "You can apply from the Portfolio section.",
                 24 * HOUR_MS,
+                "ipo",
               )
             }
           } else if (ipo.status === "upcoming" && typeof daysRemaining === "number" && daysRemaining <= 1) {
@@ -577,6 +636,7 @@ export function useWalletData() {
               `IPO opening soon: ${company}`,
               `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
               24 * HOUR_MS,
+              "ipo",
             )
           }
         })
@@ -600,6 +660,7 @@ export function useWalletData() {
               `SIP due today: ${planLabel}`,
               `Your ${amountLabel} ${plan.frequency} SIP is scheduled for today.`,
               10 * HOUR_MS,
+              "sip",
             )
             return
           }
@@ -610,6 +671,7 @@ export function useWalletData() {
               `SIP due in ${schedule.daysUntilNext} day${schedule.daysUntilNext === 1 ? "" : "s"}`,
               `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString())}. Keep ${amountLabel} ready.`,
               18 * HOUR_MS,
+              "sip",
             )
           }
 
@@ -619,15 +681,61 @@ export function useWalletData() {
               `SIP missed: ${planLabel}`,
               `The installment scheduled on ${formatSipDate(schedule.previousDate.toISOString())} may still be pending.`,
               24 * HOUR_MS,
+              "sip",
             )
           }
         })
       }
 
+      // Bill reminders (stored in wallet_bill_reminders).
+      if (notificationSettings.billReminders) {
+        const dayMs = 24 * HOUR_MS
+        billRows
+          .filter((b) => !b.isPaid)
+          .forEach((bill) => {
+            const due = new Date(bill.dueDate)
+            if (Number.isNaN(due.getTime())) return
+            const daysUntilDue = Math.ceil((due.getTime() - now.getTime()) / dayMs)
+            const label = bill.name?.trim() || "Bill"
+            const amt = Number.isFinite(bill.amount) ? bill.amount : 0
+            const cur = userProfile?.currency || "Rs."
+            const amountPart = amt > 0 ? `${cur}${amt.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""
+
+            if (daysUntilDue < 0) {
+              emitReminder(
+                `bill-overdue-${bill.id}`,
+                `Bill overdue: ${label}`,
+                amountPart ? `${amountPart} was due.` : "This bill is past its due date.",
+                12 * HOUR_MS,
+                "bill",
+              )
+            } else if (daysUntilDue === 0) {
+              emitReminder(
+                `bill-due-today-${bill.id}`,
+                `Bill due today: ${label}`,
+                amountPart ? `Amount ${amountPart}.` : "Due today.",
+                18 * HOUR_MS,
+                "bill",
+              )
+            } else {
+              const lead = Math.max(1, Math.min(30, bill.reminderDays || 3))
+              if (daysUntilDue > 0 && daysUntilDue <= lead) {
+                emitReminder(
+                  `bill-due-soon-${bill.id}-${daysUntilDue}`,
+                  `Bill due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}: ${label}`,
+                  amountPart ? `Amount ${amountPart}.` : "Check your upcoming payment.",
+                  24 * HOUR_MS,
+                  "bill",
+                )
+              }
+            }
+          })
+      }
+
       saveReminderCache(cache)
     }
 
-    runReminderScan()
+    void runReminderScan()
     const intervalId = window.setInterval(runReminderScan, REMINDER_SCAN_INTERVAL_MS)
 
     return () => {
@@ -641,6 +749,7 @@ export function useWalletData() {
     shareTransactions,
     userProfile?.notificationSettings,
     userProfile?.sipPlans,
+    userProfile?.currency,
     userProfile?.meroShare?.shareFeaturesEnabled,
     userProfile?.meroShare?.shareNotificationsEnabled,
   ])

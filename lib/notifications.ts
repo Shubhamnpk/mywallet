@@ -12,6 +12,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   permissionNudges: true,
   budgetReminders: true,
   goalReminders: true,
+  billReminders: true,
   ipoReminders: true,
   sipReminders: true,
 }

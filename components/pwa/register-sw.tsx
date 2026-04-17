@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { recordNotificationDelivery } from '@/lib/notification-history'
 
 const MIGRATION_KEY = 'pwa-migrated-to-serwist-v2'
 
@@ -58,6 +59,17 @@ export default function RegisterSW() {
         const data = event.data
         if (data?.type === 'NOTIFICATION_CLICKED' && typeof data.url === 'string') {
           window.location.href = data.url
+          return
+        }
+        if (data?.type === 'PUSH_NOTIFICATION_SHOWN') {
+          const tag = typeof data.tag === 'string' ? data.tag : 'mywallet-push'
+          recordNotificationDelivery({
+            dedupeKey: `push:${tag}:${data.title || ''}`,
+            title: typeof data.title === 'string' ? data.title : 'MyWallet',
+            body: typeof data.body === 'string' ? data.body : '',
+            source: 'push',
+            channel: 'push',
+          })
         }
       }
 

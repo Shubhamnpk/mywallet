@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "vapid": "node scripts/generate-vapid-keys.cjs",
     "check": "pnpm lint:ci && pnpm typecheck && pnpm test",
     "start": "next start"
   },
@@ -64,6 +65,7 @@
     "next": "16.2.3",
     "next-themes": "latest",
     "pdfjs-dist": "^4.2.67",
+    "puppeteer-core": "^24.41.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-day-picker": "9.8.0",

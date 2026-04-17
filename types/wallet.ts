@@ -40,6 +40,7 @@ export interface NotificationSettings {
   permissionNudges: boolean
   budgetReminders: boolean
   goalReminders: boolean
+  billReminders: boolean
   ipoReminders: boolean
   sipReminders: boolean
 }

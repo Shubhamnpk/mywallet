@@ -5,6 +5,9 @@ export type ApiErrorCode =
   | "UPSTREAM_ERROR"
   | "UPSTREAM_UNREACHABLE"
   | "INTERNAL_ERROR"
+  | "NOT_CONFIGURED"
+  | "UNAUTHORIZED"
+  | "STORE_FAILED"
 
 type ErrorResponseOptions = {
   status: number

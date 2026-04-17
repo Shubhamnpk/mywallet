@@ -6,11 +6,21 @@ import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { OfflineBadge } from "@/components/ui/offline-badge"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { BillReminderSystem } from "@/components/productivity/bill-reminder-system"
+import { loadFromLocalStorage } from "@/lib/storage"
+import {
+  clearNotificationHistory,
+  NOTIFICATION_HISTORY_EVENT,
+  readNotificationHistory,
+  type NotificationHistoryItem,
+} from "@/lib/notification-history"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 
@@ -19,6 +29,15 @@ type HeaderNotification = {
   title: string
   description: string
   type: "warning" | "info" | "success"
+}
+
+type HeaderBillRow = {
+  id: string
+  name: string
+  amount: number
+  dueDate: string
+  isPaid: boolean
+  reminderDays: number
 }
 
 interface DashboardHeaderProps {
@@ -41,10 +60,38 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   })
   const { budgets, goals, upcomingIPOs } = useWalletData()
   const isAutoIpoEnabled = Boolean(userProfile.meroShare?.isAutomatedEnabled)
+  const [billRows, setBillRows] = useState<HeaderBillRow[]>([])
+  const [billDialogOpen, setBillDialogOpen] = useState(false)
+  const [history, setHistory] = useState<NotificationHistoryItem[]>(() =>
+    typeof window !== "undefined" ? readNotificationHistory() : [],
+  )
+
+  const reloadBills = () => {
+    void (async () => {
+      try {
+        const stored = await loadFromLocalStorage(["wallet_bill_reminders"])
+        const raw = stored.wallet_bill_reminders
+        setBillRows(Array.isArray(raw) ? raw : [])
+      } catch {
+        setBillRows([])
+      }
+    })()
+  }
+
+  useEffect(() => {
+    reloadBills()
+  }, [])
+
+  useEffect(() => {
+    const sync = () => setHistory(readNotificationHistory())
+    window.addEventListener(NOTIFICATION_HISTORY_EVENT, sync)
+    return () => window.removeEventListener(NOTIFICATION_HISTORY_EVENT, sync)
+  }, [])
 
   const notifications = useMemo<HeaderNotification[]>(() => {
     const items: HeaderNotification[] = []
     const now = new Date()
+    const dayMs = 24 * 60 * 60 * 1000
 
     budgets
       .filter((b) => b.limit > 0)
@@ -83,6 +130,38 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
 
+    billRows
+      .filter((b) => !b.isPaid)
+      .forEach((bill) => {
+        const due = new Date(bill.dueDate)
+        if (Number.isNaN(due.getTime())) return
+        const daysUntilDue = Math.ceil((due.getTime() - now.getTime()) / dayMs)
+        const name = bill.name?.trim() || "Bill"
+        const lead = Math.max(1, Math.min(30, bill.reminderDays || 3))
+        if (daysUntilDue < 0) {
+          items.push({
+            id: `bill-overdue-${bill.id}`,
+            title: `Bill overdue: ${name}`,
+            description: "Past due date — mark paid or reschedule.",
+            type: "warning",
+          })
+        } else if (daysUntilDue === 0) {
+          items.push({
+            id: `bill-due-today-${bill.id}`,
+            title: `Bill due today: ${name}`,
+            description: "Due today.",
+            type: "warning",
+          })
+        } else if (daysUntilDue > 0 && daysUntilDue <= lead) {
+          items.push({
+            id: `bill-soon-${bill.id}`,
+            title: `Bill due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}: ${name}`,
+            description: `Within your ${lead}-day reminder window.`,
+            type: "info",
+          })
+        }
+      })
+
     if (isAutoIpoEnabled) {
       upcomingIPOs.forEach((ipo) => {
         const ipoId = ipo.company || ipo.url || ipo.date_range || `ipo-${upcomingIPOs.indexOf(ipo)}`
@@ -112,6 +191,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     goals,
     upcomingIPOs,
     isAutoIpoEnabled,
+    billRows,
   ])
 
   const unreadCount = notifications.filter((n) => !readMap[n.id]).length
@@ -179,43 +259,95 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                 )}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[320px] p-0">
+            <DropdownMenuContent align="end" className="w-[340px] p-0">
               <div className="px-3 py-2 flex items-center justify-between border-b">
                 <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={markAllAsRead}>
                   Mark all read
                 </Button>
               </div>
-              <div className="max-h-[320px] overflow-y-auto py-1">
-                {notifications.length > 0 ? (
-                  notifications.map((n) => (
-                    <DropdownMenuItem
-                      key={n.id}
-                      className="items-start gap-2 py-2"
-                      onSelect={() => markAsRead(n.id)}
-                    >
-                      <span
-                        className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-                          n.type === "warning" ? "bg-amber-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"
-                        }`}
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">{n.title}</p>
-                          {!readMap[n.id] && <Badge variant="secondary" className="text-[10px] h-4 px-1">New</Badge>}
+              <Tabs defaultValue="live" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 rounded-none border-b h-9">
+                  <TabsTrigger value="live" className="text-xs rounded-none">
+                    Live
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="text-xs rounded-none">
+                    History
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="live" className="mt-0 max-h-[320px] overflow-y-auto py-1">
+                  {notifications.length > 0 ? (
+                    notifications.map((n) => (
+                      <DropdownMenuItem
+                        key={n.id}
+                        className="items-start gap-2 py-2"
+                        onSelect={() => markAsRead(n.id)}
+                      >
+                        <span
+                          className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+                            n.type === "warning" ? "bg-amber-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{n.title}</p>
+                            {!readMap[n.id] && <Badge variant="secondary" className="text-[10px] h-4 px-1">New</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{n.description}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">{n.description}</p>
-                      </div>
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">No notifications right now.</div>
-                )}
-              </div>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">No alerts right now.</div>
+                  )}
+                </TabsContent>
+                <TabsContent value="history" className="mt-0 max-h-[320px] overflow-y-auto py-1 px-2 pb-2">
+                  {history.length > 0 ? (
+                    <ul className="space-y-2">
+                      {history.slice(0, 40).map((h) => (
+                        <li key={h.id} className="rounded-md border bg-muted/20 px-2 py-1.5 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium truncate">{h.title}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {new Date(h.at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground line-clamp-2">{h.body}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {h.source} · {h.channel}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No delivered notifications yet.</div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full mt-2 h-8 text-xs"
+                    onClick={() => clearNotificationHistory()}
+                  >
+                    Clear history
+                  </Button>
+                </TabsContent>
+              </Tabs>
               <DropdownMenuSeparator />
-              <div className="p-2">
+              <div className="p-2 space-y-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    setBillDialogOpen(true)
+                  }}
+                >
+                  Bill reminders
+                </Button>
                 <Button variant="outline" size="sm" className="w-full" onClick={() => router.push("/settings?tab=notifications")}>
-                  Notification Settings
+                  Notification settings
                 </Button>
               </div>
             </DropdownMenuContent>
@@ -286,6 +418,20 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
       />
+      <Dialog
+        open={billDialogOpen}
+        onOpenChange={(open) => {
+          setBillDialogOpen(open)
+          if (!open) reloadBills()
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bill reminders</DialogTitle>
+          </DialogHeader>
+          <BillReminderSystem userProfile={userProfile} />
+        </DialogContent>
+      </Dialog>
     </header>
   )
 }
