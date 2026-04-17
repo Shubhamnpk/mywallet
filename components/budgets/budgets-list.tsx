@@ -533,8 +533,8 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
       />
 
       <Dialog open={Boolean(historyBudget)} onOpenChange={(open) => { if (!open) setHistoryBudget(null) }}>
-        <DialogContent className="sm:max-w-3xl h-[85vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-0">
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 p-6 pb-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Receipt className="w-5 h-5 text-primary" />
               {historyBudget?.name || "Budget"} Transactions
@@ -548,8 +548,8 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                 const totalSpent = filteredHistory.reduce((sum, transaction) => sum + transaction.amount, 0)
 
                 return (
-                  <div className="flex-1 flex flex-col p-6 pt-4 space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/30 p-4 rounded-xl border">
+                  <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden p-6 pt-4">
+                    <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
                       <div className="flex flex-col gap-1">
                         <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Active Categories</span>
                         <div className="flex flex-wrap gap-1.5">
@@ -574,7 +574,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid shrink-0 grid-cols-2 gap-4">
                       <div className="rounded-xl border bg-background p-4 shadow-sm">
                         <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Total Count</p>
                         <p className="text-2xl font-bold">{filteredHistory.length}</p>
@@ -587,15 +587,15 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                       </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col min-h-0 pt-2">
-                       <h4 className="text-sm font-medium mb-2 text-muted-foreground">Transaction Details</h4>
+                    <div className="flex min-h-0 flex-1 flex-col pt-2">
+                      <h4 className="mb-2 shrink-0 text-sm font-medium text-muted-foreground">Transaction Details</h4>
                        {filteredHistory.length === 0 ? (
                         <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5">
                           <Receipt className="w-10 h-10 mb-2 opacity-20" />
                           No transactions found for this period.
                         </div>
                       ) : (
-                        <div className="flex-1 space-y-2 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-2 [-webkit-overflow-scrolling:touch] scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
                           {filteredHistory.map((transaction: Transaction) => (
                             <div key={transaction.id} className="group rounded-xl border bg-background p-4 hover:shadow-md transition-all duration-200 hover:border-primary/20">
                               <div className="flex items-start justify-between gap-4">

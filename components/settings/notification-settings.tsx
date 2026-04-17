@@ -111,6 +111,18 @@ export function NotificationSettings() {
           <CardDescription>Manage reminder channels and categories from one place.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground space-y-2">
+            <p>
+              Reminders run while MyWallet is open (browser tab or installed app). In-app messages can repeat for the
+              same item after a few seconds; background system notifications use longer quiet periods so they stay
+              useful instead of noisy.
+            </p>
+            <p>
+              When every copy of MyWallet is fully closed, the device cannot run these checks, so nothing is shown
+              yet. Turn on browser notifications for alerts while the app is open in the background. Alerts after you
+              have quit the app would need a future feature such as server push or email.
+            </p>
+          </div>
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label htmlFor="notif-enabled">Enable All Reminders</Label>

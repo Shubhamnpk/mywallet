@@ -39,6 +39,7 @@ import {
   isAppInForeground,
   normalizeNotificationSettings,
   requestBrowserNotificationPermission,
+  IN_APP_REMINDER_COOLDOWN_MS,
   REMINDER_CACHE_KEY,
   showAppNotification,
 } from "@/lib/notifications"
@@ -401,16 +402,30 @@ export function useWalletData() {
         key: string,
         title: string,
         description: string,
-        cooldownMs: number,
+        browserCooldownMs: number,
       ) => {
         if (emittedCount >= maxPerScan) return
-        if (!shouldSendReminder(cache, key, cooldownMs)) return
 
-        if (notificationSettings.inAppToasts && appInForeground) {
+        const inAppCacheKey = `${key}:inapp`
+        const browserCacheKey = `${key}:browser`
+        const canInApp = shouldSendReminder(cache, inAppCacheKey, IN_APP_REMINDER_COOLDOWN_MS)
+        const canBrowser = shouldSendReminder(cache, browserCacheKey, browserCooldownMs)
+        if (!canInApp && !canBrowser) return
+
+        let didEmit = false
+
+        if (
+          canInApp &&
+          notificationSettings.inAppToasts &&
+          appInForeground
+        ) {
           toast(title, { description, duration: 9000 })
+          cache[inAppCacheKey] = Date.now()
+          didEmit = true
         }
 
         if (
+          canBrowser &&
           !appInForeground &&
           notificationSettings.browserNotifications &&
           "Notification" in window &&
@@ -421,9 +436,11 @@ export function useWalletData() {
             body: description,
             tag: key,
           })
+          cache[browserCacheKey] = Date.now()
+          didEmit = true
         }
 
-        cache[key] = Date.now()
+        if (!didEmit) return
         emittedCount += 1
       }
 
@@ -2007,6 +2024,168 @@ export function useWalletData() {
         onClick: () => undoPendingTransactionDeletion(id),
       },
     })
+  }
+
+  const isTransactionEditable = (tx: Transaction) => {
+    if (tx.status === "repayment" || tx.status === "debt") return false
+    if (tx.allocationType === "credit" || tx.allocationType === "debt" || tx.allocationType === "fastdebt") return false
+    return true
+  }
+
+  const updateTransaction = async (
+    id: string,
+    updates: Partial<Pick<Transaction, "amount" | "description" | "category" | "date" | "subcategory">>,
+  ): Promise<{ success: boolean; transaction?: Transaction; error?: string }> => {
+    if (pendingTransactionDeletionRef.current) {
+      await finalizePendingTransactionDeletion(pendingTransactionDeletionRef.current.transactionId)
+    }
+
+    const old = transactions.find((t) => t.id === id)
+    if (!old) return { success: false, error: "Transaction not found" }
+    if (!isTransactionEditable(old)) {
+      return {
+        success: false,
+        error:
+          "This transaction is linked to debt or credit in a way that cannot be edited safely here. Delete it and add a new one if you need to change it.",
+      }
+    }
+
+    const amount = updates.amount ?? old.amount
+    const description = (updates.description ?? old.description).trim()
+    const category = (updates.category ?? old.category).trim()
+    const date =
+      updates.date !== undefined
+        ? new Date(`${updates.date}T12:00:00`).toISOString()
+        : old.date
+    const subcategory =
+      updates.subcategory !== undefined
+        ? updates.subcategory === ""
+          ? undefined
+          : updates.subcategory
+        : old.subcategory
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { success: false, error: "Amount must be greater than zero" }
+    }
+    if (!description) return { success: false, error: "Description is required" }
+    if (!category) return { success: false, error: "Category is required" }
+
+    const postDelete = computePostDeleteState(
+      { transactions, debtAccounts, debtCreditTransactions, balance },
+      id,
+    )
+
+    let nextBudgets = budgets
+    const applyBudgetDelta = (cat: string, delta: number) => {
+      if (!cat || delta === 0) return
+      const { updatedBudgets } = updateBudgetSpendingHelper(nextBudgets, cat, delta, userProfile?.currency)
+      nextBudgets = updatedBudgets
+    }
+
+    let nextGoals = goals
+
+    const oldGoalSpend =
+      old.type === "expense" && old.allocationType === "goal" && (old.actual ?? 0) === 0 && old.allocationTarget
+    const oldGoalWallet =
+      old.type === "expense" && old.allocationType === "goal" && (old.actual ?? 0) > 0 && old.allocationTarget
+
+    if (old.type === "expense" && old.category) {
+      applyBudgetDelta(old.category, -old.amount)
+    }
+
+    if (oldGoalSpend && old.allocationTarget) {
+      nextGoals = nextGoals.map((g) =>
+        g.id === old.allocationTarget
+          ? { ...g, currentAmount: g.currentAmount + old.amount, updatedAt: new Date().toISOString() }
+          : g,
+      )
+    } else if (oldGoalWallet && old.allocationTarget) {
+      nextGoals = updateGoalContributionHelper(nextGoals, old.allocationTarget, -old.amount, new Date().toISOString())
+    }
+
+    const merged: Transaction = {
+      ...old,
+      amount,
+      description,
+      category,
+      date,
+      subcategory,
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+    }
+
+    if (merged.type === "income") {
+      merged.total = amount
+      merged.actual = amount
+      merged.debtUsed = 0
+      merged.debtAccountId = null
+      merged.status = "normal"
+    } else {
+      merged.status = "normal"
+      merged.debtAccountId = null
+      merged.debtUsed = 0
+      merged.total = amount
+      if (merged.allocationType === "goal" && merged.allocationTarget) {
+        merged.actual = oldGoalSpend ? 0 : amount
+      } else {
+        merged.actual = amount
+      }
+    }
+
+    const balanceWithoutOld = calculateCashBalanceFromTransactions(postDelete.transactions)
+    if (merged.type === "expense") {
+      const isGoalSpendRow =
+        merged.allocationType === "goal" && (merged.actual ?? 0) === 0 && merged.allocationTarget
+      if (isGoalSpendRow) {
+        const g = nextGoals.find((x) => x.id === merged.allocationTarget)
+        if (!g || g.currentAmount < merged.amount) {
+          return { success: false, error: "Not enough balance in the linked goal for this amount." }
+        }
+      } else if (balanceWithoutOld < merged.amount) {
+        return { success: false, error: "Insufficient wallet balance for this amount." }
+      }
+    }
+
+    if (merged.type === "expense" && merged.category) {
+      applyBudgetDelta(merged.category, merged.amount)
+    }
+
+    if (merged.type === "expense" && merged.allocationType === "goal" && merged.allocationTarget) {
+      if ((merged.actual ?? 0) === 0) {
+        nextGoals = nextGoals.map((g) =>
+          g.id === merged.allocationTarget
+            ? { ...g, currentAmount: g.currentAmount - merged.amount, updatedAt: new Date().toISOString() }
+            : g,
+        )
+      } else {
+        nextGoals = updateGoalContributionHelper(
+          nextGoals,
+          merged.allocationTarget,
+          merged.amount,
+          new Date().toISOString(),
+        )
+      }
+    }
+
+    const nextTransactions = [...postDelete.transactions, merged]
+    const nextBalance = calculateCashBalanceFromTransactions(nextTransactions)
+
+    setTransactions(nextTransactions)
+    setBalance(nextBalance)
+    setDebtAccounts(postDelete.debtAccounts)
+    setDebtCreditTransactions(postDelete.debtCreditTransactions)
+    if (nextBudgets !== budgets) {
+      setBudgets(nextBudgets)
+      await saveDataWithIntegrity("budgets", nextBudgets)
+    }
+    if (nextGoals !== goals) {
+      setGoals(nextGoals)
+      await saveDataWithIntegrity("goals", nextGoals)
+    }
+    await saveDataWithIntegrity("transactions", nextTransactions)
+    await saveDataWithIntegrity("debtAccounts", postDelete.debtAccounts)
+    await saveDataWithIntegrity("debtCreditTransactions", postDelete.debtCreditTransactions)
+
+    return { success: true, transaction: merged }
   }
 
   const deleteDebtAccount = async (id: string) => {
@@ -3733,6 +3912,7 @@ export function useWalletData() {
     deleteGoal,
     useGoalForInvestment,
     deleteTransaction,
+    updateTransaction,
     addDebtAccount,
     addDebtToAccount,
     addCreditAccount,

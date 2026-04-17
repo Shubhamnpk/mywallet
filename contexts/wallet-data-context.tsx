@@ -69,6 +69,10 @@ type WalletDataContextType = {
     options?: { market?: "nepal" | "uk" | "split"; notes?: string }
   ) => Promise<any>
   deleteTransaction: (id: string) => void
+  updateTransaction: (
+    id: string,
+    updates: Partial<Pick<Transaction, "amount" | "description" | "category" | "date" | "subcategory">>,
+  ) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>
   addDebtAccount: (debt: Omit<DebtAccount, "id">) => DebtAccount
   addCreditAccount: (credit: Omit<CreditAccount, "id">) => CreditAccount
   deleteDebtAccount: (id: string) => void

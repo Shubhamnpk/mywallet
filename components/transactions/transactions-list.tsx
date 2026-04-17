@@ -18,7 +18,6 @@ import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { toast } from "sonner"
 
 function BadgeRow({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -84,7 +83,7 @@ export function TransactionsList({
   onDeleteTransaction,
   fetchTransactions,
 }: TransactionsListProps) {
-  const { addTransaction } = useWalletData()
+  const { updateTransaction, categories: walletCategories } = useWalletData()
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -166,45 +165,6 @@ export function TransactionsList({
   const getTimeEquivalentDisplay = (amount: number) => {
     const breakdown = getTimeEquivalentBreakdown(amount, userProfile)
     return breakdown ? breakdown.formatted.userFriendly : ""
-  }
-
-  const handleCreatePartialTransaction = async (
-    transaction: Transaction,
-    partialAmount: number,
-    customDate?: string,
-  ) => {
-    if (!partialAmount || partialAmount <= 0) {
-      toast.error("Invalid partial amount")
-      return false
-    }
-
-    const safeDate = customDate
-      ? new Date(`${customDate}T12:00:00`).toISOString()
-      : new Date().toISOString()
-
-    const result = await addTransaction({
-      type: transaction.type,
-      amount: partialAmount,
-      category: transaction.category,
-      subcategory: transaction.subcategory,
-      description: `${transaction.description} (Partial)`,
-      date: safeDate,
-      allocationType: transaction.allocationType || "direct",
-      allocationTarget: transaction.allocationTarget || undefined,
-      status: "normal",
-      total: partialAmount,
-      actual: partialAmount,
-      debtUsed: 0,
-      debtAccountId: null,
-    })
-
-    if (!result?.transaction) {
-      toast.error("Failed to create partial transaction")
-      return false
-    }
-
-    toast.success("Partial transaction created")
-    return true
   }
 
   return (
@@ -432,10 +392,12 @@ export function TransactionsList({
         <TransactionDetailsModal
           transaction={selectedTransaction}
           userProfile={userProfile}
+          categories={walletCategories}
           isOpen={!!selectedTransaction}
           onClose={() => setSelectedTransaction(null)}
           onDelete={onDeleteTransaction}
-          onCreatePartial={handleCreatePartialTransaction}
+          updateTransaction={updateTransaction}
+          onSaved={(tx) => setSelectedTransaction(tx)}
         />
       )}
     </div>

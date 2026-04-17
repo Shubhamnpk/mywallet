@@ -788,8 +788,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
       />
 
       <Dialog open={historyDialog.open} onOpenChange={(open) => setHistoryDialog((current) => ({ ...current, open }))}>
-        <DialogContent className="sm:max-w-3xl h-[85vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-0">
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 p-6 pb-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Receipt className="w-5 h-5 text-primary" />
               {historyDialog.goalName} History
@@ -806,8 +806,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
               .reduce((sum, transaction) => sum + transaction.amount, 0)
 
             return (
-              <div className="flex-1 flex flex-col p-6 pt-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/30 p-4 rounded-xl border">
+              <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden px-6 pb-6 pt-4">
+                <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Stats Summary</span>
                     <div className="flex items-center gap-4">
@@ -841,15 +841,15 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                   </Select>
                 </div>
 
-                <div className="flex-1 flex flex-col min-h-0 pt-2">
-                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">All Activities</h4>
+                <div className="flex min-h-0 flex-1 flex-col pt-2">
+                  <h4 className="mb-2 shrink-0 text-sm font-medium text-muted-foreground">All Activities</h4>
                   {filteredHistory.length === 0 ? (
                     <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5">
                       <Receipt className="w-10 h-10 mb-2 opacity-20" />
                       No history found for this range.
                     </div>
                   ) : (
-                    <div className="flex-1 space-y-2 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-2 [-webkit-overflow-scrolling:touch] scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
                       {filteredHistory.map((transaction) => {
                         const historyMeta = getGoalHistoryMeta(transaction)
 

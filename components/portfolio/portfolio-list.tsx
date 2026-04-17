@@ -1170,7 +1170,8 @@ export function PortfolioList() {
         const diversificationColor = uniqueStocks > 15 ? "text-success" : uniqueStocks > 7 ? "text-info" : "text-amber-500"
 
         return (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+            <>
+            <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-4">
                 <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1">
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <div className="flex items-center justify-between mb-1">
@@ -1237,7 +1238,22 @@ export function PortfolioList() {
 
                 <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-2 px-3 sm:px-6">
-                        <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Diversification</CardDescription>
+                        <div className="mb-1 flex items-start justify-between gap-2">
+                            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
+                                Diversification
+                            </CardDescription>
+                            <Badge
+                                variant="outline"
+                                className={cn(
+                                    "h-6 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
+                                    marketStatusMeta.badgeClass,
+                                )}
+                                title="Nepal Stock Exchange session"
+                            >
+                                <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
+                                NEPSE {marketStatusMeta.statusText}
+                            </Badge>
+                        </div>
                         <CardTitle className={cn("text-xl sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
@@ -1256,6 +1272,28 @@ export function PortfolioList() {
                     </CardContent>
                 </Card>
             </div>
+
+            <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-muted/50 bg-card/40 px-4 py-3 shadow-sm md:hidden">
+                <div className="min-w-0 text-left">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Diversification</p>
+                    <p className={cn("text-lg font-black font-mono leading-tight", diversificationColor)}>{diversificationLabel}</p>
+                    <p className="text-[10px] font-semibold text-muted-foreground">
+                        {uniqueStocks} symbols · {uniqueSectors} sectors
+                    </p>
+                </div>
+                <Badge
+                    variant="outline"
+                    className={cn(
+                        "h-7 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
+                        marketStatusMeta.badgeClass,
+                    )}
+                    title="Nepal Stock Exchange session"
+                >
+                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
+                    NEPSE {marketStatusMeta.statusText}
+                </Badge>
+            </div>
+            </>
         )
     }
 
