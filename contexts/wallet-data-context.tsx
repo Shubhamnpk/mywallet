@@ -2,27 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react"
 import { useWalletData as useWalletDataHook } from "@/hooks/use-wallet-data"
-import type {
-  UserProfile,
-  Transaction,
-  Budget,
-  Goal,
-  DebtAccount,
-  CreditAccount,
-  DebtCreditTransaction,
-  Category,
-  Portfolio,
-  PortfolioItem,
-  ShareTransaction,
-  UpcomingIPO,
-  TopStocksData,
-  MarketSummaryMetric,
-  MarketSummaryHistoryItem,
-  NepseNoticesBundle,
-  NepseDisclosure,
-  NepseExchangeMessage,
-  SIPPlan,
-} from "@/types/wallet"
+import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, } from "@/types/wallet"
 type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
@@ -43,6 +23,7 @@ type WalletDataContextType = {
   shareTransactions: ShareTransaction[]
   upcomingIPOs: UpcomingIPO[]
   topStocks: TopStocksData | null
+  marketStatus: MarketStatusData | null
   marketSummary: MarketSummaryMetric[]
   marketSummaryHistory: MarketSummaryHistoryItem[]
   noticesBundle: NepseNoticesBundle | null
@@ -88,6 +69,10 @@ type WalletDataContextType = {
     options?: { market?: "nepal" | "uk" | "split"; notes?: string }
   ) => Promise<any>
   deleteTransaction: (id: string) => void
+  updateTransaction: (
+    id: string,
+    updates: Partial<Pick<Transaction, "amount" | "description" | "category" | "date" | "subcategory">>,
+  ) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>
   addDebtAccount: (debt: Omit<DebtAccount, "id">) => DebtAccount
   addCreditAccount: (credit: Omit<CreditAccount, "id">) => CreditAccount
   deleteDebtAccount: (id: string) => void

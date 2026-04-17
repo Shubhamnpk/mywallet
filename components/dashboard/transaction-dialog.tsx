@@ -27,6 +27,7 @@ interface FormData {
   category: string
   subcategory: string
   description: string
+  customDate: string
   expenseMode: "quick_action" | "payment_source"
   allocationType: "" | "direct" | "goal" | "debt" | "credit"
   allocationTarget: string
@@ -71,6 +72,7 @@ const initialFormData: FormData = {
   category: "",
   subcategory: "",
   description: "",
+  customDate: new Date().toISOString().split("T")[0],
   expenseMode: "payment_source",
   allocationType: "",
   allocationTarget: "",
@@ -98,6 +100,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     category: { touched: !!initialCategory, blurred: false },
     subcategory: { touched: false, blurred: false },
     description: { touched: !!initialDescription, blurred: false },
+    customDate: { touched: false, blurred: false },
     allocationType: { touched: false, blurred: false },
     expenseMode: { touched: false, blurred: false },
     allocationTarget: { touched: false, blurred: false },
@@ -109,6 +112,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
   const [showDebtDialog, setShowDebtDialog] = useState(false)
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
   const [shortfallFundingMode, setShortfallFundingMode] = useState<"goal_wallet" | "debt">("debt")
   const [debtFormData, setDebtFormData] = useState<DebtFormData>({
     name: "",
@@ -126,10 +130,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const [walletShortfallGoalId, setWalletShortfallGoalId] = useState("")
   const [walletShortfallDebtAccountId, setWalletShortfallDebtAccountId] = useState("")
   const amountInputRef = useRef<HTMLInputElement>(null)
+  const customCurrency = userProfile?.customCurrency
 
   const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+    return getCurrencySymbol(userProfile?.currency || "USD", customCurrency)
+  }, [userProfile?.currency, customCurrency])
 
   const [numberFormat, setNumberFormat] = useState(() => {
     return localStorage.getItem("wallet_number_format") || "us"
@@ -167,6 +172,13 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     return isNaN(parsed) ? 0 : parsed
   }, [formData.amount])
 
+  const getTransactionDate = useCallback(() => {
+    if (showAdvancedOptions && formData.customDate) {
+      return new Date(`${formData.customDate}T12:00:00`).toISOString()
+    }
+    return new Date().toISOString()
+  }, [showAdvancedOptions, formData.customDate])
+
   const timeEquivalentBreakdown = useMemo(() => {
     if (!numAmount || !userProfile) return null
     const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
@@ -182,6 +194,15 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     // Include completed goals too, so they can still be used as a payment source.
     return goals || []
   }, [goals])
+
+  const getGoalLabel = useCallback(
+    (goalId?: string) => {
+      if (!goalId) return "Goal"
+      const goal = goals.find((entry) => entry.id === goalId)
+      return goal?.title || goal?.name || "Goal"
+    },
+    [goals],
+  )
 
   const hasAllocationOptions = useMemo(() => {
     return availableGoals.length > 0 || (debtAccounts?.length || 0) > 0 || (creditAccounts?.length || 0) > 0
@@ -270,7 +291,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         (formData.allocationType === "goal" && formData.allocationTarget) ||
         (formData.allocationType === "debt" && formData.allocationTarget) ||
         (formData.allocationType === "credit" && formData.allocationTarget))
-  }, [errors, formData, numAmount])
+  }, [errors, formData, numAmount, type])
 
   const canProceedToFundingStep = useMemo(() => {
     if (type !== "expense") return true
@@ -302,7 +323,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     } else {
       localStorage.removeItem("transaction-dialog-form")
     }
-  }, [open, initialAmount, initialDescription, initialType, initialCategory])
+  }, [open, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage])
 
   // Update form data when initial props change
   useEffect(() => {
@@ -382,6 +403,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       category: { touched: !!initialCategory, blurred: false },
       subcategory: { touched: false, blurred: false },
       description: { touched: !!initialDescription, blurred: false },
+      customDate: { touched: false, blurred: false },
       allocationType: { touched: false, blurred: false },
       expenseMode: { touched: false, blurred: false },
       allocationTarget: { touched: false, blurred: false },
@@ -393,6 +415,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setNewCategoryName("")
     setNewCategoryIcon("📦")
     setShowDebtMoreOptions(false)
+    setShowAdvancedOptions(false)
     setShowExpenseFundingStep(false)
     setShowGoalShortfallDialog(false)
     setGoalShortfallData(null)
@@ -402,7 +425,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setWalletShortfallDebtAccountId("")
     setPendingTransactionResult(null)
     setPendingTransaction(null)
-  }, [initialAmount, initialDescription, initialType, initialCategory, numberFormat])
+  }, [initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage, numberFormat])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
@@ -518,7 +541,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               category: formData.category,
               subcategory: formData.subcategory || undefined,
               description: formData.description.trim() || `Expense charged to credit: ${creditAccount.name}`,
-              date: new Date().toISOString(),
+              date: getTransactionDate(),
               allocationType: formData.allocationType,
               allocationTarget: formData.allocationTarget || undefined,
               total: numAmount,
@@ -535,7 +558,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             category: formData.category,
             subcategory: formData.subcategory || undefined,
             description: formData.description.trim() || `Expense - ${formData.category}`,
-            date: new Date().toISOString(),
+            date: getTransactionDate(),
             allocationType: "direct",
             allocationTarget: undefined,
             total: numAmount,
@@ -570,7 +593,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               category: "Credit Charge",
               subcategory: formData.subcategory || undefined,
               description: formData.description.trim() || `Expense charged to credit: ${creditAccount.name}`,
-              date: new Date().toISOString(),
+              date: getTransactionDate(),
               allocationType: formData.allocationType,
               allocationTarget: formData.allocationTarget || undefined,
               total: numAmount,
@@ -582,13 +605,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           }
         } else {
           // Handle direct or goal allocation
+          const goalLabel = formData.allocationType === "goal" ? getGoalLabel(formData.allocationTarget) : null
+          const fallbackDescription = formData.allocationType === "goal"
+            ? `${type === "income" ? "Income allocated to goal" : "Transfer to goal"}: ${goalLabel}`
+            : `${type === "income" ? "Income" : "Expense"} - ${formData.category}`
+
           transactionResult = await addTransaction({
             type,
             amount: numAmount,
             category: formData.allocationType === "goal" ? "Goal Contribution" : formData.category,
             subcategory: formData.subcategory || undefined,
-            description: formData.description.trim() || `${type === "income" ? "Income" : "Expense"} - ${formData.allocationType === "goal" ? "Goal Contribution" : formData.category}`,
-            date: new Date().toISOString(),
+            description: formData.description.trim() || fallbackDescription,
+            date: getTransactionDate(),
             allocationType: formData.allocationType || "direct",
             allocationTarget: formData.allocationTarget || undefined,
             total: numAmount,
@@ -639,14 +667,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         toast.success(`${type === "income" ? "Income" : "Expense"} added successfully!`, {
           description: (type === "expense" && formData.expenseMode === "payment_source")
             ? (formData.allocationType === "goal"
-              ? `${currencySymbol}${numAmount} spent from selected goal`
+              ? `${currencySymbol}${numAmount} spent from ${getGoalLabel(formData.allocationTarget)}`
               : formData.allocationType === "debt"
                 ? `${currencySymbol}${numAmount} charged to selected debt account`
                 : formData.allocationType === "credit"
                   ? `${currencySymbol}${numAmount} charged to selected credit account`
                   : `${currencySymbol}${numAmount} paid from wallet`)
             : (formData.allocationType === "goal"
-              ? `${currencySymbol}${numAmount} contributed to goal`
+              ? `${currencySymbol}${numAmount} contributed to ${getGoalLabel(formData.allocationTarget)}`
               : formData.allocationType === "debt"
                 ? `${currencySymbol}${numAmount} applied to debt repayment`
                 : formData.allocationType === "credit"
@@ -670,7 +698,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
         setIsSubmitting(false)
       }
     },
-    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep, walletShortfallGoalOptions],
+    [isFormValid, errors, addTransaction, type, numAmount, formData, resetForm, handleOpenChange, currencySymbol, showExpenseFundingStep, canProceedToFundingStep, walletShortfallGoalOptions, goals, debtAccounts, creditAccounts, addDebtToAccount, updateCreditBalance, makeDebtPayment, spendFromGoal, playSound, getTransactionDate, getGoalLabel],
   )
 
   const canSubmitNow = useMemo(() => {
@@ -781,7 +809,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     toast.success("Category added!", {
       description: `${newCategory.name} has been added to your ${type} categories.`
     })
-  }, [newCategoryName, addCategory, categories, type])
+  }, [newCategoryName, newCategoryIcon, addCategory, categories, type])
 
   const handleCreateDebt = useCallback(async () => {
     if (!debtFormData.name.trim() || !pendingTransactionResult || !pendingTransaction) return
@@ -874,7 +902,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
           category: pendingTransaction.category,
           subcategory: pendingTransaction.subcategory || undefined,
           description: cleanDescription,
-          date: new Date().toISOString(),
+          date: getTransactionDate(),
           allocationType: "direct",
           allocationTarget: undefined,
           total: availableBalance,
@@ -926,7 +954,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             category: pendingTransaction.category,
             subcategory: pendingTransaction.subcategory || undefined,
             description: cleanDescription,
-            date: new Date().toISOString(),
+            date: getTransactionDate(),
             allocationType: "direct",
             allocationTarget: undefined,
             total: availableBalance + remainingAfterGoal,
@@ -975,7 +1003,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     } finally {
       setIsSubmitting(false)
     }
-  }, [pendingTransactionResult, pendingTransaction, walletShortfallGoalId, goals, currencySymbol, spendFromGoal, playSound, addTransaction, resetForm, handleOpenChange, walletShortfallDebtAccountId, debtAccounts, addDebtToAccount, completeTransactionWithDebt])
+  }, [pendingTransactionResult, pendingTransaction, walletShortfallGoalId, goals, currencySymbol, spendFromGoal, playSound, addTransaction, resetForm, handleOpenChange, walletShortfallDebtAccountId, debtAccounts, addDebtToAccount, completeTransactionWithDebt, getTransactionDate])
 
   const handleResolveGoalShortfall = useCallback(
     async (resolution: "wallet" | "debt" | "wallet_debt") => {
@@ -1012,7 +1040,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             category,
             subcategory: formData.subcategory || undefined,
             description: cleanDescription,
-            date: new Date().toISOString(),
+            date: getTransactionDate(),
             allocationType: "direct",
             allocationTarget: undefined,
             total: remainingAmount,
@@ -1084,7 +1112,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               category,
               subcategory: formData.subcategory || undefined,
               description: cleanDescription,
-              date: new Date().toISOString(),
+              date: getTransactionDate(),
               allocationType: "direct",
               allocationTarget: undefined,
               total: remainingAmount,
@@ -1140,6 +1168,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       resetForm,
       handleOpenChange,
       goalShortfallDebtAccountId,
+      getTransactionDate,
     ],
   )
 
@@ -1657,6 +1686,42 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   )}
                   disabled={isSubmitting}
                 />
+                </div>
+              )}
+
+              {!isExpenseFundingOnlyView && (
+                <div className="space-y-2 rounded-xl border border-border/50 bg-muted/20 p-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">More Details</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => setShowAdvancedOptions((prev) => !prev)}
+                    >
+                      {showAdvancedOptions ? "Hide" : "Show"}
+                    </Button>
+                  </div>
+                  {showAdvancedOptions && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="custom-date" className="text-sm font-medium">
+                          Transaction Date
+                        </Label>
+                      </div>
+                      <Input
+                        id="custom-date"
+                        type="date"
+                        value={formData.customDate}
+                        onChange={(e) => handleFieldChange("customDate", e.target.value)}
+                        disabled={isSubmitting}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        This date is used only when More Details is open.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

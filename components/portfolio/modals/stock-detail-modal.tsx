@@ -36,7 +36,7 @@ import { Separator } from "@/components/ui/separator"
 import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
 import { SIPSetupModal } from "./sip-setup-modal"
-import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, getSipTransactionsForPlan, normalizeSipPlans } from "@/lib/sip"
+import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipDisplayTransactionsForPlan, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
 
 type ProposedDividendRecord = {
@@ -385,18 +385,21 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
 
     const sipTransactions = useMemo(() => {
         if (!existingSipPlan) return []
-        return getSipTransactionsForPlan(existingSipPlan, matchedTransactions)
+        return getSipDisplayTransactionsForPlan(existingSipPlan, matchedTransactions)
     }, [existingSipPlan, matchedTransactions])
 
-    const isRecognizedSipLikeBuy = useCallback((tx: ShareTransaction) => {
-        const upperDescription = (tx.description || "").trim().toUpperCase()
-        const normalizedSymbol = normalizeStockSymbol(tx.symbol)
-        return (
-            upperDescription.includes("CA-REARRANGEMENT") ||
-            upperDescription.includes("SIP") ||
-            upperDescription.includes(`UNITS OF ${normalizedSymbol}`)
-        )
+    const getSipGrossAmount = useCallback((tx: ShareTransaction) => {
+        if (Number.isFinite(tx.sipGrossAmount)) return tx.sipGrossAmount ?? 0
+        if (tx.type === "buy") {
+            return Number((((tx.price ?? 0) * (tx.quantity ?? 0)) + (tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)).toFixed(2))
+        }
+        return 0
     }, [])
+
+    const getSipNetAmount = useCallback((tx: ShareTransaction) => {
+        if (Number.isFinite(tx.sipNetAmount)) return tx.sipNetAmount ?? 0
+        return calculateSipNetInvestment(getSipGrossAmount(tx), tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)
+    }, [getSipGrossAmount])
 
     const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => (
         tx.type === "buy" &&
@@ -452,12 +455,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     }
 
     const totalSipGross = useMemo(() =>
-        sipTransactions.reduce((sum, tx) => sum + (tx.sipGrossAmount ?? 0), 0),
-    [sipTransactions])
+        sipTransactions.reduce((sum, tx) => sum + getSipGrossAmount(tx), 0),
+    [getSipGrossAmount, sipTransactions])
 
     const totalSipNet = useMemo(() =>
-        sipTransactions.reduce((sum, tx) => sum + (tx.sipNetAmount ?? calculateSipNetInvestment(tx.sipGrossAmount ?? 0, tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)), 0),
-    [sipTransactions])
+        sipTransactions.reduce((sum, tx) => sum + getSipNetAmount(tx), 0),
+    [getSipNetAmount, sipTransactions])
 
     const totalSipUnits = useMemo(() =>
         sipTransactions.reduce((sum, tx) => sum + (tx.quantity || 0), 0),
@@ -1057,7 +1060,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                         {formatSipDate(tx.sipDueDate || tx.date)}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground mt-1">
-                                                                        Gross {currencySymbol} {formatValue(tx.sipGrossAmount ?? 0)} • DPS {currencySymbol} {formatValue(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {currencySymbol} {formatValue(tx.sipNetAmount ?? calculateSipNetInvestment(tx.sipGrossAmount ?? 0, tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                                        Gross {currencySymbol} {formatValue(getSipGrossAmount(tx))} • DPS {currencySymbol} {formatValue(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {currencySymbol} {formatValue(getSipNetAmount(tx))}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground">
                                                                         Completed {new Date(tx.date).toLocaleDateString()}

@@ -18,44 +18,6 @@ export function useOfflineMode() {
     lastSyncTime: null
   })
 
-  useEffect(() => {
-    // Check initial online status
-    setState(prev => ({
-      ...prev,
-      isOnline: navigator.onLine
-    }))
-
-    // Listen for online/offline events
-    const handleOnline = () => {
-      setState(prev => ({
-        ...prev,
-        isOnline: true,
-        isOfflineMode: false
-      }))
-      // Trigger sync when coming back online
-      void syncPendingData()
-    }
-
-    const handleOffline = () => {
-      setState(prev => ({
-        ...prev,
-        isOnline: false,
-        isOfflineMode: true
-      }))
-    }
-
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    // Check for pending sync items
-    void checkPendingSyncItems()
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [])
-
   const checkPendingSyncItems = async () => {
     const stored = await loadFromLocalStorage([
       'wallet_pending_transactions',
@@ -101,20 +63,17 @@ export function useOfflineMode() {
 
       // Sync transactions
       if (pendingTransactions) {
-        const transactions = pendingTransactions
         // Here you would sync with your backend
         localStorage.removeItem('wallet_pending_transactions')
       }
 
       // Sync goals
       if (pendingGoals) {
-        const goals = pendingGoals
         localStorage.removeItem('wallet_pending_goals')
       }
 
       // Sync budgets
       if (pendingBudgets) {
-        const budgets = pendingBudgets
         localStorage.removeItem('wallet_pending_budgets')
       }
 
@@ -124,10 +83,47 @@ export function useOfflineMode() {
         lastSyncTime: new Date(),
         pendingSyncItems: 0
       }))
-
-    } catch (error) {
+    } catch {
     }
   }
+
+  useEffect(() => {
+    // Check initial online status
+    setState(prev => ({
+      ...prev,
+      isOnline: navigator.onLine
+    }))
+
+    // Listen for online/offline events
+    const handleOnline = () => {
+      setState(prev => ({
+        ...prev,
+        isOnline: true,
+        isOfflineMode: false
+      }))
+      // Trigger sync when coming back online
+      void syncPendingData()
+    }
+
+    const handleOffline = () => {
+      setState(prev => ({
+        ...prev,
+        isOnline: false,
+        isOfflineMode: true
+      }))
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    // Check for pending sync items
+    void checkPendingSyncItems()
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   const addPendingTransaction = async (transaction: any) => {
     const stored = await loadFromLocalStorage(['wallet_pending_transactions'])

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse } from "@/lib/api-error"
 
 type CoinloreListItem = {
   id: string | number
@@ -29,7 +30,11 @@ const fetchPage = async (start: number) => {
 export async function GET(request: NextRequest) {
   const symbol = (request.nextUrl.searchParams.get("symbol") || "").trim().toUpperCase()
   if (!symbol) {
-    return NextResponse.json({ error: "Provide symbol in ?symbol=BTC" }, { status: 400 })
+    return errorResponse({
+      status: 400,
+      code: "BAD_REQUEST",
+      message: "Provide symbol in ?symbol=BTC",
+    })
   }
 
   try {
@@ -52,11 +57,16 @@ export async function GET(request: NextRequest) {
       if (list.length < PAGE_SIZE) break
     }
 
-    return NextResponse.json({ error: `No Coinlore asset found for symbol "${symbol}"` }, { status: 404 })
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "Failed to resolve symbol from Coinlore" },
-      { status: 502 }
-    )
+    return errorResponse({
+      status: 404,
+      code: "UPSTREAM_ERROR",
+      message: `No Coinlore asset found for symbol "${symbol}"`,
+    })
+  } catch {
+    return errorResponse({
+      status: 502,
+      code: "UPSTREAM_ERROR",
+      message: "Failed to resolve symbol from Coinlore",
+    })
   }
 }

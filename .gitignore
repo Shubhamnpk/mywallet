@@ -25,6 +25,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+eslint-report.json
 impovemnt.txt
 
 # pwa

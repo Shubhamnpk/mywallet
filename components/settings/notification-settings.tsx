@@ -17,6 +17,7 @@ import {
 } from "@/lib/notifications"
 import { toast } from "@/hooks/use-toast"
 import type { NotificationSettings } from "@/types/wallet"
+import { WebPushSettings } from "@/components/settings/web-push-settings"
 
 export function NotificationSettings() {
   const { userProfile, updateUserProfile } = useWalletData()
@@ -111,11 +112,23 @@ export function NotificationSettings() {
           <CardDescription>Manage reminder channels and categories from one place.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground space-y-2">
+            <p>
+              Reminders run while MyWallet is open (browser tab or installed app). In-app messages can repeat for the
+              same item after a few seconds; background system notifications use longer quiet periods so they stay
+              useful instead of noisy.
+            </p>
+            <p>
+              For alerts when the app is fully closed, enable &quot;Remote IPO alerts&quot; below after your deployment
+              is configured on Vercel (VAPID + Redis). Otherwise use browser notifications while the app is in the
+              background.
+            </p>
+          </div>
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label htmlFor="notif-enabled">Enable All Reminders</Label>
               <p className="text-sm text-muted-foreground">
-                Master switch for budget, goal, IPO, and SIP reminders.
+                Master switch for budget, goal, bill, IPO, and SIP reminders.
               </p>
             </div>
             <Switch
@@ -168,6 +181,8 @@ export function NotificationSettings() {
           </div>
         </CardContent>
       </Card>
+
+      <WebPushSettings />
 
       <Card>
         <CardHeader>
@@ -225,6 +240,14 @@ export function NotificationSettings() {
             description="Deadline reminders for upcoming and overdue goals."
             checked={settings.goalReminders}
             onCheckedChange={(checked) => updateSettings({ goalReminders: checked })}
+            disabled={!settings.enabled}
+          />
+          <SettingToggle
+            id="notif-bill"
+            label="Bill reminders"
+            description="Alerts for overdue bills, due today, and bills inside your reminder window."
+            checked={settings.billReminders}
+            onCheckedChange={(checked) => updateSettings({ billReminders: checked })}
             disabled={!settings.enabled}
           />
           <SettingToggle

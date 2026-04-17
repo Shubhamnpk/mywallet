@@ -1,13 +1,7 @@
 "use client"
 
-import dynamic from "next/dynamic"
 import { ReactNode } from "react"
-
-// Dynamically import ThemeProvider to disable SSR and prevent hydration mismatches
-const ThemeProvider = dynamic(() => import("@/components/theme-provider").then(mod => ({ default: mod.ThemeProvider })), {
-  ssr: false,
-  loading: () => null
-})
+import { ThemeProvider } from "@/components/theme-provider"
 
 interface ThemeProviderWrapperProps {
   children: ReactNode

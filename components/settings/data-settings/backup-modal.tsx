@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,16 +47,11 @@ type BackupOptions = {
   transactions: boolean
   budgets: boolean
   goals: boolean
-  debtAccounts: boolean
-  creditAccounts: boolean
-  debtCreditTransactions: boolean
+  debtProfile: boolean
+  creditProfile: boolean
   categories: boolean
   emergencyFund: boolean
-  portfolio: boolean
-  shareTransactions: boolean
-  portfolios: boolean
-  activePortfolioId: boolean
-  showScrollbars: boolean
+  portfolioProfile: boolean
 }
 
 export function BackupModal({
@@ -85,16 +81,11 @@ export function BackupModal({
     transactions: true,
     budgets: true,
     goals: true,
-    debtAccounts: true,
-    creditAccounts: true,
-    debtCreditTransactions: true,
+    debtProfile: true,
+    creditProfile: true,
     categories: true,
     emergencyFund: true,
-    portfolio: true,
-    shareTransactions: true,
-    portfolios: true,
-    activePortfolioId: true,
-    showScrollbars: true,
+    portfolioProfile: true,
   })
   const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
   const fullBackupOptions: BackupOptions = {
@@ -102,16 +93,11 @@ export function BackupModal({
     transactions: true,
     budgets: true,
     goals: true,
-    debtAccounts: true,
-    creditAccounts: true,
-    debtCreditTransactions: true,
+    debtProfile: true,
+    creditProfile: true,
     categories: true,
     emergencyFund: true,
-    portfolio: true,
-    shareTransactions: true,
-    portfolios: true,
-    activePortfolioId: true,
-    showScrollbars: true,
+    portfolioProfile: true,
   }
   const effectiveOptions = isCustomizeMode ? backupOptions : fullBackupOptions
   const getCount = (key: keyof BackupOptions) => {
@@ -124,25 +110,16 @@ export function BackupModal({
         return budgets.length
       case "goals":
         return goals.length
-      case "debtAccounts":
-        return debtAccounts.length
-      case "creditAccounts":
-        return creditAccounts.length
-      case "debtCreditTransactions":
-        return debtCreditTransactions.length
+      case "debtProfile":
+        return debtAccounts.length + debtCreditTransactions.filter((item: any) => item?.accountType === "debt").length
+      case "creditProfile":
+        return creditAccounts.length + debtCreditTransactions.filter((item: any) => item?.accountType === "credit").length
       case "categories":
         return customCategoriesOnly.length
       case "emergencyFund":
         return 1
-      case "portfolio":
-        return portfolio.length
-      case "shareTransactions":
-        return shareTransactions.length
-      case "portfolios":
-        return portfolios.length
-      case "activePortfolioId":
-      case "showScrollbars":
-        return 1
+      case "portfolioProfile":
+        return portfolio.length + shareTransactions.length + portfolios.length + (activePortfolioId ? 1 : 0)
       default:
         return 0
     }
@@ -153,12 +130,7 @@ export function BackupModal({
   const selectedRecords = selectedKeys.reduce((sum, key) => sum + getCount(key), 0)
 
   const setOption = (key: keyof BackupOptions, value: boolean) => {
-    setBackupOptions((prev) => {
-      if (key === "userProfile" && !value) {
-        return { ...prev, userProfile: false, showScrollbars: false }
-      }
-      return { ...prev, [key]: value }
-    })
+    setBackupOptions((prev) => ({ ...prev, [key]: value }))
   }
 
   const applyPreset = (preset: "all" | "none" | "financial" | "portfolio") => {
@@ -168,16 +140,11 @@ export function BackupModal({
         transactions: true,
         budgets: true,
         goals: true,
-        debtAccounts: true,
-        creditAccounts: true,
-        debtCreditTransactions: true,
+        debtProfile: true,
+        creditProfile: true,
         categories: true,
         emergencyFund: true,
-        portfolio: true,
-        shareTransactions: true,
-        portfolios: true,
-        activePortfolioId: true,
-        showScrollbars: true,
+        portfolioProfile: true,
       })
       return
     }
@@ -187,16 +154,11 @@ export function BackupModal({
         transactions: false,
         budgets: false,
         goals: false,
-        debtAccounts: false,
-        creditAccounts: false,
-        debtCreditTransactions: false,
+        debtProfile: false,
+        creditProfile: false,
         categories: false,
         emergencyFund: false,
-        portfolio: false,
-        shareTransactions: false,
-        portfolios: false,
-        activePortfolioId: false,
-        showScrollbars: false,
+        portfolioProfile: false,
       })
       return
     }
@@ -206,16 +168,11 @@ export function BackupModal({
         transactions: true,
         budgets: true,
         goals: true,
-        debtAccounts: true,
-        creditAccounts: true,
-        debtCreditTransactions: true,
+        debtProfile: true,
+        creditProfile: true,
         categories: true,
         emergencyFund: true,
-        portfolio: false,
-        shareTransactions: false,
-        portfolios: false,
-        activePortfolioId: false,
-        showScrollbars: true,
+        portfolioProfile: false,
       })
       return
     }
@@ -224,16 +181,11 @@ export function BackupModal({
       transactions: false,
       budgets: false,
       goals: false,
-      debtAccounts: false,
-      creditAccounts: false,
-      debtCreditTransactions: false,
+      debtProfile: false,
+      creditProfile: false,
       categories: false,
       emergencyFund: false,
-      portfolio: true,
-      shareTransactions: true,
-      portfolios: true,
-      activePortfolioId: true,
-      showScrollbars: true,
+      portfolioProfile: true,
     })
   }
 
@@ -244,6 +196,14 @@ export function BackupModal({
       toast({
         title: "PIN Required",
         description: "Please enter your wallet PIN to create an encrypted backup.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (pinToUse.length !== 6) {
+      toast({
+        title: "Invalid PIN",
+        description: "PIN must be 6 digits.",
         variant: "destructive",
       })
       return
@@ -282,22 +242,53 @@ export function BackupModal({
       if (effectiveOptions.transactions) data.transactions = transactions
       if (effectiveOptions.budgets) data.budgets = budgets
       if (effectiveOptions.goals) data.goals = goals
-      if (effectiveOptions.debtAccounts) data.debtAccounts = debtAccounts
-      if (effectiveOptions.creditAccounts) data.creditAccounts = creditAccounts
-      if (effectiveOptions.debtCreditTransactions) data.debtCreditTransactions = debtCreditTransactions
+      let accountHistory: any[] = []
+      if (effectiveOptions.debtProfile) {
+        data.debtAccounts = debtAccounts
+        const debtIds = new Set(debtAccounts.map((item) => item.id))
+        accountHistory = [
+          ...accountHistory,
+          ...debtCreditTransactions.filter((item) => debtIds.has(item?.accountId) || item?.accountType === "debt"),
+        ]
+      }
+      if (effectiveOptions.creditProfile) {
+        data.creditAccounts = creditAccounts
+        const creditIds = new Set(creditAccounts.map((item) => item.id))
+        accountHistory = [
+          ...accountHistory,
+          ...debtCreditTransactions.filter((item) => creditIds.has(item?.accountId) || item?.accountType === "credit"),
+        ]
+      }
+      if (accountHistory.length > 0) {
+        const unique = new Map<string, any>()
+        accountHistory.forEach((item) => {
+          if (item?.id) unique.set(item.id, item)
+        })
+        data.debtCreditTransactions = unique.size > 0 ? Array.from(unique.values()) : accountHistory
+      }
       if (effectiveOptions.categories) data.categories = customCategoriesOnly
       if (effectiveOptions.emergencyFund) data.emergencyFund = emergencyFund
-      if (effectiveOptions.portfolio) data.portfolio = portfolio
-      if (effectiveOptions.shareTransactions) data.shareTransactions = shareTransactions
-      if (effectiveOptions.portfolios) data.portfolios = portfolios
-      if (effectiveOptions.activePortfolioId) data.activePortfolioId = activePortfolioId
+      if (effectiveOptions.portfolioProfile) {
+        data.portfolio = portfolio
+        data.shareTransactions = shareTransactions
+        data.portfolios = portfolios
+        data.activePortfolioId = activePortfolioId
+      }
 
-      // Include scrollbar setting only when selected.
-      if (effectiveOptions.userProfile && effectiveOptions.showScrollbars) {
+      // Profile/settings include display + biometric security metadata.
+      if (effectiveOptions.userProfile) {
         const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
+        const biometricEnabled = localStorage.getItem("wallet_biometric_enabled") === "true"
         data.settings = {
           ...data.settings,
-          showScrollbars
+          showScrollbars,
+          biometric: {
+            enabled: biometricEnabled,
+            credentialId: localStorage.getItem("wallet_biometric_credential_id"),
+            userId: localStorage.getItem("wallet_biometric_user_id"),
+            wrappedPin: localStorage.getItem("wallet_biometric_pin_wrapped"),
+            prfSalt: localStorage.getItem("wallet_biometric_prf_salt"),
+          },
         }
       }
 
@@ -351,12 +342,29 @@ export function BackupModal({
 
           <div className="space-y-2">
             <Label htmlFor="export-pin">Enter PIN for encryption</Label>
+            <div className="flex justify-center py-2">
+              <InputOTP
+                maxLength={6}
+                value={exportPin}
+                onChange={setExportPin}
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
             <Input
               id="export-pin"
               type="password"
-              placeholder="Enter your wallet PIN"
+              placeholder="Or paste PIN"
               value={exportPin}
               onChange={(e) => setExportPin(e.target.value)}
+              className="sr-only"
             />
             <p className="text-xs text-muted-foreground">
               Must match your wallet PIN. Any other PIN will be rejected.
@@ -424,33 +432,23 @@ export function BackupModal({
 
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="backup-debtAccounts"
-                checked={backupOptions.debtAccounts}
-                onCheckedChange={(checked) => setOption("debtAccounts", !!checked)}
+                id="backup-debtProfile"
+                checked={backupOptions.debtProfile}
+                onCheckedChange={(checked) => setOption("debtProfile", !!checked)}
               />
-              <Label htmlFor="backup-debtAccounts" className="text-sm">
-                Debt Accounts ({debtAccounts.length} items)
+              <Label htmlFor="backup-debtProfile" className="text-sm">
+                Debt Account + History ({debtAccounts.length} accounts)
               </Label>
             </div>
 
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="backup-creditAccounts"
-                checked={backupOptions.creditAccounts}
-                onCheckedChange={(checked) => setOption("creditAccounts", !!checked)}
+                id="backup-creditProfile"
+                checked={backupOptions.creditProfile}
+                onCheckedChange={(checked) => setOption("creditProfile", !!checked)}
               />
-              <Label htmlFor="backup-creditAccounts" className="text-sm">
-                Credit Accounts ({creditAccounts.length} items)
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-debtCreditTransactions"
-                checked={backupOptions.debtCreditTransactions}
-                onCheckedChange={(checked) => setOption("debtCreditTransactions", !!checked)}
-              />
-              <Label htmlFor="backup-debtCreditTransactions" className="text-sm">
-                Debt/Credit History ({debtCreditTransactions.length} items)
+              <Label htmlFor="backup-creditProfile" className="text-sm">
+                Credit Account + History ({creditAccounts.length} accounts)
               </Label>
             </div>
 
@@ -481,56 +479,15 @@ export function BackupModal({
               <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Portfolio and Display</p>
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="backup-portfolio"
-                checked={backupOptions.portfolio}
-                onCheckedChange={(checked) => setOption("portfolio", !!checked)}
+                id="backup-portfolioProfile"
+                checked={backupOptions.portfolioProfile}
+                onCheckedChange={(checked) => setOption("portfolioProfile", !!checked)}
               />
-              <Label htmlFor="backup-portfolio" className="text-sm">
-                Portfolio Holdings ({portfolio.length} items)
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-shareTransactions"
-                checked={backupOptions.shareTransactions}
-                onCheckedChange={(checked) => setOption("shareTransactions", !!checked)}
-              />
-              <Label htmlFor="backup-shareTransactions" className="text-sm">
-                Share Transactions ({shareTransactions.length} items)
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-portfolios"
-                checked={backupOptions.portfolios}
-                onCheckedChange={(checked) => setOption("portfolios", !!checked)}
-              />
-              <Label htmlFor="backup-portfolios" className="text-sm">
-                Portfolio Lists ({portfolios.length} items)
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-activePortfolioId"
-                checked={backupOptions.activePortfolioId}
-                onCheckedChange={(checked) => setOption("activePortfolioId", !!checked)}
-              />
-              <Label htmlFor="backup-activePortfolioId" className="text-sm">
-                Active Portfolio Selection
+              <Label htmlFor="backup-portfolioProfile" className="text-sm">
+                Portfolio Profile (Holdings {portfolio.length}, Transactions {shareTransactions.length}, Lists {portfolios.length})
               </Label>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-showScrollbars"
-                checked={backupOptions.showScrollbars}
-                onCheckedChange={(checked) => setOption("showScrollbars", !!checked)}
-                disabled={!backupOptions.userProfile}
-              />
-              <Label htmlFor="backup-showScrollbars" className="text-sm">
-                Scrollbar Settings (Theme preference)
-              </Label>
-            </div>
             </div>
             </div>
           )}
@@ -555,7 +512,7 @@ export function BackupModal({
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleExportData}
-                disabled={!exportPin || isExporting}
+                disabled={exportPin.length !== 6 || isExporting}
                 className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 {isExporting ? (

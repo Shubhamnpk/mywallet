@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import QRCode from "react-qr-code"
 import { Share2, Facebook, Twitter, MessageCircle, Copy, Check, X, Link2, Sparkles } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 
 interface ShareModalProps {
@@ -19,13 +19,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const isMobile = useIsMobile()
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
-  const [shareUrl, setShareUrl] = useState("")
   const [showQR, setShowQR] = useState(true)
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setShareUrl(window.location.origin)
-    }
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return ""
+    return window.location.origin
   }, [])
 
   const handleCopyUrl = async () => {

@@ -39,10 +39,11 @@ import {
   Star,
   Clock,
   Sparkles,
+  Receipt,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import type { Goal, UserProfile } from "@/types/wallet"
+import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
@@ -61,7 +62,7 @@ type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
-  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment } = useWalletData()
+  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -84,6 +85,12 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
   const [investmentAmount, setInvestmentAmount] = useState("")
   const [investmentMarket, setInvestmentMarket] = useState<"nepal" | "uk" | "split">("split")
   const [investmentNotes, setInvestmentNotes] = useState("")
+  const [historyDialog, setHistoryDialog] = useState<{ open: boolean; goalId: string; goalName: string }>({
+    open: false,
+    goalId: "",
+    goalName: "",
+  })
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<FilterType>("all")
@@ -276,6 +283,60 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     if (progress >= 50) return "bg-amber-500"
     if (progress >= 25) return "bg-orange-500"
     return "bg-red-500"
+  }
+
+  const getGoalHistory = (goalId: string) =>
+    transactions
+      .filter((transaction) => transaction.allocationType === "goal" && transaction.allocationTarget === goalId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all") => {
+    if (range === "all") return items
+
+    const now = new Date()
+    const start = new Date(now)
+
+    if (range === "active-month") {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+    } else {
+      const day = start.getDay()
+      const diff = day === 0 ? 6 : day - 1
+      start.setDate(start.getDate() - diff)
+      start.setHours(0, 0, 0, 0)
+    }
+
+    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+  }
+
+  const getGoalHistoryMeta = (transaction: Transaction) => {
+    const normalizedDescription = (transaction.description || "").toLowerCase()
+    const normalizedCategory = (transaction.category || "").toLowerCase()
+
+    if (normalizedCategory === "goal investment" || normalizedDescription.includes("goal investment")) {
+      return {
+        badgeClassName: "border-blue-200 bg-blue-50 text-blue-700",
+        label: "Investment Use",
+        signedAmount: `-${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+        signedAmountClassName: "text-blue-600",
+      }
+    }
+
+    if (transaction.actual === 0 || normalizedCategory === "goal spending" || normalizedDescription.includes("spent from goal")) {
+      return {
+        badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
+        label: "Money Out",
+        signedAmount: `-${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+        signedAmountClassName: "text-amber-600",
+      }
+    }
+
+    return {
+      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      label: "Contribution",
+      signedAmount: `+${formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}`,
+      signedAmountClassName: "text-emerald-600",
+    }
   }
 
   return (
@@ -524,226 +585,157 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
                       <CollapsibleContent>
                         <CardContent className="space-y-4 md:space-y-6">
-                          {/* Goal Overview */}
-                          <div className="grid grid-cols-2 md:grid-cols-2 gap-2 md:gap-4">
-                            <div className="text-center p-2 md:p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border">
-                              <div className="flex items-center justify-center mb-1 md:mb-2">
-                                <div className="p-1 md:p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                                  <Target className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
-                                </div>
-                              </div>
-                              <p className="text-xs md:text-sm text-muted-foreground mb-1">Current Progress</p>
-                              <p className="text-lg md:text-xl font-bold text-blue-600">{progress.toFixed(1)}%</p>
-                            </div>
-
-                            <div className="text-center p-2 md:p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border">
-                              <div className="flex items-center justify-center mb-1 md:mb-2">
-                                <div className="p-1 md:p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
-                                  <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
-                                </div>
-                              </div>
-                              <p className="text-xs md:text-sm text-muted-foreground mb-1">Amount Saved</p>
-                              <p className="text-lg md:text-xl font-bold text-green-600">
-                                {formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)}
-                              </p>
-                            </div>
-
-
-                          </div>
-
-                          {challengeSummary && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
-                              <div className="rounded-lg border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Challenge mode</p>
-                                <p className="mt-1 text-sm font-semibold capitalize">{challengeSummary.plan.mode}</p>
-                              </div>
-                              <div className="rounded-lg border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Penalty status</p>
-                                <p className="mt-1 text-sm font-semibold">
-                                  {challengeSummary.penaltiesApplied > 0
-                                    ? `${challengeSummary.penaltiesApplied} active`
-                                    : "No penalty yet"}
-                                </p>
-                              </div>
-                              <div className="rounded-lg border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Investment split</p>
-                                <p className="mt-1 text-sm font-semibold">
-                                  {challengeSummary.utilization.nepalPercent}% NEP / {challengeSummary.utilization.ukPercent}% UK
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {challengeSummary && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
-                              <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 p-3">
-                                <p className="text-xs text-muted-foreground">Challenge points</p>
-                                <p className="mt-1 text-lg font-bold text-blue-600">{challengeSummary.points.total}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Hard mode investment rewards are saved here.
-                                </p>
-                              </div>
-                              <div className="rounded-lg border bg-muted/20 p-3">
-                                <p className="text-xs text-muted-foreground">Penalty total added</p>
-                                <p className="mt-1 text-lg font-bold">
-                                  {formatCurrency(challengeSummary.penaltyTotal, userProfile.currency, userProfile.customCurrency)}
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Based on missed deadlines and one-month grace cycles.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Goal Insights */}
+                                                    {/* Key Metrics Grid */}
                           {!isCompleted && (
-                            <div className="p-2 md:p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                              <div className="flex items-center gap-2 mb-2 md:mb-3">
-                                <Zap className="w-3 h-3 md:w-4 md:h-4 text-amber-600" />
-                                <h4 className="font-semibold text-sm md:text-base text-amber-700 dark:text-amber-300">Goal Insights</h4>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4 text-xs md:text-sm">
-                                <div>
-                                  <p className="text-amber-700 dark:text-amber-300 mb-1">💰 Amount Still Needed</p>
-                                  <p className="font-semibold text-amber-800 dark:text-amber-200">
-                                    {formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-amber-700 dark:text-amber-300 mb-1">⏰ Time Equivalent</p>
-                                  <p className="font-semibold text-amber-800 dark:text-amber-200">
-                                    {formatTimeEquivalent(remaining)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-amber-700 dark:text-amber-300 mb-1">Target Date</p>
-                                  <p className="text-amber-700 dark:text-amber-300 mb-1">
-                                    {new Date(activeDeadline).toLocaleDateString()}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-amber-700 dark:text-amber-300 mb-1">📅 Days Remaining</p>
-                                  <p className="font-semibold text-amber-800 dark:text-amber-200">{daysRemaining} days</p>
-                                </div>
-                              </div>
-                              <div className="mt-2 md:mt-3 p-1 md:p-2 bg-amber-100 dark:bg-amber-900/30 rounded text-xs md:text-sm">
-                                <p className="text-amber-800 dark:text-amber-200">
-                                  💡 <strong>Tip:</strong> Save {formatCurrency(remaining / Math.max(daysRemaining, 1), userProfile.currency, userProfile.customCurrency)} per day to reach your goal on time!
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Needed</p>
+                                <p className="text-sm font-bold text-foreground">
+                                  {formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)}
                                 </p>
                               </div>
-                              {challengeSummary && (
-                                <div className="mt-2 md:mt-3 rounded bg-background/70 p-2 text-xs md:text-sm text-amber-900 dark:text-amber-100">
-                                  <p>
-                                    Penalty adds {formatCurrency(challengeSummary.plan.penaltyAmount, userProfile.currency, userProfile.customCurrency)}
-                                    {" "}after each missed deadline, with {challengeSummary.plan.graceMonths} month grace.
-                                  </p>
-                                  <p className="mt-1">
-                                    {challengeSummary.utilization.countsInvestmentAsExpense
-                                      ? `Hard mode: investment usage reduces saved progress and earns ${challengeSummary.utilization.hardModeRewardPoints} points per use.`
-                                      : "Easy mode: investment usage does not reduce saved progress."}
+                              <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Time Worth</p>
+                                <p className="text-sm font-bold text-foreground">{formatTimeEquivalent(remaining)}</p>
+                              </div>
+                              <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Target</p>
+                                <p className="text-sm font-bold text-foreground">{new Date(activeDeadline).toLocaleDateString()}</p>
+                              </div>
+                              <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Daily Save</p>
+                                <p className="text-sm font-bold text-primary">
+                                  {formatCurrency(remaining / Math.max(daysRemaining, 1), userProfile.currency, userProfile.customCurrency)}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Challenge Pill (If Active) */}
+                          {challengeSummary && (
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap items-center gap-2 p-3 bg-primary/5 rounded-xl border border-primary/10">
+                                <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+                                <span className="text-xs font-bold text-primary/80 uppercase tracking-tight">{challengeSummary.plan.mode} Mode Active</span>
+                                <div className="h-4 w-[1px] bg-primary/20 mx-1 hidden sm:block" />
+                                <Badge variant="outline" className="bg-background text-[10px] py-0">{challengeSummary.points.total} Points</Badge>
+                                {challengeSummary.penaltyTotal > 0 && (
+                                  <Badge variant="destructive" className="text-[10px] py-0">+{formatCurrency(challengeSummary.penaltyTotal, userProfile.currency, userProfile.customCurrency)} Penalty</Badge>
+                                )}
+                              </div>
+                              
+                              {/* Detailed Challenge Stats - Sleek Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="p-3 bg-muted/20 rounded-xl border border-dashed flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-background rounded-lg border shadow-sm">
+                                      <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                                    </div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">Investment Split</p>
+                                  </div>
+                                  <p className="text-[11px] font-bold">{challengeSummary.utilization.nepalPercent}% NEP / {challengeSummary.utilization.ukPercent}% UK</p>
+                                </div>
+                                <div className="p-3 bg-muted/20 rounded-xl border border-dashed flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-background rounded-lg border shadow-sm">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                    </div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">Penalty Status</p>
+                                  </div>
+                                  <p className="text-[11px] font-bold">
+                                    {challengeSummary.penaltiesApplied > 0 ? `${challengeSummary.penaltiesApplied} Active` : "None"}
                                   </p>
                                 </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Goal Description */}
-                          {goal.description && (
-                            <div className="p-2 md:p-4 bg-muted/30 rounded-lg border">
-                              <div className="flex items-center gap-2 mb-1 md:mb-2">
-                                <AlertCircle className="w-3 h-3 md:w-4 md:h-4 text-muted-foreground" />
-                                <h4 className="font-medium text-sm md:text-base text-muted-foreground">Goal Description</h4>
                               </div>
-                              <p className="text-xs md:text-sm leading-relaxed">{goal.description}</p>
                             </div>
                           )}
 
+                          {/* Goal Description & Metadata */}
+                          <div className="space-y-4">
+                             {goal.description && (
+                              <div className="text-sm bg-muted/30 p-4 rounded-xl border italic text-muted-foreground/80 leading-relaxed relative">
+                                <span className="absolute -top-2 left-4 px-2 bg-background border rounded text-[9px] uppercase font-black tracking-widest text-muted-foreground/40">Notes</span>
+                                "{goal.description}"
+                              </div>
+                            )}
+                            
+                            <div className="flex flex-wrap items-center gap-2">
+                              {goal.category && (
+                                <Badge variant="secondary" className="bg-background text-[11px] font-medium py-0.5">
+                                  <CategoryIcon className="w-3 h-3 mr-1.5 opacity-60" />
+                                  {goal.category}
+                                </Badge>
+                              )}
+                              <Badge variant="outline" className="text-[11px] font-medium py-0.5 opacity-70">
+                                Created {new Date(goal.createdAt).toLocaleDateString()}
+                              </Badge>
+                            </div>
+                          </div>
                           {/* Action Buttons */}
                           {!isCompleted && (
-                            <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-                              <Button
-                                onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
-                                className="flex items-center gap-2 flex-1 text-sm md:text-base"
-                                disabled={balance <= 0}
-                              >
-                                <Send className="w-3 h-3 md:w-4 md:h-4" />
-                                Add Money to Goal
-                                <Badge variant="secondary" className="ml-auto text-xs md:text-sm">
-                                  {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)} available
-                                </Badge>
-                              </Button>
-
-                              {challengeSummary && (
+                            <div className="flex flex-col gap-2">
+                              <div className="flex flex-col sm:flex-row gap-2">
                                 <Button
-                                  variant="secondary"
-                                  onClick={() => {
-                                    setInvestmentDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })
-                                    setInvestmentAmount("")
-                                    setInvestmentMarket("split")
-                                    setInvestmentNotes("")
-                                  }}
-                                  className="flex items-center gap-2 text-sm md:text-base"
+                                  onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
+                                  className="flex-1 bg-primary hover:bg-primary/90 shadow-sm"
+                                  size="sm"
+                                  disabled={balance <= 0}
                                 >
-                                  <TrendingUp className="w-3 h-3 md:w-4 md:h-4" />
-                                  Use for Investment
+                                  <Send className="w-4 h-4 mr-2" />
+                                  Add Funds
+                                  <div className="ml-auto opacity-70 text-[10px] font-bold ml-2">
+                                    {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)} avl.
+                                  </div>
                                 </Button>
-                              )}
 
-                              <Button
-                                variant="outline"
-                                onClick={() => handleEditGoal(goal)}
-                                className="flex items-center gap-2 text-sm md:text-base"
-                              >
-                                <Edit className="w-3 h-3 md:w-4 md:h-4" />
-                                Edit Goal
-                              </Button>
-                            </div>
-                          )}
+                                {challengeSummary && (
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() => {
+                                      setInvestmentDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })
+                                      setInvestmentAmount("")
+                                      setInvestmentMarket("split")
+                                      setInvestmentNotes("")
+                                    }}
+                                    className="flex-1 border-primary/20 hover:bg-primary/10 transition-colors"
+                                    size="sm"
+                                  >
+                                    <TrendingUp className="w-4 h-4 mr-2 text-primary" />
+                                    Investment Use
+                                  </Button>
+                                )}
+                              </div>
 
-                          {challengeSummary && challengeSummary.penaltyHistory.length > 0 && (
-                            <div className="p-2 md:p-4 bg-muted/30 rounded-lg border">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Clock className="w-4 h-4 text-muted-foreground" />
-                                <h4 className="font-medium text-sm md:text-base text-muted-foreground">Penalty History</h4>
-                              </div>
-                              <div className="space-y-2">
-                                {challengeSummary.penaltyHistory.slice().reverse().map((snapshot) => (
-                                  <div key={snapshot.id} className="rounded-md border bg-background/80 p-2 text-xs md:text-sm">
-                                    <p className="font-medium">
-                                      Cycle {snapshot.cycleNumber}: +{formatCurrency(snapshot.penaltyAmount, userProfile.currency, userProfile.customCurrency)}
-                                    </p>
-                                    <p className="mt-1 text-muted-foreground">
-                                      Missed {new Date(snapshot.previousDeadline).toLocaleDateString()} and extended to {new Date(snapshot.newDeadline).toLocaleDateString()}.
-                                    </p>
-                                    <p className="text-muted-foreground">
-                                      Target became {formatCurrency(snapshot.effectiveTargetAmount, userProfile.currency, userProfile.customCurrency)}.
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {challengeSummary && challengeSummary.points.history.length > 0 && (
-                            <div className="p-2 md:p-4 bg-muted/30 rounded-lg border">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Sparkles className="w-4 h-4 text-muted-foreground" />
-                                <h4 className="font-medium text-sm md:text-base text-muted-foreground">Challenge Points History</h4>
-                              </div>
-                              <div className="space-y-2">
-                                {challengeSummary.points.history.slice().reverse().map((entry) => (
-                                  <div key={entry.id} className="rounded-md border bg-background/80 p-2 text-xs md:text-sm">
-                                    <p className="font-medium">+{entry.points} points</p>
-                                    <p className="mt-1 text-muted-foreground">
-                                      {new Date(entry.awardedAt).toLocaleDateString()} {entry.description ? `• ${entry.description}` : ""}
-                                    </p>
-                                  </div>
-                                ))}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => handleEditGoal(goal)}
+                                  className="flex-1 sm:flex-none sm:px-8 h-9"
+                                  size="sm"
+                                >
+                                  <Edit className="w-4 h-4 mr-2 opacity-60" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setHistoryRange("active-month")
+                                    setHistoryDialog({
+                                      open: true,
+                                      goalId: goal.id,
+                                      goalName: goal.title || goal.name || "Goal",
+                                    })
+                                  }}
+                                  className="flex-1 h-9"
+                                  size="sm"
+                                >
+                                  <Receipt className="w-4 h-4 mr-2 opacity-60" />
+                                  History
+                                </Button>
                               </div>
                             </div>
                           )}
-
-                          {/* Goal Metadata */}
+                           {/* Goal Metadata */}
                           <div className="flex flex-wrap items-center gap-1 md:gap-2 pt-2 border-t">
                             {goal.category && (
                               <Badge variant="outline" className="flex items-center gap-1 text-xs md:text-sm">
@@ -794,6 +786,109 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
         userProfile={userProfile}
         editingGoal={editingGoal}
       />
+
+      <Dialog open={historyDialog.open} onOpenChange={(open) => setHistoryDialog((current) => ({ ...current, open }))}>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 p-6 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Receipt className="w-5 h-5 text-primary" />
+              {historyDialog.goalName} History
+            </DialogTitle>
+          </DialogHeader>
+
+          {(() => {
+            const filteredHistory = filterTransactionsByRange(getGoalHistory(historyDialog.goalId), historyRange)
+            const contributionTotal = filteredHistory
+              .filter((transaction) => getGoalHistoryMeta(transaction).label === "Contribution")
+              .reduce((sum, transaction) => sum + transaction.amount, 0)
+            const outflowTotal = filteredHistory
+              .filter((transaction) => getGoalHistoryMeta(transaction).label !== "Contribution")
+              .reduce((sum, transaction) => sum + transaction.amount, 0)
+
+            return (
+              <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden px-6 pb-6 pt-4">
+                <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Stats Summary</span>
+                    <div className="flex items-center gap-4">
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Entries: </span>
+                        <span className="font-bold">{filteredHistory.length}</span>
+                      </div>
+                      <div className="text-xs text-emerald-600">
+                        <span className="text-muted-foreground">In: </span>
+                        <span className="font-bold">+{formatCurrency(contributionTotal, userProfile.currency, userProfile.customCurrency)}</span>
+                      </div>
+                      <div className="text-xs text-amber-600">
+                        <span className="text-muted-foreground">Out: </span>
+                        <span className="font-bold">-{formatCurrency(outflowTotal, userProfile.currency, userProfile.customCurrency)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Select
+                    value={historyRange}
+                    onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                  >
+                    <SelectTrigger className="w-[170px] bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active-month">Active Month</SelectItem>
+                      <SelectItem value="this-week">This Week</SelectItem>
+                      <SelectItem value="all">All Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex min-h-0 flex-1 flex-col pt-2">
+                  <h4 className="mb-2 shrink-0 text-sm font-medium text-muted-foreground">All Activities</h4>
+                  {filteredHistory.length === 0 ? (
+                    <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5">
+                      <Receipt className="w-10 h-10 mb-2 opacity-20" />
+                      No history found for this range.
+                    </div>
+                  ) : (
+                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-2 [-webkit-overflow-scrolling:touch] scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                      {filteredHistory.map((transaction) => {
+                        const historyMeta = getGoalHistoryMeta(transaction)
+
+                        return (
+                          <div key={transaction.id} className="group rounded-xl border bg-background p-4 hover:shadow-md transition-all duration-200 hover:border-primary/20">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className={cn("text-[10px] uppercase font-bold tracking-tighter py-0 px-1.5", historyMeta.badgeClassName)}>
+                                    {historyMeta.label}
+                                  </Badge>
+                                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter bg-muted px-1.5 py-0.5 rounded">
+                                    {new Date(transaction.date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <p className="font-semibold text-sm leading-tight text-foreground/90 group-hover:text-foreground transition-colors">
+                                  {transaction.description || transaction.category}
+                                </p>
+                                <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+                                  {transaction.category || "Goal Activity"}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className={cn("text-base font-bold", historyMeta.signedAmountClassName)}>
+                                  {historyMeta.signedAmount}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={transferDialog.open} onOpenChange={(open) => setTransferDialog({ ...transferDialog, open })}>
         <DialogContent className="sm:max-w-md">
@@ -960,3 +1055,5 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     </div>
   )
 }
+
+

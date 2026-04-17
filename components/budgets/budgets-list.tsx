@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   PlusCircle,
   Target,
@@ -25,13 +26,15 @@ import {
   SortDesc,
   Calendar,
   Edit,
+  Receipt,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
-import type { Budget, UserProfile } from "@/types/wallet"
+import type { Budget, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -42,22 +45,67 @@ interface BudgetsListProps {
 }
 
 export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
+  const { transactions } = useWalletData()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
+  const [historyBudget, setHistoryBudget] = useState<Budget | null>(null)
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
 
-  // Get currency symbol
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sortBy, setSortBy] = useState("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set())
 
+  // Get currency symbol
+  const currencySymbol = useMemo(() => {
+    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
+  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+
+  const getPeriodStart = (budget: Budget, overrideRange?: "active-month" | "this-week" | "all") => {
+    const now = new Date()
+    let start: Date
+    const range = overrideRange || (budget.period === "monthly" ? "active-month" : budget.period === "weekly" ? "this-week" : "all")
+
+    if (range === "all") {
+      return new Date(0)
+    }
+
+    if (range === "active-month") {
+      // Last Friday of the previous month
+      const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0) // Last day of prev month
+      const lastDay = prevMonth.getDay()
+      const diff = (lastDay + 7 - 5) % 7
+      start = new Date(prevMonth)
+      start.setDate(prevMonth.getDate() - diff)
+    } else if (range === "this-week") {
+      start = new Date(now)
+      const day = now.getDay()
+      const diff = (day + 7 - 5) % 7
+      start.setDate(now.getDate() - diff)
+    } else if (budget.period === "yearly") {
+      start = new Date(now.getFullYear(), 0, 1)
+    } else {
+      start = new Date(0)
+    }
+    
+    start.setHours(0, 0, 0, 0)
+    return start
+  }
+
+  const getCurrentPeriodSpent = (budget: Budget) => {
+    const budgetTransactions = getBudgetTransactions(budget)
+    const start = getPeriodStart(budget)
+
+    return budgetTransactions
+      .filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+      .reduce((sum, transaction) => sum + transaction.amount, 0)
+  }
+
   const getBudgetStatus = (budget: Budget) => {
-    const percentage = (budget.spent / budget.limit) * 100
+    const currentSpent = getCurrentPeriodSpent(budget)
+    const percentage = (currentSpent / budget.limit) * 100
     if (percentage >= 100) return { status: "exceeded", color: "text-red-600", icon: AlertTriangle }
     if (percentage >= 80) return { status: "warning", color: "text-amber-600", icon: AlertTriangle }
     return { status: "good", color: "text-primary", icon: CheckCircle }
@@ -86,16 +134,16 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
           bValue = b.name?.toLowerCase() || ""
           break
         case "spent":
-          aValue = a.spent
-          bValue = b.spent
+          aValue = getCurrentPeriodSpent(a)
+          bValue = getCurrentPeriodSpent(b)
           break
         case "limit":
           aValue = a.limit
           bValue = b.limit
           break
         case "percentage":
-          aValue = (a.spent / a.limit) * 100
-          bValue = (b.spent / b.limit) * 100
+          aValue = (getCurrentPeriodSpent(a) / a.limit) * 100
+          bValue = (getCurrentPeriodSpent(b) / b.limit) * 100
           break
         default:
           return 0
@@ -109,7 +157,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     })
 
     return filtered
-  }, [budgets, searchQuery, statusFilter, sortBy, sortOrder])
+  }, [budgets, searchQuery, statusFilter, sortBy, sortOrder, transactions])
 
 
   const handleAddBudget = (budgetData: any) => {
@@ -156,6 +204,37 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     const newExpanded = new Set(expandedBudgets)
     newExpanded.has(budgetId) ? newExpanded.delete(budgetId) : newExpanded.add(budgetId)
     setExpandedBudgets(newExpanded)
+  }
+
+  const isTimeWalletEnabled = Boolean(
+    userProfile?.monthlyEarning > 0 &&
+    userProfile?.workingHoursPerDay > 0 &&
+    userProfile?.workingDaysPerMonth > 0,
+  )
+
+  const getBudgetTransactions = (budget: Budget) => {
+    const categorySet = new Set(
+      [budget.category, ...(budget.categories || [])]
+        .filter(Boolean)
+        .map((category) => category.toLowerCase()),
+    )
+
+    return transactions
+      .filter((transaction) =>
+        transaction.type === "expense" &&
+        !(
+          transaction.allocationType === "goal" &&
+          transaction.category === "Goal Contribution"
+        ) &&
+        categorySet.has((transaction.category || "").toLowerCase()),
+      )
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }
+
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all", budget: Budget) => {
+    if (range === "all") return items
+    const start = getPeriodStart(budget, range)
+    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
   }
 
   return (
@@ -273,28 +352,32 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
         <div className="grid gap-4">
           {filteredAndSortedBudgets.map((budget) => {
             const { status, color, icon: StatusIcon } = getBudgetStatus(budget)
-            const percentage = Math.min((budget.spent / budget.limit) * 100, 100)
-            const remaining = Math.max(budget.limit - budget.spent, 0)
-            const isOverBudget = budget.spent > budget.limit
+            const currentSpent = getCurrentPeriodSpent(budget)
+            const percentage = Math.min((currentSpent / budget.limit) * 100, 100)
+            const rawRemaining = budget.limit - currentSpent
+            const remaining = Math.max(rawRemaining, 0)
+            const overAmount = Math.max(currentSpent - budget.limit, 0)
+            const isOverBudget = currentSpent > budget.limit
             const isExpanded = expandedBudgets.has(budget.id)
+            const budgetTransactions = getBudgetTransactions(budget)
 
             const budgetTimeBreakdown = getTimeEquivalentBreakdown(budget.limit, userProfile)
-            const spentTimeBreakdown = getTimeEquivalentBreakdown(budget.spent, userProfile)
+            const spentTimeBreakdown = getTimeEquivalentBreakdown(currentSpent, userProfile)
 
             return (
-              <Card key={budget.id} className={`transition border ${isOverBudget ? "border-red-200 bg-red-50/50" : ""}`}>
+              <Card key={budget.id} className={`transition-all duration-300 border ${isOverBudget ? "border-destructive/40 shadow-sm shadow-destructive/10" : ""}`}>
                 {isOverBudget && (
-                  <Alert className="m-4 mb-0 border-red-200 bg-red-50">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800">
-                      <strong>Budget Exceeded!</strong> You have spent {formatCurrency(budget.spent - budget.limit, userProfile.currency, userProfile.customCurrency)} over your limit.
-                      {budget.emergencyUses > 0 && (
-                        <span className="block mt-1">
-                          Emergency uses remaining: <Badge variant="destructive">{budget.emergencyUses}</Badge>
-                        </span>
-                      )}
-                    </AlertDescription>
-                  </Alert>
+                  <div className="mx-4 mt-4 px-3 py-1 bg-destructive/10 text-destructive text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider rounded-full flex flex-wrap items-center gap-1.5 w-fit border border-destructive/20 animate-pulse">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Limit Exceeded
+                    </div>
+                    {budget.emergencyUses > 0 && (
+                      <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-destructive/30 text-[9px] sm:text-[10px] opacity-80">
+                        {budget.emergencyUses} Emergency Reserves Remaining
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(budget.id)}>
@@ -342,18 +425,27 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
                     <div className="space-y-2 mt-3">
                       <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-1">
-                          Spent: {formatCurrency(budget.spent, userProfile.currency, userProfile.customCurrency)}
+                        <span className="flex items-center gap-1 font-medium">
+                          Spent: {formatCurrency(currentSpent, userProfile.currency, userProfile.customCurrency)}
+                          {isOverBudget && (
+                            <span className="text-destructive text-[10px] ml-1 px-1.5 py-0.5 bg-destructive/10 rounded">
+                              (+{formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)})
+                            </span>
+                          )}
                         </span>
                         <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>
                       </div>
-                      <Progress value={percentage} className="h-2 rounded-full" />
+                      <Progress 
+                        value={percentage} 
+                        className="h-2 rounded-full" 
+                        indicatorClassName={isOverBudget ? "bg-destructive transition-all duration-500" : ""}
+                      />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{percentage.toFixed(1)}% used</span>
                         <span>
-                          {remaining > 0
+                          {rawRemaining >= 0
                             ? `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`
-                            : `${formatCurrency(Math.abs(remaining), userProfile.currency, userProfile.customCurrency)} over`}
+                            : `${formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)} over`}
                         </span>
                       </div>
                     </div>
@@ -361,23 +453,24 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
                   <CollapsibleContent>
                     <CardContent className="space-y-4 pt-0">
-                      {/* Time Investment */}
-                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <Clock className="w-4 h-4 text-amber-600" />
-                          Time Investment
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Budget represents</p>
-                            <p className="font-medium">{budgetTimeBreakdown ? budgetTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                      {isTimeWalletEnabled && (
+                        <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Clock className="w-4 h-4 text-amber-600" />
+                            Time Investment
                           </div>
-                          <div>
-                            <p className="text-muted-foreground">Already spent</p>
-                            <p className="font-medium">{spentTimeBreakdown ? spentTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Budget represents</p>
+                              <p className="font-medium">{budgetTimeBreakdown ? budgetTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Already spent</p>
+                              <p className="font-medium">{spentTimeBreakdown ? spentTimeBreakdown.formatted.userFriendly : "0m"} of work</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Categories */}
                       <div className="space-y-2">
@@ -392,6 +485,21 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                             </Badge>
                           ))}
                         </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setHistoryRange("active-month")
+                            setHistoryBudget(budget)
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <Receipt className="w-4 h-4" />
+                          View Transactions ({budgetTransactions.length})
+                        </Button>
                       </div>
 
                       {/* Meta Info */}
@@ -423,6 +531,105 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
         editingBudget={editingBudget || undefined}
         onUpdateBudget={handleUpdateBudget}
       />
+
+      <Dialog open={Boolean(historyBudget)} onOpenChange={(open) => { if (!open) setHistoryBudget(null) }}>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 p-6 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Receipt className="w-5 h-5 text-primary" />
+              {historyBudget?.name || "Budget"} Transactions
+            </DialogTitle>
+          </DialogHeader>
+
+          {historyBudget && (
+            <div className="flex-1 flex flex-col min-h-0">
+              {(() => {
+                const filteredHistory = filterTransactionsByRange(getBudgetTransactions(historyBudget), historyRange, historyBudget)
+                const totalSpent = filteredHistory.reduce((sum, transaction) => sum + transaction.amount, 0)
+
+                return (
+                  <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden p-6 pt-4">
+                    <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Active Categories</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(historyBudget.categories || []).map((category) => (
+                            <Badge key={category} variant="secondary" className="bg-background/50 border-primary/10">{category}</Badge>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Select
+                        value={historyRange}
+                        onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                      >
+                        <SelectTrigger className="w-[170px] bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active-month">Active Month</SelectItem>
+                          <SelectItem value="this-week">This Week</SelectItem>
+                          <SelectItem value="all">All Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid shrink-0 grid-cols-2 gap-4">
+                      <div className="rounded-xl border bg-background p-4 shadow-sm">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Total Count</p>
+                        <p className="text-2xl font-bold">{filteredHistory.length}</p>
+                      </div>
+                      <div className="rounded-xl border bg-background p-4 shadow-sm">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Spent in Range</p>
+                        <p className="text-2xl font-bold text-destructive">
+                          -{formatCurrency(totalSpent, userProfile.currency, userProfile.customCurrency)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex min-h-0 flex-1 flex-col pt-2">
+                      <h4 className="mb-2 shrink-0 text-sm font-medium text-muted-foreground">Transaction Details</h4>
+                       {filteredHistory.length === 0 ? (
+                        <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5">
+                          <Receipt className="w-10 h-10 mb-2 opacity-20" />
+                          No transactions found for this period.
+                        </div>
+                      ) : (
+                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-2 [-webkit-overflow-scrolling:touch] scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                          {filteredHistory.map((transaction: Transaction) => (
+                            <div key={transaction.id} className="group rounded-xl border bg-background p-4 hover:shadow-md transition-all duration-200 hover:border-primary/20">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded">
+                                      {new Date(transaction.date).toLocaleDateString()}
+                                    </span>
+                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-primary/60 bg-primary/5 px-1.5 py-0.5 rounded">
+                                      {transaction.category}
+                                    </span>
+                                  </div>
+                                  <p className="font-semibold text-sm leading-tight text-foreground/90 group-hover:text-foreground transition-colors">
+                                    {transaction.description || transaction.category}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-base font-bold text-destructive">
+                                    -{formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

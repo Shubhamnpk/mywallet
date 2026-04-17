@@ -7,7 +7,7 @@ import { ThemeProviderWrapper } from "@/components/theme-provider-wrapper"
 import { WalletDataProvider } from "@/contexts/wallet-data-context"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
 import { SessionGuard } from "@/components/security/session-guard"
-import { SessionDebug } from "@/components/security/session-debug"
+import { DeveloperMenu } from "@/components/security/developer-menu"
 import RegisterSW from '@/components/pwa/register-sw'
 import InstallButton from '@/components/pwa/install-button'
 import UpdateNotification from '@/components/pwa/update-notification'
@@ -135,7 +135,7 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Google Fonts */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -162,6 +162,7 @@ export default function RootLayout({
               </WalletDataProvider>
             </SessionGuard>
           </PrivacyModeProvider>
+          {process.env.NEXT_PUBLIC_APP_DEV_TOOLS === "1" && <DeveloperMenu />}
           <Toaster />
         </ThemeProviderWrapper>
       </body>

@@ -7,20 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Bell,
-  Plus,
-  Calendar,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Trash2
-} from "lucide-react"
+import { Bell, Plus, Calendar, AlertTriangle, CheckCircle2, Clock, Trash2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import type { UserProfile } from "@/types/wallet"
-
 interface BillReminder {
   id: string
   name: string

@@ -17,6 +17,7 @@ import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 function BadgeRow({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -82,6 +83,7 @@ export function TransactionsList({
   onDeleteTransaction,
   fetchTransactions,
 }: TransactionsListProps) {
+  const { updateTransaction, categories: walletCategories } = useWalletData()
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -390,9 +392,12 @@ export function TransactionsList({
         <TransactionDetailsModal
           transaction={selectedTransaction}
           userProfile={userProfile}
+          categories={walletCategories}
           isOpen={!!selectedTransaction}
           onClose={() => setSelectedTransaction(null)}
           onDelete={onDeleteTransaction}
+          updateTransaction={updateTransaction}
+          onSaved={(tx) => setSelectedTransaction(tx)}
         />
       )}
     </div>

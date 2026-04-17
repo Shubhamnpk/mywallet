@@ -2,6 +2,8 @@ import type { NotificationSettings } from "@/types/wallet"
 
 const DEFAULT_NOTIFICATION_ICON = "/image.png"
 export const REMINDER_CACHE_KEY = "wallet_reminder_cache_v1"
+/** Minimum time between repeat in-app toasts for the same reminder key (browser uses longer per-reminder cooldowns). */
+export const IN_APP_REMINDER_COOLDOWN_MS = 5 * 1000
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
@@ -10,6 +12,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   permissionNudges: true,
   budgetReminders: true,
   goalReminders: true,
+  billReminders: true,
   ipoReminders: true,
   sipReminders: true,
 }
@@ -73,9 +76,12 @@ export const showAppNotification = async ({
 
   try {
     if ("serviceWorker" in navigator) {
-      const registration = await navigator.serviceWorker.ready
-      await registration.showNotification(title, options)
-      return true
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      if (registrations.length > 0) {
+        const registration = await navigator.serviceWorker.ready
+        await registration.showNotification(title, options)
+        return true
+      }
     }
   } catch {
   }

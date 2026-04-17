@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { RefreshCw, X } from 'lucide-react'
@@ -12,6 +12,53 @@ export default function UpdateNotification() {
   const [isAvailable, setIsAvailable] = useState(false)
   const updateInitiatedRef = useRef(false)
   const reloadingRef = useRef(false)
+
+  const clearCachesAndReload = useCallback(async () => {
+    if (reloadingRef.current) return
+    reloadingRef.current = true
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+    } catch {
+      // ignore errors deleting caches
+    }
+    window.location.reload()
+  }, [])
+
+  const applyUpdate = useCallback(async () => {
+    console.log('applyUpdate called')
+    try {
+      // If a waiting worker exists, ask it to skipWaiting and mark that we initiated the update.
+      if (registration && registration.waiting) {
+        console.log('Found waiting worker, posting SKIP_WAITING')
+        try {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+          updateInitiatedRef.current = true
+        } catch {
+          console.log('Error posting message, falling back to reload')
+          // fallback: clear caches and reload immediately if posting fails
+          try { sessionStorage.setItem('sw_update_success', '1') } catch {}
+          await clearCachesAndReload()
+        }
+        return
+      }
+
+      console.log('No waiting worker, clearing caches and reloading')
+      // No waiting worker: clear caches and reload now to fetch latest assets from network
+      try { sessionStorage.setItem('sw_update_success', '1') } catch {}
+      await clearCachesAndReload()
+    } catch (e) {
+      console.log('Error in applyUpdate:', e)
+      // ignore
+    }
+  }, [clearCachesAndReload, registration])
+
+  const startCountdown = useCallback(() => {
+    // Immediately apply update without countdown
+    void applyUpdate()
+  }, [applyUpdate])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
@@ -106,54 +153,7 @@ export default function UpdateNotification() {
       navigator.serviceWorker.removeEventListener('message', onMessage)
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
     }
-  }, [autoUpdate])
-
-  const startCountdown = () => {
-    // Immediately apply update without countdown
-    applyUpdate()
-  }
-
-  const applyUpdate = async () => {
-    console.log('applyUpdate called')
-    try {
-      // If a waiting worker exists, ask it to skipWaiting and mark that we initiated the update.
-      if (registration && registration.waiting) {
-        console.log('Found waiting worker, posting SKIP_WAITING')
-        try {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-          updateInitiatedRef.current = true
-        } catch (e) {
-          console.log('Error posting message, falling back to reload')
-          // fallback: clear caches and reload immediately if posting fails
-          try { sessionStorage.setItem('sw_update_success', '1') } catch (e) {}
-          await clearCachesAndReload()
-        }
-        return
-      }
-
-      console.log('No waiting worker, clearing caches and reloading')
-      // No waiting worker: clear caches and reload now to fetch latest assets from network
-      try { sessionStorage.setItem('sw_update_success', '1') } catch (e) {}
-      await clearCachesAndReload()
-    } catch (e) {
-      console.log('Error in applyUpdate:', e)
-      // ignore
-    }
-  }
-
-  async function clearCachesAndReload() {
-    if (reloadingRef.current) return
-    reloadingRef.current = true
-    try {
-      if ('caches' in window) {
-        const keys = await caches.keys()
-        await Promise.all(keys.map(k => caches.delete(k)))
-      }
-    } catch (err) {
-      // ignore errors deleting caches
-    }
-    window.location.reload()
-  }
+  }, [autoUpdate, startCountdown])
 
   const handleCancel = () => {
     setIsAvailable(false)

@@ -42,17 +42,32 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "MyWallet"
+  const bodyText = payload.body || "You have a new update."
+  const tag = payload.tag || "mywallet-notification"
   const options = {
-    body: payload.body || "You have a new update.",
+    body: bodyText,
     icon: payload.icon || "/image.png",
     badge: payload.badge || "/image.png",
-    tag: payload.tag || "mywallet-notification",
+    tag,
     data: {
       url: payload.url || "/",
     },
   }
 
-  event.waitUntil(self.registration.showNotification(title, options))
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      for (const client of clients) {
+        client.postMessage({
+          type: "PUSH_NOTIFICATION_SHOWN",
+          title,
+          body: bodyText,
+          tag,
+        })
+      }
+      await self.registration.showNotification(title, options)
+    })(),
+  )
 })
 
 self.addEventListener("message", (event) => {

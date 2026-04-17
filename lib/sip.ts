@@ -7,9 +7,29 @@ export const SIP_REMINDER_DAY_OPTIONS = [1, 3, 7] as const
 
 const toStartOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate())
 
+/** YYYY-MM-DD in the user's local calendar. Never use toISOString().slice(0, 10) — that is UTC and shifts dates in most time zones. */
+const toLocalDateKey = (value: Date) => {
+  const y = value.getFullYear()
+  const m = `${value.getMonth() + 1}`.padStart(2, "0")
+  const d = `${value.getDate()}`.padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
 const parseDateOnly = (value?: string | null) => {
   if (!value) return null
-  const parsed = new Date(value)
+  const trimmed = value.trim()
+  // Plain calendar date: interpret as local civil date (Date("YYYY-MM-DD") is UTC midnight and wrong for many zones).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [ys, ms, ds] = trimmed.split("-")
+    const y = Number(ys)
+    const mo = Number(ms) - 1
+    const d = Number(ds)
+    if (!Number.isFinite(y) || mo < 0 || mo > 11 || d < 1 || d > 31) return null
+    const parsed = new Date(y, mo, d)
+    if (parsed.getFullYear() !== y || parsed.getMonth() !== mo || parsed.getDate() !== d) return null
+    return toStartOfDay(parsed)
+  }
+  const parsed = new Date(trimmed)
   if (Number.isNaN(parsed.getTime())) return null
   return toStartOfDay(parsed)
 }
@@ -113,6 +133,33 @@ export const getSipTransactionsForPlan = (
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 
+export const getSipDisplayTransactionsForPlan = (
+  plan: Pick<SIPPlan, "id" | "portfolioId" | "symbol" | "startDate">,
+  transactions: ShareTransaction[] | undefined,
+) => {
+  const normalizedSymbol = plan.symbol.trim().toUpperCase()
+  const planStartTime = parseDateOnly(plan.startDate)?.getTime() ?? Number.NEGATIVE_INFINITY
+
+  return (transactions || [])
+    .filter((tx) => {
+      if (tx.portfolioId !== plan.portfolioId || tx.symbol.trim().toUpperCase() !== normalizedSymbol) {
+        return false
+      }
+
+      if (tx.sipPlanId === plan.id) {
+        return true
+      }
+
+      if (tx.type !== "buy") {
+        return false
+      }
+
+      const txTime = parseDateOnly(tx.date)?.getTime() ?? Number.NEGATIVE_INFINITY
+      return txTime >= planStartTime
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
+
 const getCompletedDueDateSet = (
   plan: Pick<SIPPlan, "id" | "portfolioId" | "symbol">,
   transactions: ShareTransaction[] | undefined,
@@ -121,7 +168,7 @@ const getCompletedDueDateSet = (
   getSipTransactionsForPlan(plan, transactions).forEach((tx) => {
     const parsed = parseDateOnly(tx.sipDueDate || tx.date)
     if (parsed) {
-      completedDueDates.add(parsed.toISOString().slice(0, 10))
+      completedDueDates.add(toLocalDateKey(parsed))
     }
   })
   return completedDueDates
@@ -143,7 +190,7 @@ export const getSipScheduleSummary = (
   let nextFuturePending: Date | null = null
   let safety = 0
   while (safety < 500) {
-    const dueKey = cursor.toISOString().slice(0, 10)
+    const dueKey = toLocalDateKey(cursor)
     const isCompleted = completedDueDates.has(dueKey)
 
     if (!isCompleted) {
@@ -189,10 +236,10 @@ export const getSipCompletedTransactionForDueDate = (
 ) => {
   const target = typeof dueDate === "string" ? parseDateOnly(dueDate) : dueDate ? toStartOfDay(dueDate) : null
   if (!target) return null
-  const targetKey = target.toISOString().slice(0, 10)
+  const targetKey = toLocalDateKey(target)
 
   return getSipTransactionsForPlan(plan, transactions).find((tx) => {
     const parsed = parseDateOnly(tx.sipDueDate || tx.date)
-    return parsed?.toISOString().slice(0, 10) === targetKey
+    return parsed && toLocalDateKey(parsed) === targetKey
   }) || null
 }

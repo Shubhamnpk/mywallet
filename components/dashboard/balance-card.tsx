@@ -52,9 +52,10 @@ export function CombinedBalanceCard() {
         if (Number.isNaN(txDate.getTime())) {
           return acc
         }
-        const isTrueExpense =
-          transaction.type === "expense" &&
-          transaction.allocationType !== "goal"
+        const isGoalContribution =
+          transaction.allocationType === "goal" &&
+          transaction.category === "Goal Contribution"
+        const isTrueExpense = transaction.type === "expense" && !isGoalContribution
 
         if (transaction.type === "income") {
           acc.allTimeIncome += fullAmount
