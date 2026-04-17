@@ -1,9 +1,17 @@
-import nextVitals from "eslint-config-next/core-web-vitals"
-import nextTypescript from "eslint-config-next/typescript"
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
   {
-    ignores: ["public/sw.js", "public/fallback-*.js", "public/worker-*.js", "public/workbox-*.js", "lint-report.json", "eslint-report.json"],
+    ignores: [
+      "public/sw.js",
+      "public/fallback-*.js",
+      "public/worker-*.js",
+      "public/workbox-*.js",
+      "lint-report.json",
+      "eslint-report.json",
+    ],
   },
   ...nextVitals,
   ...nextTypescript,
@@ -23,4 +31,4 @@ export default [
       "prefer-const": "warn",
     },
   },
-]
+];
