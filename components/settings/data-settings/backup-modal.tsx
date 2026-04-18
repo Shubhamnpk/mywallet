@@ -40,6 +40,10 @@ interface BackupModalProps {
   portfolios: any[]
   activePortfolioId: string | null
   onBackupSuccess: (data: any, pin: string) => Promise<void>
+  shifts?: any[]
+  shiftPayments?: any[]
+  shiftRate?: number
+  shiftTimeFormat?: string
 }
 
 type BackupOptions = {
@@ -52,6 +56,7 @@ type BackupOptions = {
   categories: boolean
   emergencyFund: boolean
   portfolioProfile: boolean
+  shiftTracker: boolean
 }
 
 export function BackupModal({
@@ -72,6 +77,10 @@ export function BackupModal({
   portfolios,
   activePortfolioId,
   onBackupSuccess,
+  shifts,
+  shiftPayments,
+  shiftRate,
+  shiftTimeFormat,
 }: BackupModalProps) {
   const [exportPin, setExportPin] = useState("")
   const [isExporting, setIsExporting] = useState(false)
@@ -86,6 +95,7 @@ export function BackupModal({
     categories: true,
     emergencyFund: true,
     portfolioProfile: true,
+    shiftTracker: true,
   })
   const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
   const fullBackupOptions: BackupOptions = {
@@ -98,6 +108,7 @@ export function BackupModal({
     categories: true,
     emergencyFund: true,
     portfolioProfile: true,
+    shiftTracker: true,
   }
   const effectiveOptions = isCustomizeMode ? backupOptions : fullBackupOptions
   const getCount = (key: keyof BackupOptions) => {
@@ -120,6 +131,8 @@ export function BackupModal({
         return 1
       case "portfolioProfile":
         return portfolio.length + shareTransactions.length + portfolios.length + (activePortfolioId ? 1 : 0)
+      case "shiftTracker":
+        return (shifts?.length || 0) + (shiftPayments?.length || 0)
       default:
         return 0
     }
@@ -145,6 +158,7 @@ export function BackupModal({
         categories: true,
         emergencyFund: true,
         portfolioProfile: true,
+        shiftTracker: true,
       })
       return
     }
@@ -159,12 +173,13 @@ export function BackupModal({
         categories: false,
         emergencyFund: false,
         portfolioProfile: false,
+        shiftTracker: false,
       })
       return
     }
     if (preset === "financial") {
       setBackupOptions({
-        userProfile: true,
+        userProfile: false,
         transactions: true,
         budgets: true,
         goals: true,
@@ -172,12 +187,13 @@ export function BackupModal({
         creditProfile: true,
         categories: true,
         emergencyFund: true,
-        portfolioProfile: false,
+        portfolioProfile: true,
+        shiftTracker: true,
       })
       return
     }
     setBackupOptions({
-      userProfile: true,
+      userProfile: false,
       transactions: false,
       budgets: false,
       goals: false,
@@ -186,6 +202,7 @@ export function BackupModal({
       categories: false,
       emergencyFund: false,
       portfolioProfile: true,
+      shiftTracker: false,
     })
   }
 
@@ -274,6 +291,12 @@ export function BackupModal({
         data.portfolios = portfolios
         data.activePortfolioId = activePortfolioId
       }
+      if (effectiveOptions.shiftTracker) {
+        data.shifts = shifts || []
+        data.shiftPayments = shiftPayments || []
+        data.shiftRate = shiftRate ?? 0
+        data.shiftTimeFormat = shiftTimeFormat || "12h"
+      }
 
       // Profile/settings include display + biometric security metadata.
       if (effectiveOptions.userProfile) {
@@ -313,41 +336,30 @@ export function BackupModal({
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
       <AlertDialogContent className="max-w-2xl">
-        <AlertDialogHeader className="pb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Download className="w-5 h-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
-                Create Selective Backup
-                <Badge variant="outline" className="text-[10px] font-black uppercase tracking-wider">
-                  Schema v2.0
-                </Badge>
-              </AlertDialogTitle>
-              <AlertDialogDescription className="text-muted-foreground">
-                Choose exactly what to include. Default categories are excluded automatically.
-              </AlertDialogDescription>
-            </div>
-          </div>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Export Backup
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Select data to include and enter your PIN to encrypt.
+          </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border bg-muted/20 p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-muted-foreground">
-              Selected sections: <span className="font-semibold text-foreground">{selectedKeys.length}</span> | Estimated records: <span className="font-semibold text-foreground">{selectedRecords}</span>
-            </div>
-            <Badge variant={isCustomizeMode ? "secondary" : "default"}>{isCustomizeMode ? "Custom Mode" : "Full Backup Mode"}</Badge>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              {selectedKeys.length} sections · {selectedRecords} records
+            </span>
+            <Badge variant={isCustomizeMode ? "secondary" : "default"} className="text-xs">
+              {isCustomizeMode ? "Custom" : "Full"}
+            </Badge>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="export-pin">Enter PIN for encryption</Label>
-            <div className="flex justify-center py-2">
-              <InputOTP
-                maxLength={6}
-                value={exportPin}
-                onChange={setExportPin}
-              >
+            <Label>Enter PIN</Label>
+            <div className="flex justify-center">
+              <InputOTP maxLength={6} value={exportPin} onChange={setExportPin}>
                 <InputOTPGroup>
                   <InputOTPSlot index={0} />
                   <InputOTPSlot index={1} />
@@ -358,17 +370,6 @@ export function BackupModal({
                 </InputOTPGroup>
               </InputOTP>
             </div>
-            <Input
-              id="export-pin"
-              type="password"
-              placeholder="Or paste PIN"
-              value={exportPin}
-              onChange={(e) => setExportPin(e.target.value)}
-              className="sr-only"
-            />
-            <p className="text-xs text-muted-foreground">
-              Must match your wallet PIN. Any other PIN will be rejected.
-            </p>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -378,157 +379,57 @@ export function BackupModal({
               onCheckedChange={(checked) => setIsCustomizeMode(!!checked)}
             />
             <Label htmlFor="backup-customize-mode" className="text-sm">
-              Customize data selection (on demand)
+              Customize selection
             </Label>
           </div>
 
           {isCustomizeMode && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3 rounded-lg border p-3">
-              <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Profile and Finance</p>
-              <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-userProfile"
-                checked={backupOptions.userProfile}
-                onCheckedChange={(checked) => setOption("userProfile", !!checked)}
-              />
-              <Label htmlFor="backup-userProfile" className="text-sm">
-                User Profile & Settings ({userProfile ? "1 item" : "0 items"})
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-transactions"
-                checked={backupOptions.transactions}
-                onCheckedChange={(checked) => setOption("transactions", !!checked)}
-              />
-              <Label htmlFor="backup-transactions" className="text-sm">
-                Transaction Data ({transactions.length} items)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-budgets"
-                checked={backupOptions.budgets}
-                onCheckedChange={(checked) => setOption("budgets", !!checked)}
-              />
-              <Label htmlFor="backup-budgets" className="text-sm">
-                Budget Data ({budgets.length} items)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-goals"
-                checked={backupOptions.goals}
-                onCheckedChange={(checked) => setOption("goals", !!checked)}
-              />
-              <Label htmlFor="backup-goals" className="text-sm">
-                Goals & Savings ({goals.length} items)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-debtProfile"
-                checked={backupOptions.debtProfile}
-                onCheckedChange={(checked) => setOption("debtProfile", !!checked)}
-              />
-              <Label htmlFor="backup-debtProfile" className="text-sm">
-                Debt Account + History ({debtAccounts.length} accounts)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-creditProfile"
-                checked={backupOptions.creditProfile}
-                onCheckedChange={(checked) => setOption("creditProfile", !!checked)}
-              />
-              <Label htmlFor="backup-creditProfile" className="text-sm">
-                Credit Account + History ({creditAccounts.length} accounts)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-categories"
-                checked={backupOptions.categories}
-                onCheckedChange={(checked) => setOption("categories", !!checked)}
-              />
-              <Label htmlFor="backup-categories" className="text-sm">
-                Categories ({customCategoriesOnly.length} custom items)
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-emergencyFund"
-                checked={backupOptions.emergencyFund}
-                onCheckedChange={(checked) => setOption("emergencyFund", !!checked)}
-              />
-              <Label htmlFor="backup-emergencyFund" className="text-sm">
-                Emergency Fund (${emergencyFund.toFixed(2)})
-              </Label>
-            </div>
-            </div>
-
-            <div className="space-y-3 rounded-lg border p-3">
-              <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Portfolio and Display</p>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="backup-portfolioProfile"
-                checked={backupOptions.portfolioProfile}
-                onCheckedChange={(checked) => setOption("portfolioProfile", !!checked)}
-              />
-              <Label htmlFor="backup-portfolioProfile" className="text-sm">
-                Portfolio Profile (Holdings {portfolio.length}, Transactions {shareTransactions.length}, Lists {portfolios.length})
-              </Label>
-            </div>
-
-            </div>
+            <div className="rounded-lg border p-3 max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["userProfile", "User Profile", userProfile ? "1" : "0"],
+                  ["transactions", "Transactions", transactions.length],
+                  ["budgets", "Budgets", budgets.length],
+                  ["goals", "Goals", goals.length],
+                  ["debtProfile", "Debt", debtAccounts.length],
+                  ["creditProfile", "Credit", creditAccounts.length],
+                  ["categories", "Categories", customCategoriesOnly.length],
+                  ["emergencyFund", "Emergency", "1"],
+                  ["portfolioProfile", "Portfolio", portfolio.length + shareTransactions.length],
+                  ["shiftTracker", "Shift Tracker", (shifts?.length || 0) + (shiftPayments?.length || 0)],
+                ].map(([key, label, count]) => (
+                  <div key={key} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`backup-${key}`}
+                      checked={backupOptions[key as keyof BackupOptions]}
+                      onCheckedChange={(checked) => setOption(key as keyof BackupOptions, !!checked)}
+                    />
+                    <Label htmlFor={`backup-${key}`} className="text-sm flex items-center gap-1.5">
+                      {label}
+                      <span className="text-[10px] font-medium bg-muted rounded-full px-1.5 py-0">{count}</span>
+                    </Label>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        <AlertDialogFooter className="gap-3 pt-6">
-          <div className="w-full space-y-3">
-            {isCustomizeMode && (
-              <div className="flex flex-wrap gap-2 justify-end">
-                <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("all")}>All</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("none")}>None</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("financial")}>Finance Core</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("portfolio")}>Portfolio Only</Button>
-              </div>
-            )}
-            <div className="flex gap-3">
-              <AlertDialogCancel
-                onClick={onClose}
-                className="flex-1 bg-muted hover:bg-muted/80"
-              >
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleExportData}
-                disabled={exportPin.length !== 6 || isExporting}
-                className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-300"
-              >
-                {isExporting ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Creating...
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Download className="w-4 h-4" />
-                    Create Backup
-                  </div>
-                )}
-              </AlertDialogAction>
+        <AlertDialogFooter className="gap-2">
+          {isCustomizeMode && (
+            <div className="flex gap-2 mr-auto">
+              <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("all")}>All</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("none")}>None</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => applyPreset("financial")}>Finance</Button>
             </div>
-          </div>
+          )}
+          <AlertDialogCancel onClick={onClose}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleExportData}
+            disabled={exportPin.length !== 6 || isExporting}
+          >
+            {isExporting ? "Creating..." : "Export"}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -464,6 +464,7 @@ export function DataSettings() {
         shareTransactions: true,
         portfolios: true,
         activePortfolioId: true,
+        shiftTracker: true,
       },
       userProfile,
       transactions,
@@ -479,6 +480,10 @@ export function DataSettings() {
       portfolios,
       activePortfolioId,
       tombstones,
+      shifts: JSON.parse(localStorage.getItem("mywallet_wt_shifts_v2") || "[]"),
+      shiftPayments: JSON.parse(localStorage.getItem("mywallet_wt_pay_v1") || "[]"),
+      shiftRate: Number(localStorage.getItem("mywallet_wt_rate_v1") || "0") || 12.20,
+      shiftTimeFormat: localStorage.getItem("mywallet_wt_timefmt_v1") || "12h",
     }
 
     const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
@@ -618,6 +623,11 @@ export function DataSettings() {
         await persistTombstones(merged.tombstones)
       }
       await persistOptionalBackupData(decrypted)
+
+      if (Array.isArray(decrypted.shifts)) localStorage.setItem("mywallet_wt_shifts_v2", JSON.stringify(decrypted.shifts))
+      if (Array.isArray(decrypted.shiftPayments)) localStorage.setItem("mywallet_wt_pay_v1", JSON.stringify(decrypted.shiftPayments))
+      if (typeof decrypted.shiftRate === "number") localStorage.setItem("mywallet_wt_rate_v1", String(decrypted.shiftRate))
+      if (typeof decrypted.shiftTimeFormat === "string") localStorage.setItem("mywallet_wt_timefmt_v1", decrypted.shiftTimeFormat)
 
       toast({
         title: "Dropbox Backup Restored (Beta)",
@@ -862,82 +872,37 @@ export function DataSettings() {
           <CardDescription>Export your data securely or restore it with guided import</CardDescription>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 p-6">
-              <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-primary/10" />
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-primary/10 p-2">
-                    <Download className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Export Data</h3>
-                    <p className="text-sm text-muted-foreground">Create secure backup</p>
-                  </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-primary/10 p-2">
+                  <Download className="h-5 w-5 text-primary" />
                 </div>
-
-                <p className="text-sm text-muted-foreground">
-                  Create an encrypted backup of your wallet data. You can choose all data or only selected sections.
-                </p>
-                <div className="rounded-lg border bg-background/80 p-3">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                    Backup Flow
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Select sections, verify wallet PIN, and download your encrypted backup.
-                  </p>
+                <div>
+                  <h3 className="font-semibold">Export Data</h3>
+                  <p className="text-sm text-muted-foreground">Create encrypted backup</p>
                 </div>
-
-                <Button
-                  onClick={() => handleCreateBackup("download")}
-                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
-                  size="lg"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Create Selective Backup
-                </Button>
               </div>
+              <Button onClick={() => handleCreateBackup("download")}>
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
             </div>
 
-            <div className="relative overflow-hidden rounded-xl border border-green-500/20 bg-gradient-to-br from-green-500/5 via-green-500/10 to-green-500/5 p-6">
-              <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-green-500/10" />
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-green-500/10 p-2">
-                    <Upload className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Import Data</h3>
-                    <p className="text-sm text-muted-foreground">Restore from backup</p>
-                  </div>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-green-500/10 p-2">
+                  <Upload className="h-5 w-5 text-green-600" />
                 </div>
-
-                <p className="text-sm text-muted-foreground">
-                  Import now uses a guided flow to avoid errors and keep recovery simple.
-                </p>
-
-                <div className="rounded-lg border bg-background/80 p-3">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Workflow className="h-4 w-4 text-green-600" />
-                    Guided Import
-                  </div>
-                  <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
-                    <li>1. Upload backup file</li>
-                    <li>2. Enter PIN if encrypted</li>
-                    <li>3. Import all by default or customize</li>
-                  </ul>
+                <div>
+                  <h3 className="font-semibold">Import Data</h3>
+                  <p className="text-sm text-muted-foreground">Restore from backup</p>
                 </div>
-
-                <Button
-                  onClick={() => setShowImportModal(true)}
-                  className="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600"
-                  size="lg"
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Start Import
-                </Button>
               </div>
+              <Button variant="outline" onClick={() => setShowImportModal(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -1403,6 +1368,10 @@ export function DataSettings() {
         shareTransactions={shareTransactions}
         portfolios={portfolios}
         activePortfolioId={activePortfolioId}
+        shifts={JSON.parse(localStorage.getItem("mywallet_wt_shifts_v2") || "[]")}
+        shiftPayments={JSON.parse(localStorage.getItem("mywallet_wt_pay_v1") || "[]")}
+        shiftRate={Number(localStorage.getItem("mywallet_wt_rate_v1") || "0") || 12.20}
+        shiftTimeFormat={localStorage.getItem("mywallet_wt_timefmt_v1") || "12h"}
       />
 
       <ImportModal

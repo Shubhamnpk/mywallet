@@ -338,120 +338,68 @@ export function SIPSetupModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           {!existingPlan && enrollableTransactions.length > 0 && (
-            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-widest text-primary">Already started SIP?</p>
-                <p className="mt-1 text-sm font-medium text-foreground">
-                  Pick an existing buy transaction and we will enroll it as installment 1.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Enroll existing buy</Label>
-                <Select value={selectedEnrollmentId} onValueChange={(value) => {
-                  setSelectedEnrollmentId(value)
-                  // Clear custom selection when changing the base transaction
-                  setSelectedTransactionIds(new Set())
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Skip for now" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_ENROLLMENT_VALUE}>
-                      Skip past buys
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Link existing buy as 1st installment</Label>
+              <Select value={selectedEnrollmentId} onValueChange={(value) => {
+                setSelectedEnrollmentId(value)
+                setSelectedTransactionIds(new Set())
+              }}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Skip for now" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_ENROLLMENT_VALUE}>Skip past buys</SelectItem>
+                  {enrollableTransactions.map((tx) => (
+                    <SelectItem key={tx.id} value={tx.id}>
+                      {formatSipDate(tx.date)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
                     </SelectItem>
-                    {enrollableTransactions.map((tx) => (
-                      <SelectItem key={tx.id} value={tx.id}>
-                        {formatSipDate(tx.date)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                {/* Advanced selection button */}
-                {selectedEnrollmentId !== NO_ENROLLMENT_VALUE && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8"
-                      onClick={openAdvancedSelect}
-                    >
-                      <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-                      {selectedTransactionIds.size > 0
-                        ? `${selectedTransactionIds.size} transaction${selectedTransactionIds.size === 1 ? "" : "s"} selected`
-                        : "Advanced: Select specific transactions"}
+              {selectedEnrollmentId !== NO_ENROLLMENT_VALUE && (
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={openAdvancedSelect}>
+                    <Settings2 className="w-3 h-3 mr-1" />
+                    {selectedTransactionIds.size > 0 ? `${selectedTransactionIds.size} selected` : "Customize selection"}
+                  </Button>
+                  {selectedTransactionIds.size > 0 && (
+                    <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2 text-muted-foreground" onClick={clearCustomSelection}>
+                      Reset
                     </Button>
-                    {selectedTransactionIds.size > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-8 text-muted-foreground"
-                        onClick={clearCustomSelection}
-                      >
-                        Reset
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                {selectedEnrollmentTx && selectedTransactionIds.size === 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    This buy and all subsequent buys will be linked as SIP history. Use "Advanced" to pick specific transactions only.
-                  </p>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Plan preview</p>
-                <p className="mt-1 text-base font-bold">{nextInstallment ? formatSipDate(nextInstallment.toISOString()) : "Pick a valid start date"}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{priceLabel}</p>
-                <p className="mt-1 text-base font-bold">{referencePrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-              </div>
+          <div className="flex items-center justify-between py-2 border-y">
+            <div>
+              <p className="text-xs text-muted-foreground">Next: {nextInstallment ? formatSipDate(nextInstallment.toISOString()) : "Pick a date"}</p>
+              <p className="text-sm font-medium">~{computedUnits > 0 ? computedUnits.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "0"} units @ {referencePrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl bg-background/70 p-3">
-                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{unitsLabel}</p>
-                <p className="mt-1 font-semibold">{computedUnits > 0 ? computedUnits.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "0"}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Calculated from {priceLabel.toLowerCase()} after the {SIP_DEFAULT_DPS_CHARGE.toLocaleString(undefined, { maximumFractionDigits: 2 })} DP charge.
-                </p>
-              </div>
-              <div className="rounded-xl bg-background/70 p-3">
-                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Net invest</p>
-                <p className="mt-1 font-semibold">{netInvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Example: {amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "0"} contribution becomes {netInvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} after DP.
-                </p>
-              </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Net per installment</p>
+              <p className="text-sm font-semibold">{netInvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-1">
-            <div className="space-y-2">
-              <Label htmlFor="sip-amount">Contribution amount per installment</Label>
-              <Input
-                id="sip-amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.installmentAmount}
-                onChange={(event) => setForm((current) => ({ ...current, installmentAmount: event.target.value }))}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Units are calculated automatically from the current price or NAV. The fixed DP charge is {SIP_DEFAULT_DPS_CHARGE.toLocaleString(undefined, { maximumFractionDigits: 2 })} per installment.
-              </p>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="sip-amount" className="text-xs">Contribution amount</Label>
+            <Input
+              id="sip-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-10"
+              value={form.installmentAmount}
+              onChange={(event) => setForm((current) => ({ ...current, installmentAmount: event.target.value }))}
+            />
+            <p className="text-[10px] text-muted-foreground">
+              DP charge of {SIP_DEFAULT_DPS_CHARGE} per installment deducted from contribution
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

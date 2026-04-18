@@ -1,13 +1,11 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -16,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/hooks/use-toast"
+import { Upload } from "lucide-react"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
 
@@ -29,9 +28,11 @@ type ImportOptions = {
   categories: boolean
   emergencyFund: boolean
   portfolioProfile: boolean
+  shiftTracker: boolean
 }
 
 type ImportMode = "all" | "custom"
+type ImportPreset = "all" | "finance" | "custom" | null
 
 type ImportStep = "file" | "pin" | "review"
 
@@ -52,6 +53,7 @@ const defaultOptions: ImportOptions = {
   categories: false,
   emergencyFund: false,
   portfolioProfile: false,
+  shiftTracker: false,
 }
 
 function getAvailableOptions(data: any): ImportOptions {
@@ -76,6 +78,43 @@ function getAvailableOptions(data: any): ImportOptions {
       Array.isArray(data?.shareTransactions) ||
       Array.isArray(data?.portfolios) ||
       Object.prototype.hasOwnProperty.call(data ?? {}, "activePortfolioId"),
+    shiftTracker:
+      Array.isArray(data?.shifts) ||
+      Array.isArray(data?.shiftPayments) ||
+      typeof data?.shiftRate === "number",
+  }
+}
+
+function getImportCount(data: any, key: keyof ImportOptions): string {
+  switch (key) {
+    case "userProfile":
+      return data?.userProfile ? "1" : "0"
+    case "transactions":
+      return Array.isArray(data?.transactions) ? String(data.transactions.length) : "0"
+    case "budgets":
+      return Array.isArray(data?.budgets) ? String(data.budgets.length) : "0"
+    case "goals":
+      return Array.isArray(data?.goals) ? String(data.goals.length) : "0"
+    case "debtProfile":
+      return Array.isArray(data?.debtAccounts) ? String(data.debtAccounts.length) : "0"
+    case "creditProfile":
+      return Array.isArray(data?.creditAccounts) ? String(data.creditAccounts.length) : "0"
+    case "categories":
+      return Array.isArray(data?.categories) ? String(data.categories.length) : "0"
+    case "emergencyFund":
+      return typeof data?.emergencyFund === "number" || typeof data?.emergencyFund === "string" ? "1" : "0"
+    case "portfolioProfile": {
+      const holdings = Array.isArray(data?.portfolio) ? data.portfolio.length : 0
+      const txns = Array.isArray(data?.shareTransactions) ? data.shareTransactions.length : 0
+      return String(holdings + txns)
+    }
+    case "shiftTracker": {
+      const shifts = Array.isArray(data?.shifts) ? data.shifts.length : 0
+      const payments = Array.isArray(data?.shiftPayments) ? data.shiftPayments.length : 0
+      return String(shifts + payments)
+    }
+    default:
+      return "0"
   }
 }
 
@@ -129,6 +168,12 @@ function buildSelectiveData(source: any, options: ImportOptions) {
       selectiveData.activePortfolioId = source.activePortfolioId
     }
   }
+  if (options.shiftTracker) {
+    if (Array.isArray(source.shifts)) selectiveData.shifts = source.shifts
+    if (Array.isArray(source.shiftPayments)) selectiveData.shiftPayments = source.shiftPayments
+    if (typeof source.shiftRate === "number") selectiveData.shiftRate = source.shiftRate
+    if (typeof source.shiftTimeFormat === "string") selectiveData.shiftTimeFormat = source.shiftTimeFormat
+  }
   // Profile/settings metadata is imported with profile selection.
   if (options.userProfile) {
     if (source.settings?.showScrollbars !== undefined) {
@@ -159,6 +204,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
   const [isBusy, setIsBusy] = useState(false)
   const [availableImportData, setAvailableImportData] = useState<any>(null)
   const [importMode, setImportMode] = useState<ImportMode>("all")
+  const [activePreset, setActivePreset] = useState<ImportPreset>("all")
   const [importOptions, setImportOptions] = useState<ImportOptions>(defaultOptions)
   const [needsWalletPin, setNeedsWalletPin] = useState(false)
 
@@ -168,6 +214,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     if (!availableImportData) return
     setImportOptions(availableOptions)
     setImportMode("all")
+    setActivePreset("all")
   }, [availableImportData, availableOptions])
 
   const refreshNeedsWalletPin = () => {
@@ -192,6 +239,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     setIsBusy(false)
     setAvailableImportData(null)
     setImportMode("all")
+    setActivePreset("all")
     setImportOptions(defaultOptions)
     setNeedsWalletPin(false)
   }
@@ -328,152 +376,134 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
 
   const renderFileStep = () => (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="import-backup-file">Backup File</Label>
-        <Input
-          id="import-backup-file"
-          type="file"
-          accept=".json"
-          onChange={(e) => {
-            setImportFile(e.target.files?.[0] || null)
-            setImportError("")
-          }}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">Step 1 of 3: Select backup file to analyze.</p>
+      <Input
+        type="file"
+        accept=".json"
+        onChange={(e) => {
+          setImportFile(e.target.files?.[0] || null)
+          setImportError("")
+        }}
+      />
     </div>
   )
 
   const renderPinStep = () => (
     <div className="space-y-4">
-      <div className="rounded-lg border bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-        This backup is encrypted. Enter your backup PIN to continue.
+      <p className="text-sm text-muted-foreground">This backup is encrypted. Enter PIN to decrypt.</p>
+      <div className="flex justify-center">
+        <InputOTP maxLength={6} value={importPin} onChange={(value) => { setImportPin(value); setImportError(""); }}>
+          <InputOTPGroup>
+            <InputOTPSlot index={0} />
+            <InputOTPSlot index={1} />
+            <InputOTPSlot index={2} />
+            <InputOTPSlot index={3} />
+            <InputOTPSlot index={4} />
+            <InputOTPSlot index={5} />
+          </InputOTPGroup>
+        </InputOTP>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="import-pin">PIN</Label>
-        <div className="flex justify-center py-2">
-          <InputOTP
-            id="import-pin"
-            maxLength={6}
-            value={importPin}
-            onChange={(value) => {
-              setImportPin(value)
-              setImportError("")
-            }}
-          >
-            <InputOTPGroup>
-              <InputOTPSlot index={0} />
-              <InputOTPSlot index={1} />
-              <InputOTPSlot index={2} />
-              <InputOTPSlot index={3} />
-              <InputOTPSlot index={4} />
-              <InputOTPSlot index={5} />
-            </InputOTPGroup>
-          </InputOTP>
-        </div>
-        <Input
-          type="password"
-          placeholder="Backup PIN"
-          value={importPin}
-          onChange={(e) => {
-            setImportPin(e.target.value)
-            setImportError("")
-          }}
-          className="sr-only"
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">Step 2 of 3: Decrypt backup.</p>
     </div>
   )
 
   const renderReviewStep = () => (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Import Mode</p>
-        <Badge variant="outline" className="text-[10px] font-black uppercase tracking-wider">
-          Schema v{availableImportData?.version || "1.0"}
-        </Badge>
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => setImportMode("all")}
-          className={`rounded-lg border p-3 text-left transition ${
-            importMode === "all" ? "border-primary bg-primary/5" : "border-border"
+          onClick={() => {
+            setImportMode("all")
+            setActivePreset("all")
+            setImportOptions(availableOptions)
+          }}
+          className={`flex-1 rounded-lg border p-2 text-sm font-medium transition ${
+            activePreset === "all" ? "border-primary bg-primary/5" : "border-border"
           }`}
         >
-          <p className="text-sm font-semibold">Import All (Default)</p>
-          <p className="text-xs text-muted-foreground">Restore every available section from this backup.</p>
+          All
         </button>
         <button
           type="button"
-          onClick={() => setImportMode("custom")}
-          className={`rounded-lg border p-3 text-left transition ${
-            importMode === "custom" ? "border-primary bg-primary/5" : "border-border"
+          onClick={() => {
+            setImportMode("custom")
+            setActivePreset("finance")
+            setImportOptions({
+              userProfile: true,
+              transactions: true,
+              budgets: true,
+              goals: true,
+              debtProfile: true,
+              creditProfile: true,
+              categories: true,
+              emergencyFund: true,
+              portfolioProfile: false,
+              shiftTracker: true,
+            })
+          }}
+          className={`flex-1 rounded-lg border p-2 text-sm font-medium transition ${
+            activePreset === "finance" ? "border-primary bg-primary/5" : "border-border"
           }`}
         >
-          <p className="text-sm font-semibold">On-demand Import</p>
-          <p className="text-xs text-muted-foreground">Pick specific sections to restore.</p>
+          Finance
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setImportMode("custom")
+            setActivePreset("custom")
+          }}
+          className={`flex-1 rounded-lg border p-2 text-sm font-medium transition ${
+            activePreset === "custom" ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          Custom
         </button>
       </div>
 
       {importMode === "custom" && (
-        <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border p-3">
-          {[
-            ["userProfile", "User Profile & Settings", availableImportData?.userProfile ? "Available" : "Not in backup"],
-            ["transactions", "Transaction Data", Array.isArray(availableImportData?.transactions) ? `${availableImportData.transactions.length} items` : "Not in backup"],
-            ["budgets", "Budget Data", Array.isArray(availableImportData?.budgets) ? `${availableImportData.budgets.length} items` : "Not in backup"],
-            ["goals", "Goals & Savings", Array.isArray(availableImportData?.goals) ? `${availableImportData.goals.length} items` : "Not in backup"],
-            ["debtProfile", "Debt Account + History", Array.isArray(availableImportData?.debtAccounts) ? `${availableImportData.debtAccounts.length} accounts` : "Not in backup"],
-            ["creditProfile", "Credit Account + History", Array.isArray(availableImportData?.creditAccounts) ? `${availableImportData.creditAccounts.length} accounts` : "Not in backup"],
-            ["categories", "Categories", Array.isArray(availableImportData?.categories) ? `${availableImportData.categories.length} items` : "Not in backup"],
-            ["emergencyFund", "Emergency Fund", (typeof availableImportData?.emergencyFund === "number" || typeof availableImportData?.emergencyFund === "string") ? String(availableImportData.emergencyFund) : "Not in backup"],
-            [
-              "portfolioProfile",
-              "Portfolio Profile",
-              `Holdings ${
-                Array.isArray(availableImportData?.portfolio) ? availableImportData.portfolio.length : 0
-              }, Transactions ${
-                Array.isArray(availableImportData?.shareTransactions) ? availableImportData.shareTransactions.length : 0
-              }, Lists ${
-                Array.isArray(availableImportData?.portfolios) ? availableImportData.portfolios.length : 0
-              }`,
-            ],
-          ].map(([key, label, description]) => {
-            const typedKey = key as keyof ImportOptions
-            return (
-              <div key={key} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`import-${key}`}
-                  checked={importOptions[typedKey]}
-                  onCheckedChange={(checked) => setImportOptions((prev) => ({ ...prev, [typedKey]: !!checked }))}
-                  disabled={!availableOptions[typedKey]}
-                />
-                <Label htmlFor={`import-${key}`} className="text-sm">
-                  {label} ({description})
-                </Label>
-              </div>
-            )
-          })}
+        <div className="max-h-48 overflow-y-auto rounded-lg border p-3">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ["userProfile", "User Profile"],
+              ["transactions", "Transactions"],
+              ["budgets", "Budgets"],
+              ["goals", "Goals"],
+              ["debtProfile", "Debt"],
+              ["creditProfile", "Credit"],
+              ["categories", "Categories"],
+              ["emergencyFund", "Emergency"],
+              ["portfolioProfile", "Portfolio"],
+              ["shiftTracker", "Shift Tracker"],
+            ].map(([key, label]) => {
+              const typedKey = key as keyof ImportOptions
+              const available = availableOptions[typedKey]
+              const count = availableImportData ? getImportCount(availableImportData, typedKey) : "0"
+              return (
+                <div key={key} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`import-${key}`}
+                    checked={importOptions[typedKey]}
+                    onCheckedChange={(checked) => {
+                      setImportOptions((prev) => ({ ...prev, [typedKey]: !!checked }))
+                      setActivePreset("custom")
+                    }}
+                    disabled={!available}
+                  />
+                  <Label htmlFor={`import-${key}`} className={`text-sm flex items-center gap-1.5 ${!available ? "text-muted-foreground" : ""}`}>
+                    {label}
+                    <span className="text-[10px] font-medium bg-muted rounded-full px-1.5 py-0">{count}</span>
+                  </Label>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
       {needsWalletPin && (
-        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-          <Label htmlFor="wallet-pin" className="text-sm font-medium">
-            Wallet PIN (to save restored data)
-          </Label>
-          <div className="flex justify-center py-2">
-            <InputOTP
-              id="wallet-pin"
-              maxLength={6}
-              value={walletPin}
-              onChange={(value) => {
-                setWalletPin(value)
-                setImportError("")
-              }}
-            >
+        <div className="space-y-2">
+          <Label className="text-sm">Wallet PIN</Label>
+          <div className="flex justify-center">
+            <InputOTP maxLength={6} value={walletPin} onChange={(v) => { setWalletPin(v); setImportError(""); }}>
               <InputOTPGroup>
                 <InputOTPSlot index={0} />
                 <InputOTPSlot index={1} />
@@ -484,23 +514,8 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
               </InputOTPGroup>
             </InputOTP>
           </div>
-          <Input
-            type="password"
-            placeholder="Current wallet PIN"
-            value={walletPin}
-            onChange={(e) => {
-              setWalletPin(e.target.value)
-              setImportError("")
-            }}
-            className="sr-only"
-          />
-          <p className="text-xs text-muted-foreground">
-            This is required to re-encrypt your data on this device. If your backup PIN is the same, you can reuse it.
-          </p>
         </div>
       )}
-
-      <p className="text-xs text-muted-foreground">Step 3 of 3: Choose default import all or on-demand sections.</p>
     </div>
   )
 
@@ -508,10 +523,10 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Import Backup</DialogTitle>
-          <DialogDescription>
-            Upload backup file first. If encrypted, enter PIN. Then import all by default or choose on-demand sections.
-          </DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Import Backup
+          </DialogTitle>
         </DialogHeader>
 
         {step === "file" && renderFileStep()}
@@ -524,47 +539,32 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
+          {step !== "file" && (
+            <Button variant="outline" onClick={() => setStep(step === "pin" ? "file" : "pin")} disabled={isBusy}>
+              Back
+            </Button>
+          )}
           <Button variant="outline" onClick={handleClose} disabled={isBusy}>
             Cancel
           </Button>
 
           {step === "file" && (
             <Button onClick={parseOrRouteEncrypted} disabled={!importFile || isBusy}>
-              {isBusy ? "Analyzing..." : "Continue"}
+              {isBusy ? "Loading..." : "Continue"}
             </Button>
           )}
 
           {step === "pin" && (
-            <>
-              <Button variant="outline" onClick={() => setStep("file")} disabled={isBusy}>
-                Back
-              </Button>
-              <Button onClick={decryptBackup} disabled={importPin.trim().length !== 6 || isBusy}>
-                {isBusy ? "Decrypting..." : "Decrypt & Continue"}
-              </Button>
-            </>
+            <Button onClick={decryptBackup} disabled={importPin.trim().length !== 6 || isBusy}>
+              {isBusy ? "Decrypting..." : "Continue"}
+            </Button>
           )}
 
           {step === "review" && (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (isEncrypted) {
-                    setStep("pin")
-                    return
-                  }
-                  setStep("file")
-                }}
-                disabled={isBusy}
-              >
-                Back
-              </Button>
-              <Button onClick={handleImport} disabled={isBusy}>
-                {isBusy ? "Importing..." : "Import Data"}
-              </Button>
-            </>
+            <Button onClick={handleImport} disabled={isBusy}>
+              {isBusy ? "Importing..." : "Import"}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

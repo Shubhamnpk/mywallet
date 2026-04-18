@@ -407,7 +407,10 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleEditBudget(budget)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditBudget(budget)
+                          }}
                           className="text-muted-foreground hover:text-primary"
                         >
                           <Edit className="w-4 h-4" />
@@ -415,7 +418,10 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onDeleteBudget(budget.id)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDeleteBudget(budget.id)
+                          }}
                           className="text-muted-foreground hover:text-destructive"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -423,7 +429,13 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                       </div>
                     </div>
 
-                    <div className="space-y-2 mt-3">
+                    <div
+                      className="space-y-2 mt-3 cursor-pointer hover:bg-muted/30 rounded-lg p-2 -mx-2 transition-colors"
+                      onClick={() => {
+                        setHistoryRange("active-month")
+                        setHistoryBudget(budget)
+                      }}
+                    >
                       <div className="flex justify-between text-sm">
                         <span className="flex items-center gap-1 font-medium">
                           Spent: {formatCurrency(currentSpent, userProfile.currency, userProfile.customCurrency)}
@@ -590,7 +602,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                     <div className="flex min-h-0 flex-1 flex-col pt-2">
                       <h4 className="mb-2 shrink-0 text-sm font-medium text-muted-foreground">Transaction Details</h4>
                        {filteredHistory.length === 0 ? (
-                        <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5">
+                        <div className="flex-1 rounded-xl border border-dashed flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground bg-muted/5 dark:bg-muted/10">
                           <Receipt className="w-10 h-10 mb-2 opacity-20" />
                           No transactions found for this period.
                         </div>
@@ -601,10 +613,10 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                               <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded">
+                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60 bg-muted dark:bg-muted/80 px-1.5 py-0.5 rounded">
                                       {new Date(transaction.date).toLocaleDateString()}
                                     </span>
-                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-primary/60 bg-primary/5 px-1.5 py-0.5 rounded">
+                                    <span className="text-[10px] font-bold uppercase tracking-tighter text-primary/60 bg-primary/5 dark:bg-primary/10 px-1.5 py-0.5 rounded">
                                       {transaction.category}
                                     </span>
                                   </div>
@@ -613,7 +625,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                                   </p>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <p className="text-base font-bold text-destructive">
+                                  <p className="text-base font-bold text-destructive dark:text-red-400">
                                     -{formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
                                   </p>
                                 </div>

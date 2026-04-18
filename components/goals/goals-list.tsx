@@ -271,10 +271,10 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
-      case "high": return "text-red-600 bg-red-50 border-red-200"
-      case "medium": return "text-amber-600 bg-amber-50 border-amber-200"
-      case "low": return "text-blue-600 bg-blue-50 border-blue-200"
-      default: return "text-gray-600 bg-gray-50 border-gray-200"
+      case "high": return "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800 dark:text-red-400"
+      case "medium": return "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400"
+      case "low": return "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400"
+      default: return "text-gray-600 bg-gray-50 border-gray-200 dark:bg-gray-950/30 dark:border-gray-800 dark:text-gray-400"
     }
   }
 
