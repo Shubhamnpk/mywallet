@@ -30,6 +30,7 @@ import type {
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
+import { calculateGoalNetSavedAmount } from "@/lib/goal-calculations"
 import { SessionManager } from "@/lib/session-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { parseNepaliDateRange, getIPOStatus } from "@/lib/nepali-date-utils"
@@ -56,6 +57,7 @@ import {
 import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { toast } from "sonner"
+import { showUndoToast } from "@/components/ui/undo-toast"
 
 const HOUR_MS = 60 * 60 * 1000
 const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
@@ -1621,7 +1623,7 @@ export function useWalletData() {
     return {
       success: true,
       transaction: transferTransaction,
-      newGoalAmount: goal.currentAmount + amount,
+      newGoalAmount: calculateGoalNetSavedAmount(goalId, updatedTransactions),
     }
   }
 
@@ -2063,9 +2065,11 @@ export function useWalletData() {
       }
     }
 
-    if (goal.currentAmount < amount) {
+    // Use transaction-based calculation for accurate balance
+    const actualGoalBalance = calculateGoalNetSavedAmount(goalId, transactions)
+    if (actualGoalBalance < amount) {
       return {
-        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${goal.currentAmount.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
+        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${actualGoalBalance.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
         success: false,
       }
     }
@@ -2139,7 +2143,7 @@ export function useWalletData() {
       success: true,
       transaction: investmentTransaction,
       pointsAwarded,
-      remainingGoalAmount: updatedGoals.find((entry) => entry.id === goalId)?.currentAmount ?? goal.currentAmount,
+      remainingGoalAmount: calculateGoalNetSavedAmount(goalId, updatedTransactions),
       mode: challengeSummary.plan.mode,
     }
   }
@@ -2201,7 +2205,10 @@ export function useWalletData() {
       debtCreditTransactions: pending.snapshot.debtCreditTransactions,
       balance: pending.snapshot.balance,
     })
-    toast("Deletion undone")
+    toast.success("Transaction restored", {
+      description: "Your transaction has been successfully recovered.",
+      icon: "↩️",
+    })
   }
 
   const deleteTransaction = async (id: string) => {
@@ -2232,13 +2239,12 @@ export function useWalletData() {
       timeoutId,
     }
 
-    toast("Transaction deleted", {
-      description: "Undo is available for 5 seconds.",
+    showUndoToast({
+      message: "Transaction deleted",
+      description: "You can undo this action if it was a mistake.",
+      onUndo: () => undoPendingTransactionDeletion(id),
       duration: DELETE_UNDO_WINDOW_MS,
-      action: {
-        label: "Undo",
-        onClick: () => undoPendingTransactionDeletion(id),
-      },
+      type: "delete",
     })
   }
 
@@ -2796,9 +2802,11 @@ export function useWalletData() {
       }
     }
 
-    if (goal.currentAmount < amount) {
+    // Use transaction-based calculation for accurate balance
+    const actualGoalBalance = calculateGoalNetSavedAmount(goalId, transactions)
+    if (actualGoalBalance < amount) {
       return {
-        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${goal.currentAmount.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
+        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${actualGoalBalance.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
         success: false,
       }
     }
@@ -2838,7 +2846,7 @@ export function useWalletData() {
     return {
       success: true,
       transaction: spendTransaction,
-      remainingGoalAmount: goal.currentAmount - amount,
+      remainingGoalAmount: calculateGoalNetSavedAmount(goalId, updatedTransactions),
     }
   }
 
@@ -2913,6 +2921,23 @@ export function useWalletData() {
   const deletePortfolioItem = async (id: string) => {
     const itemToDelete = portfolio.find((item) => item.id === id)
     if (!itemToDelete) return
+
+    const currentProfile = userProfileRef.current
+    const itemSymbol = normalizeStockSymbol(itemToDelete.symbol)
+
+    // Delete any SIP plans for this stock and unlink their transactions
+    if (currentProfile) {
+      const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
+      const plansToDelete = sipPlans.filter(
+        (plan) =>
+          plan.portfolioId === itemToDelete.portfolioId &&
+          normalizeStockSymbol(plan.symbol) === itemSymbol
+      )
+
+      for (const plan of plansToDelete) {
+        await deleteSipPlan(plan.id)
+      }
+    }
 
     const itemKey = getHoldingKey(
       itemToDelete.portfolioId,

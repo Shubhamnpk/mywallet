@@ -401,14 +401,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         return calculateSipNetInvestment(getSipGrossAmount(tx), tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)
     }, [getSipGrossAmount])
 
-    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => (
-        tx.type === "buy" &&
-        !tx.sipPlanId &&
-        Number.isFinite(tx.quantity) &&
-        (tx.quantity ?? 0) > 0 &&
-        Number.isFinite(tx.price) &&
-        (tx.price ?? 0) > 0
-    ), [])
+    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => {
+        const isBuyType = tx.type === "buy" || tx.type === "ipo" || tx.type === "merger_in"
+        const hasValidQuantity = Number.isFinite(tx.quantity) && (tx.quantity ?? 0) > 0
+        return isBuyType && !tx.sipPlanId && hasValidQuantity
+    }, [])
 
     const sipEnrollmentCandidates = useMemo(() =>
         matchedTransactions

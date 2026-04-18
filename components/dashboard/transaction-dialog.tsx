@@ -79,7 +79,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal, transferToGoal } =
     useWalletData()
   const { playSound } = useAccessibility()
   const isMobile = useIsMobile()
@@ -108,6 +108,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null)
+  const [cooldownRemaining, setCooldownRemaining] = useState(0)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newCategoryIcon, setNewCategoryIcon] = useState("📦")
@@ -243,12 +245,27 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       .filter((cat) => cat.type === type)
       .map((cat) => cat.name)
 
+    let baseCategories: string[]
     if (contextCategories.length === 0) {
-      return getDefaultCategoryNames(type)
+      baseCategories = getDefaultCategoryNames(type)
+    } else {
+      baseCategories = contextCategories.sort()
     }
 
-    return contextCategories.sort()
-  }, [categories, type])
+    // For expense type, add special Goal and Debt categories at the beginning
+    if (type === "expense") {
+      const specialCategories: string[] = []
+      if (availableGoals.length > 0) {
+        specialCategories.push("🎯 Goal")
+      }
+      if ((debtAccounts?.length || 0) > 0) {
+        specialCategories.push("💳 Debt")
+      }
+      return [...specialCategories, ...baseCategories]
+    }
+
+    return baseCategories
+  }, [categories, type, availableGoals, debtAccounts])
 
   const getFieldError = useCallback((field: keyof FormData): string | undefined => {
     const fieldState = fieldStates[field]
@@ -267,8 +284,17 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       case 'description':
         break
       case 'allocationTarget':
-        if (formData.allocationType !== "direct" && !formData.allocationTarget) {
-          return `Please select a ${formData.allocationType}`
+        // Require allocation target for goal, debt, credit allocations and for Goal/Debt categories
+        if (formData.allocationType !== "direct" && 
+            !formData.allocationTarget) {
+          // For Goal/Debt categories, the allocationType should match the category
+          if (formData.category === "Goal") {
+            return "Please select a goal account"
+          } else if (formData.category === "Debt") {
+            return "Please select a debt account"
+          } else {
+            return `Please select a ${formData.allocationType}`
+          }
         }
         break
     }
@@ -286,6 +312,16 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   const isFormValid = useMemo(() => {
     const isExpensePaymentSource = type === "expense" && formData.expenseMode === "payment_source"
+
+    // If Goal or Debt category is selected directly, it bypasses some normal expense flow
+    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+
+    if (isSpecialCategory) {
+      return Object.keys(errors).length === 0 &&
+        formData.amount &&
+        numAmount > 0 &&
+        !!formData.allocationTarget
+    }
 
     if (isExpensePaymentSource) {
       return Object.keys(errors).length === 0 &&
@@ -306,6 +342,11 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
 
   const canProceedToFundingStep = useMemo(() => {
     if (type !== "expense") return true
+    // If Goal or Debt category is selected, we don't need to proceed to funding step
+    // because we show the target selection right in the category row
+    if (formData.category === "Goal" || formData.category === "Debt") {
+      return false // This forces the "Add Expense" button to show instead of "Proceed"
+    }
     return numAmount > 0 && formData.category.trim().length > 0
   }, [type, numAmount, formData.category])
 
@@ -436,6 +477,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setWalletShortfallDebtAccountId("")
     setPendingTransactionResult(null)
     setPendingTransaction(null)
+    // Clear cooldown state
+    setCooldownEndTime(null)
+    setCooldownRemaining(0)
   }, [initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage, numberFormat])
 
   const handleOpenChange = useCallback(
@@ -456,7 +500,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
-      if (type === "expense" && !showExpenseFundingStep) {
+      // Special handling for Goal/Debt categories - skip funding step
+      const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+      
+      if (type === "expense" && !showExpenseFundingStep && !isSpecialCategory) {
         if (canProceedToFundingStep) {
           setFormData((prev) => ({ ...prev, expenseMode: "payment_source", allocationType: "", allocationTarget: "" }))
           setShowExpenseFundingStep(true)
@@ -481,8 +528,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       try {
         let transactionResult;
         const isExpensePaymentSource = type === "expense" && formData.expenseMode === "payment_source"
+        const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
 
-        if (isExpensePaymentSource && formData.allocationType === "goal") {
+        // Handle special Goal/Debt categories first
+        if (isSpecialCategory && formData.category === "Goal") {
           const selectedGoal = goals.find((g) => g.id === formData.allocationTarget)
           if (!selectedGoal) {
             setIsSubmitting(false)
@@ -493,55 +542,40 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             return
           }
 
-          if (selectedGoal.currentAmount < numAmount) {
-            const goalAmount = selectedGoal.currentAmount
-            const remainingAmount = numAmount - goalAmount
-            setGoalShortfallData({
-              goalId: selectedGoal.id,
-              goalTitle: selectedGoal.title || selectedGoal.name || "Goal",
-              goalAmount,
-              requiredAmount: numAmount,
-              remainingAmount,
-              category: formData.category,
-              description: formData.description.trim() || formData.category,
-            })
-            setGoalShortfallDebtAccountId(debtAccounts[0]?.id || "")
-            setShowGoalShortfallDialog(true)
+          // For Goal category, we want to contribute TO goal (add money)
+          // Use the existing transferToGoal system which handles transactions and goal updates properly
+          const transferResult = await transferToGoal(formData.allocationTarget, numAmount)
+          if (!transferResult.success) {
             setIsSubmitting(false)
+            toast.error("Failed to contribute to goal", {
+              description: transferResult.error || "Unable to process goal contribution."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = transferResult
+        } else if (isSpecialCategory && formData.category === "Debt") {
+          const selectedDebt = debtAccounts?.find((d) => d.id === formData.allocationTarget)
+          if (!selectedDebt) {
+            setIsSubmitting(false)
+            toast.error("Debt account not found", {
+              description: "Please select a valid debt account."
+            })
+            playSound("transaction-failed")
             return
           }
 
-          const goalSpendResult = await spendFromGoal(
-            formData.allocationTarget,
-            numAmount,
-            formData.description.trim() || formData.category,
-            formData.category
-          )
-          if (!goalSpendResult.success) {
+          // For Debt category, we want to repay debt (reduce debt balance)
+          const paymentResult = await makeDebtPayment(formData.allocationTarget, numAmount)
+          if (!paymentResult.success) {
             setIsSubmitting(false)
-            toast.error("Failed to spend from goal", {
-              description: goalSpendResult.error || "Unable to process goal spending."
+            toast.error("Failed to repay debt", {
+              description: paymentResult.error || "Unable to process debt repayment."
             })
             playSound("transaction-failed")
             return
           }
-          transactionResult = goalSpendResult
-        } else if (isExpensePaymentSource && formData.allocationType === "debt") {
-          const debtSourceResult = await addDebtToAccount(
-            formData.allocationTarget,
-            numAmount,
-            formData.description.trim() || `Expense charged to debt: ${formData.category}`,
-            formData.category
-          )
-          if (!debtSourceResult.success) {
-            setIsSubmitting(false)
-            toast.error("Failed to charge debt account", {
-              description: debtSourceResult.error || "Unable to process debt charge."
-            })
-            playSound("transaction-failed")
-            return
-          }
-          transactionResult = debtSourceResult
+          transactionResult = paymentResult.transaction
         } else if (isExpensePaymentSource && formData.allocationType === "credit") {
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
           if (creditAccount) {
@@ -690,11 +724,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 ? `${currencySymbol}${numAmount} applied to debt repayment`
                 : formData.allocationType === "credit"
                   ? `${currencySymbol}${numAmount} charged to credit account`
-                  : `${currencySymbol}${numAmount} added to ${formData.category}`),
+                  : (formData.category === "Goal"
+                    ? `${currencySymbol}${numAmount} contributed to ${getGoalLabel(formData.allocationTarget)}`
+                    : formData.category === "Debt"
+                      ? `${currencySymbol}${numAmount} applied to debt repayment`
+                      : `${currencySymbol}${numAmount} added to ${formData.category}`)),
           duration: 3000,
         })
 
         playSound("transaction-success")
+
+        // Start cooldown period (3 seconds) to prevent duplicate submissions
+        setCooldownEndTime(Date.now() + 3000)
 
         setTimeout(() => {
           resetForm()
@@ -713,8 +754,35 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   )
 
   const canSubmitNow = useMemo(() => {
+    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+    const isInCooldown = cooldownRemaining > 0
+    if (isInCooldown) return false
+    if (isSpecialCategory) return isFormValid
     return isFormValid && !(type === "expense" && !showExpenseFundingStep)
-  }, [isFormValid, type, showExpenseFundingStep])
+  }, [isFormValid, type, showExpenseFundingStep, formData.category, cooldownRemaining])
+
+  // Cooldown timer effect
+  useEffect(() => {
+    if (!cooldownEndTime) {
+      setCooldownRemaining(0)
+      return
+    }
+
+    const updateCooldown = () => {
+      const now = Date.now()
+      const remaining = Math.max(0, Math.ceil((cooldownEndTime - now) / 1000))
+      setCooldownRemaining(remaining)
+
+      if (remaining === 0) {
+        setCooldownEndTime(null)
+      }
+    }
+
+    updateCooldown()
+    const interval = setInterval(updateCooldown, 100)
+
+    return () => clearInterval(interval)
+  }, [cooldownEndTime])
   const isExpenseFundingOnlyView = type === "expense" && showExpenseFundingStep
 
   // Keyboard shortcuts
@@ -769,7 +837,34 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       allocationType: { touched: true, blurred: false },
       allocationTarget: { touched: false, blurred: false },
     }))
-  }, [])
+
+    // Auto-select if there's only one option available
+    if (newAllocationType === "goal" && availableGoals.length === 1) {
+      const singleGoal = availableGoals[0]
+      setFormData((prev) => ({
+        ...prev,
+        allocationType: newAllocationType,
+        allocationTarget: singleGoal.id,
+      }))
+      setFieldStates(prev => ({
+        ...prev,
+        allocationType: { touched: true, blurred: false },
+        allocationTarget: { touched: true, blurred: false },
+      }))
+    } else if (newAllocationType === "debt" && debtAccounts?.length === 1) {
+      const singleDebt = debtAccounts[0]
+      setFormData((prev) => ({
+        ...prev,
+        allocationType: newAllocationType,
+        allocationTarget: singleDebt.id,
+      }))
+      setFieldStates(prev => ({
+        ...prev,
+        allocationType: { touched: true, blurred: false },
+        allocationTarget: { touched: true, blurred: false },
+      }))
+    }
+  }, [availableGoals, debtAccounts])
 
   const handleExpenseModeChange = useCallback((newMode: "quick_action" | "payment_source") => {
     setFormData((prev) => ({
@@ -1480,8 +1575,246 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 </div>
               )}
 
-              {/* Allocation Target Selection */}
-              {(type !== "expense" || showExpenseFundingStep) && (formData.allocationType === "goal" || formData.allocationType === "debt" || formData.allocationType === "credit") && (
+              {/* Category Selection */}
+              {!isExpenseFundingOnlyView && (type === "income" || type === "expense") && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="category" className="text-sm font-medium flex items-center gap-1">
+                      Category
+                      <span className="text-orange-500">*</span>
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddCategory(!showAddCategory)}
+                      className="text-xs h-7 px-2 text-primary hover:text-primary"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add New
+                    </Button>
+                  </div>
+
+                  {showAddCategory && (
+                    <div className="mb-3 p-3 border border-dashed border-primary/30 rounded-lg bg-primary/5 animate-in slide-in-from-top-2 duration-200">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder={`New ${type} category name`}
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="flex-1"
+                          onKeyPress={(e) => e.key === "Enter" && handleAddNewCategory()}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleAddNewCategory}
+                          disabled={!newCategoryName.trim()}
+                          className="px-3"
+                        >
+                          Add
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setShowAddCategory(false)
+                            setNewCategoryName("")
+                          }}
+                          className="px-3"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <Select
+                    value={formData.category === "Goal" ? "🎯 Goal" : formData.category === "Debt" ? "💳 Debt" : formData.category}
+                    onValueChange={(value) => {
+                      // Check if this is a special category (Goal or Debt)
+                      if (value === "🎯 Goal") {
+                        handleFieldChange("category", "Goal")
+                        handleAllocationTypeChange("goal")
+                        // Auto-select if there's only one goal available
+                        if (availableGoals.length === 1) {
+                          const singleGoal = availableGoals[0]
+                          handleFieldChange("allocationTarget", singleGoal.id)
+                          setFieldStates(prev => ({
+                            ...prev,
+                            allocationTarget: { touched: true, blurred: false },
+                          }))
+                        } else {
+                          // Reset allocation target to force user to select
+                          handleFieldChange("allocationTarget", "")
+                        }
+                      } else if (value === "💳 Debt") {
+                        handleFieldChange("category", "Debt")
+                        handleAllocationTypeChange("debt")
+                        // Auto-select if there's only one debt account available
+                        if (debtAccounts?.length === 1) {
+                          const singleDebt = debtAccounts[0]
+                          handleFieldChange("allocationTarget", singleDebt.id)
+                          setFieldStates(prev => ({
+                            ...prev,
+                            allocationTarget: { touched: true, blurred: false },
+                          }))
+                        } else {
+                          // Reset allocation target to force user to select
+                          handleFieldChange("allocationTarget", "")
+                        }
+                      } else {
+                        handleFieldChange("category", value)
+                        handleFieldChange("subcategory", "")
+                        // If switching from special category to regular, reset allocation
+                        if (formData.allocationType === "goal" || formData.allocationType === "debt") {
+                          handleAllocationTypeChange("direct")
+                        }
+                      }
+                    }}
+                    onOpenChange={(open) => !open && handleFieldBlur("category")}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        "transition-all duration-200",
+                        errors.category ? "border-red-300 focus:border-red-500" :
+                          formData.category ? "border-green-300 focus:border-green-500" : ""
+                      )}
+                      aria-describedby={errors.category ? "category-error" : undefined}
+                    >
+                      <SelectValue placeholder="Choose a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCategories.map((categoryName) => {
+                        // Check if this is a special category
+                        const isSpecialCategory = categoryName === "🎯 Goal" || categoryName === "💳 Debt"
+                        if (isSpecialCategory) {
+                          return (
+                            <SelectItem key={categoryName} value={categoryName}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{categoryName.startsWith("🎯") ? "🎯" : "💳"}</span>
+                                <span className="font-semibold">{categoryName === "🎯 Goal" ? "Goal" : "Debt"}</span>
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  ({categoryName === "🎯 Goal" ? availableGoals.length : debtAccounts?.length || 0} available)
+                                </span>
+                              </div>
+                            </SelectItem>
+                          )
+                        }
+                        const categoryData = categories.find((c) => c.name === categoryName && c.type === type)
+                        return (
+                          <SelectItem key={categoryName} value={categoryName}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full border border-white/20"
+                                style={{
+                                  backgroundColor: categoryData?.color || "#3b82f6"
+                                }} />
+                              <span>{categoryName}</span>
+                              {!categoryData?.isDefault && (
+                                <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
+                                  Custom
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                      {availableCategories.length === 0 && (
+                        <SelectItem value="none" disabled>
+                          No {type} categories available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.category && (
+                    <p id="category-error" className="text-sm text-red-600 flex items-center gap-1" role="alert">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.category}
+                    </p>
+                  )}
+
+                  {/* Inline Allocation Target Selection for Goal/Debt */}
+                  {(type === "expense" && !showExpenseFundingStep && (formData.category === "Goal" || formData.category === "Debt")) && (
+                    <div className="mt-3 p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-primary/10">
+                          {formData.category === "Goal" ? (
+                            <Target className="w-4 h-4 text-primary" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-primary" />
+                          )}
+                        </div>
+                        <Label htmlFor="inlineAllocationTarget" className="text-xs font-bold uppercase tracking-tight text-primary">
+                          Choose {formData.category === "Goal" ? "Goal" : "Debt"} Account
+                          <span className="text-red-500 ml-0.5">*</span>
+                        </Label>
+                      </div>
+                      
+                      <Select
+                        value={formData.allocationTarget}
+                        onValueChange={(value) => handleFieldChange("allocationTarget", value)}
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="inlineAllocationTarget" className="h-11 border-primary/30 bg-background/50 focus:border-primary focus:ring-primary/20 transition-all">
+                          <SelectValue placeholder={`Which ${formData.category.toLowerCase()} account?`} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          {allocationTargets.map((target) => (
+                            <SelectItem key={target.id} value={target.id} className="py-2">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-semibold text-sm">{(target as any).title || (target as any).name}</span>
+                                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-medium">
+                                  {formData.category === "Goal" ? (
+                                    <>
+                                      <span className="flex items-center gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                        Saved: {currencySymbol}{(target as any).currentAmount}
+                                      </span>
+                                      <span>•</span>
+                                      <span>Target: {currencySymbol}{(target as any).targetAmount}</span>
+                                    </>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-red-500/80">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                      Balance Owed: {currencySymbol}{(target as any).balance}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                          {allocationTargets.length === 0 && (
+                            <SelectItem value="none" disabled>
+                              No accounts available. Create one first!
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      
+                      {errors.allocationTarget ? (
+                        <p className="text-xs text-red-600 flex items-center gap-1.5 pl-1 font-medium">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {errors.allocationTarget}
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground/80 pl-1 italic">
+                          {formData.category === "Goal" 
+                            ? "This money will be added directly to your savings goal." 
+                            : "This will record a repayment toward the selected debt."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Allocation Target Selection (Traditional flow) */}
+              {(type !== "expense" || showExpenseFundingStep) && 
+               !(type === "expense" && !showExpenseFundingStep && (formData.category === "Goal" || formData.category === "Debt")) &&
+               (formData.allocationType === "goal" || formData.allocationType === "debt" || formData.allocationType === "credit") && (
                 <div className="space-y-2">
                   <Label htmlFor="allocationTarget" className="text-sm font-medium flex items-center gap-1">
                     {formData.allocationType === "goal" ? "Select Goal" :
@@ -1544,118 +1877,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                           : formData.allocationType === "credit"
                             ? "This expense will increase the selected credit balance."
                             : ""}
-                    </p>
-                  )}
-                </div>
-              )}
-
-
-              {/* Category Selection */}
-              {!isExpenseFundingOnlyView && (type === "income" || type === "expense") && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="category" className="text-sm font-medium flex items-center gap-1">
-                      Category
-                      <span className="text-orange-500">*</span>
-                    </Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAddCategory(!showAddCategory)}
-                      className="text-xs h-7 px-2 text-primary hover:text-primary"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add New
-                    </Button>
-                  </div>
-
-                  {showAddCategory && (
-                    <div className="mb-3 p-3 border border-dashed border-primary/30 rounded-lg bg-primary/5 animate-in slide-in-from-top-2 duration-200">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder={`New ${type} category name`}
-                          value={newCategoryName}
-                          onChange={(e) => setNewCategoryName(e.target.value)}
-                          className="flex-1"
-                          onKeyPress={(e) => e.key === "Enter" && handleAddNewCategory()}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={handleAddNewCategory}
-                          disabled={!newCategoryName.trim()}
-                          className="px-3"
-                        >
-                          Add
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setShowAddCategory(false)
-                            setNewCategoryName("")
-                          }}
-                          className="px-3"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => {
-                      handleFieldChange("category", value)
-                      handleFieldChange("subcategory", "")
-                    }}
-                    onOpenChange={(open) => !open && handleFieldBlur("category")}
-                    disabled={isSubmitting}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "transition-all duration-200",
-                        errors.category ? "border-red-300 focus:border-red-500" :
-                          formData.category ? "border-green-300 focus:border-green-500" : ""
-                      )}
-                      aria-describedby={errors.category ? "category-error" : undefined}
-                    >
-                      <SelectValue placeholder="Choose a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCategories.map((categoryName) => {
-                        const categoryData = categories.find((c) => c.name === categoryName && c.type === type)
-                        return (
-                          <SelectItem key={categoryName} value={categoryName}>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full border border-white/20"
-                                style={{
-                                  backgroundColor: categoryData?.color || "#3b82f6"
-                                }} />
-                              <span>{categoryName}</span>
-                              {!categoryData?.isDefault && (
-                                <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
-                                  Custom
-                                </span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                      {availableCategories.length === 0 && (
-                        <SelectItem value="none" disabled>
-                          No {type} categories available
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {errors.category && (
-                    <p id="category-error" className="text-sm text-red-600 flex items-center gap-1" role="alert">
-                      <AlertCircle className="w-3 h-3" />
-                      {errors.category}
                     </p>
                   )}
                 </div>
@@ -1795,17 +2016,17 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               >
                 Cancel
               </Button>
-              {type === "expense" && !showExpenseFundingStep ? (
+              {type === "expense" && !showExpenseFundingStep && formData.category !== "Goal" && formData.category !== "Debt" ? (
                 <Button
                   type="button"
                   className={cn("flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus:ring-red-500", isMobile && "h-11")}
-                  disabled={isSubmitting || !canProceedToFundingStep}
+                  disabled={isSubmitting || !canProceedToFundingStep || cooldownRemaining > 0}
                   onClick={() => {
                     setFormData((prev) => ({ ...prev, expenseMode: "payment_source", allocationType: "", allocationTarget: "" }))
                     setShowExpenseFundingStep(true)
                   }}
                 >
-                  Proceed
+                  {cooldownRemaining > 0 ? `Wait ${cooldownRemaining}s...` : "Proceed"}
                 </Button>
               ) : (
                 <Button
@@ -1813,16 +2034,22 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   className={cn(
                     "flex-1 transition-colors duration-200",
                     isMobile && "h-11",
+                    cooldownRemaining > 0 && "opacity-70 cursor-not-allowed",
                     type === "income"
                       ? "bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 focus:ring-green-500"
                       : "bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus:ring-red-500"
                   )}
-                  disabled={isSubmitting || !canSubmitNow}
+                  disabled={isSubmitting || !canSubmitNow || cooldownRemaining > 0}
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       Adding...
+                    </div>
+                  ) : cooldownRemaining > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Wait {cooldownRemaining}s...
                     </div>
                   ) : (
                     `Add ${type === "income" ? "Income" : "Expense"}`
