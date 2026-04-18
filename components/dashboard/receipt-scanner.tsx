@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScannerModal from "./scanner-modal"
 
 interface ReceiptScannerProps {

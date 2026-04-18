@@ -7,7 +7,6 @@ import { TimeTooltip } from "@/components/ui/time-tooltip"
 import {
   Wallet,
   Clock,
-  Sparkles,
   AlertTriangle,
   Eye,
   EyeOff

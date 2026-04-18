@@ -1,34 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import type { Achievement } from "@/types/wallet"
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-  Trophy,
-  Gift,
-  Sparkles,
-  CheckCircle2,
-  PartyPopper,
-  Award,
-  Star,
-  Flame,
-  Crown,
-  Target,
-  Zap,
-  Gem,
-  Medal,
-  Shield,
-  Rocket,
-  Heart,
-  Brain,
-  Gamepad2,
-  Lock,
-  TrendingUp
-} from "lucide-react"
+import {Trophy,Sparkles,CheckCircle2,Star,Crown,Target,Medal,Lock} from "lucide-react"
 
 interface AchievementsProfileProps {
   achievements: Achievement[]
