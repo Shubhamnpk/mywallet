@@ -179,6 +179,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [logOpen, setLogOpen] = useState(false);
+  const [editShift, setEditShift] = useState<Shift | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailShiftId, setDetailShiftId] = useState<number | null>(null);
   const [actionShiftId, setActionShiftId] = useState<number | null>(null);
@@ -588,13 +589,9 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
       <Card className="gap-4 py-5 shadow-sm">
         <CardHeader className="px-4 sm:px-6 pb-0">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Summary</CardTitle>
-              <CardDescription>
-                {statView === "month" ? "This month" : "All time"} · hours,
-                earned, received, owed
-              </CardDescription>
             </div>
             <div className="flex w-fit gap-0.5 rounded-lg border bg-muted/50 p-0.5">
               <button
@@ -681,9 +678,6 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
               <CardTitle className="text-base">
                 Shifts &amp; pay status
               </CardTitle>
-              <CardDescription>
-                Group by day, week, month, or view all shifts in one table
-              </CardDescription>
             </div>
             <div className="flex flex-wrap gap-0.5 rounded-lg border bg-muted/50 p-0.5">
               {(
@@ -736,9 +730,6 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
       <Card className="gap-4 py-5 shadow-sm">
         <CardHeader className="px-4 sm:px-6 pb-0">
           <CardTitle className="text-base">Payment history</CardTitle>
-          <CardDescription>
-            Marking paid adds an income transaction; undo removes it when linked
-          </CardDescription>
         </CardHeader>
         <CardContent className="px-4 sm:px-6 pt-0">
           {!payments.length ? (
@@ -785,12 +776,26 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
       <LogShiftDialog
         open={logOpen}
-        onOpenChange={setLogOpen}
+        onOpenChange={(open) => {
+          setLogOpen(open);
+          if (!open) setEditShift(undefined);
+        }}
         defaultRateInput={rateInput}
+        initialShift={editShift}
         onSave={(shift) => {
-          setShifts((prev) => [shift, ...prev]);
-          toast.success("Shift saved");
-          return true;
+          if (editShift) {
+            // Update existing shift
+            setShifts((prev) =>
+              prev.map((s) => (s.id === editShift.id ? { ...shift, id: editShift.id } : s))
+            );
+            toast.success("Shift updated");
+            return true;
+          } else {
+            // Add new shift
+            setShifts((prev) => [shift, ...prev]);
+            toast.success("Shift saved");
+            return true;
+          }
         }}
       />
 
@@ -1033,6 +1038,19 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   </span>
                 </Button>
               )}
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-12 rounded-xl font-medium border-muted/60"
+                onClick={() => {
+                  setEditShift(actionShift);
+                  setLogOpen(true);
+                  setActionShiftId(null);
+                }}
+              >
+                Edit shift
+              </Button>
 
               <div className="flex gap-3 pt-2">
                 <Button

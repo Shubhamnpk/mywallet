@@ -1642,7 +1642,7 @@ export function PortfolioList() {
                                                                         : "Not available right now"}
                                                                 </p>
                                                             </div>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            <div className="grid grid-cols-2 gap-3">
                                                                 <div className="rounded-xl border border-success/20 bg-success/5 p-3">
                                                                     <p className="text-[10px] uppercase font-black text-success">Top Gainers</p>
                                                                     <div className="mt-2 space-y-1.5">
@@ -1793,18 +1793,19 @@ export function PortfolioList() {
                                                             {isMarketHistoryOpen ? "Hide Market History Chart" : "Show Market History Chart"}
                                                             {isMarketHistoryOpen ? <ChevronUp className="ml-2 w-3.5 h-3.5" /> : <ChevronDown className="ml-2 w-3.5 h-3.5" />}
                                                         </Button>
-                                                        <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
-                                                            <SelectTrigger className="h-8 sm:w-[130px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="yearly">Yearly</SelectItem>
-                                                                <SelectItem value="daily">Daily</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                        {marketHistoryView === "yearly" ? (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
+                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="yearly">Yearly</SelectItem>
+                                                                    <SelectItem value="daily">Daily</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                            {marketHistoryView === "yearly" ? (
                                                             <Select value={yearWindow} onValueChange={(value) => setYearWindow(value as "5" | "10" | "all")}>
-                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
@@ -1813,18 +1814,19 @@ export function PortfolioList() {
                                                                     <SelectItem value="all">All Years</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
-                                                        ) : (
-                                                            <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
-                                                                <SelectTrigger className="h-8 sm:w-[120px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="30">Last 30D</SelectItem>
-                                                                    <SelectItem value="90">Last 90D</SelectItem>
-                                                                    <SelectItem value="365">Last 1Y</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        )}
+                                                            ) : (
+                                                                <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
+                                                                    <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="30">Last 30D</SelectItem>
+                                                                        <SelectItem value="90">Last 90D</SelectItem>
+                                                                        <SelectItem value="365">Last 1Y</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            )}
+                                                        </div>
                                                         <div className="flex items-center gap-1 sm:ml-auto">
                                                             <Button
                                                                 type="button"
@@ -2588,8 +2590,8 @@ export function PortfolioList() {
                                 </div>
                             ) : hasMoverData || hasNoMoverData ? (
                                 <div className={cn(
-                                    "h-full w-full p-4 sm:p-6 grid grid-cols-1 gap-4 min-h-0",
-                                    hasNoMoverData ? "lg:grid-cols-3" : "lg:grid-cols-2",
+                                    "h-full w-full p-4 sm:p-6 grid gap-4 min-h-0",
+                                    hasNoMoverData ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-2",
                                 )}>
                                     {portfolioMovers.gainers.length > 0 && (
                                         <div className="flex flex-col gap-2 min-h-0">

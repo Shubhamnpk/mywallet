@@ -34,6 +34,8 @@ export interface LogShiftDialogProps {
   onSave: (shift: Shift) => boolean;
   /** When set (e.g. from Shift tracker), used for default rate hint and preview. */
   defaultRateInput?: string;
+  /** When provided, dialog enters edit mode for the given shift. */
+  initialShift?: Shift;
 }
 
 export function LogShiftDialog({
@@ -41,6 +43,7 @@ export function LogShiftDialog({
   onOpenChange,
   onSave,
   defaultRateInput,
+  initialShift,
 }: LogShiftDialogProps) {
   const { userProfile } = useWalletData();
   const currencySymbol = getCurrencySymbol(
@@ -58,24 +61,39 @@ export function LogShiftDialog({
 
   useEffect(() => {
     if (!open) return;
-    setFormDate(todayStr());
-    setFormStart("");
-    setFormEnd("");
-    setFormNote("");
-    setFormRate("");
-    try {
-      const r = localStorage.getItem(STORAGE_RATE);
-      if (defaultRateInput !== undefined) {
-        setRateHint(defaultRateInput);
-      } else if (r) {
-        setRateHint(r);
+    if (initialShift) {
+      // Edit mode: populate with existing shift data
+      setFormDate(initialShift.date);
+      setFormStart(initialShift.start);
+      setFormEnd(initialShift.end);
+      setFormNote(initialShift.note || "");
+      setFormRate(initialShift.rate ? String(initialShift.rate) : "");
+      setRateHint(defaultRateInput !== undefined ? defaultRateInput : String(initialShift.rate || 12.5));
+    } else {
+      // Add mode: reset fields
+      setFormDate(todayStr());
+      setFormStart("");
+      setFormEnd("");
+      setFormNote("");
+      setFormRate("");
+      try {
+        const r = localStorage.getItem(STORAGE_RATE);
+        if (defaultRateInput !== undefined) {
+          setRateHint(defaultRateInput);
+        } else if (r) {
+          setRateHint(r);
+        }
+      } catch {
+        /* ignore */
       }
+    }
+    try {
       const tf = localStorage.getItem(STORAGE_TIME_FMT) as TimeFmt | null;
       if (tf === "12h" || tf === "24h") setTimeFormat(tf);
     } catch {
       /* ignore */
     }
-  }, [open, defaultRateInput]);
+  }, [open, defaultRateInput, initialShift]);
 
   const getRate = useCallback(() => {
     const v = parseFloat(rateHint);
@@ -123,7 +141,7 @@ export function LogShiftDialog({
     }
     const rateOverride = parseFloat(formRate);
     const shift: Shift = {
-      id: Date.now(),
+      id: initialShift?.id ?? Date.now(),
       date: formDate,
       start: formStart,
       end: formEnd,
@@ -151,7 +169,7 @@ export function LogShiftDialog({
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle className="text-xl font-semibold tracking-tight">
-                Log a shift
+                {initialShift ? "Edit shift" : "Log a shift"}
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground leading-snug">
                 Record date, times, and optional note. Saved shifts sync with Shift
