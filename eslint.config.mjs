@@ -16,6 +16,9 @@ export default [
   ...nextVitals,
   ...nextTypescript,
   {
+    plugins: {
+      "react-hooks": reactHooks,
+    },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-require-imports": "warn",

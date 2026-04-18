@@ -33,9 +33,7 @@ export function MyWalletPageClient() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <CombinedBalanceCard />
-
         <FloatingAddButton />
-
         <MainTabs
           transactions={walletData.transactions}
           budgets={walletData.budgets}
@@ -55,6 +53,7 @@ export function MyWalletPageClient() {
           onUpdateCategory={walletData.updateCategory}
           onDeleteCategory={walletData.deleteCategory}
           onUpdateCategoryStats={walletData.updateCategoryStats}
+          onAddTransaction={walletData.addTransaction}
         />
       </div>
     </div>

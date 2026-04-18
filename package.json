@@ -98,6 +98,7 @@
     "babel-loader": "^8.4.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.2.3",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.0",
     "jsdom": "^27.0.1",
     "postcss": "^8.5",
