@@ -89,6 +89,33 @@ npm run build
 npm start
 ```
 
+### Web Push + Upstash (Production)
+
+Set these environment variables in Vercel Project Settings for `Production`:
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT` (example: `mailto:alerts@yourdomain.com`)
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+Optional:
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (same value as `VAPID_PUBLIC_KEY`)
+- `PUSH_HEALTH_SECRET` (recommended; protects `/api/push/health` diagnostics endpoint)
+
+Generate VAPID keys locally:
+
+```bash
+pnpm vapid
+```
+
+Check production push health:
+
+```bash
+curl -H "Authorization: Bearer $PUSH_HEALTH_SECRET" https://your-app.vercel.app/api/push/health
+```
+
 ## 📱 Usage
 
 1. **First Time Setup**: Complete the onboarding process to set up your profile

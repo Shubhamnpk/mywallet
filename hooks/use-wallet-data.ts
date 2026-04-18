@@ -44,7 +44,13 @@ import {
   showAppNotification,
 } from "@/lib/notifications"
 import {
+  getBrowserPushSubscriptionActive,
+  getWebPushServerStatus,
+  subscribeDeviceToWebPush,
+} from "@/lib/push-client"
+import {
   recordNotificationDelivery,
+  wasRecentlyDelivered,
   type NotificationHistorySource,
 } from "@/lib/notification-history"
 import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
@@ -53,8 +59,13 @@ import { toast } from "sonner"
 
 const HOUR_MS = 60 * 60 * 1000
 const REMINDER_SCAN_INTERVAL_MS = 30 * 60 * 1000
+const BACKGROUND_REMINDER_STARTUP_DELAY_MS = 20 * 1000
+const REMOTE_PUSH_AUTO_SYNC_INTERVAL_MS = 6 * HOUR_MS
+const IPO_PER_COMPANY_COOLDOWN_MS = 24 * HOUR_MS
 const DELETE_UNDO_WINDOW_MS = 5000
 const UNITS_EPSILON = 1e-12
+const APP_BOOT_TS = Date.now()
+const REMOTE_PUSH_AUTO_SYNC_KEY = "wallet_remote_push_auto_sync_at_v1"
 
 // Module-level cache for portfolio prices (persists across re-renders)
 let globalPortfolioCache: {
@@ -323,12 +334,11 @@ const normalizeReminderText = (value?: string) =>
 
 const buildIpoReminderBaseKey = (ipo: UpcomingIPO) => {
   const company = normalizeReminderText(ipo.company) || "ipo"
+  const openingDate = normalizeReminderText(ipo.openingDate || ipo.openingDay)
+  const closingDate = normalizeReminderText(ipo.closingDate || ipo.closingDay)
   const dateRange = normalizeReminderText(ipo.date_range)
-  const url = normalizeReminderText(ipo.url)
-  const openingDate = normalizeReminderText(ipo.openingDate)
-  const closingDate = normalizeReminderText(ipo.closingDate)
 
-  return [company, dateRange, openingDate, closingDate, url]
+  return [company, openingDate, closingDate, dateRange]
     .filter(Boolean)
     .join("|")
 }
@@ -381,6 +391,52 @@ export function useWalletData() {
     userProfileRef.current = userProfile
   }, [userProfile])
 
+  // Auto-enable remote push subscription when share features are enabled and browser permission is already granted.
+  // This keeps "Remote IPO alerts" on by default for share users without forcing permission prompts.
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return
+    if (!("serviceWorker" in navigator) || !("Notification" in window)) return
+    if (Notification.permission !== "granted") return
+    if (!userProfile?.meroShare?.shareFeaturesEnabled || !userProfile?.meroShare?.shareNotificationsEnabled) return
+
+    let cancelled = false
+    const now = Date.now()
+
+    try {
+      const raw = localStorage.getItem(REMOTE_PUSH_AUTO_SYNC_KEY)
+      const last = raw ? Number(raw) : 0
+      if (Number.isFinite(last) && last > 0 && now - last < REMOTE_PUSH_AUTO_SYNC_INTERVAL_MS) {
+        return
+      }
+    } catch {
+    }
+
+    const run = async () => {
+      try {
+        const active = await getBrowserPushSubscriptionActive()
+        if (active) {
+          localStorage.setItem(REMOTE_PUSH_AUTO_SYNC_KEY, String(Date.now()))
+          return
+        }
+        const status = await getWebPushServerStatus()
+        if (!status.ready) return
+        const result = await subscribeDeviceToWebPush()
+        if (cancelled || !result.ok) return
+        localStorage.setItem(REMOTE_PUSH_AUTO_SYNC_KEY, String(Date.now()))
+      } catch {
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    isLoaded,
+    userProfile?.meroShare?.shareFeaturesEnabled,
+    userProfile?.meroShare?.shareNotificationsEnabled,
+  ])
+
   useEffect(() => {
     shareTransactionsRef.current = shareTransactions
   }, [shareTransactions])
@@ -395,12 +451,15 @@ export function useWalletData() {
       return
     }
 
-    const runReminderScan = async () => {
-      const cache = readReminderCache()
-      const now = new Date()
-      let emittedCount = 0
-      const maxPerScan = 6
-      const appInForeground = isAppInForeground()
+      const runReminderScan = async () => {
+        const cache = readReminderCache()
+        const now = new Date()
+        let emittedCount = 0
+        const maxPerScan = 6
+        const appInForeground = isAppInForeground()
+        const allowBackgroundBrowserReminders =
+          !appInForeground &&
+          (document.visibilityState === "hidden" || Date.now() - APP_BOOT_TS >= BACKGROUND_REMINDER_STARTUP_DELAY_MS)
 
       type StoredBillReminder = {
         id: string
@@ -427,20 +486,25 @@ export function useWalletData() {
       } catch {
       }
 
-      const emitReminder = (
-        key: string,
-        title: string,
-        description: string,
-        browserCooldownMs: number,
-        source: NotificationHistorySource,
+        const emitReminder = (
+          key: string,
+          title: string,
+          description: string,
+          browserCooldownMs: number,
+          source: NotificationHistorySource,
+          inAppCooldownMs = IN_APP_REMINDER_COOLDOWN_MS,
       ) => {
         if (emittedCount >= maxPerScan) return
 
         const inAppCacheKey = `${key}:inapp`
         const browserCacheKey = `${key}:browser`
-        const canInApp = shouldSendReminder(cache, inAppCacheKey, IN_APP_REMINDER_COOLDOWN_MS)
-        const canBrowser = shouldSendReminder(cache, browserCacheKey, browserCooldownMs)
-        if (!canInApp && !canBrowser) return
+        const historyCooldownMs = Math.max(browserCooldownMs, inAppCooldownMs)
+        if (wasRecentlyDelivered(key, source, historyCooldownMs)) {
+          return
+        }
+          const canInApp = shouldSendReminder(cache, inAppCacheKey, inAppCooldownMs)
+          const canBrowser = shouldSendReminder(cache, browserCacheKey, browserCooldownMs)
+          if (!canInApp && !canBrowser) return
 
         let didEmit = false
 
@@ -461,14 +525,14 @@ export function useWalletData() {
           didEmit = true
         }
 
-        if (
-          canBrowser &&
-          !appInForeground &&
-          notificationSettings.browserNotifications &&
-          "Notification" in window &&
-          Notification.permission === "granted"
-        ) {
-          void showAppNotification({
+          if (
+            canBrowser &&
+            allowBackgroundBrowserReminders &&
+            notificationSettings.browserNotifications &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            void showAppNotification({
             title,
             body: description,
             tag: key,
@@ -482,11 +546,16 @@ export function useWalletData() {
             channel: "browser",
           })
           didEmit = true
-        }
+          }
 
-        if (!didEmit) return
-        emittedCount += 1
-      }
+          if (!didEmit) return
+          // Cross-channel dedupe: if either toast or browser channel emitted,
+          // cool down both channels to avoid duplicate bursts when app focus changes.
+          const emittedAt = Date.now()
+          cache[inAppCacheKey] = emittedAt
+          cache[browserCacheKey] = emittedAt
+          emittedCount += 1
+        }
 
       // Nudge once a week to enable browser notifications.
       if (
@@ -603,42 +672,80 @@ export function useWalletData() {
         userProfile?.meroShare?.shareFeaturesEnabled &&
         userProfile?.meroShare?.shareNotificationsEnabled
       ) {
+        type IpoReminderCandidate = {
+          companyKey: string
+          company: string
+          title: string
+          description: string
+          priority: number
+          type: "closing-soon" | "open" | "opening-soon"
+        }
+
+        const ipoCandidatesByCompany = new Map<string, IpoReminderCandidate>()
+
         upcomingIPOs.forEach((ipo) => {
           const company = ipo.company || "IPO"
           const ipoReminderBaseKey = buildIpoReminderBaseKey(ipo)
+          const companyKey = normalizeReminderText(company) || ipoReminderBaseKey
           const daysRemaining =
             ipo.daysRemaining ??
             (ipo.closingDate
               ? Math.ceil((new Date(ipo.closingDate).getTime() - now.getTime()) / (24 * HOUR_MS))
               : undefined)
 
+          let nextCandidate: IpoReminderCandidate | null = null
           if (ipo.status === "open") {
             if (typeof daysRemaining === "number" && daysRemaining <= 1) {
-              emitReminder(
-                `ipo-closing-soon-${ipoReminderBaseKey}`,
-                `IPO closing soon: ${company}`,
-                `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
-                6 * HOUR_MS,
-                "ipo",
-              )
+              nextCandidate = {
+                companyKey,
+                company,
+                title: `IPO closing soon: ${company}`,
+                description: `Application window is closing ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+                priority: 1,
+                type: "closing-soon",
+              }
             } else {
-              emitReminder(
-                `ipo-open-${ipoReminderBaseKey}`,
-                `IPO is open: ${company}`,
-                "You can apply from the Portfolio section.",
-                24 * HOUR_MS,
-                "ipo",
-              )
+              nextCandidate = {
+                companyKey,
+                company,
+                title: `IPO is open: ${company}`,
+                description: "You can apply from the Portfolio section.",
+                priority: 2,
+                type: "open",
+              }
             }
           } else if (ipo.status === "upcoming" && typeof daysRemaining === "number" && daysRemaining <= 1) {
-            emitReminder(
-              `ipo-opening-soon-${ipoReminderBaseKey}`,
-              `IPO opening soon: ${company}`,
-              `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
-              24 * HOUR_MS,
-              "ipo",
-            )
+            nextCandidate = {
+              companyKey,
+              company,
+              title: `IPO opening soon: ${company}`,
+              description: `Subscription starts ${daysRemaining <= 0 ? "today" : "tomorrow"}.`,
+              priority: 3,
+              type: "opening-soon",
+            }
           }
+
+          if (!nextCandidate) return
+          const existing = ipoCandidatesByCompany.get(companyKey)
+          if (!existing || nextCandidate.priority < existing.priority) {
+            ipoCandidatesByCompany.set(companyKey, nextCandidate)
+          }
+        })
+
+        const ipoCandidates = Array.from(ipoCandidatesByCompany.values()).sort((a, b) =>
+          a.priority - b.priority || a.company.localeCompare(b.company),
+        )
+
+        ipoCandidates.forEach((candidate) => {
+          const companyCooldownKey = `ipo-company-${candidate.companyKey}`
+          emitReminder(
+            companyCooldownKey,
+            candidate.title,
+            candidate.description,
+            IPO_PER_COMPANY_COOLDOWN_MS,
+            "ipo",
+            IPO_PER_COMPANY_COOLDOWN_MS,
+          )
         })
       }
 
@@ -666,12 +773,12 @@ export function useWalletData() {
           }
 
           if (schedule.shouldSendUpcomingReminder) {
-            emitReminder(
-              `sip-upcoming-${plan.id}-${schedule.daysUntilNext}`,
-              `SIP due in ${schedule.daysUntilNext} day${schedule.daysUntilNext === 1 ? "" : "s"}`,
-              `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString())}. Keep ${amountLabel} ready.`,
-              18 * HOUR_MS,
-              "sip",
+              emitReminder(
+                `sip-upcoming-${plan.id}`,
+                `SIP due in ${schedule.daysUntilNext} day${schedule.daysUntilNext === 1 ? "" : "s"}`,
+                `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString())}. Keep ${amountLabel} ready.`,
+                18 * HOUR_MS,
+                "sip",
             )
           }
 
@@ -721,7 +828,7 @@ export function useWalletData() {
               const lead = Math.max(1, Math.min(30, bill.reminderDays || 3))
               if (daysUntilDue > 0 && daysUntilDue <= lead) {
                 emitReminder(
-                  `bill-due-soon-${bill.id}-${daysUntilDue}`,
+                  `bill-due-soon-${bill.id}`,
                   `Bill due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}: ${label}`,
                   amountPart ? `Amount ${amountPart}.` : "Check your upcoming payment.",
                   24 * HOUR_MS,

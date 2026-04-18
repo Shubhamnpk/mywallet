@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 import { isWebPushFullyConfigured } from "@/lib/push/env"
+import { saveLastPushJobResult } from "@/lib/push/health-store"
 import { runOpenIpoPushJob } from "@/lib/push/ipo-open-snapshot"
 
 export const runtime = "nodejs"
@@ -22,12 +23,15 @@ export async function GET(request: NextRequest) {
   }
 
   if (!isWebPushFullyConfigured()) {
-    return NextResponse.json({
+    const skipped = {
       skipped: true,
       message: "Web Push or Redis not configured.",
-    })
+    }
+    await saveLastPushJobResult(skipped)
+    return NextResponse.json(skipped)
   }
 
   const result = await runOpenIpoPushJob()
+  await saveLastPushJobResult(result)
   return NextResponse.json(result)
 }

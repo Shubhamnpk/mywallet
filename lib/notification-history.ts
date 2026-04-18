@@ -47,6 +47,24 @@ export function readNotificationHistory(): NotificationHistoryItem[] {
   return safeRead()
 }
 
+export function wasRecentlyDelivered(
+  dedupeKey: string,
+  source: NotificationHistorySource,
+  withinMs: number,
+): boolean {
+  if (typeof window === "undefined") return false
+  if (!Number.isFinite(withinMs) || withinMs <= 0) return false
+
+  const cutoff = Date.now() - withinMs
+  return safeRead().some(
+    (item) =>
+      item.dedupeKey === dedupeKey &&
+      item.source === source &&
+      Number.isFinite(item.at) &&
+      item.at >= cutoff,
+  )
+}
+
 export function recordNotificationDelivery(params: {
   dedupeKey: string
   title: string

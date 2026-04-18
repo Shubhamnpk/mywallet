@@ -5,7 +5,6 @@ import { Bell, Share } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
-import { OfflineBadge } from "@/components/ui/offline-badge"
 import { useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
@@ -23,12 +22,15 @@ import {
 } from "@/lib/notification-history"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
+const LIVE_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000
 
 type HeaderNotification = {
   id: string
   title: string
   description: string
   type: "warning" | "info" | "success"
+  sourceLabel?: string
+  deliveredAt?: number
 }
 
 type HeaderBillRow = {
@@ -194,7 +196,38 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     billRows,
   ])
 
-  const unreadCount = notifications.filter((n) => !readMap[n.id]).length
+  const { liveDeliveredNotifications, archivedDeliveredNotifications } = useMemo(() => {
+    const cutoff = Date.now() - LIVE_NOTIFICATION_WINDOW_MS
+    const live = history.filter((item) => item.at >= cutoff)
+    const archived = history.filter((item) => item.at < cutoff)
+    return {
+      liveDeliveredNotifications: live,
+      archivedDeliveredNotifications: archived,
+    }
+  }, [history])
+
+  const deliveredLiveItems = useMemo<HeaderNotification[]>(() => {
+    return liveDeliveredNotifications.map((item) => ({
+      id: `delivered-${item.id}`,
+      title: item.title,
+      description: item.body,
+      type:
+        item.source === "budget" || item.source === "bill"
+          ? "warning"
+          : item.source === "ipo"
+            ? "success"
+            : "info",
+      sourceLabel: `${item.source} · ${item.channel}`,
+      deliveredAt: item.at,
+    }))
+  }, [liveDeliveredNotifications])
+
+  const liveNotifications = useMemo<HeaderNotification[]>(
+    () => [...deliveredLiveItems, ...notifications].slice(0, 40),
+    [deliveredLiveItems, notifications],
+  )
+
+  const unreadCount = liveNotifications.filter((n) => !readMap[n.id]).length
 
   const persistReadMap = (next: Record<string, boolean>) => {
     setReadMap(next)
@@ -211,9 +244,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   }
 
   const markAllAsRead = () => {
-    if (notifications.length === 0) return
+    if (liveNotifications.length === 0) return
     const next = { ...readMap }
-    notifications.forEach((n) => {
+    liveNotifications.forEach((n) => {
       next[n.id] = true
     })
     persistReadMap(next)
@@ -276,8 +309,8 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="live" className="mt-0 max-h-[320px] overflow-y-auto py-1">
-                  {notifications.length > 0 ? (
-                    notifications.map((n) => (
+                  {liveNotifications.length > 0 ? (
+                    liveNotifications.map((n) => (
                       <DropdownMenuItem
                         key={n.id}
                         className="items-start gap-2 py-2"
@@ -294,6 +327,12 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                             {!readMap[n.id] && <Badge variant="secondary" className="text-[10px] h-4 px-1">New</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground">{n.description}</p>
+                          {(n.sourceLabel || n.deliveredAt) && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {n.sourceLabel ? `${n.sourceLabel}${n.deliveredAt ? " · " : ""}` : ""}
+                              {n.deliveredAt ? new Date(n.deliveredAt).toLocaleString() : ""}
+                            </p>
+                          )}
                         </div>
                       </DropdownMenuItem>
                     ))
@@ -302,9 +341,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                   )}
                 </TabsContent>
                 <TabsContent value="history" className="mt-0 max-h-[320px] overflow-y-auto py-1 px-2 pb-2">
-                  {history.length > 0 ? (
+                  {archivedDeliveredNotifications.length > 0 ? (
                     <ul className="space-y-2">
-                      {history.slice(0, 40).map((h) => (
+                      {archivedDeliveredNotifications.slice(0, 40).map((h) => (
                         <li key={h.id} className="rounded-md border bg-muted/20 px-2 py-1.5 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium truncate">{h.title}</span>
@@ -320,7 +359,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                       ))}
                     </ul>
                   ) : (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No delivered notifications yet.</div>
+                    <div className="py-6 text-center text-sm text-muted-foreground">No notifications in history yet.</div>
                   )}
                   <Button
                     type="button"
@@ -354,7 +393,6 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           </DropdownMenu>
 
            <div className="hidden sm:flex">
-             <OfflineBadge />
              <ThemeToggle />
            </div>
 
@@ -385,7 +423,6 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           </button>
 
           <div className="flex items-center gap-2 sm:hidden">
-            <OfflineBadge />
             <ThemeToggle />
             <button
               className="flex justify-center items-center w-9 h-9 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"

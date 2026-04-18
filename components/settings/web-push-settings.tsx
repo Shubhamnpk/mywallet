@@ -1,10 +1,11 @@
-"use client"
+﻿"use client"
 
 import { useCallback, useEffect, useState } from "react"
 import { Radio } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import {
   getBrowserPushSubscriptionActive,
   getWebPushServerStatus,
@@ -14,17 +15,25 @@ import {
 import { requestBrowserNotificationPermission } from "@/lib/notifications"
 
 export function WebPushSettings() {
+  const { userProfile } = useWalletData()
   const [serverReady, setServerReady] = useState(false)
   const [checking, setChecking] = useState(true)
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [statusMessage, setStatusMessage] = useState("Checking server...")
+  const [autoEnableAttempted, setAutoEnableAttempted] = useState(false)
+  const shareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
+  const shareNotificationsEnabled = Boolean(userProfile?.meroShare?.shareNotificationsEnabled)
+  const shouldAutoEnable = shareFeaturesEnabled && shareNotificationsEnabled
 
   const refresh = useCallback(async () => {
     setChecking(true)
+    setStatusMessage("Checking server...")
     try {
       const status = await getWebPushServerStatus()
       setServerReady(status.ready)
       if (status.ready) {
+        setStatusMessage("Checking device subscription...")
         setSubscribed(await getBrowserPushSubscriptionActive())
       } else {
         setSubscribed(false)
@@ -41,8 +50,28 @@ export function WebPushSettings() {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!shouldAutoEnable || checking || busy || !serverReady || subscribed || autoEnableAttempted) return
+    if (typeof window === "undefined" || !("Notification" in window)) return
+    if (Notification.permission !== "granted") return
+
+    setAutoEnableAttempted(true)
+    setBusy(true)
+    setStatusMessage("Auto-enabling remote alerts...")
+    void (async () => {
+      try {
+        const result = await subscribeDeviceToWebPush()
+        if (!result.ok) return
+        setSubscribed(await getBrowserPushSubscriptionActive())
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }, [shouldAutoEnable, checking, busy, serverReady, subscribed, autoEnableAttempted])
+
   const handleEnable = async () => {
     setBusy(true)
+    setStatusMessage("Connecting remote alerts...")
     try {
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted") {
         const p = await requestBrowserNotificationPermission()
@@ -67,7 +96,7 @@ export function WebPushSettings() {
         })
         return
       }
-      setSubscribed(true)
+      setSubscribed(await getBrowserPushSubscriptionActive())
       toast({
         title: "Remote IPO alerts on",
         description: "We will notify this device when a new IPO window opens (from the server).",
@@ -79,9 +108,10 @@ export function WebPushSettings() {
 
   const handleDisable = async () => {
     setBusy(true)
+    setStatusMessage("Disconnecting remote alerts...")
     try {
       await unsubscribeDeviceFromWebPush()
-      setSubscribed(false)
+      setSubscribed(await getBrowserPushSubscriptionActive())
       toast({
         title: "Remote alerts off",
         description: "This device will no longer receive server IPO pushes.",
@@ -99,7 +129,7 @@ export function WebPushSettings() {
             <Radio className="w-5 h-5" />
             Remote alerts
           </CardTitle>
-          <CardDescription>Checking server…</CardDescription>
+          <CardDescription>{statusMessage}</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -135,16 +165,24 @@ export function WebPushSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
+        {shouldAutoEnable && (
+          <p className="w-full text-xs text-muted-foreground">
+            Share features are enabled, so remote alerts auto-enable when notification permission is granted.
+          </p>
+        )}
+        <p className="w-full text-xs text-muted-foreground">
+          Status: {subscribed ? "Enabled on this device" : "Disabled on this device"}
+        </p>
         {!subscribed ? (
-          <Button type="button" variant="default" disabled={busy} onClick={() => void handleEnable()}>
-            Enable remote IPO alerts on this device
+          <Button type="button" variant="default" disabled={busy || checking} onClick={() => void handleEnable()}>
+            {busy ? "Connecting..." : "Enable remote IPO alerts on this device"}
           </Button>
         ) : (
-          <Button type="button" variant="outline" disabled={busy} onClick={() => void handleDisable()}>
-            Disable remote alerts on this device
+          <Button type="button" variant="outline" disabled={busy || checking} onClick={() => void handleDisable()}>
+            {busy ? "Disconnecting..." : "Disable remote alerts on this device"}
           </Button>
         )}
-        <Button type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
+        <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => void refresh()}>
           Refresh status
         </Button>
       </CardContent>

@@ -1,4 +1,4 @@
-import type { UpcomingIPO } from "@/types/wallet"
+﻿import type { UpcomingIPO } from "@/types/wallet"
 import { getRedis } from "./redis"
 import { listPushSubscriptions } from "./subscription-store"
 import { sendPushToMany } from "./web-push-server"
@@ -39,6 +39,8 @@ export async function runOpenIpoPushJob(): Promise<{
   newOpens: number
   pushesAttempted: number
   subscriptionCount: number
+  removedSubscriptions?: number
+  errorCount?: number
   message?: string
 }> {
   const redis = getRedis()
@@ -55,9 +57,9 @@ export async function runOpenIpoPushJob(): Promise<{
   const currentKeys = openList.map(openIpoKey)
 
   const rawPrev = await redis.get(SNAPSHOT_KEY)
-  await redis.set(SNAPSHOT_KEY, JSON.stringify(currentKeys))
 
   if (!rawPrev) {
+    await redis.set(SNAPSHOT_KEY, JSON.stringify(currentKeys))
     return {
       ok: true,
       baseline: true,
@@ -80,6 +82,7 @@ export async function runOpenIpoPushJob(): Promise<{
 
   const subs = await listPushSubscriptions()
   if (subs.length === 0 || newlyOpen.length === 0) {
+    await redis.set(SNAPSHOT_KEY, JSON.stringify(currentKeys))
     return {
       ok: true,
       newOpens: newlyOpen.length,
@@ -91,7 +94,7 @@ export async function runOpenIpoPushJob(): Promise<{
   const names = newlyOpen.map((i) => i.company || "IPO").join(", ")
   const body =
     newlyOpen.length === 1
-      ? `${names} — subscription window is open. Tap to open MyWallet.`
+      ? `${names} - subscription window is open. Tap to open MyWallet.`
       : `${newlyOpen.length} IPOs just opened: ${names}. Tap to open MyWallet.`
 
   const result = await sendPushToMany(subs, {
@@ -101,10 +104,21 @@ export async function runOpenIpoPushJob(): Promise<{
     url: "/portfolio?tab=overview",
   })
 
+  // If every delivery failed, keep previous snapshot so the next run can retry.
+  const shouldAdvanceSnapshot = result.sent > 0 || result.errors.length === 0
+  if (shouldAdvanceSnapshot) {
+    await redis.set(SNAPSHOT_KEY, JSON.stringify(currentKeys))
+  }
+
   return {
     ok: true,
     newOpens: newlyOpen.length,
     pushesAttempted: result.sent,
     subscriptionCount: subs.length,
+    removedSubscriptions: result.removed,
+    errorCount: result.errors.length,
+    message: shouldAdvanceSnapshot
+      ? undefined
+      : "Push delivery failed for all subscriptions; snapshot retained for retry.",
   }
 }

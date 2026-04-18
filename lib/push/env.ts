@@ -12,7 +12,8 @@ export function getVapidPrivateKey(): string {
 
 /** mailto:you@domain.com or https://your-site.com (required by web-push) */
 export function getVapidSubject(): string {
-  return process.env.VAPID_SUBJECT ?? "mailto:support@mywallet.local"
+  // Backward compatibility: older setups used VAPID_EMAIL.
+  return process.env.VAPID_SUBJECT ?? process.env.VAPID_EMAIL ?? "mailto:support@mywallet.local"
 }
 
 export function isVapidConfigured(): boolean {
