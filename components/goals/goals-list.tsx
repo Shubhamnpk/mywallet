@@ -47,6 +47,7 @@ import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
+import { calculateGoalNetSavedAmount, calculateGoalProgress, getGoalTransactions } from "@/lib/goal-calculations"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -270,10 +271,10 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
-      case "high": return "text-red-600 bg-red-50 border-red-200"
-      case "medium": return "text-amber-600 bg-amber-50 border-amber-200"
-      case "low": return "text-blue-600 bg-blue-50 border-blue-200"
-      default: return "text-gray-600 bg-gray-50 border-gray-200"
+      case "high": return "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800 dark:text-red-400"
+      case "medium": return "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400"
+      case "low": return "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400"
+      default: return "text-gray-600 bg-gray-50 border-gray-200 dark:bg-gray-950/30 dark:border-gray-800 dark:text-gray-400"
     }
   }
 
@@ -285,10 +286,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     return "bg-red-500"
   }
 
-  const getGoalHistory = (goalId: string) =>
-    transactions
-      .filter((transaction) => transaction.allocationType === "goal" && transaction.allocationTarget === goalId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  const getGoalHistory = (goalId: string) => getGoalTransactions(goalId, transactions)
 
   const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all") => {
     if (range === "all") return items
@@ -446,9 +444,14 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
               {filteredAndSortedGoals.map((goal) => {
                 const challengeSummary = getGoalChallengeSummary(goal)
                 const effectiveTargetAmount = getGoalEffectiveTargetAmount(goal)
-                const progress = getGoalEffectiveProgress(goal)
-                const remaining = getGoalEffectiveRemainingAmount(goal)
+                
+                // Use transaction-based calculation for accurate saved amount
+                const goalProgress = calculateGoalProgress(goal, transactions)
+                const actualSavedAmount = goalProgress.netSaved
+                const progress = effectiveTargetAmount > 0 ? Math.min((actualSavedAmount / effectiveTargetAmount) * 100, 100) : 0
+                const remaining = Math.max(0, effectiveTargetAmount - actualSavedAmount)
                 const isCompleted = progress >= 100
+                
                 const isExpanded = expandedGoals.has(goal.id)
                 const goalStatus = getGoalStatus(goal)
                 const StatusIcon = goalStatus.icon
@@ -522,7 +525,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                   {formatCurrency(effectiveTargetAmount, userProfile.currency, userProfile.customCurrency)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {formatCurrency(goal.currentAmount, userProfile.currency, userProfile.customCurrency)} saved
+                                  {formatCurrency(actualSavedAmount, userProfile.currency, userProfile.customCurrency)} saved
                                 </p>
                               </div>
 
