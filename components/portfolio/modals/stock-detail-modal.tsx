@@ -191,8 +191,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const formatValue = (amount: number) => {
         if (!Number.isFinite(amount)) return "0"
         if (amount === 0) return "0"
-        if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })
-        return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 10 })
+        return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     }
 
     const formatProfitLossPercent = (percent: number) => {

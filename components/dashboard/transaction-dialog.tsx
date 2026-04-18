@@ -146,8 +146,19 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       const newFormat = localStorage.getItem("wallet_number_format") || "us"
       setNumberFormat(newFormat)
       // Force re-render of displayAmount when format changes
+      // Preserve exact decimal representation (e.g., "1.0" stays as "1.0", "12.02" stays as "12.02")
       if (formData.amount) {
-        setDisplayAmount(parseFloat(formData.amount).toLocaleString(newFormat === 'us' ? 'en-US' : newFormat === 'eu' ? 'de-DE' : 'en-IN'))
+        const hasDecimal = formData.amount.includes('.')
+        if (hasDecimal) {
+          // Preserve exact decimal representation
+          const parts = formData.amount.split('.')
+          const intPart = parts[0] || '0'
+          const decPart = parts[1] || ''
+          const formattedInt = parseInt(intPart, 10).toLocaleString(newFormat === 'us' ? 'en-US' : newFormat === 'eu' ? 'de-DE' : 'en-IN')
+          setDisplayAmount(decPart ? `${formattedInt}.${decPart}` : `${formattedInt}.`)
+        } else {
+          setDisplayAmount(parseInt(formData.amount, 10).toLocaleString(newFormat === 'us' ? 'en-US' : newFormat === 'eu' ? 'de-DE' : 'en-IN'))
+        }
       }
     }
 
@@ -1243,7 +1254,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       const isValid = /^\d*\.?\d{0,2}$/.test(rawValue) || rawValue === ''
 
                       if (isValid) {
-                        // Store raw value (without commas)
+                        // Store raw value (without commas) - preserve exact decimal representation
                         setFormData((prev) => ({ ...prev, amount: rawValue }))
 
                         // Format for display with locale-appropriate commas
@@ -1251,15 +1262,17 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                           const hasTrailingDot = rawValue.endsWith('.')
                           const parts = rawValue.split('.')
                           const intPart = parts[0] || '0'
-                          const decPart = parts[1] || ''
+                          const decPart = parts.length > 1 ? parts[1] : ''
 
                           // Format integer part with locale
                           const formattedInt = parseInt(intPart, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
 
                           // Combine with decimal part, preserving trailing dot while typing
+                          // Important: preserve exact decimal representation (e.g., "02" stays as "02", not "2")
                           if (hasTrailingDot) {
                             setDisplayAmount(`${formattedInt}.`)
-                          } else if (decPart) {
+                          } else if (decPart.length > 0) {
+                            // Pad decimal part to ensure proper display (e.g., "2" -> "2", "02" -> "02")
                             setDisplayAmount(`${formattedInt}.${decPart}`)
                           } else {
                             setDisplayAmount(formattedInt)
@@ -1271,11 +1284,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     }}
                     onBlur={() => {
                       handleFieldBlur("amount")
-                      // Reformat on blur to ensure proper formatting
+                      // Reformat on blur to ensure proper formatting while preserving decimal representation
                       if (formData.amount) {
-                        const num = parseFloat(formData.amount)
-                        if (!isNaN(num)) {
-                          setDisplayAmount(num.toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'))
+                        const hasDecimal = formData.amount.includes('.')
+                        if (hasDecimal) {
+                          // Preserve exact decimal representation (e.g., "1.0" stays as "1.0", "12.02" stays as "12.02")
+                          const parts = formData.amount.split('.')
+                          const intPart = parts[0] || '0'
+                          const decPart = parts[1] || ''
+                          const formattedInt = parseInt(intPart, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
+                          setDisplayAmount(decPart ? `${formattedInt}.${decPart}` : `${formattedInt}.`)
+                        } else {
+                          setDisplayAmount(parseInt(formData.amount, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'))
                         }
                       }
                     }}

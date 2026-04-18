@@ -166,11 +166,11 @@ export function PortfolioList() {
     const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
         if (!Number.isFinite(amount)) return "0"
         if (isCrypto) {
-            if (amount === 0) return "0.00"
+            if (amount === 0) return "0"
             const sign = amount < 0 ? "-" : ""
             const abs = Math.abs(amount)
             const adjusted = abs < 0.01 ? 0.01 : abs
-            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
         }
         return amount.toLocaleString(undefined, { maximumFractionDigits: 0 })
     }
