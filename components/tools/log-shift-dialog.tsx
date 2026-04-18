@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, ArrowRight, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,15 +98,23 @@ export function LogShiftDialog({
     [timeFormat],
   );
 
-  const previewText = useMemo(() => {
+  const preview = useMemo(() => {
     if (!formStart || !formEnd) {
-      return "Enter start and end time to see earnings preview.";
+      return null;
     }
-    const h = calcHours(formStart, formEnd);
+    const hours = calcHours(formStart, formEnd);
     const r = parseFloat(formRate);
     const rate = Number.isFinite(r) ? r : getRate();
-    return `${formatTimeValue(formStart)} → ${formatTimeValue(formEnd)}  ·  ${h.toFixed(2)}h × ${formatMoney(rate)}/hr = ${formatMoney(h * rate)}`;
-  }, [formStart, formEnd, formRate, getRate, formatMoney, formatTimeValue]);
+    const earnings = hours * rate;
+    return {
+      startTime: formatTimeValue(formStart),
+      endTime: formatTimeValue(formEnd),
+      hours,
+      rate,
+      earnings,
+      isValid: hours > 0,
+    };
+  }, [formStart, formEnd, formRate, getRate, formatTimeValue]);
 
   const handleSave = () => {
     if (!formDate || !formStart || !formEnd) {
@@ -245,16 +253,65 @@ export function LogShiftDialog({
             </CardContent>
           </Card>
 
+          {/* Compact Preview Row */}
           <div
             className={cn(
-              "rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 font-mono text-sm",
-              "text-emerald-900 dark:text-emerald-100 dark:bg-emerald-950/30",
+              "rounded-xl border px-4 py-3 flex items-center justify-between gap-4",
+              !preview
+                ? "border-muted bg-muted/30"
+                : !preview.isValid
+                  ? "border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20"
+                  : "border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-950/20",
             )}
           >
-            <p className="text-[10px] uppercase font-bold tracking-wider text-emerald-700/80 dark:text-emerald-400/90 mb-1.5">
-              Preview
-            </p>
-            {previewText}
+            {!preview ? (
+              <>
+                <div className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Enter times to preview earnings
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground/60">--</span>
+              </>
+            ) : !preview.isValid ? (
+              <>
+                <div className="flex items-center gap-2.5">
+                  <Timer className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm text-amber-800 dark:text-amber-200">
+                    End must be after start
+                  </span>
+                </div>
+                <span className="text-xs text-amber-700/60 dark:text-amber-400/60">
+                  {preview.startTime} → {preview.endTime}
+                </span>
+              </>
+            ) : (
+              <>
+                {/* Left: Time range */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="font-medium">{preview.startTime}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="font-medium">{preview.endTime}</span>
+                  </div>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-medium">
+                    {preview.hours.toFixed(2)}h
+                  </span>
+                </div>
+
+                {/* Right: Rate & Earnings */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {formatMoney(preview.rate)}/hr
+                  </span>
+                  <span className="h-4 w-px bg-emerald-300/50" />
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                    {formatMoney(preview.earnings)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

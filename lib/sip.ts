@@ -76,7 +76,7 @@ export const getSipNextInstallmentDate = (
   const today = toStartOfDay(now)
   let next = start
   let safety = 0
-  while (next < today && safety < 500) {
+  while (next <= today && safety < 500) {
     next = addFrequency(next, plan.frequency)
     safety += 1
   }

@@ -1,5 +1,6 @@
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
+import reactPlugin from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
@@ -17,6 +18,7 @@ export default [
   ...nextTypescript,
   {
     plugins: {
+      react: reactPlugin,
       "react-hooks": reactHooks,
     },
     rules: {

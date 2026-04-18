@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.0...mywallet-v2.0.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **ui:** improve decimal number formatting and precision ([50a704a](https://github.com/Shubhamnpk/mywallet/commit/50a704a79a44780c5d66c0a92d527ac9c0f068e5))
+
 ## [2.0.0](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v1.3.5...mywallet-v2.0.0) (2026-04-17)
 
 

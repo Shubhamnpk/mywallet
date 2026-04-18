@@ -550,7 +550,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                           <CollapsibleContent>
                             <CardContent className="space-y-4 pt-4 border-t border-muted/20 bg-muted/5 px-4 sm:px-6">
                               {/* Quick Actions */}
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <Button
                                   size="sm"
                                   variant="outline"

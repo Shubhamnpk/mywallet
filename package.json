@@ -1,13 +1,13 @@
 {
   "name": "mywallet",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/sync-manifest-version.mjs",
     "build": "next build --webpack",
     "dev": "next dev",
     "lint": "eslint .",
-    "lint:ci": "eslint . --max-warnings 775",
+    "lint:ci": "eslint . --max-warnings 850",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

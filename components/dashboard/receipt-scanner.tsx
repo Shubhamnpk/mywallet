@@ -121,7 +121,7 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     let amount = ''
     let merchant = ''
     let date = ''
-    let items: string[] = []
+    const items: string[] = []
     let total = ''
 
     // Common patterns for receipt parsing

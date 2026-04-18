@@ -228,8 +228,12 @@ export function PortfolioList() {
     // `fetchPortfolioPrices` from context is not useCallback-stable — listing it in deps re-ran this effect every render and could exceed React's max update depth.
     const portfolioRef = useRef(portfolio)
     const fetchPortfolioPricesRef = useRef(fetchPortfolioPrices)
-    portfolioRef.current = portfolio
-    fetchPortfolioPricesRef.current = fetchPortfolioPrices
+
+    // Update refs in effect to avoid accessing refs during render
+    useEffect(() => {
+        portfolioRef.current = portfolio
+        fetchPortfolioPricesRef.current = fetchPortfolioPrices
+    }, [portfolio, fetchPortfolioPrices])
 
     // Auto-refresh data on mount and every 3 minutes (when holdings set or share/crypto fetch rules change)
     useEffect(() => {
