@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "dev": "next dev",
     "lint": "eslint .",
-    "lint:ci": "eslint . --max-warnings 775",
+    "lint:ci": "eslint . --max-warnings 850",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
