@@ -28,30 +28,25 @@ export default function UpdateNotification() {
   }, [])
 
   const applyUpdate = useCallback(async () => {
-    console.log('applyUpdate called')
     try {
       // If a waiting worker exists, ask it to skipWaiting and mark that we initiated the update.
       if (registration && registration.waiting) {
-        console.log('Found waiting worker, posting SKIP_WAITING')
         try {
           registration.waiting.postMessage({ type: 'SKIP_WAITING' })
           updateInitiatedRef.current = true
         } catch {
-          console.log('Error posting message, falling back to reload')
-          // fallback: clear caches and reload immediately if posting fails
+          // Error posting message, falling back to reload
           try { sessionStorage.setItem('sw_update_success', '1') } catch {}
           await clearCachesAndReload()
         }
         return
       }
 
-      console.log('No waiting worker, clearing caches and reloading')
       // No waiting worker: clear caches and reload now to fetch latest assets from network
       try { sessionStorage.setItem('sw_update_success', '1') } catch {}
       await clearCachesAndReload()
     } catch (e) {
-      console.log('Error in applyUpdate:', e)
-      // ignore
+      // Error in applyUpdate - ignore and continue
     }
   }, [clearCachesAndReload, registration])
 

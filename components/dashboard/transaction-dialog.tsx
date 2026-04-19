@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -1363,35 +1364,18 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                           const formattedInt = parseInt(intPart, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
 
                           // Combine with decimal part, preserving trailing dot while typing
-                          // Important: preserve exact decimal representation (e.g., "02" stays as "02", not "2")
-                          if (hasTrailingDot) {
-                            setDisplayAmount(`${formattedInt}.`)
-                          } else if (decPart.length > 0) {
-                            // Pad decimal part to ensure proper display (e.g., "2" -> "2", "02" -> "02")
-                            setDisplayAmount(`${formattedInt}.${decPart}`)
-                          } else {
-                            setDisplayAmount(formattedInt)
-                          }
+                          setDisplayAmount(hasTrailingDot ? `${formattedInt}.` : decPart ? `${formattedInt}.${decPart}` : formattedInt)
                         } else {
                           setDisplayAmount('')
                         }
                       }
                     }}
                     onBlur={() => {
-                      handleFieldBlur("amount")
-                      // Reformat on blur to ensure proper formatting while preserving decimal representation
-                      if (formData.amount) {
-                        const hasDecimal = formData.amount.includes('.')
-                        if (hasDecimal) {
-                          // Preserve exact decimal representation (e.g., "1.0" stays as "1.0", "12.02" stays as "12.02")
-                          const parts = formData.amount.split('.')
-                          const intPart = parts[0] || '0'
-                          const decPart = parts[1] || ''
-                          const formattedInt = parseInt(intPart, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN')
-                          setDisplayAmount(decPart ? `${formattedInt}.${decPart}` : `${formattedInt}.`)
-                        } else {
-                          setDisplayAmount(parseInt(formData.amount, 10).toLocaleString(numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'))
-                        }
+                      // On blur, if there's a trailing dot, remove it
+                      if (displayAmount.endsWith('.')) {
+                        const cleanValue = displayAmount.slice(0, -1)
+                        setDisplayAmount(cleanValue)
+                        setFormData((prev) => ({ ...prev, amount: cleanValue.replace(/,/g, '') }))
                       }
                     }}
                     placeholder="0.00"

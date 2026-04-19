@@ -16,7 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useWalletData } from "@/contexts/wallet-data-context";
 import { getCurrencySymbol } from "@/lib/currency";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import {
   STORAGE_RATE,
   STORAGE_TIME_FMT,
@@ -99,9 +99,6 @@ export function LogShiftDialog({
     const v = parseFloat(rateHint);
     return Number.isFinite(v) ? v : 0;
   }, [rateHint]);
-
-  const formatMoney = (n: number) =>
-    `${currencySymbol}${Math.abs(n).toFixed(2)}`;
 
   const formatTimeValue = useCallback(
     (t: string) => {
@@ -215,7 +212,7 @@ export function LogShiftDialog({
                     className="h-11 rounded-xl border-muted/60 font-mono"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Default: {formatMoney(getRate())}/h
+                    Default: {formatMoney(getRate(), currencySymbol)}/h
                   </p>
                 </div>
               </div>
@@ -321,11 +318,11 @@ export function LogShiftDialog({
                 {/* Right: Rate & Earnings */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">
-                    {formatMoney(preview.rate)}/hr
+                    {formatMoney(preview.rate, currencySymbol)}/hr
                   </span>
                   <span className="h-4 w-px bg-emerald-300/50" />
                   <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                    {formatMoney(preview.earnings)}
+                    {formatMoney(preview.earnings, currencySymbol)}
                   </span>
                 </div>
               </>

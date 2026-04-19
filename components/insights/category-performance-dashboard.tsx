@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { PieChart, BarChart3, TrendingUp, TrendingDown, Calendar, Target, AlertTriangle, Star } from "lucide-react"
+import { PieChart, BarChart3, TrendingUp, TrendingDown, Target, Star } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"

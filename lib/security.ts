@@ -178,7 +178,6 @@ export class SecureWallet {
 
 // Legacy functions for backward compatibility (deprecated)
 export function encryptData(data: string, key: string): string {
-  console.warn("Using deprecated encryptData function. Use SecureWallet.encryptData instead.")
   let encrypted = ""
   for (let i = 0; i < data.length; i++) {
     encrypted += String.fromCharCode(data.charCodeAt(i) ^ key.charCodeAt(i % key.length))
@@ -187,7 +186,6 @@ export function encryptData(data: string, key: string): string {
 }
 
 export function decryptData(encryptedData: string, key: string): string {
-  console.warn("Using deprecated decryptData function. Use SecureWallet.decryptData instead.")
   try {
     const data = atob(encryptedData)
     let decrypted = ""
@@ -201,7 +199,6 @@ export function decryptData(encryptedData: string, key: string): string {
 }
 
 export function hashPin(pin: string): string {
-  console.warn("Using deprecated hashPin function. Use SecureWallet.hashPin instead.")
   let hash = 0
   for (let i = 0; i < pin.length; i++) {
     const char = pin.charCodeAt(i)
@@ -212,6 +209,5 @@ export function hashPin(pin: string): string {
 }
 
 export function validatePin(inputPin: string, hashedPin: string): boolean {
-  console.warn("Using deprecated validatePin function. Use SecureWallet.validatePin instead.")
   return hashPin(inputPin) === hashedPin
 }

@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Zap, Banknote } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Banknote } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { UserProfile } from "@/types/wallet"
-import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import {
   validateAccountName,
   validateAmount,

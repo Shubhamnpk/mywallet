@@ -73,3 +73,10 @@ export function formatCurrencyLocalized(amount: number, currency: string, locale
     currency: currency,
   }).format(amount)
 }
+
+export function formatMoney(amount: number, currencySymbol?: string): string {
+  const numberFormat = typeof window !== 'undefined' ? (localStorage.getItem("wallet_number_format") || "us") : "us"
+  const locale = numberFormat === 'us' ? 'en-US' : numberFormat === 'eu' ? 'de-DE' : 'en-IN'
+  const formatted = Math.abs(amount).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return currencySymbol ? `${currencySymbol}${formatted}` : formatted
+}

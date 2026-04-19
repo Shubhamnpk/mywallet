@@ -345,7 +345,7 @@ export async function POST(req: Request) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             } catch (err) {
-                console.log("Account number selection skipped or not required");
+                // Account number selection skipped or not required
             }
 
             // 3. Fill Kitta and CRN

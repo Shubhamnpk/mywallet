@@ -3,12 +3,10 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, CheckCircle, Sparkles, PlusCircle, HelpCircle, BarChart3 } from "lucide-react"
+import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, Sparkles, PlusCircle, HelpCircle, BarChart3 } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
-import { formatCurrency } from "@/lib/utils"
 import { Button } from "../ui/button"
 
 interface HealthMetric {

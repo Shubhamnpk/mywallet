@@ -170,8 +170,6 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
   // Reset camera when switching tabs
   const handleTabChange = useCallback(async (newTab: string) => {
-    console.log(`Switching from ${activeTab} to ${newTab} tab`)
-
     // Stop any active camera before switching tabs
     if (isCameraActive || qrScanning) {
       if (activeTab === "receipt") {
@@ -186,8 +184,6 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 
     // Reset video element when switching tabs
     if (videoRef.current) {
-      console.log(`Resetting video element for ${newTab} scanning`)
-
       // Force complete reset of video element
       const video = videoRef.current
       video.srcObject = null
@@ -783,7 +779,6 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                 // Save to history
                 saveQrToHistory(result)
                 // The QRCodeScanner handles its own state, but we can pass this up if needed
-                console.log('QR Code scanned:', result)
               }}
               onScanningChange={setQrScanning}
               cameraFacingMode={qrCameraFacingMode}

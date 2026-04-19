@@ -2,12 +2,10 @@
 
 import type React from "react"
 import { X } from "lucide-react"
-
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
 import { cn } from "@/lib/utils"
-
 interface MobileNativeModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -17,7 +15,6 @@ interface MobileNativeModalProps {
   desktopClassName?: string
   mobileClassName?: string
 }
-
 export function MobileNativeModal({
   open,
   onOpenChange,

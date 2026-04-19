@@ -112,8 +112,7 @@ export function migrateGoalsToTransactionBasedCalculation(
 
   if (autoSave) {
     // In a real implementation, you would call the save functions here
-    console.log("Auto-saving synchronized goals...")
-    console.log(report)
+    // Migration report generated but not logged in production
   }
 
   return {

@@ -5,12 +5,8 @@ import { Progress } from "@/components/ui/progress"
 import { PieChart, TrendingDown } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { getCurrencySymbol } from "@/lib/currency"
-
 export function CategoryBreakdown() {
   const { transactions, userProfile } = useWalletData()
-
-
-  // Calculate expense breakdown by category
   const expensesByCategory = transactions
     .filter((t) => t.type === "expense")
     .reduce(

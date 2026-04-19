@@ -1,18 +1,13 @@
 "use client"
 
-import React, { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, Camera, Mic, Calculator, Lock, Gamepad2, ArrowLeftRight, Clock } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import {Dialog,DialogContent,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScanner from "./receipt-scanner"
@@ -297,7 +292,6 @@ export function FloatingAddButton({
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
-      console.log('Voice transcript:', transcript)
 
       const parsed = parseVoiceTranscript(transcript)
 

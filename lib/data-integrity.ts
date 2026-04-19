@@ -98,6 +98,7 @@ export class DataIntegrityManager {
     try {
       await this.createIntegrityRecord(data)
     } catch (error) {
+      // Failed to update integrity record, data changes still persisted
     }
   }
 

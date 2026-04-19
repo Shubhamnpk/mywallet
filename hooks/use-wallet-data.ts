@@ -27,7 +27,8 @@ import type {
   SIPPlan,
 } from "@/types/wallet"
 
-import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent, generateId } from "@/lib/wallet-utils"
+import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent } from "@/lib/wallet-utils"
+import { generateId } from "@/lib/utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { calculateGoalNetSavedAmount } from "@/lib/goal-calculations"

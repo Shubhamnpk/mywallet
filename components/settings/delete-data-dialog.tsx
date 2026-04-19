@@ -9,13 +9,11 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Trash2, Shield, AlertTriangle } from "lucide-react"
 import { toast } from "@/hooks/use-toast"

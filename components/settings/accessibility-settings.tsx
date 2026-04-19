@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -12,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Accessibility, Type, Volume2, Eye, RotateCcw, Upload, Play } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
 import { playSound, PRESET_SOUNDS, SoundActivity } from "@/lib/sound-utils"
 
 export function AccessibilitySettings() {

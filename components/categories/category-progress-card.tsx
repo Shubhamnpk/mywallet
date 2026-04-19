@@ -1,15 +1,13 @@
 "use client"
-
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3, Trash2, Edit, ChevronDown, Eye, EyeOff } from "lucide-react"
-import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import type { Category, UserProfile } from "@/types/wallet"
 import { cn } from "@/lib/utils"
-
 interface CategoryProgressCardProps {
   category: Category & {
     totalSpent: number

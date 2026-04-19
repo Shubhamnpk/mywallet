@@ -1,13 +1,11 @@
 "use client"
-
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, Trash2, AlertCircle, Info } from "lucide-react"
+import { Trash2, AlertCircle, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Category, Transaction } from "@/types/wallet"
-
 interface DeleteCategoryDialogProps {
   isOpen: boolean
   onClose: () => void
