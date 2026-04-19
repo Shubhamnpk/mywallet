@@ -12,14 +12,11 @@ import {Popover,PopoverContent,PopoverTrigger,} from "@/components/ui/popover"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-
 interface CurrencyConverterDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
 }
-
 const CONVERSION_CACHE_TTL_MS = 5 * 60 * 1000
-
 const CURRENCIES = [
   { code: "USD", name: "US Dollar", flag: "🇺🇸" },
   { code: "NPR", name: "Nepalese Rupee", flag: "🇳🇵" },

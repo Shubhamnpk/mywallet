@@ -1,57 +1,20 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ChangeEvent,
-} from "react";
-import {
-  Settings,
-  Plus,
-  ChevronDown,
-  ChevronUp,
-  MoreHorizontal,
-  Clock,
-  Sheet as SheetIcon,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { Settings, Plus, ChevronDown, ChevronUp, MoreHorizontal, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog";
-import {
-  STORAGE_RATE,
-  STORAGE_TIME_FMT,
-  SHIFT_STORAGE_UPDATED_EVENT,
-  type Shift,
-  calcHours,
-  todayStr,
-  getShiftsFromStorage,
-  saveShiftsToStorage,
-} from "@/lib/shift-tracker-storage";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { STORAGE_RATE, STORAGE_TIME_FMT, SHIFT_STORAGE_UPDATED_EVENT, type Shift, todayStr, getShiftsFromStorage, saveShiftsToStorage } from "@/lib/shift-tracker-storage";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWalletData } from "@/contexts/wallet-data-context";
 import { getCurrencySymbol } from "@/lib/currency";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Transaction } from "@/types/wallet";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "../ui/sheet";
 
 /** Dispatched by the main floating + button when the Shift tracker tab is active. */
 export const SHIFT_TRACKER_OPEN_LOG_EVENT = "wallet-shift-tracker-open-log";
@@ -238,12 +201,6 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     return () =>
       window.removeEventListener(SHIFT_STORAGE_UPDATED_EVENT, onExternal);
   }, []);
-
-  const formatMoney = (n: number) => {
-    // Only remove .00 (whole numbers), keep .20, .02 etc.
-    const formatted = Math.abs(n).toFixed(2).replace(/\.00$/, "");
-    return `${currencySymbol}${formatted}`;
-  };
 
   const formatTimeValue = useCallback(
     (t: string) => {
@@ -631,17 +588,17 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
             <StatCell label="Hours" value={fh(moH)} />
             <StatCell
               label="Earned"
-              value={formatMoney(moE)}
+              value={formatMoney(moE, currencySymbol)}
               className="text-emerald-600"
             />
             <StatCell
               label="Received"
-              value={formatMoney(moP)}
+              value={formatMoney(moP, currencySymbol)}
               className="text-emerald-600"
             />
             <StatCell
               label="Owed"
-              value={formatMoney(Math.max(0, moE - moP))}
+              value={formatMoney(Math.max(0, moE - moP), currencySymbol)}
               className="text-amber-600"
             />
           </div>
@@ -723,6 +680,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
             mname={mname}
             onOpenDetails={setDetailShiftId}
             onOpenActions={setActionShiftId}
+            currencySymbol={currencySymbol}
           />
         </CardContent>
       </Card>
@@ -755,7 +713,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium text-emerald-600">
-                      {formatMoney(p.amount)}
+                      {formatMoney(p.amount, currencySymbol)}
                     </span>
                     <Button
                       type="button"
@@ -1021,7 +979,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   <span className="flex items-center gap-2">
                     Make paid
                     <span className="text-xs opacity-80">
-                      (+{formatMoney(shiftOwed(actionShift))})
+                      (+{formatMoney(shiftOwed(actionShift), currencySymbol)})
                     </span>
                   </span>
                 </Button>
@@ -1132,6 +1090,7 @@ function PeriodsBody({
   mname,
   onOpenDetails,
   onOpenActions,
+  currencySymbol,
 }: {
   shifts: Shift[];
   periodView: PeriodView;
@@ -1147,13 +1106,14 @@ function PeriodsBody({
   ) => void;
   fh: (h: number) => string;
   fd: (d: string) => string;
-  formatMoney: (n: number) => string;
+  formatMoney: (n: number, symbol?: string) => string;
   formatShiftTimeRange: (s: Shift) => string;
   shiftIsPaid: (s: Shift) => boolean;
   weekKey: (d: string) => string;
   mname: (m: string) => string;
   onOpenDetails: (id: number) => void;
   onOpenActions: (id: number) => void;
+  currencySymbol: string;
 }) {
   if (!shifts.length) {
     return (
@@ -1205,10 +1165,10 @@ function PeriodsBody({
                   {fh(s.hours)}
                 </td>
                 <td className="px-3 py-2 align-middle font-mono">
-                  {formatMoney(getShiftRate(s))}/hr
+                  {formatMoney(getShiftRate(s), currencySymbol)}/hr
                 </td>
                 <td className="px-3 py-2 align-middle font-mono text-emerald-600">
-                  {formatMoney(s.hours * getShiftRate(s))}
+                  {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
                 </td>
                 <td className="px-1 py-2 align-middle text-right">
                   <Button
@@ -1314,7 +1274,7 @@ function PeriodsBody({
                   </Button>
                 )}
                 <span className="font-mono text-sm font-medium text-emerald-600">
-                  {formatMoney(d.earn)}
+                  {formatMoney(d.earn, currencySymbol)}
                 </span>
                 {isOpen ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -1371,10 +1331,10 @@ function PeriodsBody({
                             {fh(s.hours)}
                           </td>
                           <td className="px-3 py-2 align-middle font-mono">
-                            {formatMoney(getShiftRate(s))}/hr
+                            {formatMoney(getShiftRate(s), currencySymbol)}/hr
                           </td>
                           <td className="px-3 py-2 align-middle font-mono text-emerald-600">
-                            {formatMoney(s.hours * getShiftRate(s))}
+                            {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
                           </td>
                           <td className="px-1 py-2 align-middle text-right">
                             <Button
@@ -1395,17 +1355,17 @@ function PeriodsBody({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2 text-xs">
                   <div className="flex flex-wrap gap-3 font-mono">
                     <span>
-                      Total: <strong>{formatMoney(d.earn)}</strong>
+                      Total: <strong>{formatMoney(d.earn, currencySymbol)}</strong>
                     </span>
                     <span className="text-emerald-600">
-                      Paid: <strong>{formatMoney(paid)}</strong>
+                      Paid: <strong>{formatMoney(paid, currencySymbol)}</strong>
                     </span>
                     <span
                       className={
                         owed > 0 ? "text-amber-600" : "text-emerald-600"
                       }
                     >
-                      Owed: <strong>{formatMoney(owed)}</strong>
+                      Owed: <strong>{formatMoney(owed, currencySymbol)}</strong>
                     </span>
                   </div>
                   {isPaid ? (

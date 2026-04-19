@@ -1,12 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -604,28 +604,17 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="targetAmount" className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 text-primary" />
-                          Target Amount
-                        </Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                            {currencySymbol}
-                          </span>
-                          <Input
-                            id="targetAmount"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={formData.targetAmount}
-                            onChange={(e) => {
-                              setFormData((prev) => ({ ...prev, targetAmount: e.target.value }))
-                              if (errors.targetAmount) setErrors((prev) => ({ ...prev, targetAmount: "" }))
-                            }}
-                            placeholder="0.00"
-                            className={cn("pl-10", errors.targetAmount && "border-destructive")}
-                          />
-                        </div>
+                        <AmountInput
+                          id="targetAmount"
+                          label="Target Amount"
+                          value={formData.targetAmount}
+                          onChange={(value) => {
+                            setFormData((prev) => ({ ...prev, targetAmount: value }))
+                            if (errors.targetAmount) setErrors((prev) => ({ ...prev, targetAmount: "" }))
+                          }}
+                          currencySymbol={currencySymbol}
+                          required
+                        />
                         {errors.targetAmount && <p className="text-sm text-destructive">{errors.targetAmount}</p>}
                       </div>
                     </div>
@@ -735,39 +724,34 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                       {formData.autoContribute && (
                         <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                                {currencySymbol}
-                              </span>
-                              <Input
-                                id="contributionAmount"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={formData.contributionAmount}
-                                onChange={(e) => {
-                                  setFormData((prev) => ({ ...prev, contributionAmount: e.target.value }))
-                                  if (errors.contributionAmount) setErrors((prev) => ({ ...prev, contributionAmount: "" }))
-                                }}
-                                placeholder="Contribution amount"
-                                className={cn("pl-10", errors.contributionAmount && "border-destructive")}
-                              />
+                            <AmountInput
+                              id="contributionAmount"
+                              label="Contribution Amount"
+                              value={formData.contributionAmount}
+                              onChange={(value) => {
+                                setFormData((prev) => ({ ...prev, contributionAmount: value }))
+                                if (errors.contributionAmount) setErrors((prev) => ({ ...prev, contributionAmount: "" }))
+                              }}
+                              currencySymbol={currencySymbol}
+                            />
+                            <div className="space-y-1">
+                              <Label>Frequency</Label>
+                              <Select
+                                value={formData.contributionFrequency}
+                                onValueChange={(value: "daily" | "weekly" | "monthly") =>
+                                  setFormData((prev) => ({ ...prev, contributionFrequency: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="daily">Daily</SelectItem>
+                                  <SelectItem value="weekly">Weekly</SelectItem>
+                                  <SelectItem value="monthly">Monthly</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                            <Select
-                              value={formData.contributionFrequency}
-                              onValueChange={(value: "daily" | "weekly" | "monthly") =>
-                                setFormData((prev) => ({ ...prev, contributionFrequency: value }))
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="daily">Daily</SelectItem>
-                                <SelectItem value="weekly">Weekly</SelectItem>
-                                <SelectItem value="monthly">Monthly</SelectItem>
-                              </SelectContent>
-                            </Select>
                           </div>
                           {errors.contributionAmount && <p className="text-sm text-destructive">{errors.contributionAmount}</p>}
                         </div>

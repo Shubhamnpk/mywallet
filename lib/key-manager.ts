@@ -116,6 +116,7 @@ export class SecureKeyManager {
       if (typeof window === "undefined") return
       sessionStorage.setItem(this.SESSION_PIN_KEY, pin)
     } catch {
+      // Ignore sessionStorage errors in restricted environments
     }
   }
 
@@ -198,6 +199,7 @@ export class SecureKeyManager {
           await SecureWallet.decryptData(encryptedPayload, masterKey)
           continue
         } catch {
+          // Expected when data is encrypted with different key
         }
 
         // Try old default key, then re-encrypt with master key.
@@ -206,9 +208,11 @@ export class SecureKeyManager {
           const reEncrypted = await SecureWallet.encryptData(decrypted, masterKey)
           localStorage.setItem(key, `encrypted:${reEncrypted}`)
         } catch {
+          // Failed to re-encrypt with master key, skip this item
         }
       }
     } catch {
+      // Migration failed, data remains encrypted with default key
     }
   }
 
@@ -366,6 +370,7 @@ export class SecureKeyManager {
 
         localStorage.setItem(metadataKey, JSON.stringify(metadata))
       } catch (error) {
+        // Ignore metadata update errors
       }
     }
   }
@@ -413,6 +418,7 @@ export class SecureKeyManager {
         try {
           localStorage.setItem(`${this.METADATA_STORAGE_PREFIX}${this.MASTER_KEY_ID}`, backupMetadata)
         } catch (restoreError) {
+          // Failed to restore backup metadata
         }
       }
 

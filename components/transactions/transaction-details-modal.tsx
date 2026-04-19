@@ -8,10 +8,12 @@ import { Separator } from "@/components/ui/separator"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Pencil } from "lucide-react"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { toast } from "sonner"
 
@@ -286,43 +288,34 @@ export function TransactionDetailsModal({
             </>
           ) : (
             <div className="space-y-3">
-              <div className="space-y-1">
-                <Label htmlFor="tx-edit-amount">Amount</Label>
-                <Input
-                  id="tx-edit-amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formAmount}
-                  onChange={(e) => setFormAmount(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="tx-edit-description">Description</Label>
-                <Input
-                  id="tx-edit-description"
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Category</Label>
-                <Select value={formCategory} onValueChange={setFormCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="tx-edit-date">Date</Label>
-                <Input id="tx-edit-date" type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+              <AmountInput
+                id="tx-edit-amount"
+                label="Amount"
+                value={formAmount}
+                onChange={setFormAmount}
+                currencySymbol={getCurrencySymbol(userProfile.currency, userProfile.customCurrency)}
+                required
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Category</Label>
+                  <Select value={formCategory} onValueChange={setFormCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoryNames.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="tx-edit-date">Date</Label>
+                  <Input id="tx-edit-date" type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+                </div>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="tx-edit-sub">Subcategory (optional)</Label>
@@ -331,6 +324,14 @@ export function TransactionDetailsModal({
                   value={formSubcategory}
                   onChange={(e) => setFormSubcategory(e.target.value)}
                   placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tx-edit-description">Description</Label>
+                <Input
+                  id="tx-edit-description"
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
                 />
               </div>
             </div>

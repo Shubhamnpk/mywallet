@@ -1,6 +1,7 @@
 import type { UserProfile, Category, Transaction } from "@/types/wallet"
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, getCategoryColor, getCategoryIcon } from "./categories"
 import { getCurrencySymbol } from "./currency"
+import { generateId } from "./utils"
 
 /*Check if Time Wallet feature is enabled for a user. Time Wallet requires monthly earning, working hours per day, and working days per month to be set.*/
 export function isTimeWalletEnabled(profile?: UserProfile | null): boolean {
@@ -10,10 +11,6 @@ export function isTimeWalletEnabled(profile?: UserProfile | null): boolean {
     profile.workingHoursPerDay > 0 &&
     profile.workingDaysPerMonth > 0,
   )
-}
-
-export function generateId(prefix = "id") {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
 export function calculateBalance(transactions: Transaction[]) {
@@ -196,6 +193,7 @@ export async function createWalletBackup(allData: any, pin: string) {
   // validate data before backup
   const validation = await DataIntegrityManager.validateAllData(allData)
   if (!validation.isValid) {
+    // Validation failed but continuing with backup - corruption risk noted
   }
 
   const backup = await createEncryptedBackup(allData, pin)
@@ -218,6 +216,7 @@ export async function restoreWalletBackup(backupJson: string, pin: string, overw
       try {
         await saveToLocalStorage(k, v)
       } catch (e) {
+        // Failed to restore key, continuing with other keys
       }
     }
     // update integrity record after write

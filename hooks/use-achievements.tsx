@@ -13,13 +13,9 @@ import {
   Gem,
   Medal,
   Shield,
-  AlertTriangle,
   Flame,
   TrendingUp,
-  CheckCircle2,
-  Sparkles,
-  Gift
-} from "lucide-react"
+  CheckCircle2} from "lucide-react"
 
 interface UseAchievementsProps {
   goals: Goal[]

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.1...mywallet-v2.0.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* **portfolio:** add portfolio editing functionality and refine UI components ([81204a7](https://github.com/Shubhamnpk/mywallet/commit/81204a7c4f4ea692bf99b144eccd869c2472f776))
+
 ## [2.0.1](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.0...mywallet-v2.0.1) (2026-04-18)
 
 

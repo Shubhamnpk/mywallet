@@ -3,13 +3,11 @@
 import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import ReceiptScannerModal from "./scanner-modal"
-
 interface ReceiptScannerProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   onTransactionData: (data: TransactionData) => void
 }
-
 interface TransactionData {
   amount: string
   description: string
@@ -106,7 +104,6 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
       const { data: { text } } = await worker.recognize(imageData)
       await worker.terminate()
 
-      console.log('OCR Extracted text:', text)
       return text
     } catch (error) {
       await worker.terminate()

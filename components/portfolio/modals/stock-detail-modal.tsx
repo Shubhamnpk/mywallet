@@ -8,18 +8,13 @@ import {
     BarChart3,
     TrendingDown,
     TrendingUp,
-    Calendar,
     Info,
     Clock,
     ExternalLink,
     X,
-    History,
-    FileText,
-    LayoutGrid,
     ArrowUpRight,
     ArrowDownLeft,
     Gift,
-    Banknote,
     PiggyBank,
     CheckCircle2,
     Wallet,
@@ -32,7 +27,6 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
 import { SIPSetupModal } from "./sip-setup-modal"

@@ -12,7 +12,6 @@ import { AboutSettings } from "@/components/settings/about-settings"
 import { MeroShareSettings } from "@/components/settings/mero-share-settings"
 import { NotificationSettings } from "@/components/settings/notification-settings"
 import { MobileSettingsPage, type SettingsView } from "@/components/settings/mobile-settings-page"
-import { Share2 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
@@ -55,7 +54,6 @@ export function SettingsPageClient() {
 
     // Validate session on page load
     if (!SessionManager.isSessionValid()) {
-      console.log('[SettingsPage] Session invalid on page load, dispatching expiry event')
       const event = new CustomEvent('wallet-session-expired')
       window.dispatchEvent(event)
     }

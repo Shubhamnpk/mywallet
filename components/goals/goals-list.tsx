@@ -34,10 +34,6 @@ import {
   Plane,
   ShoppingBag,
   Briefcase,
-  Zap,
-  Trophy,
-  Star,
-  Clock,
   Sparkles,
   Receipt,
 } from "lucide-react"
@@ -46,8 +42,8 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
-import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
-import { calculateGoalNetSavedAmount, calculateGoalProgress, getGoalTransactions } from "@/lib/goal-calculations"
+import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
+import { calculateGoalProgress, getGoalTransactions } from "@/lib/goal-calculations"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"

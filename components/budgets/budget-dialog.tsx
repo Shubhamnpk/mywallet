@@ -1,12 +1,11 @@
 "use client"
-
 import type React from "react"
-
 import { useState, useMemo, useEffect } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
@@ -219,29 +218,19 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="budget-amount" className="flex items-center gap-2">
-                  Budget Amount
-                </Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground font-medium">
-                    {currencySymbol}
-                  </span>
-                  <Input
-                    id="budget-amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => {
-                      setAmount(e.target.value)
-                      if (errors.amount) {
-                        setErrors(prev => ({ ...prev, amount: "" }))
-                      }
-                    }}
-                    className={`pl-10 ${errors.amount ? "border-destructive" : ""}`}
-                    required
-                  />
-                </div>
+                <AmountInput
+                  id="budget-amount"
+                  label="Budget Amount"
+                  value={amount}
+                  onChange={(value) => {
+                    setAmount(value)
+                    if (errors.amount) {
+                      setErrors(prev => ({ ...prev, amount: "" }))
+                    }
+                  }}
+                  currencySymbol={currencySymbol}
+                  required
+                />
                 {errors.amount && (
                   <p className="text-sm text-destructive">{errors.amount}</p>
                 )}

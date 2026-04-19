@@ -7,15 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat } from "lucide-react"
-
-// QR Code interfaces
 type QRContentType = 'url' | 'email' | 'phone' | 'wifi' | 'contact' | 'calendar' | 'bitcoin' | 'text'
-
 interface QRPoint {
   x: number
   y: number
 }
-
 interface QRCodeLocation {
   topLeftCorner: QRPoint
   topRightCorner: QRPoint
@@ -105,7 +101,6 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       try {
         const jsQR = (await import('jsqr')).default
         jsQRRef.current = jsQR
-        console.log('jsQR library loaded successfully')
       } catch (error) {
         console.error('Failed to load jsQR library:', error)
       }

@@ -1,6 +1,6 @@
 {
   "name": "mywallet",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/sync-manifest-version.mjs",
@@ -112,7 +112,7 @@
   "pnpm": {
     "overrides": {
       "follow-redirects@<=1.15.11": "1.16.0",
-      "basic-ftp@<5.2.0": "5.2.0",
+      "basic-ftp@<5.3.0": "5.3.0",
       "pdfjs-dist@<4.2.67": "4.2.67",
       "tar@<7.5.11": "7.5.11",
       "brace-expansion@<1.1.13": "1.1.13",

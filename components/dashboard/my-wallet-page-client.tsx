@@ -1,5 +1,4 @@
 "use client"
-
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { CombinedBalanceCard } from "@/components/dashboard/balance-card"
 import { FloatingAddButton } from "@/components/dashboard/floating-add-button"
@@ -7,12 +6,10 @@ import { MainTabs } from "@/components/dashboard/main-tabs"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-
 export function MyWalletPageClient() {
   const router = useRouter()
   const walletData = useWalletData()
   const { userProfile } = walletData
-
   useEffect(() => {
     if (!userProfile) {
       router.replace("/welcome")

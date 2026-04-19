@@ -1,5 +1,4 @@
 "use client"
-
 import React from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,18 +10,15 @@ import {
   Eye,
   EyeOff
 } from "lucide-react"
-
 export interface BalanceChange {
   type: "income" | "expense"
   amount: number
 }
-
 export interface TimeEquivalentBreakdown {
   formatted: {
     userFriendly: string
   }
 }
-
 export interface BalanceCardProps {
   balanceChange?: BalanceChange | null
   balance: number

@@ -77,6 +77,7 @@ export class SecurePinManager {
         }
         return { ...defaultConfig, ...JSON.parse(stored) }
       } catch (error) {
+        // Invalid stored config, return default
       }
     }
     return {
