@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
+import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
@@ -90,47 +91,13 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const showReservedDebugBadge =
-        process.env.NODE_ENV !== "production" &&
-        process.env.NEXT_PUBLIC_SHOW_IPO_RESERVED_DEBUG === "true"
-    const {
-        portfolio,
-        shareTransactions,
-        addPortfolioItem,
-        updatePortfolioItem,
-        deletePortfolioItem,
-        fetchPortfolioPrices,
-        addShareTransaction,
-        deleteShareTransaction,
-        deleteMultipleShareTransactions,
-        recomputePortfolio,
-        importShareData,
-        userProfile,
-        portfolios,
-        activePortfolioId,
-        addPortfolio,
-        switchPortfolio,
-        deletePortfolio,
-        updatePortfolio,
-        clearPortfolioHistory,
-        updateUserProfile,
-        getFaceValue,
-        upcomingIPOs,
-        isIPOsLoading,
-        topStocks,
-        marketStatus,
-        marketSummary,
-        marketSummaryHistory,
-        noticesBundle,
-        disclosures,
-        exchangeMessages,
-        scripNamesMap,
-    } = useWalletData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,} = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
-
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
+    const [isEditPortfolioOpen, setIsEditPortfolioOpen] = useState(false)
+    const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [isChartExpanded, setIsChartExpanded] = useState(false)
     const [importQueue, setImportQueue] = useState<{ symbol: string, defaultPrice: number, type: string }[]>([])
@@ -548,7 +515,6 @@ export function PortfolioList() {
                     rows.slice(1).forEach(row => {
                         if (row.length < 7) return
                         const symbol = row[1]
-                        const date = row[2]
                         const desc = row[6]
                         const credit = parseFloat(row[3]) || 0
                         const isIpo = desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')
@@ -830,31 +796,18 @@ export function PortfolioList() {
         }
     }
 
-    const handleEditPortfolioDetails = async (portfolioToEdit: Portfolio) => {
-        const nextName = window.prompt("Portfolio name", portfolioToEdit.name)?.trim()
-        if (nextName === undefined || nextName === "") {
-            // Cancelled or empty name; keep current value.
-        }
-        const nextDescriptionRaw = window.prompt(
-            "Portfolio description (optional)",
-            portfolioToEdit.description || "",
-        )
-        if (nextDescriptionRaw === null && (nextName === undefined || nextName === "")) return
+    const handleEditPortfolioDetails = (portfolioToEdit: Portfolio) => {
+        setEditingPortfolio(portfolioToEdit)
+        setIsEditPortfolioOpen(true)
+    }
 
-        const updates: Partial<Portfolio> = {}
-        if (nextName && nextName !== portfolioToEdit.name) updates.name = nextName
-        if (nextDescriptionRaw !== null) {
-            const normalizedDescription = nextDescriptionRaw.trim()
-            updates.description = normalizedDescription || undefined
-        }
-
-        if (Object.keys(updates).length === 0) return
-
+    const handleSavePortfolio = async (id: string, updates: Partial<Portfolio>) => {
         try {
-            await updatePortfolio(portfolioToEdit.id, updates)
+            await updatePortfolio(id, updates)
             toast.success("Portfolio details updated")
         } catch (error) {
             toast.error("Failed to update portfolio details")
+            throw error
         }
     }
 
@@ -1308,7 +1261,6 @@ export function PortfolioList() {
         const profitPerc = summary.investment > 0 ? (profitLoss / summary.investment) * 100 : 0;
         const isProfit = profitLoss >= 0;
         const previousValue = summary.current - summary.todayChange;
-        const todayPerc = previousValue > 0 ? (summary.todayChange / previousValue) * 100 : 0;
 
         return (
             <Card
@@ -1328,25 +1280,19 @@ export function PortfolioList() {
                             <Badge variant="outline" className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
                                 Portfolio
                             </Badge>
-                            <Badge
-                                variant={isIncludedInTotals ? "secondary" : "outline"}
-                                className={cn(
-                                    "text-[9px] sm:text-[10px] font-black uppercase tracking-widest",
-                                    isIncludedInTotals ? "bg-success/10 text-success border-success/20" : "text-muted-foreground border-muted/30",
-                                )}
-                            >
-                                {isIncludedInTotals ? "Included in Total" : "Excluded from Total"}
-                            </Badge>
+                            
                         </div>
                         <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary relative z-10"
                                 title="Edit Portfolio Details"
                                 onClick={(e) => {
+                                    e.preventDefault()
                                     e.stopPropagation()
-                                    void handleEditPortfolioDetails(p)
+                                    handleEditPortfolioDetails(p)
                                 }}
                             >
                                 <Pencil className="w-3.5 h-3.5" />
@@ -1459,9 +1405,6 @@ export function PortfolioList() {
         const {
             sortedIPOsCount,
             filteredIPOsCount,
-            openIpoCount,
-            upcomingIpoCount,
-            closedIpoCount,
             statusSummaryLabel,
             displayedIPOs,
             sentiment,
@@ -1480,6 +1423,12 @@ export function PortfolioList() {
                     ipo={selectedIPO}
                     open={isIPODetailOpen}
                     onOpenChange={setIsIPODetailOpen}
+                />
+                <EditPortfolioModal
+                    open={isEditPortfolioOpen}
+                    onOpenChange={setIsEditPortfolioOpen}
+                    portfolio={editingPortfolio}
+                    onSave={handleSavePortfolio}
                 />
                 <Dialog
                     open={Boolean(selectedOverviewNotification)}
@@ -1572,7 +1521,6 @@ export function PortfolioList() {
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent uppercase">My Portfolios</h2>
-                            <p className="text-muted-foreground text-sm font-medium">Select a portfolio to view detailed analysis</p>
                         </div>
                         <div className="flex items-center gap-2">
                             <Button
@@ -2118,7 +2066,7 @@ export function PortfolioList() {
 
                                                         {hasMultiple && isExpanded && (
                                                             <div className="bg-muted/5 divide-y divide-muted/10 animate-in slide-in-from-top-2 duration-200 border-t border-muted/5">
-                                                                {items.map((ipo, idx) => {
+                                                                {items.map((ipo) => {
                                                                     const ipoKey = `${ipo.company}-${ipo.date_range}-${ipo.status ?? "unknown"}`
                                                                     const isApplied = appliedIpoKeys.has(ipoKey)
                                                                     const subStatusColor = ipo.status === 'open' ? 'text-success bg-success/10 border-success/20' :
@@ -2227,6 +2175,13 @@ export function PortfolioList() {
                 newPortfolio={newPortfolio}
                 setNewPortfolio={setNewPortfolio}
                 onCreate={handleCreatePortfolio}
+            />
+
+            <EditPortfolioModal
+                open={isEditPortfolioOpen}
+                onOpenChange={setIsEditPortfolioOpen}
+                portfolio={editingPortfolio}
+                onSave={handleSavePortfolio}
             />
 
             {/* Header section */}
@@ -2839,8 +2794,6 @@ export function PortfolioList() {
                                         const investment = item.units * safeBuyPrice
                                         const value = item.units * current
                                         const profitLoss = value - investment
-                                        const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
-                                        const isProfit = profitLoss >= 0
                                         const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
                                         const hasFreshMoveToday = hasFreshDailyQuote(item)
                                         const dailyChangeRaw = isFiniteNumber(item.change)

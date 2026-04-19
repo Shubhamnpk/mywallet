@@ -33,7 +33,7 @@ import { BudgetDialog } from "./budget-dialog"
 import type { Budget, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
-import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { getTimeEquivalentBreakdown, isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
 
 interface BudgetsListProps {
@@ -50,7 +50,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
   const [historyBudget, setHistoryBudget] = useState<Budget | null>(null)
-  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "this-year" | "all">("active-month")
 
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -63,28 +63,23 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
   }, [userProfile?.currency, (userProfile as any)?.customCurrency])
 
-  const getPeriodStart = (budget: Budget, overrideRange?: "active-month" | "this-week" | "all") => {
+  const getPeriodStart = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all") => {
     const now = new Date()
     let start: Date
-    const range = overrideRange || (budget.period === "monthly" ? "active-month" : budget.period === "weekly" ? "this-week" : "all")
+    const range = overrideRange || (budget.period === "monthly" ? "active-month" : budget.period === "weekly" ? "this-week" : budget.period === "yearly" ? "this-year" : "all")
 
     if (range === "all") {
       return new Date(0)
     }
 
     if (range === "active-month") {
-      // Last Friday of the previous month
-      const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0) // Last day of prev month
-      const lastDay = prevMonth.getDay()
-      const diff = (lastDay + 7 - 5) % 7
-      start = new Date(prevMonth)
-      start.setDate(prevMonth.getDate() - diff)
+      start = new Date(now.getFullYear(), now.getMonth(), 1)
     } else if (range === "this-week") {
       start = new Date(now)
-      const day = now.getDay()
-      const diff = (day + 7 - 5) % 7
-      start.setDate(now.getDate() - diff)
-    } else if (budget.period === "yearly") {
+      const day = start.getDay()
+      const diff = day === 0 ? 6 : day - 1
+      start.setDate(start.getDate() - diff)
+    } else if (range === "this-year" || budget.period === "yearly") {
       start = new Date(now.getFullYear(), 0, 1)
     } else {
       start = new Date(0)
@@ -206,11 +201,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     setExpandedBudgets(newExpanded)
   }
 
-  const isTimeWalletEnabled = Boolean(
-    userProfile?.monthlyEarning > 0 &&
-    userProfile?.workingHoursPerDay > 0 &&
-    userProfile?.workingDaysPerMonth > 0,
-  )
+  const timeWalletActive = isTimeWalletEnabled(userProfile)
 
   const getBudgetTransactions = (budget: Budget) => {
     const categorySet = new Set(
@@ -231,7 +222,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }
 
-  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all", budget: Budget) => {
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "this-year" | "all", budget: Budget) => {
     if (range === "all") return items
     const start = getPeriodStart(budget, range)
     return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
@@ -465,7 +456,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
                   <CollapsibleContent>
                     <CardContent className="space-y-4 pt-0">
-                      {isTimeWalletEnabled && (
+                      {timeWalletActive && (
                         <div className="bg-muted/50 p-3 rounded-lg space-y-2">
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <Clock className="w-4 h-4 text-amber-600" />
@@ -573,7 +564,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
                       <Select
                         value={historyRange}
-                        onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                        onValueChange={(value: "active-month" | "this-week" | "this-year" | "all") => setHistoryRange(value)}
                       >
                         <SelectTrigger className="w-[170px] bg-background">
                           <SelectValue />
@@ -581,6 +572,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                         <SelectContent>
                           <SelectItem value="active-month">Active Month</SelectItem>
                           <SelectItem value="this-week">This Week</SelectItem>
+                          <SelectItem value="this-year">This Year</SelectItem>
                           <SelectItem value="all">All Time</SelectItem>
                         </SelectContent>
                       </Select>

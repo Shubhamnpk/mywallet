@@ -300,13 +300,10 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
       {/* Enhanced Header with Theme Colors */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20">
-            <CreditCard className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-foreground">Debt & Credit Management</h3>
-            <p className="text-sm text-muted-foreground">{debtAccounts.length + creditAccounts.length} accounts</p>
-          </div>
+            <CreditCard className="w-5 h-5" />
+         <h3 className="text-lg font-semibold flex items-center gap-2">
+          Debt & Credit Management ({debtAccounts.length + creditAccounts.length})
+        </h3>
         </div>
         <Button
           onClick={() => setShowAddDialog(true)}
@@ -368,7 +365,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6">
-            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-amber-600 bg-amber-50/50 border-amber-200">PROJECTED</Badge>
+            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-amber-600 bg-amber-50/50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">PROJECTED</Badge>
           </CardContent>
         </Card>
       </div>

@@ -18,7 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import type { Transaction, ShareTransaction } from "@/types/wallet"
 
 export function CombinedBalanceCard() {
-  const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange } =
+  const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange, portfolio } =
     useWalletData()
 
   const [showBalance, setShowBalance] = useState(true)
@@ -93,6 +93,15 @@ export function CombinedBalanceCard() {
 
   const availableCredit = totalCreditLimit - totalCreditUsed
   const netWorth = balance + availableCredit - totalDebt
+
+  // Calculate total share valuation from portfolio
+  const totalShareValuation = useMemo(() => {
+    return portfolio?.reduce((sum, item) => {
+      const price = item.currentPrice || item.buyPrice || 0
+      return sum + (item.units * price)
+    }, 0) || 0
+  }, [portfolio])
+  const hasShareHoldings = totalShareValuation > 0
   const creditUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
   const currencySymbol = useMemo(() => {
     return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
@@ -147,7 +156,7 @@ export function CombinedBalanceCard() {
   // Enhanced touch and scroll handling
   useEffect(() => {
     const container = scrollContainerRef.current
-    if (container && isMobile && netWorthEnabled) {
+    if (container && netWorthEnabled) {
       let touchStartX = 0
       let touchStartY = 0
       let isScrolling = false
@@ -188,61 +197,14 @@ export function CombinedBalanceCard() {
       container.addEventListener('touchmove', handleTouchMove, { passive: true })
       container.addEventListener('touchend', handleTouchEnd, { passive: true })
 
-      // Scroll handler using shared state
+      // Simple scroll handler - update indicator based on scroll position
       const scrollHandler = () => {
-        const state = scrollStateRef.current
-
-        // Clear existing timeout
-        if (state.scrollTimeout) {
-          clearTimeout(state.scrollTimeout)
-        }
-
         if (!container) return
-
-        const now = Date.now()
         const scrollLeft = container.scrollLeft
-        const timeDelta = now - state.lastScrollTime
-
-        // Calculate scroll velocity for momentum
-        if (timeDelta > 0) {
-          state.scrollVelocity = (scrollLeft - state.lastScrollLeft) / timeDelta
-        }
-
-        state.lastScrollLeft = scrollLeft
-        state.lastScrollTime = now
-
-        // Update indicator with smooth interpolation
-        state.scrollTimeout = setTimeout(() => {
-          if (!container) return
-
-          const cardWidth = 336 // w-80 (320px) + gap-4 (16px)
-          const currentScroll = container.scrollLeft
-
-          // Calculate which card is most visible
-          const progress = currentScroll / cardWidth
-          const currentIndex = Math.round(progress)
-          const clampedIndex = Math.min(Math.max(currentIndex, 0), 1)
-
-          // Smooth transition for indicator
-          if (Math.abs(currentCardIndex - clampedIndex) > 0.1) {
-            setCurrentCardIndex(clampedIndex)
-          }
-
-          // Enhanced momentum-based snapping
-          const shouldSnap = Math.abs(state.scrollVelocity) < 0.5 // Low velocity threshold
-          if (shouldSnap) {
-            const nearestCard = Math.round(currentScroll / cardWidth)
-            const targetPosition = Math.min(Math.max(nearestCard, 0), 1) * cardWidth
-
-            // Only snap if we're not already very close to the target
-            if (Math.abs(currentScroll - targetPosition) > 10) {
-              container.scrollTo({
-                left: targetPosition,
-                behavior: 'smooth'
-              })
-            }
-          }
-        }, 100) // Reduced frequency for better performance
+        const containerWidth = container.clientWidth
+        const threshold = containerWidth * 0.5
+        const newIndex = scrollLeft > threshold ? 1 : 0
+        setCurrentCardIndex(prev => prev !== newIndex ? newIndex : prev)
       }
 
       container.addEventListener('scroll', scrollHandler, { passive: true })
@@ -254,22 +216,21 @@ export function CombinedBalanceCard() {
         container.removeEventListener('scroll', scrollHandler)
       }
     }
-  }, [isMobile, netWorthEnabled, currentCardIndex])
+  }, [netWorthEnabled])
 
-  const mainBalance = isMobile && netWorthEnabled ? (
-    <div>
+  const mainBalance = netWorthEnabled ? (
+    <div className="w-full">
       <div
         ref={scrollContainerRef}
-        className="overflow-x-auto pb-2 hide-scrollbars"
+        className="overflow-x-auto pb-2 hide-scrollbars w-full"
         style={{
           scrollBehavior: 'smooth',
-          WebkitOverflowScrolling: 'touch', // Better iOS scrolling
-          scrollSnapType: 'x mandatory',
-          scrollPadding: '0 16px'
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapType: 'x mandatory'
         }}
       >
-        <div className="flex gap-4 min-w-max pl-2 pr-4">
-          <div className="w-88 flex-shrink-0" style={{ scrollSnapAlign: 'start' }}>
+        <div className="flex" style={{ width: 'calc(200% + 16px)' }}>
+          <div data-carousel-card="0" className="flex-shrink-0 md:min-h-[150px]" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
             <BalanceCard
               balanceChange={balanceChange}
               balance={balance}
@@ -286,12 +247,12 @@ export function CombinedBalanceCard() {
           </div>
 
           {/* Net Worth Card */}
-          <div className="w-88 flex-shrink-0" style={{ scrollSnapAlign: 'start' }}>
-            <Card className={`border-2 transition-all duration-200 ${netWorth >= 0
+          <div data-carousel-card="1" className="flex-shrink-0 md:min-h-[150px] ml-4" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
+            <Card className={`border-2 transition-all duration-200 h-full md:min-h-[150px] ${netWorth >= 0
               ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
               : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
               }`}>
-              <CardContent className="p-6 text-center">
+              <CardContent className="p-4 text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
@@ -303,9 +264,15 @@ export function CombinedBalanceCard() {
                   {netWorth < 0 && "-"}
                   {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
                 </p>
-                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                  Balance + Available Credit - Total Debt
-                </p>
+                {/* Total Share Valuation */}
+                {showBalance && hasShareHoldings && (
+                  <div className="flex items-center justify-center gap-1 text-xs bg-blue-50/80 dark:bg-blue-950/50 backdrop-blur-sm rounded-lg px-2 py-1 mt-2">
+                    <TrendingUp className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                    <span className="font-medium text-blue-700 dark:text-blue-300">
+                      Shares: {formatCurrency(totalShareValuation)}
+                    </span>
+                  </div>
+                )}
 
                 {/* Time Equivalent for Net Worth */}
                 {showBalance && netWorth > 0 && timeEquivalentBreakdown && (
@@ -327,21 +294,31 @@ export function CombinedBalanceCard() {
       </div>
 
       {/* Enhanced Scroll Indicators */}
-      <div className="flex justify-center gap-3 mt-3">
+      <div className="flex justify-center gap-3 mt-3 relative z-10">
         {[0, 1].map((index) => (
           <button
             key={index}
-            onClick={() => {
-              setCurrentCardIndex(index)
-              if (scrollContainerRef.current) {
-                const cardWidth = 336 // Updated to match the new calculation
-                scrollContainerRef.current.scrollTo({
-                  left: index * cardWidth,
-                  behavior: 'smooth'
-                })
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              const container = scrollContainerRef.current
+              if (container) {
+                // Get the card elements
+                const cards = container.querySelectorAll('[data-carousel-card]')
+                if (cards[index]) {
+                  // Temporarily disable scroll-snap for smooth animation
+                  container.style.scrollSnapType = 'none'
+                  cards[index].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+                  // Re-enable scroll-snap after animation
+                  setTimeout(() => {
+                    container.style.scrollSnapType = 'x mandatory'
+                  }, 400)
+                }
+                setCurrentCardIndex(index)
               }
             }}
-            className={`relative transition-all duration-300 ease-out ${currentCardIndex === index
+            className={`relative transition-all duration-300 ease-out cursor-pointer ${currentCardIndex === index
               ? 'w-6 h-2 bg-primary scale-110'
               : 'w-2 h-2 bg-muted-foreground/40 hover:bg-muted-foreground/60 hover:scale-105'
               } rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2`}
@@ -441,33 +418,6 @@ export function CombinedBalanceCard() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Net Worth Summary - Only show on desktop or when not in mobile row */}
-      {(totalDebt > 0 || totalCreditUsed > 0) && !(isMobile && netWorthEnabled) && (
-        <Card className={`border-2 transition-all duration-200 ${netWorth >= 0
-          ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
-          : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-          }`}>
-          <CardContent className="p-6 text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
-              <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
-            </div>
-            <p className={`text-3xl font-bold mb-2 text-center ${netWorth >= 0
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-red-600 dark:text-red-400"
-              }`}>
-              {netWorth < 0 && "-"}
-              {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
-            </p>
-            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-              Balance + Available Credit - Total Debt
-            </p>
-
-
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

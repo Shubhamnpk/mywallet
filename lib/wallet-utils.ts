@@ -2,6 +2,16 @@ import type { UserProfile, Category, Transaction } from "@/types/wallet"
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, getCategoryColor, getCategoryIcon } from "./categories"
 import { getCurrencySymbol } from "./currency"
 
+/*Check if Time Wallet feature is enabled for a user. Time Wallet requires monthly earning, working hours per day, and working days per month to be set.*/
+export function isTimeWalletEnabled(profile?: UserProfile | null): boolean {
+  if (!profile) return false
+  return Boolean(
+    profile.monthlyEarning > 0 &&
+    profile.workingHoursPerDay > 0 &&
+    profile.workingDaysPerMonth > 0,
+  )
+}
+
 export function generateId(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
@@ -181,10 +191,7 @@ import { createEncryptedBackup, restoreEncryptedBackup } from "./backup"
 import { DataIntegrityManager } from "./data-integrity"
 import { saveToLocalStorage } from "./storage"
 
-/**
- * Create an encrypted backup string for all wallet data using a user-provided PIN.
- * The caller is responsible for offering the string to the user for download or copying.
- */
+/**Create an encrypted backup string for all wallet data using a user-provided PIN.The caller is responsible for offering the string to the user for download or copying.*/
 export async function createWalletBackup(allData: any, pin: string) {
   // validate data before backup
   const validation = await DataIntegrityManager.validateAllData(allData)
@@ -195,10 +202,7 @@ export async function createWalletBackup(allData: any, pin: string) {
   return backup
 }
 
-/**
- * Restore wallet data from an encrypted backup string using PIN.
- * If overwriteExisting is true, this will replace current localStorage entries for known keys.
- */
+/**Restore wallet data from an encrypted backup string using PIN.If overwriteExisting is true, this will replace current localStorage entries for known keys.*/
 export async function restoreWalletBackup(backupJson: string, pin: string, overwriteExisting = false) {
   const data = await restoreEncryptedBackup(backupJson, pin)
 

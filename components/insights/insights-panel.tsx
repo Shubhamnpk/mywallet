@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useFinancialHealthScore, FinancialHealthScore } from "./financial-health-score"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
 import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
@@ -43,10 +44,7 @@ export function InsightsPanel({
 }: InsightsPanelProps) {
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
 
-  const isTimeWalletEnabled =
-    userProfile.monthlyEarning > 0 &&
-    userProfile.workingDaysPerMonth > 0 &&
-    userProfile.workingHoursPerDay > 0
+  const timeWalletActive = isTimeWalletEnabled(userProfile)
 
   // Calculate insights
   // Helper: true-expense filter excludes debt repayments and goal contributions
@@ -102,7 +100,7 @@ export function InsightsPanel({
 
   // Use the same calculation method as balance card for consistency
   const calculateTimeFromAmount = (amount: number) => {
-    if (!userProfile || !amount || !isTimeWalletEnabled) return 0
+    if (!userProfile || !amount || !timeWalletActive) return 0
     const hourlyRate = userProfile.monthlyEarning / (userProfile.workingDaysPerMonth * userProfile.workingHoursPerDay)
     return (amount / hourlyRate) * 60 // Convert hours to minutes
   }
@@ -113,8 +111,6 @@ export function InsightsPanel({
   const totalWorkTimeSpent = transactions
     .filter(isTrueExpense)
     .reduce((sum, t) => sum + calculateTimeFromAmount(t.amount), 0)
-
-  // Category breakdown (excludes debt repayments & goal contributions)
   const expensesByCategory = transactions
     .filter(isTrueExpense)
     .reduce(
@@ -130,7 +126,7 @@ export function InsightsPanel({
     .slice(0, 5)
 
   const formatTime = (minutes: number) => {
-    if (!minutes || minutes < 0 || !userProfile || !isTimeWalletEnabled) return "0m"
+    if (!minutes || minutes < 0 || !userProfile || !timeWalletActive) return "0m"
 
     // Calculate equivalent currency amount using the same method as balance card
     const hours = minutes / 60
@@ -375,7 +371,7 @@ export function InsightsPanel({
     }
 
     return items
-  }, [atRiskBudgets, expenseChangePercent, savingsRate, isTimeWalletEnabled, topGoals, dailySpendingThisMonth, dailySafetyBudget, totalWorkTimeEarned, totalWorkTimeSpent, userProfile, transactions, balance, goals, debtAccounts, daysInMonth, dayOfMonth, daysRemaining, thisMonthExpenses, thisMonthIncome, budgets])
+  }, [atRiskBudgets, expenseChangePercent, savingsRate, timeWalletActive, topGoals, dailySpendingThisMonth, dailySafetyBudget, totalWorkTimeEarned, totalWorkTimeSpent, userProfile, transactions, balance, goals, debtAccounts, daysInMonth, dayOfMonth, daysRemaining, thisMonthExpenses, thisMonthIncome, budgets])
 
   const handleSmartAction = (insight: any) => {
     if (insight.actionId === 'setup_ef') {
@@ -662,7 +658,7 @@ export function InsightsPanel({
                         </div>
                         <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
                           <span>{percentage.toFixed(0)}% of total</span>
-                          {isTimeWalletEnabled && <span>{formatTime(calculateTimeFromAmount(amount))} work</span>}
+                          {timeWalletActive && <span>{formatTime(calculateTimeFromAmount(amount))} work</span>}
                         </div>
                       </div>
                     )

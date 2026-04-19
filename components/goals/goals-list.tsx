@@ -339,15 +339,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
   return (
     <div className="space-y-4">
-      <Tabs defaultValue="goals" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="goals">Goals</TabsTrigger>
-          <TabsTrigger value="progress">Progress</TabsTrigger>
-          <TabsTrigger value="planning">Planning</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="goals" className="space-y-6 mt-6">
-          <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Target className="w-5 h-5" />
               Financial Goals ({filteredAndSortedGoals.length})
@@ -359,19 +351,20 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                   Delete ({selectedGoals.size})
                 </Button>
               )}
-              <Button
-                onClick={() => {
-                  setEditingGoal(null)
-                  setIsDialogOpen(true)
-                }}
-                className="flex items-center gap-2"
-              >
+              <Button onClick={() => {setEditingGoal(null), setIsDialogOpen(true) }}
+                className="flex items-center gap-2">
                 <Plus className="w-4 h-4" />
                 Add Goal
               </Button>
             </div>
           </div>
-
+      <Tabs defaultValue="goals" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="goals">Goals</TabsTrigger>
+          <TabsTrigger value="progress">Progress</TabsTrigger>
+          <TabsTrigger value="planning">Planning</TabsTrigger>
+        </TabsList>
+        <TabsContent value="goals" className="space-y-6 mt-6">
           {goals.length > 0 && (
             <>
               <div className="flex flex-col sm:flex-row gap-3">

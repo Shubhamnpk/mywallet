@@ -15,6 +15,7 @@ import { Target, Clock, Plus, X, Tag, Search } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getDefaultCategoryNames } from "@/lib/categories"
+import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import type { UserProfile, Budget } from "@/types/wallet"
 
 interface BudgetDialogProps {
@@ -245,7 +246,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                   <p className="text-sm text-destructive">{errors.amount}</p>
                 )}
 
-                {amount && (
+                {amount && isTimeWalletEnabled(userProfile) && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md border">
                     <Clock className="w-4 h-4" />
                     <span>This budget represents <strong>{timeText}</strong> of work time</span>

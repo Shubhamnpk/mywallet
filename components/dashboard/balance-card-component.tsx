@@ -61,7 +61,7 @@ export default function BalanceCard({
   const emergencyMargin = isMobile ? "mt-1" : "mt-2"
 
   return (
-    <Card className="relative overflow-hidden border-0 shadow-lg">
+    <Card className="relative overflow-hidden border-0 shadow-lg h-full md:min-h-[170px]">
       <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
       <div className="absolute inset-0 bg-black/10" />
 
