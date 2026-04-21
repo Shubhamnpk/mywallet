@@ -31,6 +31,9 @@ export interface UserProfile {
     isAutomatedEnabled: boolean
     applicationLogs?: MeroShareApplicationLog[]
   }
+  settings?: {
+    zeroHoldingsEnabled?: boolean
+  }
 }
 
 export interface NotificationSettings {
@@ -290,6 +293,7 @@ export interface PortfolioItem {
   percentChange?: number
   sector?: string
   lastUpdated?: string
+  isKeptZeroHolding?: boolean
 }
 
 export interface ShareTransaction {

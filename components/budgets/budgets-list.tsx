@@ -238,7 +238,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
           {selectedBudgets.size > 0 && (
             <Button variant="destructive" onClick={handleBulkDelete} className="flex items-center gap-2">
               <Trash2 className="w-4 h-4" />
-              Delete Selected ({selectedBudgets.size})
+              Delete ({selectedBudgets.size})
             </Button>
           )}
           <Button onClick={() => { setEditingBudget(null); setDialogOpen(true) }} className="flex items-center gap-2">

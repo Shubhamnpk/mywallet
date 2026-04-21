@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
@@ -26,6 +27,7 @@ import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
+import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { UpcomingIPO } from "@/types/wallet"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
@@ -91,7 +93,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,} = useWalletData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,} = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -114,6 +116,15 @@ export function PortfolioList() {
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
+    // Confirmation modal state for replacing native confirm()
+    const [confirmModal, setConfirmModal] = useState<{
+        open: boolean
+        title: string
+        description: string
+        onConfirm: (() => void) | null
+        confirmText: string
+        destructive?: boolean
+    }>({ open: false, title: "", description: "", onConfirm: null, confirmText: "Confirm" })
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
@@ -125,10 +136,30 @@ export function PortfolioList() {
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
     const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
+    const [sellConfirmModal, setSellConfirmModal] = useState<{
+        open: boolean
+        symbol: string
+        assetType?: "stock" | "crypto"
+        cryptoId?: string
+        portfolioId: string
+    }>({ open: false, symbol: "", portfolioId: "" })
+    const [zeroHoldingsEnabled, setZeroHoldingsEnabled] = useState(() => {
+        return userProfile?.settings?.zeroHoldingsEnabled !== false
+    })
     const [newPortfolio, setNewPortfolio] = useState({
         name: "",
         description: "",
         color: "#3b82f6"
+    })
+    const [newTx, setNewTx] = useState({
+        symbol: "",
+        assetType: "stock" as "stock" | "crypto",
+        cryptoId: "",
+        quantity: Number.NaN,
+        price: Number.NaN,
+        type: "buy" as ShareTransaction['type'],
+        date: new Date().toISOString().split('T')[0],
+        description: ""
     })
     const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
         if (!Number.isFinite(amount)) return "0"
@@ -152,6 +183,11 @@ export function PortfolioList() {
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
     const safeNumber = useCallback((value?: number) => (isFiniteNumber(value) ? value : 0), [])
+
+    // Helper to show custom confirmation modal
+    const showConfirm = useCallback((title: string, description: string, onConfirm: () => void, confirmText = "Confirm", destructive = false) => {
+        setConfirmModal({ open: true, title, description, onConfirm, confirmText, destructive })
+    }, [])
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -186,6 +222,32 @@ export function PortfolioList() {
 
         setSelectedStock(latestMatch)
     }, [isStockDetailOpen, portfolio, selectedStock])
+
+    // Handle stock transaction custom event from stock detail modal
+    useEffect(() => {
+        const handleStockTransaction = (event: CustomEvent) => {
+            const { symbol, assetType, cryptoId, price, type, portfolioId } = event.detail
+            setNewTx({
+                symbol: symbol,
+                assetType: assetType || 'stock',
+                cryptoId: cryptoId || '',
+                quantity: Number.NaN,
+                price: price || Number.NaN,
+                type: type || 'buy',
+                date: new Date().toISOString().split('T')[0],
+                description: `${type || 'buy'} ${symbol}`
+            })
+            
+            // Open the transaction dialog
+            setIsAddDialogOpen(true)
+        }
+
+        window.addEventListener('openStockTransaction', handleStockTransaction as EventListener)
+        
+        return () => {
+            window.removeEventListener('openStockTransaction', handleStockTransaction as EventListener)
+        }
+    }, [setNewTx, setIsAddDialogOpen])
 
     const portfolioSymbols = useMemo(
         () => portfolio.map((p) => p.symbol).sort().join(","),
@@ -293,17 +355,7 @@ export function PortfolioList() {
         })
     }
 
-    const [newTx, setNewTx] = useState({
-        symbol: "",
-        assetType: "stock" as "stock" | "crypto",
-        cryptoId: "",
-        quantity: Number.NaN,
-        price: Number.NaN,
-        type: "buy" as ShareTransaction['type'],
-        date: new Date().toISOString().split('T')[0],
-        description: ""
-    })
-
+   
     const deferredSearchQuery = useDeferredValue(searchQuery)
 
     const filteredPortfolio = useMemo(
@@ -415,7 +467,7 @@ export function PortfolioList() {
                 }
             }
 
-            const { updatedPortfolio } = await addShareTransaction({
+            const { updatedPortfolio, zeroUnitHoldings } = await addShareTransaction({
                 portfolioId: activePortfolioId!,
                 symbol: resolvedSymbol,
                 assetType: newTx.assetType,
@@ -441,9 +493,73 @@ export function PortfolioList() {
             setActiveTab("holdings")
             toast.success("Transaction recorded")
             fetchPortfolioPrices(updatedPortfolio)
+
+            // Show sell confirmation modal if any holding hit zero units (and feature is enabled)
+            if (zeroUnitHoldings && zeroUnitHoldings.length > 0) {
+                if (zeroHoldingsEnabled) {
+                    const firstHolding = zeroUnitHoldings[0]
+                    setSellConfirmModal({
+                        open: true,
+                        symbol: firstHolding.symbol,
+                        assetType: firstHolding.assetType,
+                        cryptoId: firstHolding.cryptoId,
+                        portfolioId: firstHolding.portfolioId,
+                    })
+                } else {
+                    // Feature disabled - auto-remove zero holdings
+                    for (const holding of zeroUnitHoldings) {
+                        const item = updatedPortfolio.find(
+                            (p) =>
+                                p.portfolioId === holding.portfolioId &&
+                                normalizeStockSymbol(p.symbol) === normalizeStockSymbol(holding.symbol) &&
+                                p.assetType === (holding.assetType || "stock") &&
+                                (p.cryptoId || "") === (holding.cryptoId || "")
+                        )
+                        if (item) {
+                            await toggleZeroHolding(item.id, false)
+                            await deletePortfolioItem(item.id)
+                        }
+                    }
+                    toast.info("Zero holdings auto-removed (feature disabled)")
+                }
+            }
         } catch (error) {
             toast.error("Failed to record transaction")
         }
+    }
+
+    const handleSellConfirmKeep = async () => {
+        toast.success(`${sellConfirmModal.symbol} kept as zero-unit holding`)
+        setSellConfirmModal({ open: false, symbol: "", portfolioId: "" })
+    }
+
+    const handleSellConfirmRemove = async () => {
+        const item = portfolio.find(
+            (p) =>
+                p.portfolioId === sellConfirmModal.portfolioId &&
+                normalizeStockSymbol(p.symbol) === normalizeStockSymbol(sellConfirmModal.symbol) &&
+                p.assetType === (sellConfirmModal.assetType || "stock") &&
+                (p.cryptoId || "") === (sellConfirmModal.cryptoId || "")
+        )
+        if (item) {
+            // Mark as explicitly removed (isKeptZeroHolding = false)
+            await toggleZeroHolding(item.id, false)
+            await deletePortfolioItem(item.id)
+            toast.info(`${sellConfirmModal.symbol} removed from portfolio`)
+        }
+        setSellConfirmModal({ open: false, symbol: "", portfolioId: "" })
+    }
+
+    const handleDisableZeroHoldings = () => {
+        setZeroHoldingsEnabled(false)
+        // Update user profile to persist this preference
+        updateUserProfile({
+            settings: {
+                ...userProfile?.settings,
+                zeroHoldingsEnabled: false
+            }
+        })
+        toast.info("Zero holdings feature disabled. Sold stocks will be auto-removed.")
     }
 
     const handleCreatePortfolio = async () => {
@@ -490,7 +606,6 @@ export function PortfolioList() {
             if (!content) return
 
             try {
-                // Pre-process CSV to see if we need prices
                 const rows = content.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()))
                 if (rows.length < 2) return
 
@@ -595,16 +710,22 @@ export function PortfolioList() {
     const handleDeleteSelected = async () => {
         if (selectedTxs.length === 0) return
 
-        if (confirm(`Are you sure you want to delete ${selectedTxs.length} transactions? This will recalculate your portfolio.`)) {
-            try {
-                const updatedPortfolio = await deleteMultipleShareTransactions(selectedTxs)
-                setSelectedTxs([])
-                toast.success(`${selectedTxs.length} transactions deleted and portfolio updated`)
-                fetchPortfolioPrices(updatedPortfolio)
-            } catch (error) {
-                toast.error("Failed to delete transactions")
-            }
-        }
+        showConfirm(
+            "Delete Transactions",
+            `Are you sure you want to delete ${selectedTxs.length} transactions? This will recalculate your portfolio.`,
+            async () => {
+                try {
+                    const updatedPortfolio = await deleteMultipleShareTransactions(selectedTxs)
+                    setSelectedTxs([])
+                    toast.success(`${selectedTxs.length} transactions deleted and portfolio updated`)
+                    fetchPortfolioPrices(updatedPortfolio)
+                } catch (error) {
+                    toast.error("Failed to delete transactions")
+                }
+            },
+            "Delete",
+            true
+        )
     }
 
     // Calculations
@@ -1315,7 +1436,13 @@ export function PortfolioList() {
                                 className="h-7 w-7 rounded-lg text-red-500 hover:bg-red-500/10"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm(`Delete portfolio "${p.name}"? This action cannot be undone.`)) deletePortfolio(p.id);
+                                    showConfirm(
+                                        "Delete Portfolio",
+                                        `Are you sure you want to delete "${p.name}"? This action cannot be undone.`,
+                                        () => deletePortfolio(p.id),
+                                        "Delete",
+                                        true
+                                    );
                                 }}
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1369,36 +1496,47 @@ export function PortfolioList() {
     if (viewMode === "overview") {
         if (!isShareFeaturesEnabled) {
             return (
-                <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-card via-primary/5 to-card shadow-xl">
-                    <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-primary/10 blur-2xl" />
-                    <CardHeader className="pb-2">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
-                                <Sparkles className="h-5 w-5 text-primary" />
+                <>
+                    <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-card via-primary/5 to-card shadow-xl">
+                        <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-primary/10 blur-2xl" />
+                        <CardHeader className="pb-2">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
+                                    <Sparkles className="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                    <CardTitle className="text-left text-xl font-black tracking-tight">
+                                        Share Features Disabled
+                                    </CardTitle>
+                                    <CardDescription className="text-left text-xs uppercase tracking-widest text-muted-foreground/80">
+                                        Portfolio Mode
+                                    </CardDescription>
+                                </div>
                             </div>
-                            <div>
-                                <CardTitle className="text-left text-xl font-black tracking-tight">
-                                    Share Features Disabled
-                                </CardTitle>
-                                <CardDescription className="text-left text-xs uppercase tracking-widest text-muted-foreground/80">
-                                    Portfolio Mode
-                                </CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="space-y-5">
-                        <p className="max-w-xl text-left text-sm leading-relaxed text-muted-foreground">
-                            Enable share features to unlock portfolio tracking, IPO actions, and share insights from this section.
-                        </p>
-                        <Button
-                            onClick={enableShareFeatures}
-                            className="h-11 rounded-xl bg-gradient-to-r from-primary to-primary/80 px-6 font-bold shadow-lg shadow-primary/20 hover:from-primary/90 hover:to-primary/70"
-                        >
-                            <Sparkles className="mr-2 h-4 w-4" />
-                            Turn On Share Features
-                        </Button>
-                    </CardContent>
-                </Card>
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            <p className="max-w-xl text-left text-sm leading-relaxed text-muted-foreground">
+                                Enable share features to unlock portfolio tracking, IPO actions, and share insights from this section.
+                            </p>
+                            <Button
+                                onClick={enableShareFeatures}
+                                className="h-11 rounded-xl bg-gradient-to-r from-primary to-primary/80 px-6 font-bold shadow-lg shadow-primary/20 hover:from-primary/90 hover:to-primary/70"
+                            >
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                Turn On Share Features
+                            </Button>
+                        </CardContent>
+                    </Card>
+                    <ConfirmationModal
+                        open={confirmModal.open}
+                        onOpenChange={(open) => setConfirmModal(prev => ({ ...prev, open }))}
+                        title={confirmModal.title}
+                        description={confirmModal.description}
+                        onConfirm={() => confirmModal.onConfirm?.()}
+                        confirmText={confirmModal.confirmText}
+                        destructive={confirmModal.destructive}
+                    />
+                </>
             )
         }
 
@@ -1419,6 +1557,19 @@ export function PortfolioList() {
                     open={isStockDetailOpen}
                     onOpenChange={setIsStockDetailOpen}
                 />
+                <SellConfirmationModal
+                    symbol={sellConfirmModal.symbol}
+                    assetType={sellConfirmModal.assetType}
+                    cryptoId={sellConfirmModal.cryptoId}
+                    portfolioId={sellConfirmModal.portfolioId}
+                    open={sellConfirmModal.open}
+                    onOpenChange={(open) => setSellConfirmModal(prev => ({ ...prev, open }))}
+                    onConfirmKeep={handleSellConfirmKeep}
+                    onConfirmRemove={handleSellConfirmRemove}
+                    onDisableZeroHoldings={handleDisableZeroHoldings}
+                    shareTransactions={shareTransactions}
+                    zeroHoldingsEnabled={zeroHoldingsEnabled}
+                />
                 <IPODetailModal
                     ipo={selectedIPO}
                     open={isIPODetailOpen}
@@ -1429,6 +1580,15 @@ export function PortfolioList() {
                     onOpenChange={setIsEditPortfolioOpen}
                     portfolio={editingPortfolio}
                     onSave={handleSavePortfolio}
+                />
+                <ConfirmationModal
+                    open={confirmModal.open}
+                    onOpenChange={(open) => setConfirmModal(prev => ({ ...prev, open }))}
+                    title={confirmModal.title}
+                    description={confirmModal.description}
+                    onConfirm={() => confirmModal.onConfirm?.()}
+                    confirmText={confirmModal.confirmText}
+                    destructive={confirmModal.destructive}
                 />
                 <Dialog
                     open={Boolean(selectedOverviewNotification)}
@@ -2257,11 +2417,36 @@ export function PortfolioList() {
                 onOpenChange={setIsStockDetailOpen}
             />
 
+            {/* Sell Confirmation Modal */}
+            <SellConfirmationModal
+                symbol={sellConfirmModal.symbol}
+                assetType={sellConfirmModal.assetType}
+                cryptoId={sellConfirmModal.cryptoId}
+                portfolioId={sellConfirmModal.portfolioId}
+                open={sellConfirmModal.open}
+                onOpenChange={(open) => setSellConfirmModal(prev => ({ ...prev, open }))}
+                onConfirmKeep={handleSellConfirmKeep}
+                onConfirmRemove={handleSellConfirmRemove}
+                onDisableZeroHoldings={handleDisableZeroHoldings}
+                shareTransactions={shareTransactions}
+                zeroHoldingsEnabled={zeroHoldingsEnabled}
+            />
+
             {/* IPO Detail Modal */}
             <IPODetailModal
                 ipo={selectedIPO}
                 open={isIPODetailOpen}
                 onOpenChange={setIsIPODetailOpen}
+            />
+
+            <ConfirmationModal
+                open={confirmModal.open}
+                onOpenChange={(open) => setConfirmModal(prev => ({ ...prev, open }))}
+                title={confirmModal.title}
+                description={confirmModal.description}
+                onConfirm={() => confirmModal.onConfirm?.()}
+                confirmText={confirmModal.confirmText}
+                destructive={confirmModal.destructive}
             />
 
             {/* Import Price Modal */}
@@ -2758,7 +2943,24 @@ export function PortfolioList() {
 
                         <ScrollArea className="h-[500px] rounded-2xl border bg-card/50 backdrop-blur-sm shadow-inner">
                             <div className="p-4 space-y-3 text-left">
-                                {filteredPortfolio.length === 0 ? (
+                                {portfolio.length === 0 && activePortfolioId ? (
+                                    // Loading skeleton state
+                                    <div className="space-y-3">
+                                        {[1, 2, 3, 4, 5].map((i) => (
+                                            <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-muted/20 bg-card/30">
+                                                <Skeleton className="h-10 w-10 rounded-lg" />
+                                                <div className="flex-1 space-y-2">
+                                                    <Skeleton className="h-4 w-24" />
+                                                    <Skeleton className="h-3 w-16" />
+                                                </div>
+                                                <div className="text-right space-y-2">
+                                                    <Skeleton className="h-4 w-20" />
+                                                    <Skeleton className="h-3 w-12" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : filteredPortfolio.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-20 text-center">
                                         <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mb-4 ring-8 ring-muted/20">
                                             <TrendingUp className="w-10 h-10 text-muted-foreground/50" />
@@ -2791,6 +2993,7 @@ export function PortfolioList() {
                                         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
                                         const safeBuyPrice = Number.isFinite(item.buyPrice) ? item.buyPrice : 0
                                         const current = Number.isFinite(item.currentPrice) ? item.currentPrice! : safeBuyPrice
+                                        const isZeroHolding = item.units === 0 || item.isKeptZeroHolding
                                         const investment = item.units * safeBuyPrice
                                         const value = item.units * current
                                         const profitLoss = value - investment
@@ -2804,9 +3007,26 @@ export function PortfolioList() {
                                             : (previousClose !== null && previousClose !== 0 ? (dailyChangeRaw / previousClose) * 100 : 0)
                                         const dailyChange = hasFreshMoveToday ? dailyChangeRaw : 0
                                         const dailyChangePerc = hasFreshMoveToday ? dailyChangePercRaw : 0
-                                        const showDailyChange = hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
+                                        const showDailyChange = !isZeroHolding && hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
                                         const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
                                         const isDailyProfit = dailyChange > 0
+
+                                        // For zero holdings, get last exit info (sell or merger_out)
+                                        const lastExitInfo = isZeroHolding ? (() => {
+                                            const relevantTxs = shareTransactions.filter(
+                                                (tx) =>
+                                                    tx.portfolioId === item.portfolioId &&
+                                                    normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
+                                                    tx.assetType === (item.assetType || "stock") &&
+                                                    (tx.cryptoId || "") === (item.cryptoId || "")
+                                            )
+                                            const exitTxs = relevantTxs
+                                                .filter((tx) => tx.type === "sell" || tx.type === "merger_out")
+                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                            return exitTxs[0]
+                                        })() : null
+                                        const isSold = lastExitInfo?.type === "sell"
+                                        const isMerged = lastExitInfo?.type === "merger_out"
 
                                         return (
                                             <div
@@ -2820,65 +3040,111 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isDailyNeutral
-                                                                ? "bg-muted/40 text-muted-foreground border-muted/30"
-                                                                : isDailyProfit
-                                                                    ? "bg-success/5 text-success border-success/10"
-                                                                    : "bg-error/5 text-error border-error/10"
+                                                            isZeroHolding
+                                                                ? "bg-muted/30 text-muted-foreground border-muted/40"
+                                                                : isDailyNeutral
+                                                                    ? "bg-muted/40 text-muted-foreground border-muted/30"
+                                                                    : isDailyProfit
+                                                                        ? "bg-success/5 text-success border-success/10"
+                                                                        : "bg-error/5 text-error border-error/10"
                                                         )}>
                                                             {item.symbol.substring(0, 2)}
                                                         </div>
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                                                                 <h4 className="font-extrabold text-sm sm:text-base tracking-tight">{item.symbol}</h4>
-                                                                <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/50 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground/80">
-                                                                    {item.sector || "Others"}
-                                                                </Badge>
+                                                                {isZeroHolding ? (
+                                                                    isSold ? (
+                                                                        <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-amber-500/10 font-bold border-amber-500/30 uppercase tracking-widest text-amber-600">
+                                                                            SOLD
+                                                                        </Badge>
+                                                                    ) : isMerged ? (
+                                                                        <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-purple-500/10 font-bold border-purple-500/30 uppercase tracking-widest text-purple-600">
+                                                                            MERGED
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/50 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground/80">
+                                                                            {item.sector || "Others"}
+                                                                        </Badge>
+                                                                    )
+                                                                ) : (
+                                                                    <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/50 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground/80">
+                                                                        {item.sector || "Others"}
+                                                                    </Badge>
+                                                                )}
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">
-                                                                <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{formatUnits(item.units)} Units</span>
-                                                                <span className="hidden sm:inline text-[10px] opacity-20">•</span>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
+                                                                {isZeroHolding ? (
+                                                                    <span className={cn(
+                                                                        "text-[10px] font-black uppercase tracking-tighter",
+                                                                        isSold ? "text-amber-600/80" : isMerged ? "text-purple-600/80" : "text-muted-foreground"
+                                                                    )}>
+                                                                        {isSold && lastExitInfo
+                                                                            ? `Sold @ ${isCrypto ? "$" : "रु"}${lastExitInfo.price}`
+                                                                            : isMerged && lastExitInfo
+                                                                                ? `Merged Out`
+                                                                                : "Zero Units"}
                                                                     </span>
-                                                                    {showDailyChange && (
-                                                                        <span
-                                                                            className={cn(
-                                                                                "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
-                                                                                isDailyNeutral
-                                                                                    ? "bg-muted text-muted-foreground"
-                                                                                    : isDailyProfit
-                                                                                        ? "bg-success/10 text-success"
-                                                                                        : "bg-error/10 text-error"
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">{formatUnits(item.units)} Units</span>
+                                                                        <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
+                                                                                {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
+                                                                            </span>
+                                                                            {showDailyChange && (
+                                                                                <span
+                                                                                    className={cn(
+                                                                                        "hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md items-center gap-0.5",
+                                                                                        isDailyNeutral
+                                                                                            ? "bg-muted text-muted-foreground"
+                                                                                            : isDailyProfit
+                                                                                                ? "bg-success/10 text-success"
+                                                                                                : "bg-error/10 text-error"
+                                                                                    )}
+                                                                                >
+                                                                                    {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%
+                                                                                </span>
                                                                             )}
-                                                                        >
-                                                                            {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%
-                                                                        </span>
-                                                                    )}
-                                                                </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
 
                                                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                                                         <div className="text-right flex flex-col items-end">
-                                                            <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
-                                                                {isCrypto ? "$" : "रु"} {formatHoldingAmount(value, isCrypto)}
-                                                            </div>
-                                                            <div className={cn(
-                                                                "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
-                                                                isDailyNeutral
-                                                                    ? "text-muted-foreground"
-                                                                    : isDailyProfit
-                                                                        ? "text-success"
-                                                                        : "text-error"
-                                                            )}>
-                                                                <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
-                                                                <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>
-                                                                <span className="hidden sm:inline">({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)</span>
-                                                            </div>
+                                                            {isZeroHolding ? (
+                                                                <>
+                                                                    <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight text-muted-foreground">
+                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
+                                                                    </div>
+                                                                    <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60">
+                                                                        Current Price
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
+                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(value, isCrypto)}
+                                                                    </div>
+                                                                    <div className={cn(
+                                                                        "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
+                                                                        isDailyNeutral
+                                                                            ? "text-muted-foreground"
+                                                                            : isDailyProfit
+                                                                                ? "text-success"
+                                                                                : "text-error"
+                                                                    )}>
+                                                                        <span className="hidden sm:inline">{isDailyProfit ? "+" : ""}{formatHoldingAmount(dailyChange * item.units, isCrypto)}</span>
+                                                                        <span className="sm:hidden">{isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(1)}%</span>
+                                                                        <span className="hidden sm:inline">({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)</span>
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
 
                                                         <Button
@@ -2887,10 +3153,16 @@ export function PortfolioList() {
                                                             className="h-7 w-7 text-red-500/40 hover:text-red-600 hover:bg-red-500/5 rounded-full shrink-0"
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
-                                                                if (confirm(`Remove ${item.symbol} from portfolio?`)) {
-                                                                    deletePortfolioItem(item.id)
-                                                                    toast.success("Holding removed")
-                                                                }
+                                                                showConfirm(
+                                                                    "Remove Holding",
+                                                                    `Are you sure you want to remove ${item.symbol} from your portfolio?`,
+                                                                    () => {
+                                                                        deletePortfolioItem(item.id)
+                                                                        toast.success("Holding removed")
+                                                                    },
+                                                                    "Remove",
+                                                                    true
+                                                                )
                                                             }}
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
@@ -2940,11 +3212,17 @@ export function PortfolioList() {
                                         variant="ghost"
                                         size="sm"
                                         className="h-8 font-bold text-red-500 hover:text-red-600 hover:bg-red-500/5"
-                                        onClick={async () => {
-                                            if (confirm("Are you sure you want to clear all transaction history for THIS portfolio? Holdings will also be wiped.")) {
-                                                await clearPortfolioHistory()
-                                                toast.success("Portfolio history cleared")
-                                            }
+                                        onClick={() => {
+                                            showConfirm(
+                                                "Clear Portfolio History",
+                                                "Are you sure you want to clear all transaction history for THIS portfolio? Holdings will also be wiped.",
+                                                async () => {
+                                                    await clearPortfolioHistory()
+                                                    toast.success("Portfolio history cleared")
+                                                },
+                                                "Clear",
+                                                true
+                                            )
                                         }}
                                         title="Clear History"
                                     >
@@ -3042,12 +3320,18 @@ export function PortfolioList() {
                                                         size="icon"
                                                         className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                                                         onClick={() => {
-                                                            if (confirm(`Delete transaction for ${tx.symbol}?`)) {
-                                                                deleteShareTransaction(tx.id).then((updated) => {
-                                                                    toast.success("Transaction deleted")
-                                                                    fetchPortfolioPrices(updated)
-                                                                })
-                                                            }
+                                                            showConfirm(
+                                                                "Delete Transaction",
+                                                                `Are you sure you want to delete this transaction for ${tx.symbol}?`,
+                                                                () => {
+                                                                    deleteShareTransaction(tx.id).then((updated) => {
+                                                                        toast.success("Transaction deleted")
+                                                                        fetchPortfolioPrices(updated)
+                                                                    })
+                                                                },
+                                                                "Delete",
+                                                                true
+                                                            )
                                                         }}
                                                     >
                                                         <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />

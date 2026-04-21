@@ -226,7 +226,7 @@ export function CategoriesManagement({
                   className="flex items-center gap-2"
                 >
                   <Trash2 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Delete Selected ({selectedCategories.size})</span>
+                  <span className="hidden sm:inline">Delete ({selectedCategories.size})</span>
                 </Button>
               )}
               <Button

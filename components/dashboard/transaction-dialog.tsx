@@ -614,20 +614,20 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             status: "normal",
           });
         } else if (formData.allocationType === "debt") {
-          // Handle debt repayment allocation
+          // Handle debt as payment source for expense (increase debt balance)
           const debtAccount = debtAccounts.find(d => d.id === formData.allocationTarget);
           if (debtAccount) {
-            // Make debt payment (reduce debt balance)
-            const paymentResult = await makeDebtPayment(debtAccount.id, numAmount);
-            if (!paymentResult.success) {
+            // Add debt charge (increase debt balance)
+            const chargeResult = await addDebtCharge(debtAccount.id, numAmount, formData.description.trim() || `Expense charged to debt: ${debtAccount.name}`, formData.category);
+            if (!chargeResult.success) {
               setIsSubmitting(false)
-              toast.error("Failed to allocate to debt", {
-                description: paymentResult.error || "Unable to process debt payment."
+              toast.error("Failed to charge to debt", {
+                description: chargeResult.error || "Unable to process debt charge."
               })
               playSound("transaction-failed")
               return
             }
-            transactionResult = paymentResult.transaction;
+            transactionResult = chargeResult.transaction;
           }
         } else if (formData.allocationType === "credit") {
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
@@ -1393,16 +1393,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     </div>
                   )}
                 </div>
-                {errors.amount ? (
-                  <p id="amount-error" className="text-sm text-red-600 flex items-center gap-1" role="alert">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.amount}
-                  </p>
-                ) : (
-                  <p id="amount-help" className="text-xs text-muted-foreground">
-                    Enter the transaction amount in {currencySymbol}
-                  </p>
-                )}
 
                 {/* Time Equivalent Display */}
                 {numAmount > 0 && timeEquivalentBreakdown && (

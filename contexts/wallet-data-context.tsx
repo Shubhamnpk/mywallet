@@ -43,7 +43,7 @@ type WalletDataContextType = {
     dueDate?: string
     grossAmount?: number
     dpsCharge?: number
-  }) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
+  }) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   enrollMultipleShareTransactionsInSipPlan: (
     enrollments: Array<{
       transactionId: string
@@ -52,7 +52,7 @@ type WalletDataContextType = {
       grossAmount?: number
       dpsCharge?: number
     }>
-  ) => Promise<{ updatedTransactions: ShareTransaction[], updatedPortfolio: PortfolioItem[] }>
+  ) => Promise<{ updatedTransactions: ShareTransaction[], updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   completeSipInstallment: (
     planId: string,
     options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }
@@ -89,6 +89,7 @@ type WalletDataContextType = {
   addPortfolioItem: (item: Omit<PortfolioItem, "id">) => Promise<PortfolioItem>
   updatePortfolioItem: (id: string, updates: Partial<PortfolioItem>) => Promise<void>
   deletePortfolioItem: (id: string) => Promise<void>
+  toggleZeroHolding: (itemId: string, keep: boolean) => Promise<void>
   addPortfolio: (name: string, description?: string, color?: string) => Promise<Portfolio>
   switchPortfolio: (id: string) => void
   deletePortfolio: (id: string) => Promise<void>
@@ -105,10 +106,10 @@ type WalletDataContextType = {
   ) => Promise<any>
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number
-  addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[] }>
+  addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>
   deleteMultipleShareTransactions: (ids: string[]) => Promise<PortfolioItem[] | undefined>
-  recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<PortfolioItem[]>
+  recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<{ newPortfolio: PortfolioItem[]; zeroUnitHoldings: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   importShareData: (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => Promise<PortfolioItem[] | undefined>
   refreshData: () => void
   clearAllData: () => void

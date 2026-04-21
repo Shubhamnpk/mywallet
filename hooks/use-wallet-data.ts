@@ -2958,6 +2958,19 @@ export function useWalletData() {
     await recomputePortfolio(updatedTransactions)
   }
 
+  const toggleZeroHolding = async (itemId: string, keep: boolean) => {
+    const item = portfolio.find((p) => p.id === itemId)
+    if (!item) return
+
+    // If keep is false, mark as explicitly removed (false)
+    // If keep is true, mark as kept (true)
+    const updatedPortfolio = portfolio.map((p) =>
+      p.id === itemId ? { ...p, isKeptZeroHolding: keep } : p
+    )
+    setPortfolio(updatedPortfolio)
+    await saveDataWithIntegrity("portfolio", updatedPortfolio)
+  }
+
   const addPortfolio = async (name: string, description?: string, color?: string) => {
     const newPortfolio: Portfolio = {
       id: generateId('port_list'),
@@ -3442,8 +3455,8 @@ export function useWalletData() {
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
-    return { newTx, updatedPortfolio }
+    const { newPortfolio: updatedPortfolio, zeroUnitHoldings } = await recomputePortfolio(updatedTransactions)
+    return { newTx, updatedPortfolio, zeroUnitHoldings }
   }
 
   const completeSipInstallment = async (
@@ -3605,7 +3618,7 @@ export function useWalletData() {
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+    const { newPortfolio: updatedPortfolio } = await recomputePortfolio(updatedTransactions)
 
     return { updatedTransaction, updatedPortfolio }
   }
@@ -3687,7 +3700,7 @@ export function useWalletData() {
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+    const { newPortfolio: updatedPortfolio } = await recomputePortfolio(updatedTransactions)
 
     return { updatedTransactions: orderedUpdatedTransactions, updatedPortfolio }
   }
@@ -3699,6 +3712,7 @@ export function useWalletData() {
   const recomputePortfolio = async (transactionsToUse?: ShareTransaction[]) => {
     const txs = transactionsToUse || shareTransactions
     const newPortfolio: PortfolioItem[] = []
+    const zeroUnitHoldings: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> = []
 
     // Group by portfolioId + (symbol, assetType, cryptoId)
     const groupedByPortfolio = txs.reduce((acc, tx) => {
@@ -3721,6 +3735,8 @@ export function useWalletData() {
         const symbol = refTx?.symbol || ""
         const assetType = normalizeAssetType(refTx?.assetType)
         const cryptoId = refTx?.cryptoId?.trim() || undefined
+        const key = getHoldingKey(pId, symbol, assetType, cryptoId)
+        const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
 
         sortedSymbolTxs.forEach((t) => {
           if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
@@ -3734,9 +3750,21 @@ export function useWalletData() {
           }
         })
 
-        if (totalUnits > 0) {
-          const key = getHoldingKey(pId, symbol, assetType, cryptoId)
-          const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
+        // Check if this holding has any transaction history
+        const hasHistory = sortedSymbolTxs.length > 0
+        const hasSellTx = sortedSymbolTxs.some(t => t.type === "sell")
+        const hasMergerOutTx = sortedSymbolTxs.some(t => t.type === "merger_out")
+        const hitZero = totalUnits <= 0 && (hasSellTx || hasMergerOutTx)
+
+        // Keep holding if:
+        // 1. Has units > 0 (active holding), OR
+        // 2. Has sell transaction (not merger_out) and hasn't been explicitly removed (isKeptZeroHolding !== false)
+        //    By default, keep zero holdings from sell unless user explicitly removed them
+        // 3. Merger_out holdings are NEVER kept - they are removed from portfolio
+        const shouldKeep = totalUnits > 0 || (hasSellTx && !hasMergerOutTx && existing?.isKeptZeroHolding !== false)
+
+        if (shouldKeep) {
+          const isZeroHolding = totalUnits <= 0 && hasSellTx && !hasMergerOutTx
           newPortfolio.push({
             id: existing?.id || generateId("port"),
             portfolioId: pId,
@@ -3744,19 +3772,26 @@ export function useWalletData() {
             assetType,
             cryptoId,
             units: totalUnits,
-            buyPrice: totalUnits > 0 ? totalCost / totalUnits : 0,
+            buyPrice: totalUnits > 0 ? totalCost / totalUnits : (existing?.buyPrice ?? 0),
             currentPrice: existing?.currentPrice,
             previousClose: existing?.previousClose,
             sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[normalizeStockSymbol(symbol)] || "Others")),
             lastUpdated: new Date().toISOString(),
+            isKeptZeroHolding: isZeroHolding ? true : undefined,
           })
+
+          // Track if this holding just became zero (transition from >0 to 0)
+          // Only show modal for NEW zero holdings from sell (not merger_out)
+          if (isZeroHolding && existing && existing.units > 0) {
+            zeroUnitHoldings.push({ symbol, assetType, cryptoId, portfolioId: pId })
+          }
         }
       }
     }
 
     setPortfolio(newPortfolio)
     await saveDataWithIntegrity("portfolio", newPortfolio)
-    return newPortfolio
+    return { newPortfolio, zeroUnitHoldings }
   }
 
   const deleteMultipleShareTransactions = async (ids: string[]) => {
@@ -3767,7 +3802,7 @@ export function useWalletData() {
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
     await recordDeletion(TOMBSTONE_KEYS.shareTransactions, ids)
 
-    const updatedPortfolio = await recomputePortfolio(updatedTransactions)
+    const { newPortfolio: updatedPortfolio } = await recomputePortfolio(updatedTransactions)
     return updatedPortfolio
   }
 
@@ -3934,7 +3969,8 @@ export function useWalletData() {
       const updatedTxs = [...otherPortfolioTxs, ...newTxs]
       setShareTransactions(updatedTxs)
       await saveDataWithIntegrity("shareTransactions", updatedTxs)
-      return await recomputePortfolio(updatedTxs)
+      const { newPortfolio } = await recomputePortfolio(updatedTxs)
+      return newPortfolio
     }
   }
 
@@ -4171,6 +4207,7 @@ export function useWalletData() {
     addPortfolioItem,
     updatePortfolioItem,
     deletePortfolioItem,
+    toggleZeroHolding,
     addPortfolio,
     switchPortfolio,
     deletePortfolio,

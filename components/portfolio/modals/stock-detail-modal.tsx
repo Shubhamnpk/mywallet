@@ -3,23 +3,7 @@
 import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {
-    Activity,
-    BarChart3,
-    TrendingDown,
-    TrendingUp,
-    Info,
-    Clock,
-    ExternalLink,
-    X,
-    ArrowUpRight,
-    ArrowDownLeft,
-    Gift,
-    PiggyBank,
-    CheckCircle2,
-    Wallet,
-    Trash2
-} from "lucide-react"
+import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { Button } from "@/components/ui/button"
@@ -154,6 +138,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
             (item.assetName || "").toLowerCase().includes("bitcoin"))
     )
     const currencySymbol = isCrypto ? "$" : "रु"
+    const isZeroHolding = (item?.units ?? 0) === 0 || item?.isKeptZeroHolding
     const safeBuyPrice = Number.isFinite(item?.buyPrice) ? (item?.buyPrice ?? 0) : 0
     const safeCurrent = Number.isFinite(item?.currentPrice) ? (item?.currentPrice ?? safeBuyPrice) : safeBuyPrice
     const current = safeCurrent
@@ -163,10 +148,25 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
     const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
-
+    const lastExitInfo = useMemo(() => {
+        if (!isZeroHolding || !item) return null
+        const relevantTxs = shareTransactions.filter(
+            (tx) =>
+                tx.portfolioId === item.portfolioId &&
+                normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
+                tx.assetType === (item.assetType || "stock") &&
+                (tx.cryptoId || "") === (item.cryptoId || "")
+        )
+        const exitTxs = relevantTxs
+            .filter((tx) => tx.type === "sell" || tx.type === "merger_out")
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        return exitTxs[0]
+    }, [isZeroHolding, item, shareTransactions])
+    const isSold = lastExitInfo?.type === "sell"
+    const isMerged = lastExitInfo?.type === "merger_out"
     const safePreviousClose = Number.isFinite(item?.previousClose) ? (item?.previousClose ?? safeCurrent) : safeCurrent
-    const dailyChange = Number.isFinite(item?.change) ? (item?.change ?? 0) : (safeCurrent - safePreviousClose)
-    const dailyChangePerc = Number.isFinite(item?.percentChange)
+    const dailyChange = !isZeroHolding && Number.isFinite(item?.change) ? (item?.change ?? 0) : (safeCurrent - safePreviousClose)
+    const dailyChangePerc = !isZeroHolding && Number.isFinite(item?.percentChange)
         ? (item?.percentChange ?? 0)
         : (safePreviousClose !== 0 ? (dailyChange / safePreviousClose) * 100 : 0)
     const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
@@ -174,14 +174,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const companyName = item
         ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol))
         : ""
-
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
         if (units === 0) return "0"
         if (Math.abs(units) < 1) return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
     }
-
     const formatValue = (amount: number) => {
         if (!Number.isFinite(amount)) return "0"
         if (amount === 0) return "0"
@@ -531,9 +529,15 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                             <div className="flex-1">
                                 <DialogTitle className="text-3xl font-black tracking-tight flex items-center flex-wrap gap-2">
                                     {item.symbol}
-                                    <Badge className="bg-muted text-muted-foreground text-[10px] font-black uppercase tracking-widest border-none">
-                                        {item.sector ?? "Others"}
-                                    </Badge>
+                                    {isZeroHolding ? (
+                                        <Badge className="bg-amber-500/10 text-amber-600 text-[10px] font-black uppercase tracking-widest border-amber-500/30">
+                                            SOLD
+                                        </Badge>
+                                    ) : (
+                                        <Badge className="bg-muted text-muted-foreground text-[10px] font-black uppercase tracking-widest border-none">
+                                            {item.sector ?? "Others"}
+                                        </Badge>
+                                    )}
                                 </DialogTitle>
                                 {companyName && (
                                     <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider mt-0.5 line-clamp-1 text-left">
@@ -541,7 +545,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                     </p>
                                 )}
                                 <DialogDescription className="text-sm font-medium mt-1 text-left">
-                                    {formatUnits(item.units)} Units Held in Portfolio
+                                    {isZeroHolding ? (
+                                        isSold && lastExitInfo ? (
+                                            <span className="text-amber-600/80">
+                                                Sold {lastExitInfo.quantity} units @ {currencySymbol}{lastExitInfo.price} on {new Date(lastExitInfo.date).toLocaleDateString()}
+                                            </span>
+                                        ) : isMerged && lastExitInfo ? (
+                                            <span className="text-purple-600/80">
+                                                Merged Out {lastExitInfo.quantity} units on {new Date(lastExitInfo.date).toLocaleDateString()}
+                                            </span>
+                                        ) : "Zero Units"
+                                    ) : (
+                                        `${formatUnits(item.units)} Units Held in Portfolio`
+                                    )}
                                 </DialogDescription>
                                 {!isCrypto && existingSipPlan && (
                                     <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary">
@@ -612,60 +628,171 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                     <TabsContent value="overview" className="m-0 space-y-6">
                                         {/* Performance Card */}
                                         <div className="grid grid-cols-2 gap-3">
-                                            <div className={cn(
-                                                "p-4 rounded-2xl border flex flex-col gap-2",
-                                                isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10"
-                                            )}>
-                                                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
-                                                    Position Summary
-                                                </div>
-                                                <div className="text-lg font-black font-mono">
-                                                    {currencySymbol} {formatValue(value)}
-                                                </div>
-                                                <div className={cn(
-                                                    "text-[10px] font-bold",
-                                                    isProfit ? "text-green-600" : "text-red-600"
-                                                )}>
-                                                    {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
-                                                </div>
-                                            </div>
-                                            <div className={cn(
-                                                "p-4 rounded-2xl border flex flex-col gap-2",
-                                                isDailyNeutral
-                                                    ? "bg-muted/20 border-muted/50"
-                                                    : isDailyProfit
-                                                        ? "bg-green-500/5 border-green-500/10"
-                                                        : "bg-red-500/5 border-red-500/10"
-                                            )}>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
-                                                    <span className={cn(
-                                                        "text-[10px] font-bold",
-                                                        isDailyNeutral
-                                                            ? "text-muted-foreground"
-                                                            : isDailyProfit
-                                                                ? "text-green-600"
-                                                                : "text-red-600"
-                                                    )}>
-                                                        {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    <div className={cn(
-                                                        "text-lg font-black font-mono",
-                                                        isDailyNeutral
-                                                            ? "text-muted-foreground"
-                                                            : isDailyProfit
-                                                                ? "text-green-600"
-                                                                : "text-red-600"
-                                                    )}>
-                                                        {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
+                                            {isZeroHolding ? (
+                                                isSold ? (
+                                                    <>
+                                                        <div className="p-4 rounded-2xl border flex flex-col gap-2 bg-amber-500/5 border-amber-500/10">
+                                                            <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                Last Sold Price
+                                                            </div>
+                                                            <div className="flex items-end justify-between">
+                                                                <div className="text-xl font-black font-mono text-amber-600">
+                                                                    {currencySymbol} {formatValue(lastExitInfo?.price ?? safeBuyPrice)}
+                                                                </div>
+                                                                <p className="text-[10px] text-muted-foreground font-medium">
+                                                                    per unit
+                                                                </p>
+                                                            </div>
+                                                            <div className="text-[10px] font-bold text-muted-foreground">
+                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${new Date(lastExitInfo.date).toLocaleDateString()}` : "Sold"}
+                                                            </div>
+                                                            {/* Total Amount */}
+                                                            <div className="border-t border-amber-500/20 pt-2 mt-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[9px] font-black uppercase tracking-widest text-amber-600">
+                                                                        Total Amount
+                                                                    </span>
+                                                                    <span className="text-lg font-black text-amber-600">
+                                                                        {currencySymbol} {lastExitInfo ? formatValue(lastExitInfo.price * lastExitInfo.quantity) : formatValue(0)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className={cn(
+                                                            "p-4 rounded-2xl border flex flex-col gap-2",
+                                                            current > (lastExitInfo?.price ?? 0)
+                                                                ? "bg-green-500/5 border-green-500/10"
+                                                                : current < (lastExitInfo?.price ?? 0)
+                                                                    ? "bg-red-500/5 border-red-500/10"
+                                                                    : "bg-muted/20 border-muted/50"
+                                                        )}>
+                                                            <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                Current vs Sold
+                                                            </div>
+                                                            <div className="flex items-end justify-between">
+                                                                <div className="text-xl font-black font-mono">
+                                                                    {currencySymbol} {formatValue(current)}
+                                                                </div>
+                                                                <p className="text-[10px] text-muted-foreground font-medium">
+                                                                    per unit
+                                                                </p>
+                                                            </div>
+                                                            <div className={cn(
+                                                                "text-[10px] font-bold",
+                                                                current > (lastExitInfo?.price ?? 0)
+                                                                    ? "text-green-600"
+                                                                    : current < (lastExitInfo?.price ?? 0)
+                                                                        ? "text-red-600"
+                                                                        : "text-muted-foreground"
+                                                            )}>
+                                                                {current > (lastExitInfo?.price ?? 0)
+                                                                    ? `+${((current - (lastExitInfo?.price ?? 0)) / (lastExitInfo?.price ?? 1) * 100).toFixed(2)}% since sold`
+                                                                    : current < (lastExitInfo?.price ?? 0)
+                                                                        ? `${((current - (lastExitInfo?.price ?? 0)) / (lastExitInfo?.price ?? 1) * 100).toFixed(2)}% since sold`
+                                                                        : "Same as sold price"}
+                                                            </div>
+                                                            {/* Total Current Value & Change */}
+                                                            <div className="border-t border-muted/30 pt-2 mt-1 space-y-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                        Total Change
+                                                                    </span>
+                                                                    <span className={cn(
+                                                                        "text-sm font-bold",
+                                                                        (current - (lastExitInfo?.price ?? 0)) * (lastExitInfo?.quantity ?? 0) > 0
+                                                                            ? "text-green-600"
+                                                                            : (current - (lastExitInfo?.price ?? 0)) * (lastExitInfo?.quantity ?? 0) < 0
+                                                                                ? "text-red-600"
+                                                                                : "text-muted-foreground"
+                                                                    )}>
+                                                                        {(current - (lastExitInfo?.price ?? 0)) * (lastExitInfo?.quantity ?? 0) > 0 ? "+" : ""}
+                                                                        {currencySymbol} {lastExitInfo ? formatValue((current - lastExitInfo.price) * lastExitInfo.quantity) : formatValue(0)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                ) : isMerged ? (
+                                                    <>
+                                                        <div className="p-4 rounded-2xl border flex flex-col gap-2 bg-purple-500/5 border-purple-500/10 col-span-2">
+                                                            <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                Merged Out
+                                                            </div>
+                                                            <div className="text-lg font-black font-mono text-purple-600">
+                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${new Date(lastExitInfo.date).toLocaleDateString()}` : "Merged"}
+                                                            </div>
+                                                            <div className="text-[10px] font-bold text-muted-foreground">
+                                                                This holding was merged out and is no longer active
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="p-4 rounded-2xl border flex flex-col gap-2 bg-muted/20 border-muted/50 col-span-2">
+                                                            <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                Zero Units
+                                                            </div>
+                                                            <div className="text-lg font-black font-mono text-muted-foreground">
+                                                                No holdings
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                )
+                                            ) : (
+                                                <>
+                                                    <div className={cn("p-4 rounded-2xl border flex flex-col gap-2", isProfit ? "bg-green-500/5 border-green-500/10" : "bg-red-500/5 border-red-500/10")}>
+                                                        <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                            Position Summary
+                                                        </div>
+                                                        <div className="text-lg font-black font-mono">
+                                                            {currencySymbol} {formatValue(value)}
+                                                        </div>
+                                                        <div className={cn(
+                                                            "text-[10px] font-bold",
+                                                            isProfit ? "text-green-600" : "text-red-600"
+                                                        )}>
+                                                            {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="text-[10px] font-bold text-muted-foreground">
-                                                    Per Unit: {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange)} ({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)
-                                                </div>
-                                            </div>
+                                                    <div className={cn(
+                                                        "p-4 rounded-2xl border flex flex-col gap-2",
+                                                        isDailyNeutral
+                                                            ? "bg-muted/20 border-muted/50"
+                                                            : isDailyProfit
+                                                                ? "bg-green-500/5 border-green-500/10"
+                                                                : "bg-red-500/5 border-red-500/10"
+                                                    )}>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Today Change</span>
+                                                            <span className={cn(
+                                                                "text-[10px] font-bold",
+                                                                isDailyNeutral
+                                                                    ? "text-muted-foreground"
+                                                                    : isDailyProfit
+                                                                        ? "text-green-600"
+                                                                        : "text-red-600"
+                                                            )}>
+                                                                {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <div className={cn(
+                                                                "text-lg font-black font-mono",
+                                                                isDailyNeutral
+                                                                    ? "text-muted-foreground"
+                                                                    : isDailyProfit
+                                                                        ? "text-green-600"
+                                                                        : "text-red-600"
+                                                            )}>
+                                                                {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-[10px] font-bold text-muted-foreground">
+                                                            Per Unit: {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange)} ({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Market Data */}
@@ -694,6 +821,51 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                     {(item.volume ?? 0).toLocaleString()}
                                                 </span>
                                             </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-2">
+                                            <Button
+                                                className="flex-1 rounded-xl font-bold shadow-lg shadow-primary/20"
+                                                onClick={() => {
+                                                    // Open stock transaction dialog with pre-filled data
+                                                    const event = new CustomEvent('openStockTransaction', {
+                                                        detail: {
+                                                            symbol: item?.symbol,
+                                                            assetType: item?.assetType || 'stock',
+                                                            cryptoId: item?.cryptoId || '',
+                                                            price: current,
+                                                            type: 'buy',
+                                                            portfolioId: item?.portfolioId
+                                                        }
+                                                    })
+                                                    window.dispatchEvent(event)
+                                                }}
+                                            >
+                                                <Wallet className="w-4 h-4 mr-2" />
+                                                Buy Stock
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 rounded-xl font-bold border-destructive/20 text-destructive hover:bg-destructive/10"
+                                                onClick={() => {
+                                                    // Open stock transaction dialog with pre-filled sell data
+                                                    const event = new CustomEvent('openStockTransaction', {
+                                                        detail: {
+                                                            symbol: item?.symbol,
+                                                            assetType: item?.assetType || 'stock',
+                                                            cryptoId: item?.cryptoId || '',
+                                                            price: current,
+                                                            type: 'sell',
+                                                            portfolioId: item?.portfolioId
+                                                        }
+                                                    })
+                                                    window.dispatchEvent(event)
+                                                }}
+                                            >
+                                                <ArrowUpRight className="w-4 h-4 mr-2" />
+                                                Sell Stock
+                                            </Button>
                                         </div>
 
                                         {/* Investment Details */}
