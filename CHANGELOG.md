@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.2...mywallet-v2.0.3) (2026-04-21)
+
+
+### Bug Fixes
+
+* treat debt allocations as charges in expense dialog ([cf2b81f](https://github.com/Shubhamnpk/mywallet/commit/cf2b81f5645ee9da8661336fe40f261418ca6cde))
+
 ## [2.0.2](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.1...mywallet-v2.0.2) (2026-04-19)
 
 
