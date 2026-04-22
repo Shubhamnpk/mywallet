@@ -127,6 +127,7 @@ export function PortfolioList() {
     }>({ open: false, title: "", description: "", onConfirm: null, confirmText: "Confirm" })
     const [showAllIPOs, setShowAllIPOs] = useState(false)
     const [ipoFilter, setIpoFilter] = useState<"all" | "open" | "upcoming" | "closed">("all")
+    const [showSoldStocks, setShowSoldStocks] = useState(false)
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
     const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
     const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
@@ -363,9 +364,10 @@ export function PortfolioList() {
             portfolio.filter(
                 (item) =>
                     item.portfolioId === activePortfolioId &&
-                    item.symbol.toLowerCase().includes(deferredSearchQuery.toLowerCase()),
+                    item.symbol.toLowerCase().includes(deferredSearchQuery.toLowerCase()) &&
+                    (showSoldStocks ? item.units <= 0 : item.units > 0),
             ),
-        [portfolio, activePortfolioId, deferredSearchQuery],
+        [portfolio, activePortfolioId, deferredSearchQuery, showSoldStocks],
     )
 
     const portfolioTransactions = useMemo(
@@ -734,14 +736,19 @@ export function PortfolioList() {
         [portfolio, activePortfolioId],
     )
 
+    const activePortfolioItemsForCalculations = useMemo(
+        () => activePortfolioItems.filter((item) => item.units > 0),
+        [activePortfolioItems],
+    )
+
     const { totalInvestment, currentValue, totalProfitLoss, totalProfitLossPercentage, todayChange, todayChangePercentage } = useMemo(() => {
-        const investment = activePortfolioItems.reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
-        const current = activePortfolioItems.reduce((sum, item) => {
+        const investment = activePortfolioItemsForCalculations.reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
+        const current = activePortfolioItemsForCalculations.reduce((sum, item) => {
             const price = isFiniteNumber(item.currentPrice) ? item.currentPrice : safeNumber(item.buyPrice)
             return sum + item.units * price
         }, 0)
         const profitLoss = current - investment
-        const today = activePortfolioItems.reduce((sum, item) => {
+        const today = activePortfolioItemsForCalculations.reduce((sum, item) => {
             if (!hasFreshDailyQuote(item)) return sum
             const currentPrice = isFiniteNumber(item.currentPrice) ? item.currentPrice : null
             const previousClose = isFiniteNumber(item.previousClose) ? item.previousClose : null
@@ -818,12 +825,12 @@ export function PortfolioList() {
             .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         return { sectorData: memoSectorData, scripData: memoScripData }
-    }, [activePortfolioItems, currentValue, chartMetric, safeNumber])
+    }, [activePortfolioItemsForCalculations, currentValue, chartMetric, safeNumber])
 
     const activeChartData = chartView === "sector" ? sectorData : scripData
 
     const portfolioMovers = useMemo(() => {
-        const rows = activePortfolioItems
+        const rows = activePortfolioItemsForCalculations
             .map((item) => {
                 if (!hasFreshDailyQuote(item)) return null
                 const symbol = normalizeStockSymbol(item.symbol)
@@ -877,7 +884,7 @@ export function PortfolioList() {
         const topLosersLoss = losers.reduce((sum, row) => sum + Math.abs(row.valueChange), 0)
 
         return { gainers, losers, noMovers, topMoversProfit, topLosersLoss }
-    }, [activePortfolioItems, scripNamesMap, safeNumber])
+    }, [activePortfolioItemsForCalculations, scripNamesMap, safeNumber])
     const hasMoverData = portfolioMovers.gainers.length > 0 || portfolioMovers.losers.length > 0
     const hasNoMoverData = portfolioMovers.noMovers.length > 0
 
@@ -2893,6 +2900,18 @@ export function PortfolioList() {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
+                        <Button
+                            variant={showSoldStocks ? "default" : "outline"}
+                            size="sm"
+                            className={cn(
+                                "h-10 px-3 rounded-xl font-bold transition-all",
+                                showSoldStocks ? "bg-primary/10 text-primary border-primary/20" : "border-muted/50"
+                            )}
+                            onClick={() => setShowSoldStocks(!showSoldStocks)}
+                        >
+                            {showSoldStocks ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+                            <span className="hidden sm:inline">Sold Stocks</span>
+                        </Button>
                         <div className="hidden sm:flex items-center bg-background/50 border border-muted/50 rounded-xl px-2 h-10 gap-1 shadow-inner">
                             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary bg-primary/10 shadow-sm border border-primary/10">
                                 <LayoutGrid className="w-4 h-4" />
@@ -3147,26 +3166,28 @@ export function PortfolioList() {
                                                             )}
                                                         </div>
 
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7 text-red-500/40 hover:text-red-600 hover:bg-red-500/5 rounded-full shrink-0"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                showConfirm(
-                                                                    "Remove Holding",
-                                                                    `Are you sure you want to remove ${item.symbol} from your portfolio?`,
-                                                                    () => {
-                                                                        deletePortfolioItem(item.id)
-                                                                        toast.success("Holding removed")
-                                                                    },
-                                                                    "Remove",
-                                                                    true
-                                                                )
-                                                            }}
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
+                                                        {!isZeroHolding && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-red-500/40 hover:text-red-600 hover:bg-red-500/5 rounded-full shrink-0"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    showConfirm(
+                                                                        "Remove Holding",
+                                                                        `Are you sure you want to remove ${item.symbol} from your portfolio?`,
+                                                                        () => {
+                                                                            deletePortfolioItem(item.id)
+                                                                            toast.success("Holding removed")
+                                                                        },
+                                                                        "Remove",
+                                                                        true
+                                                                    )
+                                                                }}
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
