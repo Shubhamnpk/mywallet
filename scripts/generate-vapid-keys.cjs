@@ -7,6 +7,7 @@
  *   VAPID_SUBJECT=mailto:your@email.com
  * Legacy alias still supported: VAPID_EMAIL
  */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const webpush = require("web-push")
 
 const keys = webpush.generateVAPIDKeys()

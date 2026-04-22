@@ -105,7 +105,7 @@ export interface Achievement {
   id: string
   title: string
   description: string
-  icon: any
+  icon: string
   color?: string
   unlocked: boolean
   unlockedAt?: Date | string
