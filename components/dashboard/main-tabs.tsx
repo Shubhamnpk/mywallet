@@ -32,7 +32,6 @@ interface MainTabsProps {
   onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">,) => Category
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
-  onUpdateCategoryStats?: () => void
   onAddTransaction: (transaction: Omit<Transaction, "id" | "createdAt">) => void | Promise<unknown>
   debtAccounts?: any[]
 }
@@ -106,7 +105,6 @@ export function MainTabs({
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
-  onUpdateCategoryStats,
   onAddTransaction,
   debtAccounts = [],
 }: MainTabsProps) {
@@ -376,7 +374,6 @@ export function MainTabs({
               onAddCategory={onAddCategory}
               onUpdateCategory={onUpdateCategory}
               onDeleteCategory={onDeleteCategory}
-              onUpdateCategoryStats={onUpdateCategoryStats}
             />
           </TabsContent>
 
