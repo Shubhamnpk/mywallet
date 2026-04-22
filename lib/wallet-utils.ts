@@ -1,7 +1,6 @@
 import type { UserProfile, Category, Transaction } from "@/types/wallet"
-import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, getCategoryColor, getCategoryIcon } from "./categories"
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./categories"
 import { getCurrencySymbol } from "./currency"
-import { generateId } from "./utils"
 
 /*Check if Time Wallet feature is enabled for a user. Time Wallet requires monthly earning, working hours per day, and working days per month to be set.*/
 export function isTimeWalletEnabled(profile?: UserProfile | null): boolean {
@@ -86,7 +85,6 @@ export function getTimeEquivalentBreakdown(amount: number, profile: UserProfile)
 
   // Calculate time units more accurately
   const totalMinutes = totalHours * 60
-  const totalSeconds = totalMinutes * 60
 
   // Use standard time conversions
   const years = Math.floor(totalHours / (profile.workingDaysPerMonth * profile.workingHoursPerDay * 12))
@@ -215,7 +213,7 @@ export async function restoreWalletBackup(backupJson: string, pin: string, overw
     for (const [k, v] of Object.entries(data)) {
       try {
         await saveToLocalStorage(k, v)
-      } catch (e) {
+      } catch (_e) {
         // Failed to restore key, continuing with other keys
       }
     }

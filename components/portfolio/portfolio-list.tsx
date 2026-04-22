@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, Calendar, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"

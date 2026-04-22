@@ -1355,7 +1355,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                 <Button
                                     className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
                                     onClick={() => {
-                                        const current = Number.isFinite(item?.currentPrice) ? item?.currentPrice! : safeBuyPrice
+                                        const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
                                         const event = new CustomEvent('openStockTransaction', {
                                             detail: {
                                                 symbol: item?.symbol,
@@ -1377,7 +1377,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                         variant="outline"
                                         className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10"
                                         onClick={() => {
-                                            const current = Number.isFinite(item?.currentPrice) ? item?.currentPrice! : safeBuyPrice
+                                            const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
                                             const event = new CustomEvent('openStockTransaction', {
                                                 detail: {
                                                     symbol: item?.symbol,

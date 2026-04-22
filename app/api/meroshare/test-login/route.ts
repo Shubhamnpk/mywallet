@@ -63,7 +63,7 @@ export async function POST(req: Request) {
                         error: errorMsg || "Login failed. Check your DP ID, username, or password.",
                     }, { status: 401 });
                 }
-            } catch (navError) {
+            } catch (_navError) {
                 await browser.close();
                 return NextResponse.json({
                     success: false,

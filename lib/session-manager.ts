@@ -110,7 +110,7 @@ export class SessionManager {
       const parsedData = JSON.parse(decodedData)
 
       return parsedData
-    } catch (error) {
+    } catch (_error) {
       return null
     }
   }

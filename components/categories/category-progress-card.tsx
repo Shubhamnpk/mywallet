@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3, Trash2, Edit, ChevronDown, Eye, EyeOff } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
+import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import type { Category, UserProfile } from "@/types/wallet"
 import { cn } from "@/lib/utils"
 interface CategoryProgressCardProps {
@@ -47,7 +48,6 @@ export function CategoryProgressCard({
   const [isOpen, setIsOpen] = useState(false)
 
   // Calculate time equivalent
-  const { getTimeEquivalentBreakdown } = require("@/lib/wallet-utils")
   const timeBreakdown = getTimeEquivalentBreakdown(category.totalSpent, userProfile)
   const timeEquivalent = timeBreakdown ? timeBreakdown.formatted.userFriendly : "0m"
 

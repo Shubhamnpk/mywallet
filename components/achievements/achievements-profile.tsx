@@ -250,7 +250,6 @@ export function AchievementsProfile({
 }: AchievementsProfileProps) {
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null)
   const [filter, setFilter] = useState("all")
-  const isMobile = useIsMobile()
 
   const categories = Array.from(new Set(achievements.map(a => a.category)))
 

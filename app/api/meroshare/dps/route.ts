@@ -18,7 +18,7 @@ export async function GET() {
             }));
             return NextResponse.json(formattedDps);
         }
-    } catch (error) {
+    } catch (_error) {
         console.warn('Failed to fetch live DPs, falling back to local file');
     }
 
@@ -29,7 +29,7 @@ export async function GET() {
             const fileData = fs.readFileSync(filePath, 'utf8');
             return NextResponse.json(JSON.parse(fileData));
         }
-    } catch (error) {
+    } catch (_error) {
         console.error('Failed to read dps.json');
     }
 

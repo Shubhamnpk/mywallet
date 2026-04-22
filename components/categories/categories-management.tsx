@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, BarChart3, FolderOpen, Search, Filter, Calendar, Target, Trash2 } from "lucide-react"
+import { Plus, BarChart3, FolderOpen, Search, Filter, Target, Trash2 } from "lucide-react"
 import { getCurrencySymbol } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
 import { CreateCategoryModal } from "./create-category-modal"
@@ -19,7 +19,6 @@ interface CategoriesManagementProps {
   onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => Category
   onUpdateCategory?: (id: string, updates: Partial<Category>) => void
   onDeleteCategory?: (id: string) => void
-  onUpdateCategoryStats?: () => void
 }
 
 export function CategoriesManagement({
@@ -29,7 +28,6 @@ export function CategoriesManagement({
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
-  onUpdateCategoryStats,
 }: CategoriesManagementProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<"all" | "income" | "expense">("all")
@@ -47,7 +45,6 @@ export function CategoriesManagement({
   const categoryStats = useMemo(() => {
     const now = new Date()
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
     return categories.map((category) => {
       const categoryTransactions = transactions.filter((t) => t.category === category.name)
