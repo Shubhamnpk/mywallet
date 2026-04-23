@@ -2034,9 +2034,12 @@ export function useWalletData() {
     const hasChanges = syncedGoals.some((goal, index) => goal !== goals[index])
     if (!hasChanges) return
 
-    setGoals(syncedGoals)
+    // Use setTimeout to avoid calling setState synchronously in effect
+    setTimeout(() => {
+      setGoals(syncedGoals)
+    }, 0)
     void saveDataWithIntegrity("goals", syncedGoals)
-  }, [goals])
+  }, [goals, saveDataWithIntegrity])
 
   const useGoalForInvestment = async (
     goalId: string,
@@ -2742,7 +2745,7 @@ export function useWalletData() {
       }
 
       return true
-    } catch (error) {
+    } catch (_error) {
       return false
     }
   }

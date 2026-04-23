@@ -371,6 +371,6 @@ export class SecurityTestSuite {
 
 // Export for use in other files
 export async function runSecurityTests(): Promise<string> {
-  const { results, summary } = await SecurityTestSuite.runAllTests()
+  const { results: _results, summary: _summary } = await SecurityTestSuite.runAllTests()
   return SecurityTestSuite.generateTestReport()
 }

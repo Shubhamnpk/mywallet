@@ -41,7 +41,6 @@ export default function BalanceCard({
   absoluteBalance,
   isPositive,
   timeEquivalentBreakdown,
-  emergencyFund,
   formatCurrency,
   getThemeBasedBackground,
   isMobile = false
@@ -54,7 +53,6 @@ export default function BalanceCard({
   const timeEquivalentGap = isMobile ? "gap-1" : "gap-2"
   const timeEquivalentIconSize = isMobile ? "w-6 h-6" : "w-8 h-8"
   const timeEquivalentClockSize = isMobile ? "w-3 h-3" : "w-4 h-4"
-  const emergencyMargin = isMobile ? "mt-1" : "mt-2"
 
   return (
     <Card className="relative overflow-hidden border-0 shadow-lg h-full md:min-h-[170px]">

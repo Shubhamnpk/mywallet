@@ -24,16 +24,7 @@ export function CombinedBalanceCard() {
   const [showBalance, setShowBalance] = useState(true)
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [incomeExpenseRange, setIncomeExpenseRange] = useState<"monthly" | "all-time">("monthly")
-  const isMobile = useIsMobile()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Scroll state management
-  const scrollStateRef = useRef({
-    scrollTimeout: null as NodeJS.Timeout | null,
-    lastScrollLeft: 0,
-    scrollVelocity: 0,
-    lastScrollTime: Date.now()
-  })
 
   // Optimize calculations with useMemo and better logic
   const { monthlyIncome, monthlyExpenses, allTimeIncome, allTimeExpenses } = useMemo(() => {

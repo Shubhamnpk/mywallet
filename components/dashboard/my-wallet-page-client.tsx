@@ -49,7 +49,6 @@ export function MyWalletPageClient() {
           onAddCategory={walletData.addCategory}
           onUpdateCategory={walletData.updateCategory}
           onDeleteCategory={walletData.deleteCategory}
-          onUpdateCategoryStats={walletData.updateCategoryStats}
           onAddTransaction={walletData.addTransaction}
         />
       </div>

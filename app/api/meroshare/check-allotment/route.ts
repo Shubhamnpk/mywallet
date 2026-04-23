@@ -57,7 +57,7 @@ export async function POST(req: Request) {
                     const hasAuthError = document.body.textContent?.includes('Attempts remaining');
                     return isDashboard || hasError || hasAuthError;
                 }, { timeout: 30000 });
-            } catch (waitError) {
+            } catch (_waitError) {
                 // Timeout handled below
             }
 
@@ -251,7 +251,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: innerError.message || "An error occurred during allotment check." }, { status: 500 });
         }
 
-    } catch (error: any) {
+    } catch (_error: any) {
         return NextResponse.json({ error: "Invalid request data" }, { status: 400 });
     }
 }

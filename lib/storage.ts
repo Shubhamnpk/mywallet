@@ -59,7 +59,7 @@ export async function loadFromLocalStorage(keys: string[]) {
       } else {
         try {
           result[key] = JSON.parse(value)
-        } catch (jsonError) {
+        } catch (_jsonError) {
           // fallback to raw string for simple values
           result[key] = value
         }
@@ -116,7 +116,7 @@ export function saveDataWithIntegrity(allData: any) {
   try {
     DataIntegrityManager.updateIntegrityRecord(allData)
     return true
-  } catch (e) {
+  } catch (_e) {
     return false
   }
 }
@@ -132,7 +132,7 @@ export async function saveSecureBatch(dataMap: Record<string, any>, encryptKeys:
     // Update integrity record
     const allData = await loadFromLocalStorage(Object.keys(dataMap))
     return saveDataWithIntegrity(allData)
-  } catch (error) {
+  } catch (_error) {
     return false
   }
 }

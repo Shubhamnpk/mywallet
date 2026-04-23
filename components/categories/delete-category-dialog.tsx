@@ -28,7 +28,6 @@ export function DeleteCategoryDialog({
   // Check if category is being used
   const categoryTransactions = transactions.filter(t => t.category === category.name)
   const isInUse = categoryTransactions.length > 0
-  const isDefault = category.isDefault
 
   const handleDelete = async () => {
     setIsDeleting(true)

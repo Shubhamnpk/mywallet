@@ -822,52 +822,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                 </span>
                                             </div>
                                         </div>
-
-                                        {/* Action Buttons */}
-                                        <div className="flex gap-2">
-                                            <Button
-                                                className="flex-1 rounded-xl font-bold shadow-lg shadow-primary/20"
-                                                onClick={() => {
-                                                    // Open stock transaction dialog with pre-filled data
-                                                    const event = new CustomEvent('openStockTransaction', {
-                                                        detail: {
-                                                            symbol: item?.symbol,
-                                                            assetType: item?.assetType || 'stock',
-                                                            cryptoId: item?.cryptoId || '',
-                                                            price: current,
-                                                            type: 'buy',
-                                                            portfolioId: item?.portfolioId
-                                                        }
-                                                    })
-                                                    window.dispatchEvent(event)
-                                                }}
-                                            >
-                                                <Wallet className="w-4 h-4 mr-2" />
-                                                Buy Stock
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                className="flex-1 rounded-xl font-bold border-destructive/20 text-destructive hover:bg-destructive/10"
-                                                onClick={() => {
-                                                    // Open stock transaction dialog with pre-filled sell data
-                                                    const event = new CustomEvent('openStockTransaction', {
-                                                        detail: {
-                                                            symbol: item?.symbol,
-                                                            assetType: item?.assetType || 'stock',
-                                                            cryptoId: item?.cryptoId || '',
-                                                            price: current,
-                                                            type: 'sell',
-                                                            portfolioId: item?.portfolioId
-                                                        }
-                                                    })
-                                                    window.dispatchEvent(event)
-                                                }}
-                                            >
-                                                <ArrowUpRight className="w-4 h-4 mr-2" />
-                                                Sell Stock
-                                            </Button>
-                                        </div>
-
                                         {/* Investment Details */}
                                         {!isCrypto && (
                                             <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
@@ -1397,12 +1351,51 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                     View Analysis
                                 </Button>
                             )}
-                            <Button
-                                className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
-                                onClick={() => onOpenChange(false)}
-                            >
-                                Close Details
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
+                                    onClick={() => {
+                                        const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
+                                        const event = new CustomEvent('openStockTransaction', {
+                                            detail: {
+                                                symbol: item?.symbol,
+                                                assetType: item?.assetType || 'stock',
+                                                cryptoId: item?.cryptoId || '',
+                                                price: current,
+                                                type: 'buy',
+                                                portfolioId: item?.portfolioId
+                                            }
+                                        })
+                                        window.dispatchEvent(event)
+                                    }}
+                                >
+                                    <Wallet className="w-3.5 h-3.5 mr-2" />
+                                    Buy
+                                </Button>
+                                {!isZeroHolding && (
+                                    <Button
+                                        variant="outline"
+                                        className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10"
+                                        onClick={() => {
+                                            const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
+                                            const event = new CustomEvent('openStockTransaction', {
+                                                detail: {
+                                                    symbol: item?.symbol,
+                                                    assetType: item?.assetType || 'stock',
+                                                    cryptoId: item?.cryptoId || '',
+                                                    price: current,
+                                                    type: 'sell',
+                                                    portfolioId: item?.portfolioId
+                                                }
+                                            })
+                                            window.dispatchEvent(event)
+                                        }}
+                                    >
+                                        <ArrowUpRight className="w-3.5 h-3.5 mr-2" />
+                                        Sell
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </Tabs>
                     </DialogContent>

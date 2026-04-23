@@ -100,8 +100,11 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ("focus" in client) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (client as any).postMessage({ type: "NOTIFICATION_CLICKED", url: targetUrl })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if ((client as any).url === targetUrl) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return (client as any).focus()
           }
         }

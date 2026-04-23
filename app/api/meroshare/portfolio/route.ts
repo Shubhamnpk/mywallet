@@ -46,7 +46,7 @@ export async function POST(req: Request) {
             // 3. Wait for Portfolio Table
             try {
                 await page.waitForSelector('table', { timeout: 20000 });
-            } catch (err) {
+            } catch (_err) {
                 await browser.close();
                 return NextResponse.json({ error: "Portfolio table not found or timed out." }, { status: 504 });
             }
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: innerError.message || "An error occurred during portfolio sync." }, { status: 500 });
         }
 
-    } catch (error: any) {
+    } catch (_error: any) {
         return NextResponse.json({ error: "Invalid request data" }, { status: 400 });
     }
 }

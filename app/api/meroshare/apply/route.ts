@@ -94,7 +94,7 @@ export async function POST(req: Request) {
                     const hasAuthError = document.body.textContent?.includes('Attempts remaining');
                     return isDashboard || hasError || hasAuthError;
                 }, { timeout: 30000 });
-            } catch (waitError) {
+            } catch (_waitError) {
                 // Timeout logic handled below
             }
 
@@ -142,7 +142,7 @@ export async function POST(req: Request) {
                     await page.waitForSelector('.asba-table, .company-list, app-no-records-found', { timeout: 10000 });
                     await new Promise(resolve => setTimeout(resolve, 1000)); // Minimal wait
                 }
-            } catch (err) {
+            } catch (_err) {
                 await browser.close();
                 return NextResponse.json({ error: "ASBA page failed to load correctly." }, { status: 504 });
             }
@@ -279,7 +279,7 @@ export async function POST(req: Request) {
                         alreadyApplied: true,
                         quantity: appliedQty
                     });
-                } catch (err) {
+                } catch (_err) {
                     await browser.close();
                     // If we timeout waiting for value, it might be 0 or failed to load
                     return NextResponse.json({ error: "Found existing application but could not read applied quantity." }, { status: 500 });
@@ -344,7 +344,7 @@ export async function POST(req: Request) {
                     await page.select('#accountNumber', accountValue);
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
-            } catch (err) {
+            } catch (_err) {
                 // Account number selection skipped or not required
             }
 
@@ -393,7 +393,7 @@ export async function POST(req: Request) {
                 } else {
                     return NextResponse.json({ error: errorMsg || "Application failed at the final step." }, { status: 400 });
                 }
-            } catch (waitError) {
+            } catch (_waitError) {
                 await browser.close();
                 return NextResponse.json({
                     error: "Application submitted but success message not confirmed. Please check your Mero Share 'Application Report'."
@@ -405,7 +405,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: innerError.message || "An error occurred during automation." }, { status: 500 });
         }
 
-    } catch (error: any) {
+    } catch (_error: any) {
         return NextResponse.json({ error: "Invalid request data" }, { status: 400 });
     }
 }

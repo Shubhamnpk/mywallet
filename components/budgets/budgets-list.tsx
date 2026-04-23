@@ -56,11 +56,6 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set())
 
-  // Get currency symbol
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
-
   const getPeriodStart = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all") => {
     const now = new Date()
     let start: Date
@@ -340,7 +335,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
       ) : (
         <div className="grid gap-4">
           {filteredAndSortedBudgets.map((budget) => {
-            const { status, color, icon: StatusIcon } = getBudgetStatus(budget)
+            const { status, icon: StatusIcon } = getBudgetStatus(budget)
             const currentSpent = getCurrentPeriodSpent(budget)
             const percentage = Math.min((currentSpent / budget.limit) * 100, 100)
             const rawRemaining = budget.limit - currentSpent

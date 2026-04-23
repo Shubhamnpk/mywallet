@@ -9,7 +9,6 @@ import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
 import { SessionGuard } from "@/components/security/session-guard"
 import { DeveloperMenu } from "@/components/security/developer-menu"
 import RegisterSW from '@/components/pwa/register-sw'
-import InstallButton from '@/components/pwa/install-button'
 import UpdateNotification from '@/components/pwa/update-notification'
 import UpdateSuccess from '@/components/pwa/update-success'
 import { Toaster } from "@/components/ui/sonner"
