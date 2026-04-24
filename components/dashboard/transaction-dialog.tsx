@@ -649,6 +649,23 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               status: "normal",
             });
           }
+        } else if (isExpensePaymentSource && formData.allocationType === "goal") {
+          // Handle goal as payment source (deduct from goal)
+          const spendResult = await spendFromGoal(
+            formData.allocationTarget,
+            numAmount,
+            formData.description.trim() || formData.category,
+            formData.category
+          )
+          if (!spendResult.success) {
+            setIsSubmitting(false)
+            toast.error("Failed to spend from goal", {
+              description: spendResult.error || "Unable to process goal payment."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = spendResult.transaction
         } else {
           // Handle direct or goal allocation
           const goalLabel = formData.allocationType === "goal" ? getGoalLabel(formData.allocationTarget) : null

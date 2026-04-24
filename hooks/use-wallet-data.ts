@@ -2467,6 +2467,7 @@ export function useWalletData() {
       }
     }
     setUserProfile(null)
+    userProfileRef.current = null
     setTransactions([])
     setBudgets([])
     setGoals([])
@@ -2477,10 +2478,25 @@ export function useWalletData() {
     setEmergencyFund(0)
     setPortfolio([])
     setShareTransactions([])
+    shareTransactionsRef.current = []
+    setPortfolios([])
+    setActivePortfolioId(null)
+    setSectorsMap({})
+    setScripNamesMap({})
+    setUpcomingIPOs([])
+    setTopStocks(null)
+    setMarketSummary([])
+    setMarketSummaryHistory([])
+    setMarketStatus(null)
+    setNoticesBundle(null)
+    setDisclosures([])
+    setExchangeMessages([])
     setBalance(0)
+    setBalanceChange(null)
     setIsAuthenticated(false)
     setShowOnboarding(true)
     setIsFirstTime(true)
+    setIsLoaded(false)
   }
 
   const exportData = () => {
@@ -2819,7 +2835,7 @@ export function useWalletData() {
       id: generateId('tx'),
       type: "expense",
       amount: amount,
-      description: `Spent from goal: ${goal.title || goal.name || "Goal"} - ${description}`,
+      description: `${goal.title || goal.name || "Goal"}: ${description}`,
       category: category || "Goal Spending",
       date: new Date().toISOString(),
       allocationType: "goal",

@@ -2111,7 +2111,7 @@ export function PortfolioList() {
                                             <Badge className="bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest mb-1.5 px-2">
                                                 {statusSummaryLabel}
                                             </Badge>
-                                            <CardTitle className="text-lg font-black flex items-center gap-2">Upcoming IPOs & Rights</CardTitle>
+                                            <CardTitle className="text-lg font-black flex items-center gap-2"> IPOs & Rights</CardTitle>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Select

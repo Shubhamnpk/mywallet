@@ -822,6 +822,16 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                 </span>
                                             </div>
                                         </div>
+                                        {!isCrypto && (
+                                            <Button
+                                                variant="outline"
+                                                className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                                onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
+                                            >
+                                                <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                                View Analysis on MeroLagani
+                                            </Button>
+                                        )}
                                         {/* Investment Details */}
                                         {!isCrypto && (
                                             <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
@@ -1310,18 +1320,25 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                                 <div className="space-y-2">
                                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Documents</p>
                                                                     <div className="flex flex-col gap-2">
-                                                                        {getNoticeDocuments(notice).map((doc, index) => (
-                                                                            <Button
-                                                                                key={`${doc.url}-${index}`}
-                                                                                variant="outline"
-                                                                                size="sm"
-                                                                                className="justify-start text-xs"
-                                                                                onClick={() => handleOpenDocument(doc.url)}
-                                                                            >
-                                                                                <ExternalLink className="w-3 h-3 mr-2" />
-                                                                                {doc.label}
-                                                                            </Button>
-                                                                        ))}
+                                                                        {getNoticeDocuments(notice).map((doc, index) => {
+                                                                            const decodedLabel = decodeURIComponent(doc.label)
+                                                                            const truncatedLabel = decodedLabel.length > 50 
+                                                                                ? decodedLabel.substring(0, 50) + '...' 
+                                                                                : decodedLabel
+                                                                            return (
+                                                                                <Button
+                                                                                    key={`${doc.url}-${index}`}
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="justify-start text-xs"
+                                                                                    title={decodedLabel}
+                                                                                    onClick={() => handleOpenDocument(doc.url)}
+                                                                                >
+                                                                                    <ExternalLink className="w-3 h-3 mr-2" />
+                                                                                    {truncatedLabel}
+                                                                                </Button>
+                                                                            )
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -1337,20 +1354,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                             </ScrollArea>
                         </div>
 
-                        <div className={cn(
-                            "p-6 pt-2 grid gap-3 border-t border-muted/20",
-                            !isCrypto ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-                        )}>
-                            {!isCrypto && (
-                                <Button
-                                    variant="outline"
-                                    className="rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
-                                    onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
-                                >
-                                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                    View Analysis
-                                </Button>
-                            )}
+                        <div className="p-6 pt-2">
                             <div className="flex gap-2">
                                 <Button
                                     className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"

@@ -1,9 +1,9 @@
 "use client"
 
 import { UpcomingIPO } from "@/types/wallet"
-import {Dialog,DialogContent,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {Calendar,Clock,ExternalLink,X,Activity,LayoutGrid,Sparkles,CreditCard,ArrowRight,CheckCircle2,AlertCircle,BellRing,History} from "lucide-react"
+import { Calendar, Clock, ExternalLink, X, Activity, LayoutGrid, Sparkles, CreditCard, ArrowRight, CheckCircle2, AlertCircle, BellRing, History } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Pencil } from "lucide-react"
+import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Pencil, ChevronDown } from "lucide-react"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -161,19 +162,17 @@ export function TransactionDetailsModal({
                 <p className={`text-2xl font-bold ${transaction.type === "income" ? "text-primary" : "text-red-600"}`}>
                   {transaction.type === "income" ? "+" : "-"}
                   {formatCurrency(
-                    transaction.status === "debt" || transaction.status === "repayment"
-                      ? (transaction.total ?? transaction.amount)
-                      : (transaction.actual ?? transaction.amount),
+                    transaction.amount,
                     userProfile.currency,
                     userProfile.customCurrency,
                   )}
                 </p>
 
-                {transaction.type === "expense" && (
-                  <TimeTooltip amount={transaction.actual ?? transaction.amount}>
+                {transaction.type === "expense" && userProfile.hourlyRate > 0 && (
+                  <TimeTooltip amount={transaction.amount}>
                     <div className="flex items-center justify-center gap-1 mt-2 text-sm font-medium text-amber-600 dark:text-amber-400">
                       <Clock className="w-4 h-4" />
-                      <span>{getTimeEquivalentDisplay(transaction.actual ?? transaction.amount)} of work</span>
+                      <span>{getTimeEquivalentDisplay(transaction.amount)} of work</span>
                     </div>
                   </TimeTooltip>
                 )}
@@ -213,52 +212,78 @@ export function TransactionDetailsModal({
                   </div>
                 </div>
 
-                {(transaction.status === "debt" ||
+                {/* Payment Source Breakdown - shows for debt or goal transactions where actual < amount */}
+                {((transaction.status === "debt" ||
                   (transaction.debtUsed ?? 0) > 0 ||
-                  Boolean(transaction.debtAccountId)) && (
-                  <div className="flex items-center gap-3">
-                    <Badge
-                      variant="outline"
-                      className="border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400"
-                    >
-                      Debt Transaction
-                    </Badge>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Payment Breakdown</p>
-                      <div className="text-sm space-y-1">
-                        <div>
-                          <span className="font-medium">
-                            Total:{" "}
-                            {formatCurrency(
-                              transaction.total ?? transaction.amount,
-                              userProfile.currency,
-                              userProfile.customCurrency,
-                            )}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="font-medium">
-                            Cash:{" "}
-                            {formatCurrency(
-                              transaction.actual ?? transaction.amount,
-                              userProfile.currency,
-                              userProfile.customCurrency,
-                            )}
-                          </span>
-                        </div>
-                        {(transaction.debtUsed ?? 0) > 0 && (
-                          <div className="text-orange-600 dark:text-orange-400">
-                            Debt:{" "}
-                            {formatCurrency(
-                              transaction.debtUsed ?? 0,
-                              userProfile.currency,
-                              userProfile.customCurrency,
-                            )}
-                          </div>
-                        )}
-                      </div>
+                  Boolean(transaction.debtAccountId)) ||
+                  (transaction.allocationType === "goal" && (transaction.actual ?? 0) < transaction.amount)) && (
+                  <Collapsible defaultOpen={false}>
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant="outline"
+                        className={transaction.allocationType === "goal"
+                          ? "border-primary text-primary"
+                          : "border-orange-300 text-orange-700 dark:border-orange-600 dark:text-orange-400"}
+                      >
+                        {transaction.allocationType === "goal" ? "Goal Payment" : "Debt Transaction"}
+                      </Badge>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs font-medium">
+                          View Breakdown
+                          <ChevronDown className="w-3 h-3 ml-1" />
+                        </Button>
+                      </CollapsibleTrigger>
                     </div>
-                  </div>
+                    <CollapsibleContent>
+                      <div className="mt-2 pl-11">
+                        <p className="text-sm text-muted-foreground mb-1">Payment Breakdown</p>
+                        <div className="text-sm space-y-1">
+                          <div>
+                            <span className="font-medium">
+                              Total:{" "}
+                              {formatCurrency(
+                                transaction.total ?? transaction.amount,
+                                userProfile.currency,
+                                userProfile.customCurrency,
+                              )}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-medium">
+                              Cash:{" "}
+                              {formatCurrency(
+                                transaction.actual ?? 0,
+                                userProfile.currency,
+                                userProfile.customCurrency,
+                              )}
+                            </span>
+                          </div>
+                          {/* Goal amount breakdown */}
+                          {transaction.allocationType === "goal" && (
+                            <div className="text-primary">
+                              Goal:{" "}
+                              {formatCurrency(
+                                transaction.amount - (transaction.actual ?? 0),
+                                userProfile.currency,
+                                userProfile.customCurrency,
+                              )}
+                            </div>
+                          )}
+                          {/* Debt amount breakdown */}
+                          {(transaction.debtUsed ?? 0) > 0 && (
+                            <div className="text-orange-600 dark:text-orange-400">
+                              Debt:{" "}
+                              {formatCurrency(
+                                transaction.debtUsed ?? 0,
+                                userProfile.currency,
+                                userProfile.customCurrency,
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 )}
 
                 {transaction.status === "repayment" && (
