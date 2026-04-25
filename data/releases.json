@@ -1,10 +1,83 @@
 {
-  "currentBuild": "2026.03.14",
+  "currentBuild": "2026.04.25",
   "releases": [
+    {
+      "version": "2.0.3",
+      "date": "2026-04-25",
+      "status": "current",
+      "category": "Bugfix",
+      "title": "Bug Fixes & Data Deletion Enhancement",
+      "highlights": [
+        "Fixed transaction details display for goal-funded expenses with collapsible payment breakdown.",
+        "Enhanced 'Delete All Data' to properly clear all state including portfolios, market data, and refs.",
+        "Fixed goal payment source bug - goal funds now correctly deduct instead of contribute.",
+        "Improved stock news document titles with character limits and URL decoding.",
+        "Added conditional work time estimation display based on user settings."
+      ]
+    },
+    {
+      "version": "2.0.2",
+      "date": "2026-04-20",
+      "status": "stable",
+      "category": "Improvement",
+      "title": "Transaction System Refinements",
+      "highlights": [
+        "Improved spendFromGoal function for accurate goal-funded transaction tracking.",
+        "Enhanced transaction dialog with better payment method handling.",
+        "Fixed amount display in transaction details for non-cash payments.",
+        "General stability and TypeScript improvements."
+      ]
+    },
+    {
+      "version": "2.0.1",
+      "date": "2026-04-15",
+      "status": "stable",
+      "category": "Feature",
+      "title": "Major Feature Release - NEPSE Integration & Portfolio",
+      "highlights": [
+        "Complete NEPSE integration with real-time stock market data.",
+        "Portfolio management with multiple portfolio support.",
+        "SIP plan automation and tracking.",
+        "MeroShare automation for IPO applications.",
+        "Stock detail modal with market analysis integration.",
+        "Enhanced security with encryption and session management.",
+        "PWA improvements with offline support and push notifications."
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-04-01",
+      "status": "stable",
+      "category": "Major",
+      "title": "MyWallet v2.0 - Complete Architecture Overhaul",
+      "highlights": [
+        "Migrated to Next.js 16 with App Router.",
+        "Complete TypeScript strict mode implementation.",
+        "New component architecture with Radix UI primitives.",
+        "Enhanced data integrity with validation layers.",
+        "Improved state management with useWalletData hook.",
+        "New dashboard design with better UX flow."
+      ]
+    },
+    {
+      "version": "1.3.5",
+      "date": "2026-03-28",
+      "status": "stable",
+      "category": "Feature",
+      "title": "Goal & Debt Management Update",
+      "highlights": [
+        "Added goal contribution tracking with visual progress.",
+        "Debt account management with payment scheduling.",
+        "Credit account tracking for credit cards.",
+        "Emergency fund tracking with quick actions.",
+        "Improved category statistics and breakdowns."
+      ]
+    },
     {
       "version": "1.3.4",
       "date": "2026-03-14",
-      "status": "current",
+      "status": "stable",
+      "category": "Improvement",
       "title": "Comprehensive Wealth Flow & Accurate Expense Tracking",
       "highlights": [
         "Updated Balance Card to calculate expenses using total transaction amounts, including debt-funded purchases, for a more accurate financial overview.",
@@ -17,6 +90,7 @@
       "version": "1.3.3",
       "date": "2026-02-13",
       "status": "stable",
+      "category": "UX",
       "title": "Major UX, Scanner, and PWA Update",
       "highlights": [
         "Introduced native modal support for smoother in-app flows.",
@@ -33,6 +107,7 @@
       "version": "1.3.2",
       "date": "2026-02-04",
       "status": "stable",
+      "category": "Performance",
       "title": "Stability and Performance Improvements",
       "highlights": [
         "Improved offline behavior and service worker reliability.",
@@ -44,6 +119,7 @@
       "version": "1.1.3",
       "date": "2025-11-10",
       "status": "stable",
+      "category": "Feature",
       "title": "Feature Expansion Release",
       "highlights": [
         "Expanded wallet management capabilities.",
@@ -55,6 +131,7 @@
       "version": "1.1.1",
       "date": "2025-10-05",
       "status": "stable",
+      "category": "UX",
       "title": "Core UX Refinement",
       "highlights": [
         "Improved primary flows for daily use.",
@@ -66,6 +143,7 @@
       "version": "1.0.1",
       "date": "2025-09-20",
       "status": "stable",
+      "category": "Bugfix",
       "title": "Early Improvements Patch",
       "highlights": [
         "Patched initial release bugs and edge cases.",
@@ -77,6 +155,7 @@
       "version": "1.0.0",
       "date": "2025-09-01",
       "status": "stable",
+      "category": "Major",
       "title": "Initial Public Release",
       "highlights": [
         "Launched MyWallet with core personal finance tracking.",

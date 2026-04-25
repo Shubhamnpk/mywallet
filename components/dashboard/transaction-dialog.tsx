@@ -30,7 +30,7 @@ interface FormData {
   description: string
   customDate: string
   expenseMode: "quick_action" | "payment_source"
-  allocationType: "" | "direct" | "goal" | "debt" | "credit"
+  allocationType: "" | "direct" | "goal" | "debt" | "credit" | "goal_transfer" | "debt_loan"
   allocationTarget: string
   receiptImage?: string
 }
@@ -80,7 +80,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal, transferToGoal } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal, transferToGoal, addFromGoal, addFromDebt } =
     useWalletData()
   const { playSound } = useAccessibility()
   const isMobile = useIsMobile()
@@ -577,6 +577,60 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             return
           }
           transactionResult = paymentResult.transaction
+        } else if (type === "income" && formData.allocationType === "goal_transfer") {
+          // Handle income from Goal - transfer from goal to main balance
+          const selectedGoal = goals.find((g) => g.id === formData.allocationTarget)
+          if (!selectedGoal) {
+            setIsSubmitting(false)
+            toast.error("Goal not found", {
+              description: "Please select a valid goal account."
+            })
+            playSound("transaction-failed")
+            return
+          }
+
+          const result = await addFromGoal(
+            formData.allocationTarget,
+            numAmount,
+            formData.description.trim() || `Transfer from ${selectedGoal.title || selectedGoal.name || "Goal"}`,
+            formData.category || "Income"
+          )
+          if (!result.success) {
+            setIsSubmitting(false)
+            toast.error("Failed to transfer from goal", {
+              description: result.error || "Unable to process goal transfer."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = result.transaction
+        } else if (type === "income" && formData.allocationType === "debt_loan") {
+          // Handle income from Debt - take loan from debt account
+          const selectedDebt = debtAccounts?.find((d) => d.id === formData.allocationTarget)
+          if (!selectedDebt) {
+            setIsSubmitting(false)
+            toast.error("Debt account not found", {
+              description: "Please select a valid debt account."
+            })
+            playSound("transaction-failed")
+            return
+          }
+
+          const result = await addFromDebt(
+            formData.allocationTarget,
+            numAmount,
+            formData.description.trim() || `Loan from ${selectedDebt.name || "Debt Account"}`,
+            formData.category || "Income"
+          )
+          if (!result.success) {
+            setIsSubmitting(false)
+            toast.error("Failed to get loan from debt account", {
+              description: result.error || "Unable to process debt loan."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = result.transaction
         } else if (isExpensePaymentSource && formData.allocationType === "credit") {
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
           if (creditAccount) {
@@ -844,7 +898,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
   }, [])
 
-  const handleAllocationTypeChange = useCallback((newAllocationType: "" | "direct" | "goal" | "debt" | "credit") => {
+  const handleAllocationTypeChange = useCallback((newAllocationType: "" | "direct" | "goal" | "debt" | "credit" | "goal_transfer" | "debt_loan") => {
     setFormData((prev) => ({
       ...prev,
       allocationType: newAllocationType,
@@ -1562,6 +1616,74 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                     {formData.expenseMode === "payment_source"
                       ? "Choose one payment method first. Transaction will not be submitted until you choose."
                       : "Quick Action uses wallet balance to contribute to goals or pay debt."}
+                  </p>
+                </div>
+              )}
+
+              {/* Income Source Selection */}
+              {type === "income" && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Income Source</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleAllocationTypeChange("direct")}
+                      className={cn(
+                        "rounded-2xl border p-3 text-left transition-all duration-200",
+                        formData.allocationType === "direct" || formData.allocationType === ""
+                          ? "border-primary bg-primary/10 shadow-sm"
+                          : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-blue-500" />
+                        <p className="text-sm font-semibold">Direct Income</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Regular income to wallet</p>
+                    </button>
+                    {availableGoals.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleAllocationTypeChange("goal_transfer")}
+                        className={cn(
+                          "rounded-2xl border p-3 text-left transition-all duration-200",
+                          formData.allocationType === "goal_transfer"
+                            ? "border-primary bg-primary/10 shadow-sm"
+                            : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-purple-500" />
+                          <p className="text-sm font-semibold">From Goal</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Transfer from goal savings</p>
+                      </button>
+                    )}
+                    {(debtAccounts?.length || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleAllocationTypeChange("debt_loan")}
+                        className={cn(
+                          "rounded-2xl border p-3 text-left transition-all duration-200",
+                          formData.allocationType === "debt_loan"
+                            ? "border-primary bg-primary/10 shadow-sm"
+                            : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                          <p className="text-sm font-semibold">From Debt</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">Take loan from debt account</p>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formData.allocationType === "goal_transfer"
+                      ? "Transfer money from a goal to your main wallet balance."
+                      : formData.allocationType === "debt_loan"
+                        ? "Take a loan from a debt account. This increases your debt balance."
+                        : "Regular income added directly to your wallet balance."}
                   </p>
                 </div>
               )}

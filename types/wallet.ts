@@ -92,7 +92,7 @@ export interface Transaction {
   location?: string
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
-  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt"
+  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt" | "goal_transfer" | "debt_loan"
   allocationTarget?: string
   subcategory?: string
   total?: number

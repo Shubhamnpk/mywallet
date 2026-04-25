@@ -2870,6 +2870,130 @@ export function useWalletData() {
     }
   }
 
+  /**
+   * Transfer money from a Goal to main balance as income
+   * Deducts from goal and creates an income transaction
+   */
+  const addFromGoal = async (goalId: string, amount: number, description: string, category?: string) => {
+    if (amount <= 0) {
+      return {
+        error: "Amount must be greater than zero",
+        success: false,
+      }
+    }
+
+    const goal = goals.find((g) => g.id === goalId)
+    if (!goal) {
+      return {
+        error: "Goal not found",
+        success: false,
+      }
+    }
+
+    // Use transaction-based calculation for accurate balance
+    const actualGoalBalance = calculateGoalNetSavedAmount(goalId, transactions)
+    if (actualGoalBalance < amount) {
+      return {
+        error: `Insufficient goal balance. Available: ${userProfile?.currency || "$"}${actualGoalBalance.toFixed(2)}, Requested: ${userProfile?.currency || "$"}${amount.toFixed(2)}`,
+        success: false,
+      }
+    }
+
+    const incomeTransaction: Transaction = {
+      id: generateId('tx'),
+      type: "income",
+      amount: amount,
+      description: `${goal.title || goal.name || "Goal"}: ${description}`,
+      category: category || "Goal Transfer",
+      date: new Date().toISOString(),
+      allocationType: "goal_transfer",
+      allocationTarget: goalId,
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: amount,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
+    }
+
+    const updatedGoals = goals.map((g) => {
+      if (g.id === goalId) {
+        return { ...g, currentAmount: g.currentAmount - amount, updatedAt: new Date().toISOString() }
+      }
+      return g
+    })
+
+    setGoals(updatedGoals)
+    await saveDataWithIntegrity("goals", updatedGoals)
+
+    const updatedTransactions = [...transactions, incomeTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    return {
+      success: true,
+      transaction: incomeTransaction,
+      remainingGoalAmount: calculateGoalNetSavedAmount(goalId, updatedTransactions),
+    }
+  }
+
+  /**
+   * Add money to main balance from a Debt account (take a loan)
+   * Increases debt balance and creates an income transaction
+   */
+  const addFromDebt = async (debtAccountId: string, amount: number, description: string, category?: string) => {
+    if (amount <= 0) {
+      return {
+        error: "Amount must be greater than zero",
+        success: false,
+      }
+    }
+
+    const debtAccount = debtAccounts.find((d) => d.id === debtAccountId)
+    if (!debtAccount) {
+      return {
+        error: "Debt account not found",
+        success: false,
+      }
+    }
+
+    const incomeTransaction: Transaction = {
+      id: generateId('tx'),
+      type: "income",
+      amount: amount,
+      description: `${debtAccount.name}: ${description}`,
+      category: category || "Debt Loan",
+      date: new Date().toISOString(),
+      allocationType: "debt_loan",
+      allocationTarget: debtAccountId,
+      timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
+      total: amount,
+      actual: amount,
+      debtUsed: 0,
+      debtAccountId: null,
+      status: "normal",
+    }
+
+    const updatedDebtAccounts = debtAccounts.map((d) => {
+      if (d.id === debtAccountId) {
+        return { ...d, balance: d.balance + amount, updatedAt: new Date().toISOString() }
+      }
+      return d
+    })
+
+    setDebtAccounts(updatedDebtAccounts)
+    await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
+
+    const updatedTransactions = [...transactions, incomeTransaction]
+    setTransactions(updatedTransactions)
+    await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    return {
+      success: true,
+      transaction: incomeTransaction,
+    }
+  }
+
   // initializeDefaultCategories provided by lib/wallet-utils
 
   const addCategory = (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => {
@@ -4219,6 +4343,8 @@ export function useWalletData() {
     updateGoalContribution,
     transferToGoal,
     spendFromGoal,
+    addFromGoal,
+    addFromDebt,
     makeDebtPayment,
     updateCreditBalance,
     createDebtForTransaction,
