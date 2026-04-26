@@ -633,84 +633,18 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
       </Card>
 
       {/* Biometric Authentication */}
-      <BiometricAuth pinEnabled={pinEnabled} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className={`w-5 h-5 ${
-              securityAudit?.overallRisk === 'high' ? 'text-destructive' : 
-              securityAudit?.overallRisk === 'medium' ? 'text-orange-500' : 
-              'text-primary'
-            }`} />
-            Security Health Audit
-          </CardTitle>
-          <CardDescription>
-            Comprehensive analysis of your wallet's security configuration.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {securityAudit && (
-            <>
-              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <span className="text-sm font-medium">Overall Risk Level</span>
-                <Badge variant={
-                  securityAudit.overallRisk === 'high' ? 'destructive' : 
-                  securityAudit.overallRisk === 'medium' ? 'outline' : 
-                  'default'
-                } className={
-                  securityAudit.overallRisk === 'medium' ? 'border-orange-500 text-orange-500' : ''
-                }>
-                  {securityAudit.overallRisk.toUpperCase()}
-                </Badge>
-              </div>
-
-              {securityAudit.vulnerabilities.length > 0 && (
-                <Alert variant="destructive" className="bg-destructive/5">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Vulnerabilities Detected</AlertTitle>
-                  <AlertDescription>
-                    <ul className="list-disc ml-4 mt-1 text-xs">
-                      {securityAudit.vulnerabilities.map((v, i) => (
-                        <li key={i}>{v}</li>
-                      ))}
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {securityAudit.recommendations.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary" />
-                    Recommendations
-                  </h4>
-                  <div className="space-y-2">
-                    {securityAudit.recommendations.map((r, i) => (
-                      <div key={i} className="flex items-start gap-2 p-2 bg-primary/5 rounded border border-primary/10">
-                        <Info className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                        <span className="text-xs">{r}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-2">
-                <div className="flex justify-between text-xs mb-1 text-muted-foreground">
-                  <span>Encryption Strength</span>
-                  <span>{securityStatus.strength?.toUpperCase() || 'N/A'}</span>
-                </div>
-                <Progress value={
-                  securityStatus.strength === 'strong' ? 100 : 
-                  securityStatus.strength === 'medium' ? 60 : 30
-                } className="h-1" />
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
+      <BiometricAuth 
+        pinEnabled={pinEnabled} 
+        onEnrollmentSuccess={() => {
+          // Track that biometric was enabled on this device (for cross-device prompts)
+          if (userProfile && !userProfile.biometricEnabledOnAnyDevice) {
+            updateUserProfile({
+              ...userProfile,
+              biometricEnabledOnAnyDevice: true
+            })
+          }
+        }}
+      />
       {/* Security Activity Logs */}
       <Card>
         <CardHeader>

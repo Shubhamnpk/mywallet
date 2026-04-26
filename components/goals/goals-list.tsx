@@ -663,51 +663,77 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               </Badge>
                             </div>
                           </div>
-                          {/* Action Buttons */}
+                          {/* Action Buttons - 2x2 Grid Layout */}
                           {!isCompleted && (
-                            <div className="flex flex-col gap-2">
-                              <div className="flex flex-col sm:flex-row gap-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* Row 1: Primary Actions */}
+                              <Button
+                                onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
+                                className="bg-primary hover:bg-primary/90 shadow-sm h-9"
+                                size="sm"
+                                disabled={balance <= 0}
+                              >
+                                <Send className="w-4 h-4 mr-1.5" />
+                                Add Funds
+                              </Button>
+
+                              {challengeSummary ? (
                                 <Button
-                                  onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
-                                  className="flex-1 bg-primary hover:bg-primary/90 shadow-sm"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setInvestmentDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })
+                                    setInvestmentAmount("")
+                                    setInvestmentMarket("split")
+                                    setInvestmentNotes("")
+                                  }}
+                                  className="border-primary/20 hover:bg-primary/10 transition-colors h-9"
                                   size="sm"
-                                  disabled={balance <= 0}
                                 >
-                                  <Send className="w-4 h-4 mr-2" />
-                                  Add Funds
-                                  <div className="ml-auto opacity-70 text-[10px] font-bold ml-2">
-                                    {formatCurrency(balance, userProfile.currency, userProfile.customCurrency)} avl.
-                                  </div>
+                                  <TrendingUp className="w-4 h-4 mr-1.5 text-primary" />
+                                  Invest
                                 </Button>
-
-                                {challengeSummary && (
-                                  <Button
-                                    variant="secondary"
-                                    onClick={() => {
-                                      setInvestmentDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })
-                                      setInvestmentAmount("")
-                                      setInvestmentMarket("split")
-                                      setInvestmentNotes("")
-                                    }}
-                                    className="flex-1 border-primary/20 hover:bg-primary/10 transition-colors"
-                                    size="sm"
-                                  >
-                                    <TrendingUp className="w-4 h-4 mr-2 text-primary" />
-                                    Investment Use
-                                  </Button>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
+                              ) : (
                                 <Button
                                   variant="outline"
                                   onClick={() => handleEditGoal(goal)}
-                                  className="flex-1 sm:flex-none sm:px-8 h-9"
+                                  className="h-9"
                                   size="sm"
                                 >
-                                  <Edit className="w-4 h-4 mr-2 opacity-60" />
+                                  <Edit className="w-4 h-4 mr-1.5 opacity-60" />
                                   Edit
                                 </Button>
+                              )}
+
+                              {/* Row 2: Secondary Actions */}
+                              {challengeSummary ? (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleEditGoal(goal)}
+                                    className="h-9"
+                                    size="sm"
+                                  >
+                                    <Edit className="w-4 h-4 mr-1.5 opacity-60" />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      setHistoryRange("active-month")
+                                      setHistoryDialog({
+                                        open: true,
+                                        goalId: goal.id,
+                                        goalName: goal.title || goal.name || "Goal",
+                                      })
+                                    }}
+                                    className="h-9"
+                                    size="sm"
+                                  >
+                                    <Receipt className="w-4 h-4 mr-1.5 opacity-60" />
+                                    History
+                                  </Button>
+                                </>
+                              ) : (
                                 <Button
                                   variant="outline"
                                   onClick={() => {
@@ -718,13 +744,13 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                       goalName: goal.title || goal.name || "Goal",
                                     })
                                   }}
-                                  className="flex-1 h-9"
+                                  className="col-span-2 h-9"
                                   size="sm"
                                 >
-                                  <Receipt className="w-4 h-4 mr-2 opacity-60" />
+                                  <Receipt className="w-4 h-4 mr-1.5 opacity-60" />
                                   History
                                 </Button>
-                              </div>
+                              )}
                             </div>
                           )}
                            {/* Goal Metadata */}

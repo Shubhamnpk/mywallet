@@ -392,7 +392,7 @@ export function PortfolioList() {
     const portfolioStockOptions = useMemo(() => {
         const bySymbol = new Map<string, string>()
         portfolio
-            .filter((item) => item.portfolioId === activePortfolioId)
+            .filter((item) => item.portfolioId === activePortfolioId && (showSoldStocks || item.units > 0))
             .filter((item) => item.assetType !== "crypto" && !item.cryptoId)
             .forEach((item) => {
                 const symbol = normalizeStockSymbol(item.symbol)
@@ -402,7 +402,7 @@ export function PortfolioList() {
         return Array.from(bySymbol.entries())
             .map(([symbol, name]) => ({ symbol, name }))
             .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    }, [portfolio, activePortfolioId, scripNamesMap])
+    }, [portfolio, activePortfolioId, scripNamesMap, showSoldStocks])
     const portfolioCryptoOptions = useMemo(() => {
         const byKey = new Map<string, { id?: string; symbol: string; name?: string }>()
         portfolio
@@ -773,7 +773,7 @@ export function PortfolioList() {
         const scripMap = new Map<string, { value: number; units: number; sector: string }>()
         let unitsSum = 0
 
-        activePortfolioItems.forEach((item) => {
+        activePortfolioItemsForCalculations.forEach((item) => {
             const sector = item.sector || "Others"
             const safePrice = isFiniteNumber(item.currentPrice)
                 ? item.currentPrice
@@ -809,6 +809,7 @@ export function PortfolioList() {
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
             }))
+            .filter((item) => item.units > 0 && item.value > 0)
             .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         const memoScripData = Array.from(scripMap.entries())
@@ -822,6 +823,7 @@ export function PortfolioList() {
                     ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
                     : 0,
             }))
+            .filter((item) => item.units > 0 && item.value > 0)
             .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
 
         return { sectorData: memoSectorData, scripData: memoScripData }
@@ -901,7 +903,7 @@ export function PortfolioList() {
             summaries.set(item.portfolioId, {
                 investment: prev.investment + item.units * (isFiniteNumber(item.buyPrice) ? item.buyPrice : 0),
                 current: prev.current + item.units * currentPrice,
-                count: prev.count + 1,
+                count: prev.count + (item.units > 0 ? 1 : 0),
                 todayChange: prev.todayChange + itemTodayChange,
             })
         })
@@ -2926,20 +2928,20 @@ export function PortfolioList() {
                             <div className="flex flex-col gap-1">
                                 <h3 className="font-bold text-lg flex items-center gap-2">
                                     My Holdings
-                                    <Badge variant="secondary" className="rounded-full font-black">{filteredPortfolio.length}</Badge>
+                                    <Badge variant="secondary" className="rounded-full font-black">{activePortfolioItemsForCalculations.length}</Badge>
                                     <div className="flex gap-1 ml-1">
                                         <Badge className="bg-success/10 text-success border-success/20 text-[9px] font-black py-0 px-1.5 h-4">
-                                            {activePortfolioItems.filter(p => (p.currentPrice || p.buyPrice) > p.buyPrice).length}↑
+                                            {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) > p.buyPrice).length}↑
                                         </Badge>
                                         <Badge className="bg-error/10 text-error border-error/20 text-[9px] font-black py-0 px-1.5 h-4">
-                                            {activePortfolioItems.filter(p => (p.currentPrice || p.buyPrice) < p.buyPrice).length}↓
+                                            {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) < p.buyPrice).length}↓
                                         </Badge>
                                     </div>
                                 </h3>
-                                {activePortfolioItems.length > 0 && activePortfolioItems[0]?.lastUpdated && (
+                                {activePortfolioItemsForCalculations.length > 0 && activePortfolioItemsForCalculations[0]?.lastUpdated && (
                                     <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5 ml-1">
                                         <RefreshCcw className="w-2.5 h-2.5" />
-                                        Synced {new Date(activePortfolioItems.reduce((latest, item) => {
+                                        Synced {new Date(activePortfolioItemsForCalculations.reduce((latest, item) => {
                                             const itemDate = new Date(item.lastUpdated || 0).getTime();
                                             return itemDate > latest ? itemDate : latest;
                                         }, 0)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

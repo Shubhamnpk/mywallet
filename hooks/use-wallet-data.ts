@@ -311,7 +311,8 @@ const readReminderCache = (): Record<string, number> => {
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     return parsed && typeof parsed === "object" ? parsed : {}
-  } catch {
+  } catch (error) {
+    console.warn("Failed to read reminder cache:", error)
     return {}
   }
 }
@@ -320,7 +321,8 @@ const saveReminderCache = (cache: Record<string, number>) => {
   if (typeof window === "undefined") return
   try {
     localStorage.setItem(REMINDER_CACHE_KEY, JSON.stringify(cache))
-  } catch {
+  } catch (error) {
+    console.warn("Failed to save reminder cache:", error)
   }
 }
 
@@ -411,7 +413,8 @@ export function useWalletData() {
       if (Number.isFinite(last) && last > 0 && now - last < REMOTE_PUSH_AUTO_SYNC_INTERVAL_MS) {
         return
       }
-    } catch {
+    } catch (error) {
+      console.warn("Failed to read push sync timestamp:", error)
     }
 
     const run = async () => {
@@ -426,7 +429,8 @@ export function useWalletData() {
         const result = await subscribeDeviceToWebPush()
         if (cancelled || !result.ok) return
         localStorage.setItem(REMOTE_PUSH_AUTO_SYNC_KEY, String(Date.now()))
-      } catch {
+      } catch (error) {
+        console.warn("Push subscription failed:", error)
       }
     }
 
@@ -1139,7 +1143,8 @@ export function useWalletData() {
             let parsed: any = raw
             try {
               parsed = JSON.parse(raw)
-            } catch {
+            } catch (error) {
+              console.warn("Failed to parse migration data:", error)
             }
 
             await saveToLocalStorage(storageKey, parsed, true)
@@ -2899,6 +2904,8 @@ export function useWalletData() {
       }
     }
 
+    // Create transaction to record the transfer FROM goal TO main balance
+    // actual: 0 marks this as "spending" from the goal perspective
     const incomeTransaction: Transaction = {
       id: generateId('tx'),
       type: "income",
@@ -2910,25 +2917,20 @@ export function useWalletData() {
       allocationTarget: goalId,
       timeEquivalent: userProfile ? calculateTimeEquivalent(amount, userProfile) : undefined,
       total: amount,
-      actual: amount,
+      actual: 0, // actual: 0 means this counts as spending from the goal
       debtUsed: 0,
       debtAccountId: null,
       status: "normal",
     }
 
-    const updatedGoals = goals.map((g) => {
-      if (g.id === goalId) {
-        return { ...g, currentAmount: g.currentAmount - amount, updatedAt: new Date().toISOString() }
-      }
-      return g
-    })
-
-    setGoals(updatedGoals)
-    await saveDataWithIntegrity("goals", updatedGoals)
-
     const updatedTransactions = [...transactions, incomeTransaction]
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    // Update balance - add income amount to main balance
+    const newBalance = balance + amount
+    setBalance(newBalance)
+    await saveDataWithIntegrity("balance", newBalance)
 
     return {
       success: true,
@@ -2961,7 +2963,7 @@ export function useWalletData() {
       id: generateId('tx'),
       type: "income",
       amount: amount,
-      description: `${debtAccount.name}: ${description}`,
+      description: `Debt transfer from ${debtAccount.name} to main balance`,
       category: category || "Debt Loan",
       date: new Date().toISOString(),
       allocationType: "debt_loan",
@@ -2970,7 +2972,7 @@ export function useWalletData() {
       total: amount,
       actual: amount,
       debtUsed: 0,
-      debtAccountId: null,
+      debtAccountId: debtAccountId,
       status: "normal",
     }
 
@@ -2984,9 +2986,32 @@ export function useWalletData() {
     setDebtAccounts(updatedDebtAccounts)
     await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
 
+    // Create debt credit transaction entry for history
+    const newDebtBalance = debtAccount.balance + amount
+    const debtCharge: DebtCreditTransaction = {
+      id: generateId('debt-tx'),
+      accountId: debtAccountId,
+      accountType: "debt",
+      type: "charge",
+      amount: amount,
+      date: incomeTransaction.date,
+      description: `Loan from ${debtAccount.name} to main balance`,
+      balanceAfter: newDebtBalance,
+      sourceTransactionId: incomeTransaction.id,
+    }
+
+    const updatedDebtTransactions = [...debtCreditTransactions, debtCharge]
+    setDebtCreditTransactions(updatedDebtTransactions)
+    await saveDataWithIntegrity("debtCreditTransactions", updatedDebtTransactions)
+
     const updatedTransactions = [...transactions, incomeTransaction]
     setTransactions(updatedTransactions)
     await saveDataWithIntegrity("transactions", updatedTransactions)
+
+    // Update balance - add income amount to main balance
+    const newBalance = balance + amount
+    setBalance(newBalance)
+    await saveDataWithIntegrity("balance", newBalance)
 
     return {
       success: true,

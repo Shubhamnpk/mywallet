@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import type { Achievement } from "@/types/wallet"
-import { useIsMobile } from "@/hooks/use-mobile"
-import {Trophy,Sparkles,CheckCircle2,Star,Crown,Target,Medal,Lock} from "lucide-react"
+import { useMemo, useState } from "react"
+import { Trophy, Sparkles, CheckCircle2, Star, Crown, Target, Medal, Lock, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
 interface AchievementsProfileProps {
   achievements: Achievement[]
@@ -250,16 +250,56 @@ export function AchievementsProfile({
 }: AchievementsProfileProps) {
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null)
   const [filter, setFilter] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showAllUnlocked, setShowAllUnlocked] = useState(false)
+  const [showAllLocked, setShowAllLocked] = useState(false)
 
-  const categories = Array.from(new Set(achievements.map(a => a.category)))
+  // Number of achievements to show initially
+  const INITIAL_UNLOCKED_COUNT = 6
+  const INITIAL_LOCKED_COUNT = 8
 
-  const filteredUnlocked = filter === "all"
-    ? unlockedAchievements
-    : unlockedAchievements.filter(a => a.category === filter)
+  const categories = useMemo(() =>
+    Array.from(new Set(achievements.map(a => a.category))),
+    [achievements]
+  )
 
-  const filteredLocked = filter === "all"
-    ? lockedAchievements
-    : lockedAchievements.filter(a => a.category === filter)
+  // Filter and sort achievements
+  const filterAchievements = (list: Achievement[]) => {
+    let filtered = filter === "all" 
+      ? list 
+      : list.filter(a => a.category === filter)
+    
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      filtered = filtered.filter(a => 
+        a.title.toLowerCase().includes(q) || 
+        a.description.toLowerCase().includes(q) ||
+        a.category.toLowerCase().includes(q)
+      )
+    }
+    
+    return filtered
+  }
+
+  // Sort locked by progress (closest to unlock first)
+  const sortLocked = (list: Achievement[]) => {
+    return [...list].sort((a, b) => {
+      const aPct = a.progress / a.maxProgress
+      const bPct = b.progress / b.maxProgress
+      return bPct - aPct // Descending: closest to unlock first
+    })
+  }
+
+  const filteredUnlocked = filterAchievements(unlockedAchievements)
+  const filteredLocked = sortLocked(filterAchievements(lockedAchievements))
+
+  // Limit displayed achievements (unless showing all or searching)
+  const displayUnlocked = searchQuery.trim() || showAllUnlocked 
+    ? filteredUnlocked 
+    : filteredUnlocked.slice(0, INITIAL_UNLOCKED_COUNT)
+  const displayLocked = searchQuery.trim() || showAllLocked 
+    ? filteredLocked 
+    : filteredLocked.slice(0, INITIAL_LOCKED_COUNT)
 
   const totalProgress = achievements.reduce((acc, a) => acc + (a.progress / a.maxProgress), 0)
   const overallPercentage = achievements.length > 0 ? Math.round((totalProgress / achievements.length) * 100) : 0
@@ -335,6 +375,28 @@ export function AchievementsProfile({
         ))}
       </div>
 
+      {/* Search Bar - Desktop */}
+      <div className="hidden md:flex items-center gap-4 max-w-2xl mx-auto">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search achievements..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-12 rounded-full border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 backdrop-blur-md"
+          />
+        </div>
+        {searchQuery && (
+          <Button 
+            variant="ghost" 
+            onClick={() => setSearchQuery("")}
+            className="rounded-full h-12 px-4"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
       {/* Category Filter - Premium Tabs */}
       <div className="flex flex-wrap gap-2 justify-center py-4 bg-slate-100/50 dark:bg-slate-900/50 rounded-full px-4 border border-slate-200 dark:border-slate-800 backdrop-blur-md">
         <button
@@ -378,8 +440,8 @@ export function AchievementsProfile({
                 {filteredUnlocked.length}
               </Badge>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredUnlocked.map((achievement) => (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+              {displayUnlocked.map((achievement) => (
                 <AchievementCard
                   key={achievement.id}
                   achievement={achievement}
@@ -387,6 +449,18 @@ export function AchievementsProfile({
                 />
               ))}
             </div>
+            {/* Show More/Less Button */}
+            {!searchQuery.trim() && filteredUnlocked.length > INITIAL_UNLOCKED_COUNT && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAllUnlocked(!showAllUnlocked)}
+                  className="rounded-full px-6"
+                >
+                  {showAllUnlocked ? "Show Less" : `Show All (${filteredUnlocked.length})`}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -403,16 +477,19 @@ export function AchievementsProfile({
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center">
                   <Lock className="w-5 h-5 text-blue-600" />
                 </div>
-                <h2 className="text-2xl font-black tracking-tight uppercase italic opa">
+                <h2 className="text-2xl font-black tracking-tight uppercase italic opacity-70">
                   Next Milestones
                 </h2>
+                <span className="text-xs text-muted-foreground hidden md:inline">
+                  (sorted by progress)
+                </span>
               </div>
               <Badge variant="outline" className="font-bold px-4 py-1 rounded-lg border-blue-500/30 text-blue-600 dark:text-blue-400">
                 {filteredLocked.length}
               </Badge>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredLocked.map((achievement) => (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+              {displayLocked.map((achievement) => (
                 <AchievementCard
                   key={achievement.id}
                   achievement={achievement}
@@ -420,6 +497,34 @@ export function AchievementsProfile({
                 />
               ))}
             </div>
+            {/* Show More/Less Button */}
+            {!searchQuery.trim() && filteredLocked.length > INITIAL_LOCKED_COUNT && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAllLocked(!showAllLocked)}
+                  className="rounded-full px-6"
+                >
+                  {showAllLocked ? "Show Less" : `Show All (${filteredLocked.length})`}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {filteredUnlocked.length === 0 && filteredLocked.length === 0 && (
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-bold mb-2">No achievements found</h3>
+            <p className="text-muted-foreground">Try adjusting your search or filter</p>
+            <Button
+              variant="outline"
+              onClick={() => { setSearchQuery(""); setFilter("all"); }}
+              className="mt-4 rounded-full"
+            >
+              Clear Filters
+            </Button>
           </div>
         )}
       </div>

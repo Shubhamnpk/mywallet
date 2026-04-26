@@ -34,6 +34,10 @@ export interface UserProfile {
   settings?: {
     zeroHoldingsEnabled?: boolean
   }
+  /** IDs of achievements whose celebration modal has been seen */
+  celebratedAchievements?: string[]
+  /** Whether biometric was enabled on ANY device (for cross-device prompts) */
+  biometricEnabledOnAnyDevice?: boolean
 }
 
 export interface NotificationSettings {

@@ -28,9 +28,10 @@ interface BiometricAuthProps {
   pinEnabled?: boolean
   onAuthenticated?: () => void
   onError?: (error: string) => void
+  onEnrollmentSuccess?: () => void
 }
 
-export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: BiometricAuthProps) {
+export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, onEnrollmentSuccess }: BiometricAuthProps) {
   const [isSupported, setIsSupported] = useState(false)
   const [isEnrolled, setIsEnrolled] = useState(false)
   const [isKeyWrapped, setIsKeyWrapped] = useState(false)
@@ -170,6 +171,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError }: 
         }
 
         setIsKeyWrapped(true)
+        
+        // Notify parent that enrollment succeeded (for cross-device tracking)
+        onEnrollmentSuccess?.()
       }
 
     } catch (error) {

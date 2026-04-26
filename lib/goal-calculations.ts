@@ -24,9 +24,9 @@ function getGoalTransactionsCached(goalId: string, transactions: Transaction[]):
     return cached.transactions
   }
   
-  // Filter and cache the transactions
+  // Filter and cache the transactions (includes goal contributions AND goal_transfer spending)
   const goalTransactions = transactions.filter(transaction => 
-    transaction.allocationType === "goal" && 
+    (transaction.allocationType === "goal" || transaction.allocationType === "goal_transfer") && 
     transaction.allocationTarget === goalId
   )
   

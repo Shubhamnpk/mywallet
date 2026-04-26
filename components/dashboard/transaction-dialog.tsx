@@ -223,10 +223,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   }, [availableGoals, debtAccounts, creditAccounts])
 
   const allocationTargets = useMemo(() => {
-    if (formData.allocationType === "goal") {
+    if (formData.allocationType === "goal" || formData.allocationType === "goal_transfer") {
       return availableGoals
     }
-    if (formData.allocationType === "debt") {
+    if (formData.allocationType === "debt" || formData.allocationType === "debt_loan") {
       return debtAccounts || []
     }
     if (formData.allocationType === "credit") {
@@ -253,8 +253,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       baseCategories = contextCategories.sort()
     }
 
-    // For expense type, add special Goal and Debt categories at the beginning
-    if (type === "expense") {
+    // For expense and income types, add special Goal and Debt categories at the beginning
+    if (type === "expense" || type === "income") {
       const specialCategories: string[] = []
       if (availableGoals.length > 0) {
         specialCategories.push("🎯 Goal")
@@ -314,8 +314,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const isFormValid = useMemo(() => {
     const isExpensePaymentSource = type === "expense" && formData.expenseMode === "payment_source"
 
-    // If Goal or Debt category is selected directly, it bypasses some normal expense flow
-    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+    // If Goal or Debt category is selected directly (for expense or income), it bypasses normal flow
+    const isSpecialCategory = (formData.category === "Goal" || formData.category === "Debt")
 
     if (isSpecialCategory) {
       return Object.keys(errors).length === 0 &&
@@ -337,7 +337,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       numAmount > 0 &&
       ((formData.allocationType === "direct" && formData.category) ||
         (formData.allocationType === "goal" && formData.allocationTarget) ||
+        (formData.allocationType === "goal_transfer" && formData.allocationTarget) ||
         (formData.allocationType === "debt" && formData.allocationTarget) ||
+        (formData.allocationType === "debt_loan" && formData.allocationTarget) ||
         (formData.allocationType === "credit" && formData.allocationTarget))
   }, [errors, formData, numAmount, type])
 
@@ -826,7 +828,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   )
 
   const canSubmitNow = useMemo(() => {
-    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+    const isSpecialCategory = (formData.category === "Goal" || formData.category === "Debt")
     const isInCooldown = cooldownRemaining > 0
     if (isInCooldown) return false
     if (isSpecialCategory) return isFormValid
@@ -1620,74 +1622,6 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 </div>
               )}
 
-              {/* Income Source Selection */}
-              {type === "income" && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Income Source</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleAllocationTypeChange("direct")}
-                      className={cn(
-                        "rounded-2xl border p-3 text-left transition-all duration-200",
-                        formData.allocationType === "direct" || formData.allocationType === ""
-                          ? "border-primary bg-primary/10 shadow-sm"
-                          : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Wallet className="w-4 h-4 text-blue-500" />
-                        <p className="text-sm font-semibold">Direct Income</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Regular income to wallet</p>
-                    </button>
-                    {availableGoals.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleAllocationTypeChange("goal_transfer")}
-                        className={cn(
-                          "rounded-2xl border p-3 text-left transition-all duration-200",
-                          formData.allocationType === "goal_transfer"
-                            ? "border-primary bg-primary/10 shadow-sm"
-                            : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Target className="w-4 h-4 text-purple-500" />
-                          <p className="text-sm font-semibold">From Goal</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">Transfer from goal savings</p>
-                      </button>
-                    )}
-                    {(debtAccounts?.length || 0) > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleAllocationTypeChange("debt_loan")}
-                        className={cn(
-                          "rounded-2xl border p-3 text-left transition-all duration-200",
-                          formData.allocationType === "debt_loan"
-                            ? "border-primary bg-primary/10 shadow-sm"
-                            : "border-border/60 hover:border-primary/40 hover:bg-muted/40"
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 text-red-500" />
-                          <p className="text-sm font-semibold">From Debt</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">Take loan from debt account</p>
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formData.allocationType === "goal_transfer"
-                      ? "Transfer money from a goal to your main wallet balance."
-                      : formData.allocationType === "debt_loan"
-                        ? "Take a loan from a debt account. This increases your debt balance."
-                        : "Regular income added directly to your wallet balance."}
-                  </p>
-                </div>
-              )}
-
               {/* Category Selection */}
               {!isExpenseFundingOnlyView && (type === "income" || type === "expense") && (
                 <div className="space-y-2">
@@ -1749,7 +1683,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       // Check if this is a special category (Goal or Debt)
                       if (value === "🎯 Goal") {
                         handleFieldChange("category", "Goal")
-                        handleAllocationTypeChange("goal")
+                        // For income, use goal_transfer; for expense, use goal
+                        handleAllocationTypeChange(type === "income" ? "goal_transfer" : "goal")
                         // Auto-select if there's only one goal available
                         if (availableGoals.length === 1) {
                           const singleGoal = availableGoals[0]
@@ -1764,7 +1699,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                         }
                       } else if (value === "💳 Debt") {
                         handleFieldChange("category", "Debt")
-                        handleAllocationTypeChange("debt")
+                        // For income, use debt_loan; for expense, use debt
+                        handleAllocationTypeChange(type === "income" ? "debt_loan" : "debt")
                         // Auto-select if there's only one debt account available
                         if (debtAccounts?.length === 1) {
                           const singleDebt = debtAccounts[0]
@@ -1781,7 +1717,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                         handleFieldChange("category", value)
                         handleFieldChange("subcategory", "")
                         // If switching from special category to regular, reset allocation
-                        if (formData.allocationType === "goal" || formData.allocationType === "debt") {
+                        if (formData.allocationType === "goal" || formData.allocationType === "debt" ||
+                            formData.allocationType === "goal_transfer" || formData.allocationType === "debt_loan") {
                           handleAllocationTypeChange("direct")
                         }
                       }
@@ -1850,7 +1787,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   )}
 
                   {/* Inline Allocation Target Selection for Goal/Debt */}
-                  {(type === "expense" && !showExpenseFundingStep && (formData.category === "Goal" || formData.category === "Debt")) && (
+                  {((type === "expense" && !showExpenseFundingStep) || type === "income") && (formData.category === "Goal" || formData.category === "Debt") && (
                     <div className="mt-3 p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-3 animate-in fade-in zoom-in-95 duration-200">
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 rounded-lg bg-primary/10">
