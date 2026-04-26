@@ -6,14 +6,11 @@ This project now includes a production-oriented Capacitor integration for Androi
 
 - The existing Next.js app remains the primary application.
 - Native mobile shells load the deployed app URL via `CAPACITOR_SERVER_URL`.
-- Biometric unlock on native uses:
-  - `@aparajita/capacitor-biometric-auth`
-  - `@aparajita/capacitor-secure-storage`
-- Web keeps the existing WebAuthn-based fallback.
+- Biometric unlock now relies on the same in-app WebAuthn/local-storage flow used by the web app.
 
 ## Why remote URL mode
 
-This app currently depends on live Next.js API routes under `app/api/**`, so it is not ready for a fully bundled static mobile build yet. Using a deployed URL keeps those server routes working while still letting the app use native biometrics and OS-backed secure storage.
+This app currently depends on live Next.js API routes under `app/api/**`, so it is not ready for a fully bundled static mobile build yet. Using a deployed URL keeps those server routes working while still letting the app run inside native mobile shells.
 
 ## Required environment variables
 
@@ -32,14 +29,7 @@ This app currently depends on live Next.js API routes under `app/api/**`, so it 
 - `pnpm mobile:android`
 - `pnpm mobile:ios`
 
-## Native security behavior
+## Biometric note
 
-- Android stores the protected PIN using the Android Keystore-backed secure storage plugin.
-- iOS stores the protected PIN in Keychain with `whenPasscodeSetThisDeviceOnly`.
-- Native unlock always requires a local biometric or device credential prompt before the PIN is read.
-
-## iOS note
-
-Add `NSFaceIDUsageDescription` to `ios/App/App/Info.plist` after generating the iOS project. Suggested value:
-
-`MyWallet uses Face ID to unlock your encrypted wallet PIN.`
+- Biometric unlock uses the app's local biometric setup flow when supported by the runtime.
+- No native Capacitor biometric or secure-storage plugins are required.

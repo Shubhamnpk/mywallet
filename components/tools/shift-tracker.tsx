@@ -1,20 +1,65 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { Settings, Plus, ChevronDown, ChevronUp, MoreHorizontal, Clock } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+} from "react";
+import {
+  Settings,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  MoreHorizontal,
+  Clock,
+  Search,
+  ArrowUpDown,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog";
-import { STORAGE_RATE, STORAGE_TIME_FMT, SHIFT_STORAGE_UPDATED_EVENT, type Shift, todayStr, getShiftsFromStorage, saveShiftsToStorage } from "@/lib/shift-tracker-storage";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  STORAGE_RATE,
+  STORAGE_TIME_FMT,
+  SHIFT_STORAGE_UPDATED_EVENT,
+  type Shift,
+  todayStr,
+  getShiftsFromStorage,
+  saveShiftsToStorage,
+} from "@/lib/shift-tracker-storage";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useWalletData } from "@/contexts/wallet-data-context";
 import { getCurrencySymbol } from "@/lib/currency";
 import { cn, formatMoney } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Transaction } from "@/types/wallet";
 import { Sheet, SheetContent, SheetTitle } from "../ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import type { DateRange } from "react-day-picker";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /** Dispatched by the main floating + button when the Shift tracker tab is active. */
 export const SHIFT_TRACKER_OPEN_LOG_EVENT = "wallet-shift-tracker-open-log";
@@ -24,6 +69,10 @@ const STORAGE_PAYMENTS = "mywallet_wt_pay_v1";
 type TimeFmt = "12h" | "24h";
 type PeriodView = "day" | "week" | "month" | "all";
 type StatView = "month" | "all";
+type ShiftStatusFilter = "all" | "paid" | "owed";
+type PaymentHistorySort = "date" | "amount";
+type PaymentHistorySortOrder = "asc" | "desc";
+type PaymentTypeFilter = "all-types" | ShiftPayment["type"];
 
 interface ShiftPayment {
   id: number;
@@ -52,8 +101,34 @@ function weekKey(dateStr: string) {
 }
 
 // Month names - short and full versions
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+const MONTHS_FULL = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 function fd(d: string) {
   const [y, mo, day] = d.split("-");
@@ -73,6 +148,7 @@ interface ShiftTrackerProps {
 export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const { addTransaction, deleteTransaction, categories, userProfile } =
     useWalletData();
+  const isMobile = useIsMobile();
 
   const addIncome = useCallback(
     async (
@@ -115,6 +191,8 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
   const [statView, setStatView] = useState<StatView>("month");
   const [periodView, setPeriodView] = useState<PeriodView>("week");
+  const [shiftStatusFilter, setShiftStatusFilter] =
+    useState<ShiftStatusFilter>("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [logOpen, setLogOpen] = useState(false);
@@ -124,6 +202,82 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const [actionShiftId, setActionShiftId] = useState<number | null>(null);
 
   const [settingsRate, setSettingsRate] = useState("12.20");
+  const [paymentSearchTerm, setPaymentSearchTerm] = useState("");
+  const [paymentTypeFilter, setPaymentTypeFilter] =
+    useState<PaymentTypeFilter>("all-types");
+  const [paymentSortBy, setPaymentSortBy] =
+    useState<PaymentHistorySort>("date");
+  const [paymentSortOrder, setPaymentSortOrder] =
+    useState<PaymentHistorySortOrder>("desc");
+  const [paymentVisibleCount, setPaymentVisibleCount] = useState(7);
+  const [showPaymentFilters, setShowPaymentFilters] = useState(false);
+  const [paymentDateRange, setPaymentDateRange] = useState<
+    DateRange | undefined
+  >(undefined);
+
+  const clearPaymentFilterSelection = useCallback(() => {
+    setPaymentSearchTerm("");
+    setPaymentTypeFilter("all-types");
+    setPaymentSortBy("date");
+    setPaymentSortOrder("desc");
+    setPaymentDateRange(undefined);
+    setPaymentVisibleCount(7);
+  }, []);
+
+  useEffect(() => {
+    setPaymentVisibleCount(7);
+  }, [
+    paymentSearchTerm,
+    paymentTypeFilter,
+    paymentSortBy,
+    paymentSortOrder,
+    paymentDateRange,
+  ]);
+
+  const filteredPayments = useMemo(() => {
+    return payments
+      .filter((payment) => {
+        const paymentDate = new Date(payment.date);
+        const matchesDateRange =
+          paymentDateRange?.from && paymentDateRange?.to
+            ? paymentDate >= paymentDateRange.from &&
+              paymentDate <= paymentDateRange.to
+            : paymentDateRange?.from
+              ? paymentDate >= paymentDateRange.from
+              : paymentDateRange?.to
+                ? paymentDate <= paymentDateRange.to
+                : true;
+        const search = paymentSearchTerm.trim().toLowerCase();
+        const matchesSearch =
+          !search ||
+          payment.label.toLowerCase().includes(search) ||
+          payment.type.toLowerCase().includes(search) ||
+          payment.date.toLowerCase().includes(search);
+        const matchesType =
+          paymentTypeFilter === "all-types" ||
+          payment.type === paymentTypeFilter;
+        return matchesDateRange && matchesSearch && matchesType;
+      })
+      .sort((a, b) => {
+        if (paymentSortBy === "amount") {
+          return paymentSortOrder === "desc"
+            ? b.amount - a.amount
+            : a.amount - b.amount;
+        }
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return paymentSortOrder === "desc" ? dateB - dateA : dateA - dateB;
+      });
+  }, [
+    payments,
+    paymentSearchTerm,
+    paymentTypeFilter,
+    paymentSortBy,
+    paymentSortOrder,
+    paymentDateRange,
+  ]);
+
+  const visiblePayments = filteredPayments.slice(0, paymentVisibleCount);
 
   useEffect(() => {
     try {
@@ -228,23 +382,64 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     return `${fd(s.date)} | ${main}`;
   };
 
+  const getCoveredShiftsForPayment = useCallback(
+    (payment: ShiftPayment) => {
+      switch (payment.type) {
+        case "shift":
+          return shifts.filter(
+            (shift) => String(shift.id) === String(payment.periodKey),
+          );
+        case "day":
+          return shifts.filter((shift) => shift.date === payment.periodKey);
+        case "week":
+          return shifts.filter(
+            (shift) => weekKey(shift.date) === payment.periodKey,
+          );
+        case "month":
+          return shifts.filter(
+            (shift) => shift.date.slice(0, 7) === payment.periodKey,
+          );
+        case "all":
+          return shifts;
+        default:
+          return [];
+      }
+    },
+    [shifts],
+  );
+
   const paidForPeriod = useCallback(
-    (key: string, type: PeriodView) => {
-      return payments.reduce((sum, p) => {
-        if (p.type === type && p.periodKey === key) return sum + p.amount;
-        if (p.type !== "shift") return sum;
-        const shift = shifts.find((s) => String(s.id) === String(p.periodKey));
-        if (!shift) return sum;
-        if (type === "day" && shift.date === key) return sum + p.amount;
-        if (type === "week" && weekKey(shift.date) === key)
-          return sum + p.amount;
-        if (type === "month" && shift.date.slice(0, 7) === key)
-          return sum + p.amount;
-        if (type === "all") return sum + p.amount;
-        return sum;
+    (key: string, type: PeriodView, sourceShifts: Shift[] = shifts) => {
+      const targetShifts = sourceShifts.filter((shift) => {
+        if (type === "day") return shift.date === key;
+        if (type === "week") return weekKey(shift.date) === key;
+        if (type === "month") return shift.date.slice(0, 7) === key;
+        return true;
+      });
+
+      const targetShiftIds = new Set(
+        targetShifts.map((shift) => String(shift.id)),
+      );
+
+      return payments.reduce((sum, payment) => {
+        const coveredShifts = getCoveredShiftsForPayment(payment);
+        if (!coveredShifts.length) return sum;
+
+        const coveredEarn = coveredShifts.reduce(
+          (acc, shift) => acc + shift.hours * getShiftRate(shift),
+          0,
+        );
+        if (coveredEarn <= 0) return sum;
+
+        const matchedEarn = coveredShifts
+          .filter((shift) => targetShiftIds.has(String(shift.id)))
+          .reduce((acc, shift) => acc + shift.hours * getShiftRate(shift), 0);
+
+        if (matchedEarn <= 0) return sum;
+        return sum + payment.amount * (matchedEarn / coveredEarn);
       }, 0);
     },
-    [payments, shifts],
+    [payments, shifts, getCoveredShiftsForPayment, getShiftRate, weekKey],
   );
 
   const recordIncomeForPayment = async (
@@ -400,6 +595,13 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
   /* Stats */
   const thisMonth = todayStr().slice(0, 7);
+  const scopedShifts = useMemo(
+    () =>
+      statView === "month"
+        ? shifts.filter((s) => s.date.slice(0, 7) === thisMonth)
+        : shifts,
+    [shifts, statView, thisMonth],
+  );
   let atE = 0,
     moE = 0,
     atH = 0,
@@ -607,10 +809,25 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
       <Card className="gap-4 py-5 shadow-sm">
         <CardHeader className="px-4 sm:px-6 pb-0">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+            <div className="flex flex-col gap-2">
               <CardTitle className="text-base">
                 Shifts &amp; pay status
               </CardTitle>
+              <Select
+                value={shiftStatusFilter}
+                onValueChange={(value) =>
+                  setShiftStatusFilter(value as ShiftStatusFilter)
+                }
+              >
+                <SelectTrigger className="h-9 w-[160px]">
+                  <SelectValue placeholder="Filter status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="owed">Owed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-wrap gap-0.5 rounded-lg border bg-muted/50 p-0.5">
               {(
@@ -640,8 +857,9 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
         </CardHeader>
         <CardContent className="px-4 sm:px-6 pt-0">
           <PeriodsBody
-            shifts={shifts}
+            shifts={scopedShifts}
             periodView={periodView}
+            statusFilter={shiftStatusFilter}
             expanded={expanded}
             togglePeriod={togglePeriod}
             getShiftRate={getShiftRate}
@@ -663,7 +881,18 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
       <Card className="gap-4 py-5 shadow-sm">
         <CardHeader className="px-4 sm:px-6 pb-0">
-          <CardTitle className="text-base">Payment history</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-base">Payment history</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPaymentFilters((prev) => !prev)}
+              className="flex items-center gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              {showPaymentFilters ? "Hide Details" : "View Details"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="px-4 sm:px-6 pt-0">
           {!payments.length ? (
@@ -672,37 +901,209 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
               Each payment adds an income transaction to your wallet.
             </p>
           ) : (
-            <div className="divide-y rounded-lg border bg-muted/20">
-              {payments.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 first:rounded-t-lg last:rounded-b-lg"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {p.label}
+            <div className="space-y-3">
+              {showPaymentFilters && (
+                <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={paymentSearchTerm}
+                      onChange={(e) => setPaymentSearchTerm(e.target.value)}
+                      placeholder="Search payments..."
+                      className="pl-10"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={`${
+                            isMobile ? "w-full" : "w-[220px]"
+                          } justify-start text-left font-normal`}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {paymentDateRange?.from ? (
+                            paymentDateRange?.to ? (
+                              <>
+                                {paymentDateRange.from.toLocaleDateString()} -{" "}
+                                {paymentDateRange.to.toLocaleDateString()}
+                              </>
+                            ) : (
+                              paymentDateRange.from.toLocaleDateString()
+                            )
+                          ) : (
+                            <span>Pick a date range</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className={`${
+                          isMobile ? "w-full max-w-[300px]" : "w-[300px]"
+                        } p-0`}
+                        align="start"
+                      >
+                        <Calendar
+                          initialFocus
+                          mode="range"
+                          defaultMonth={paymentDateRange?.from}
+                          selected={paymentDateRange}
+                          onSelect={(range) => setPaymentDateRange(range)}
+                          numberOfMonths={1}
+                          className="w-full rounded-md border-0"
+                        />
+                        <div className="border-t border-border p-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentDateRange(undefined)}
+                            className="w-full"
+                          >
+                            Clear dates
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    <Select
+                      value={paymentTypeFilter}
+                      onValueChange={(value) =>
+                        setPaymentTypeFilter(value as PaymentTypeFilter)
+                      }
+                    >
+                      <SelectTrigger className="sm:w-[180px]">
+                        <SelectValue placeholder="All payment types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all-types">
+                          All payment types
+                        </SelectItem>
+                        <SelectItem value="shift">Shift</SelectItem>
+                        <SelectItem value="day">Day</SelectItem>
+                        <SelectItem value="week">Week</SelectItem>
+                        <SelectItem value="month">Month</SelectItem>
+                        <SelectItem value="all">All period payouts</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="justify-between sm:w-[180px]"
+                      onClick={() =>
+                        setPaymentSortBy((prev) =>
+                          prev === "date" ? "amount" : "date",
+                        )
+                      }
+                    >
+                      <span>
+                        Sort by {paymentSortBy === "date" ? "date" : "amount"}
+                      </span>
+                      <ArrowUpDown className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="sm:w-[150px]"
+                      onClick={() =>
+                        setPaymentSortOrder((prev) =>
+                          prev === "desc" ? "asc" : "desc",
+                        )
+                      }
+                    >
+                      {paymentSortOrder === "desc"
+                        ? "Newest first"
+                        : "Oldest first"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="sm:w-[140px]"
+                      onClick={clearPaymentFilterSelection}
+                    >
+                      Clear selection
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                {filteredPayments.length === payments.length
+                  ? "Showing your most recent payment records."
+                  : `Showing ${filteredPayments.length} matching payment records.`}
+              </p>
+              <div className="divide-y rounded-lg border bg-muted/20">
+                {visiblePayments.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {p.label}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {fd(p.date)} · {p.type}
+                        {p.walletTransactionId
+                          ? " · linked to transaction"
+                          : ""}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {fd(p.date)} · {p.type}
-                      {p.walletTransactionId ? " · linked to transaction" : ""}
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium text-emerald-600">
+                        {formatMoney(p.amount, currencySymbol)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+                        onClick={() => undoPaid(p.id)}
+                      >
+                        Undo
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-medium text-emerald-600">
-                      {formatMoney(p.amount, currencySymbol)}
-                    </span>
+                ))}
+              </div>
+              {!visiblePayments.length && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  {paymentSearchTerm ||
+                  paymentTypeFilter !== "all-types" ||
+                  paymentDateRange?.from ||
+                  paymentDateRange?.to
+                    ? "No payment history matches your current filters."
+                    : "No payment history found."}
+                </p>
+              )}
+              {(paymentVisibleCount < filteredPayments.length ||
+                paymentVisibleCount > 7) && (
+                <div className="flex flex-wrap gap-2">
+                  {paymentVisibleCount < filteredPayments.length && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
-                      onClick={() => undoPaid(p.id)}
+                      onClick={() => setPaymentVisibleCount((prev) => prev + 7)}
                     >
-                      Undo
+                      Show more
                     </Button>
-                  </div>
+                  )}
+                  {paymentVisibleCount > 7 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPaymentVisibleCount(7)}
+                    >
+                      Show less
+                    </Button>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </CardContent>
@@ -720,7 +1121,9 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           if (editShift) {
             // Update existing shift
             setShifts((prev) =>
-              prev.map((s) => (s.id === editShift.id ? { ...shift, id: editShift.id } : s))
+              prev.map((s) =>
+                s.id === editShift.id ? { ...shift, id: editShift.id } : s,
+              ),
             );
             toast.success("Shift updated");
             return true;
@@ -751,7 +1154,8 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   Shift Tracker Settings
                 </DialogTitle>
                 <DialogDescription className="text-sm text-muted-foreground leading-snug">
-                  Adjust your hourly rate and time format preferences for shift tracking.
+                  Adjust your hourly rate and time format preferences for shift
+                  tracking.
                 </DialogDescription>
               </div>
             </div>
@@ -760,9 +1164,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           <div className="p-6 space-y-5 max-h-[min(60vh,480px)] overflow-y-auto overscroll-contain">
             <div className="space-y-4">
               <div>
-                <Label
-                  className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                >
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
                   Hourly rate ({currencySymbol}/hr)
                 </Label>
                 <div className="mt-2 flex items-center gap-2">
@@ -780,9 +1182,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
               </div>
 
               <div>
-                <Label
-                  className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                >
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
                   Time format
                 </Label>
                 <div className="mt-2 flex w-fit gap-0.5 rounded-xl border bg-muted/30 p-1">
@@ -814,9 +1214,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
               </div>
 
               <div>
-                <Label
-                  className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                >
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
                   Data management
                 </Label>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1052,6 +1450,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 function PeriodsBody({
   shifts,
   periodView,
+  statusFilter,
   expanded,
   togglePeriod,
   getShiftRate,
@@ -1070,10 +1469,15 @@ function PeriodsBody({
 }: {
   shifts: Shift[];
   periodView: PeriodView;
+  statusFilter: ShiftStatusFilter;
   expanded: Record<string, boolean>;
   togglePeriod: (id: string) => void;
   getShiftRate: (s: Shift) => number;
-  paidForPeriod: (key: string, type: PeriodView) => number;
+  paidForPeriod: (
+    key: string,
+    type: PeriodView,
+    sourceShifts?: Shift[],
+  ) => number;
   markPaid: (
     key: string,
     type: PeriodView,
@@ -1091,6 +1495,13 @@ function PeriodsBody({
   onOpenActions: (id: number) => void;
   currencySymbol: string;
 }) {
+  const [page, setPage] = useState(1);
+  const pageSize = 7;
+
+  useEffect(() => {
+    setPage(1);
+  }, [periodView, statusFilter, shifts.length]);
+
   if (!shifts.length) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -1099,68 +1510,117 @@ function PeriodsBody({
     );
   }
 
+  const sortShiftsLatestFirst = (items: Shift[]) =>
+    [...items].sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      return b.id - a.id;
+    });
+
+  const matchesShiftStatus = (isPaid: boolean, owedAmount = 0) => {
+    if (statusFilter === "paid") return isPaid;
+    if (statusFilter === "owed") return owedAmount > 0 || !isPaid;
+    return true;
+  };
+
   if (periodView === "all") {
+    const filteredAllShifts = sortShiftsLatestFirst(shifts).filter((shift) => {
+      const earned = shift.hours * getShiftRate(shift);
+      const owed = Math.max(0, earned - paidForPeriod("all", "all", [shift]));
+      return matchesShiftStatus(shiftIsPaid(shift), owed);
+    });
+    const totalPages = Math.max(
+      1,
+      Math.ceil(filteredAllShifts.length / pageSize),
+    );
+    const currentPage = Math.min(page, totalPages);
+    const paginatedShifts = filteredAllShifts.slice(
+      (currentPage - 1) * pageSize,
+      currentPage * pageSize,
+    );
+
+    if (!filteredAllShifts.length) {
+      return (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+          No shifts match the selected status filter.
+        </p>
+      );
+    }
+
     return (
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
-          <thead>
-            <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">Note / time</th>
-              <th className="hidden px-3 py-2 sm:table-cell">Hours</th>
-              <th className="px-3 py-2">Rate</th>
-              <th className="px-3 py-2">Earned</th>
-              <th className="w-10 px-1 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {shifts.map((s) => (
-              <tr
-                key={s.id}
-                className="border-b last:border-0 hover:bg-muted/40"
-              >
-                <td className="px-3 py-2 align-middle">{fd(s.date)}</td>
-                <td className="px-3 py-2 align-middle">
-                  <button
-                    type="button"
-                    className="block w-full text-left hover:text-primary"
-                    onClick={() => onOpenDetails(s.id)}
-                  >
-                    {s.note || formatShiftTimeRange(s)}
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                      {s.note ? formatShiftTimeRange(s) : "Tap for details"}
-                    </span>
-                  </button>
-                  {shiftIsPaid(s) ? (
-                    <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
-                      Paid
-                    </span>
-                  ) : null}
-                </td>
-                <td className="hidden px-3 py-2 align-middle font-mono sm:table-cell">
-                  {fh(s.hours)}
-                </td>
-                <td className="px-3 py-2 align-middle font-mono">
-                  {formatMoney(getShiftRate(s), currencySymbol)}/hr
-                </td>
-                <td className="px-3 py-2 align-middle font-mono text-emerald-600">
-                  {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
-                </td>
-                <td className="px-1 py-2 align-middle text-right">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full border"
-                    onClick={() => onOpenActions(s.id)}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </td>
+      <div className="space-y-3">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Note / time</th>
+                <th className="hidden px-3 py-2 sm:table-cell">Hours</th>
+                <th className="px-3 py-2">Rate</th>
+                <th className="px-3 py-2">Earned</th>
+                <th className="w-10 px-1 py-2" />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {paginatedShifts.map((s) => (
+                <tr
+                  key={s.id}
+                  className="border-b last:border-0 hover:bg-muted/40"
+                >
+                  <td className="px-3 py-2 align-middle">{fd(s.date)}</td>
+                  <td className="px-3 py-2 align-middle">
+                    <button
+                      type="button"
+                      className="block w-full text-left hover:text-primary"
+                      onClick={() => onOpenDetails(s.id)}
+                    >
+                      {s.note || formatShiftTimeRange(s)}
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {s.note ? formatShiftTimeRange(s) : "Tap for details"}
+                      </span>
+                    </button>
+                    {shiftIsPaid(s) ? (
+                      <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
+                        Paid
+                      </span>
+                    ) : (
+                      <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-300">
+                        Owed
+                      </span>
+                    )}
+                  </td>
+                  <td className="hidden px-3 py-2 align-middle font-mono sm:table-cell">
+                    {fh(s.hours)}
+                  </td>
+                  <td className="px-3 py-2 align-middle font-mono">
+                    {formatMoney(getShiftRate(s), currencySymbol)}/hr
+                  </td>
+                  <td className="px-3 py-2 align-middle font-mono text-emerald-600">
+                    {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
+                  </td>
+                  <td className="px-1 py-2 align-middle text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full border"
+                      onClick={() => onOpenActions(s.id)}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pager
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredAllShifts.length}
+          itemLabel="entries"
+          onPageChange={setPage}
+        />
       </div>
     );
   }
@@ -1195,13 +1655,40 @@ function PeriodsBody({
     map[k].earn += s.hours * getShiftRate(s);
   });
 
-  const keys = Object.keys(map).sort((a, b) => b.localeCompare(a));
+  Object.values(map).forEach((entry) => {
+    entry.shifts = sortShiftsLatestFirst(entry.shifts);
+  });
+
+  const keys = Object.keys(map)
+    .sort((a, b) => b.localeCompare(a))
+    .filter((k) => {
+      const d = map[k];
+      const paid = paidForPeriod(k, periodView, shifts);
+      const owed = Math.max(0, d.earn - paid);
+      const isPaid = paid >= d.earn - 0.005 && d.earn > 0;
+      return matchesShiftStatus(isPaid, owed);
+    });
+
+  if (!keys.length) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        No shift groups match the selected status filter.
+      </p>
+    );
+  }
+
+  const totalPages = Math.max(1, Math.ceil(keys.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedKeys = keys.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
 
   return (
-    <div className="space-y-2">
-      {keys.map((k) => {
+    <div className="space-y-3">
+      {paginatedKeys.map((k) => {
         const d = map[k];
-        const paid = paidForPeriod(k, periodView);
+        const paid = paidForPeriod(k, periodView, shifts);
         const owed = Math.max(0, d.earn - paid);
         const isPaid = paid >= d.earn - 0.005 && d.earn > 0;
         const bid = `b_${k.replace(/[^a-z0-9]/gi, "_")}`;
@@ -1310,7 +1797,10 @@ function PeriodsBody({
                             {formatMoney(getShiftRate(s), currencySymbol)}/hr
                           </td>
                           <td className="px-3 py-2 align-middle font-mono text-emerald-600">
-                            {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
+                            {formatMoney(
+                              s.hours * getShiftRate(s),
+                              currencySymbol,
+                            )}
                           </td>
                           <td className="px-1 py-2 align-middle text-right">
                             <Button
@@ -1331,7 +1821,8 @@ function PeriodsBody({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2 text-xs">
                   <div className="flex flex-wrap gap-3 font-mono">
                     <span>
-                      Total: <strong>{formatMoney(d.earn, currencySymbol)}</strong>
+                      Total:{" "}
+                      <strong>{formatMoney(d.earn, currencySymbol)}</strong>
                     </span>
                     <span className="text-emerald-600">
                       Paid: <strong>{formatMoney(paid, currencySymbol)}</strong>
@@ -1364,6 +1855,57 @@ function PeriodsBody({
           </div>
         );
       })}
+      <Pager
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={keys.length}
+        itemLabel="groups"
+        onPageChange={setPage}
+      />
+    </div>
+  );
+}
+
+function Pager({
+  currentPage,
+  totalPages,
+  totalItems,
+  itemLabel,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  itemLabel: string;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+      <span className="text-muted-foreground">
+        Page {currentPage} of {totalPages} · {totalItems} {itemLabel}
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(currentPage - 1)}
+        >
+          Previous
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(currentPage + 1)}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

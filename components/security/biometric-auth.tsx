@@ -25,7 +25,6 @@ import {
   unwrapPinWithBiometric,
   wrapPinWithBiometric,
 } from "@/lib/biometric-key"
-import { isNativeMobilePlatform } from "@/lib/native-mobile"
 
 interface BiometricAuthProps {
   pinEnabled?: boolean
@@ -99,61 +98,52 @@ export function BiometricAuth({
       setIsAuthenticating(true)
       setAuthError(null)
 
-      if (isNativeMobilePlatform()) {
-        localStorage.setItem(
-          "wallet_biometric_credential_id",
-          "native-biometric-secure-store",
-        )
-        setIsEnrolled(true)
-        setCredentialId("native-biometric-secure-store")
-      } else {
-        const challenge = new Uint8Array(32)
-        crypto.getRandomValues(challenge)
-        const prfSalt = ensureBiometricPrfSalt()
+      const challenge = new Uint8Array(32)
+      crypto.getRandomValues(challenge)
+      const prfSalt = ensureBiometricPrfSalt()
 
-        const createCredentialOptions: PublicKeyCredentialCreationOptions = {
-          challenge,
-          rp: {
-            name: "MyWallet",
-            id: window.location.hostname,
-          },
-          user: {
-            id: getConsistentUserId(),
-            name: "wallet-user",
-            displayName: "MyWallet User",
-          },
-          pubKeyCredParams: [
-            { alg: -7, type: "public-key" },
-            { alg: -257, type: "public-key" },
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: "platform",
-            userVerification: "required",
-            requireResidentKey: false,
-          },
-          timeout: 60000,
-          attestation: "direct",
-          extensions: {
-            prf: { eval: { first: prfSalt } },
-            hmacCreateSecret: true,
-          } as unknown as AuthenticationExtensionsClientInputs,
-        }
-
-        const credential = (await navigator.credentials.create({
-          publicKey: createCredentialOptions,
-        })) as PublicKeyCredential | null
-
-        if (!credential) {
-          throw new Error("Biometric credential creation failed")
-        }
-
-        const nextCredentialId = btoa(
-          String.fromCharCode(...new Uint8Array(credential.rawId)),
-        )
-        localStorage.setItem("wallet_biometric_credential_id", nextCredentialId)
-        setIsEnrolled(true)
-        setCredentialId(nextCredentialId)
+      const createCredentialOptions: PublicKeyCredentialCreationOptions = {
+        challenge,
+        rp: {
+          name: "MyWallet",
+          id: window.location.hostname,
+        },
+        user: {
+          id: getConsistentUserId(),
+          name: "wallet-user",
+          displayName: "MyWallet User",
+        },
+        pubKeyCredParams: [
+          { alg: -7, type: "public-key" },
+          { alg: -257, type: "public-key" },
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          requireResidentKey: false,
+        },
+        timeout: 60000,
+        attestation: "direct",
+        extensions: {
+          prf: { eval: { first: prfSalt } },
+          hmacCreateSecret: true,
+        } as unknown as AuthenticationExtensionsClientInputs,
       }
+
+      const credential = (await navigator.credentials.create({
+        publicKey: createCredentialOptions,
+      })) as PublicKeyCredential | null
+
+      if (!credential) {
+        throw new Error("Biometric credential creation failed")
+      }
+
+      const nextCredentialId = btoa(
+        String.fromCharCode(...new Uint8Array(credential.rawId)),
+      )
+      localStorage.setItem("wallet_biometric_credential_id", nextCredentialId)
+      setIsEnrolled(true)
+      setCredentialId(nextCredentialId)
 
       const cachedPin = SecureKeyManager.getCachedSessionPin()
       if (!cachedPin) {
@@ -168,7 +158,7 @@ export function BiometricAuth({
         setBiometricEnabled(false)
         setIsKeyWrapped(false)
         setAuthError(
-          "Biometric enrolled, but secure key storage is not supported on this device.",
+          "Biometric enrolled, but local PIN storage could not be prepared on this device.",
         )
         return
       }
@@ -377,7 +367,7 @@ export function BiometricAuth({
                       try {
                         const wrapped = await wrapPinWithBiometric(cachedPin)
                         if (!wrapped) {
-                          setAuthError("Secure biometric storage is not supported on this device.")
+                          setAuthError("Local biometric PIN storage could not be prepared on this device.")
                           return
                         }
                         setIsKeyWrapped(true)
@@ -408,7 +398,7 @@ export function BiometricAuth({
 
           <div className="space-y-1 text-xs text-muted-foreground">
             <p>- Biometric authentication uses your device biometric sensor</p>
-            <p>- Native iOS and Android builds store the protected PIN in OS-backed secure storage</p>
+            <p>- Biometric unlock stores an encrypted copy of your PIN in local app storage on this device</p>
             <p>- Your biometric data never leaves your device</p>
             <p>- You can disable biometric authentication at any time</p>
             {supportPlatform === "web" && (
