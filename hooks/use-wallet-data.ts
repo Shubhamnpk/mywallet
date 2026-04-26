@@ -2259,7 +2259,12 @@ export function useWalletData() {
 
   const isTransactionEditable = (tx: Transaction) => {
     if (tx.status === "repayment" || tx.status === "debt") return false
-    if (tx.allocationType === "credit" || tx.allocationType === "debt" || tx.allocationType === "fastdebt") return false
+    if (
+      tx.allocationType === "credit" ||
+      tx.allocationType === "debt" ||
+      tx.allocationType === "fastdebt" ||
+      tx.allocationType === "debt_loan"
+    ) return false
     return true
   }
 

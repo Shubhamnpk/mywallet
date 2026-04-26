@@ -339,7 +339,9 @@ export function useAchievements({
     const ids = userProfile.celebratedAchievements
     if (Array.isArray(ids)) {
       celebratedAchievements.current = new Set(ids)
+      return
     }
+    celebratedAchievements.current = new Set()
   }, [userProfile.celebratedAchievements])
 
   // Trigger celebrations for newly unlocked achievements

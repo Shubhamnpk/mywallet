@@ -2,9 +2,22 @@
   "currentBuild": "2026.04.25",
   "releases": [
     {
+      "version": "2.0.4",
+      "date": "2026-04-26",
+      "status": "current",
+      "category": "Improvement",
+      "title": "Mobile UX, Achievements, and Native Security Improvements",
+      "highlights": [
+        "Improved the mobile tools tab flow and dashboard layout for a smoother small-screen experience.",
+        "Added achievement search, sorting, and progressive reveal to make milestones easier to browse.",
+        "Expanded native mobile shell updates across Android and iOS project assets and configuration.",
+        "Refined biometric and session security support for the mobile app experience."
+      ]
+    },
+    {
       "version": "2.0.3",
       "date": "2026-04-25",
-      "status": "current",
+      "status": "stable",
       "category": "Bugfix",
       "title": "Bug Fixes & Data Deletion Enhancement",
       "highlights": [

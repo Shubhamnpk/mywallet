@@ -30,7 +30,12 @@ function toDateInputValue(iso: string) {
 
 function canEditTransaction(t: Transaction) {
   if (t.status === "repayment" || t.status === "debt") return false
-  if (t.allocationType === "credit" || t.allocationType === "debt" || t.allocationType === "fastdebt") return false
+  if (
+    t.allocationType === "credit" ||
+    t.allocationType === "debt" ||
+    t.allocationType === "fastdebt" ||
+    t.allocationType === "debt_loan"
+  ) return false
   return true
 }
 
@@ -114,6 +119,12 @@ export function TransactionDetailsModal({
   }
 
   const handleSaveEdit = async () => {
+    if (!editable) {
+      toast.error("This linked transaction cannot be edited here")
+      setIsEditing(false)
+      return
+    }
+
     const num = Number.parseFloat(formAmount)
     if (!Number.isFinite(num) || num <= 0) {
       toast.error("Enter a valid amount")
@@ -481,8 +492,8 @@ export function TransactionDetailsModal({
                 Delete
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Debt- and credit-linked rows cannot be edited here without breaking linked balances. Delete and re-add if you
-                need to correct one.
+                Debt-, credit-, and debt-loan-linked rows cannot be edited here without breaking linked balances. Delete and
+                re-add if you need to correct one.
               </p>
             </div>
           )}

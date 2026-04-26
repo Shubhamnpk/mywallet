@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Fingerprint, Shield, X, Smartphone } from "lucide-react"
 import { getBiometricCredentialId } from "@/lib/biometric-key"
 
+const BIOMETRIC_CROSS_DEVICE_PROMPT_DISMISSED_KEY = "wallet_biometric_cross_device_prompt_dismissed"
+
 interface BiometricCrossDevicePromptProps {
   userProfile: {
     pin?: string
@@ -50,6 +52,12 @@ export function BiometricCrossDevicePrompt({
         return
       }
 
+      const wasDismissed = localStorage.getItem(BIOMETRIC_CROSS_DEVICE_PROMPT_DISMISSED_KEY) === "true"
+      if (wasDismissed) {
+        setIsChecking(false)
+        return
+      }
+
       // Check if this device supports biometric
       const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
       if (!isSecureContext) {
@@ -81,10 +89,12 @@ export function BiometricCrossDevicePrompt({
   }, [userProfile, onUpdateProfile])
 
   const handleDismiss = () => {
+    localStorage.setItem(BIOMETRIC_CROSS_DEVICE_PROMPT_DISMISSED_KEY, "true")
     setShowPrompt(false)
   }
 
   const handleEnable = () => {
+    localStorage.removeItem(BIOMETRIC_CROSS_DEVICE_PROMPT_DISMISSED_KEY)
     setShowPrompt(false)
     onEnableBiometric()
   }
@@ -92,7 +102,16 @@ export function BiometricCrossDevicePrompt({
   if (isChecking || !showPrompt) return null
 
   return (
-    <Dialog open={showPrompt} onOpenChange={setShowPrompt}>
+    <Dialog
+      open={showPrompt}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleDismiss()
+          return
+        }
+        setShowPrompt(true)
+      }}
+    >
       <DialogContent className="sm:max-w-md rounded-2xl">
         <DialogHeader className="text-center">
           <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
