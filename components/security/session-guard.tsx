@@ -4,7 +4,11 @@ import { useState, useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
-import { isBiometricKeyConfigured, unwrapPinWithBiometric } from "@/lib/biometric-key"
+import {
+  getBiometricSupportState,
+  isBiometricKeyConfiguredAsync,
+  unwrapPinWithBiometric,
+} from "@/lib/biometric-key"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
@@ -83,26 +87,13 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
   }, [emergencyMode])
 
   useEffect(() => {
-    // Check if biometrics are enabled
-    setBiometricEnabled(isBiometricKeyConfigured())
-
-    // Check biometric support
     const checkBiometricSupport = async () => {
-      const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
-      if (!isSecureContext || !window.PublicKeyCredential) {
-        setBiometricSupported(false)
-        return
-      }
-
-      try {
-        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        setBiometricSupported(available)
-      } catch (error) {
-        setBiometricSupported(false)
-      }
+      setBiometricEnabled(await isBiometricKeyConfiguredAsync())
+      const support = await getBiometricSupportState()
+      setBiometricSupported(support.isSupported)
     }
 
-    checkBiometricSupport()
+    void checkBiometricSupport()
   }, [])
 
   // Real-time updates for auth status (every 1 second)

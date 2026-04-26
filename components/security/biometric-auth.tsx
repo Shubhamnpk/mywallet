@@ -1,28 +1,31 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Fingerprint,
-  Shield,
   AlertTriangle,
-  Settings,
+  Fingerprint,
   Lock,
-  Unlock
+  Settings,
+  Shield,
+  Unlock,
 } from "lucide-react"
 import { SecureKeyManager } from "@/lib/key-manager"
 import {
   clearBiometricKeyData,
   ensureBiometricPrfSalt,
   getBiometricCredentialId,
-  hasWrappedBiometricPin,
+  getBiometricSupportState,
+  hasWrappedBiometricPinAsync,
+  isBiometricKeyConfiguredAsync,
   setBiometricEnabled,
   unwrapPinWithBiometric,
   wrapPinWithBiometric,
 } from "@/lib/biometric-key"
+import { isNativeMobilePlatform } from "@/lib/native-mobile"
 
 interface BiometricAuthProps {
   pinEnabled?: boolean
@@ -31,74 +34,62 @@ interface BiometricAuthProps {
   onEnrollmentSuccess?: () => void
 }
 
-export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, onEnrollmentSuccess }: BiometricAuthProps) {
+export function BiometricAuth({
+  pinEnabled = false,
+  onAuthenticated,
+  onError,
+  onEnrollmentSuccess,
+}: BiometricAuthProps) {
   const [isSupported, setIsSupported] = useState(false)
   const [isEnrolled, setIsEnrolled] = useState(false)
   const [isKeyWrapped, setIsKeyWrapped] = useState(false)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [credentialId, setCredentialId] = useState<string | null>(null)
+  const [supportPlatform, setSupportPlatform] = useState<"web" | "ios" | "android">("web")
 
   useEffect(() => {
-    checkBiometricSupport()
-    checkExistingCredentials()
+    void checkBiometricSupport()
+    void checkExistingCredentials()
   }, [])
 
   const checkBiometricSupport = async () => {
-    // Check if we're in a secure context
-    const isSecureContext = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
-
-    if (!isSecureContext) {
-      setIsSupported(false)
-      setAuthError('Biometric authentication requires HTTPS or localhost. Please access the app securely.')
-      return
-    }
-
-    if (!window.PublicKeyCredential) {
-      setIsSupported(false)
-      setAuthError('Your browser does not support Web Authentication API.')
-      return
-    }
-
-    try {
-      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-      setIsSupported(available)
-      if (!available) {
-        setAuthError('No biometric authenticator available on this device. Please ensure you have a screen lock (PIN, pattern, or fingerprint) set up in your device settings.')
-      }
-    } catch (error) {
-      setIsSupported(false)
-      setAuthError('Error checking biometric support. This can happen if the site is not served over HTTPS or if biometric hardware is not available.')
+    const support = await getBiometricSupportState()
+    setSupportPlatform(support.platform)
+    setIsSupported(support.isSupported)
+    if (!support.isSupported && support.reason) {
+      setAuthError(support.reason)
     }
   }
 
-  const checkExistingCredentials = () => {
+  const checkExistingCredentials = async () => {
     const storedCredentialId = getBiometricCredentialId()
     if (storedCredentialId) {
       setIsEnrolled(true)
       setCredentialId(storedCredentialId)
-      setIsKeyWrapped(hasWrappedBiometricPin())
-    } else {
-      setIsEnrolled(false)
-      setIsKeyWrapped(false)
+      setIsKeyWrapped(await hasWrappedBiometricPinAsync())
+      return
     }
+
+    const configured = await isBiometricKeyConfiguredAsync()
+    setIsEnrolled(configured)
+    setIsKeyWrapped(configured)
   }
 
   const getConsistentUserId = () => {
-    let userId = localStorage.getItem('wallet_biometric_user_id')
+    let userId = localStorage.getItem("wallet_biometric_user_id")
     if (!userId) {
-      // Generate a consistent user ID and store it
       const array = new Uint8Array(16)
       crypto.getRandomValues(array)
       userId = btoa(String.fromCharCode(...array))
-      localStorage.setItem('wallet_biometric_user_id', userId)
+      localStorage.setItem("wallet_biometric_user_id", userId)
     }
-    return Uint8Array.from(atob(userId), c => c.charCodeAt(0))
+    return Uint8Array.from(atob(userId), (c) => c.charCodeAt(0))
   }
 
   const enrollBiometric = async () => {
     if (!isSupported) {
-      const error = 'Biometric authentication is not supported on this device'
+      const error = "Biometric authentication is not supported on this device"
       setAuthError(error)
       onError?.(error)
       return
@@ -108,94 +99,105 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
       setIsAuthenticating(true)
       setAuthError(null)
 
-      // Create credential creation options
-      const challenge = new Uint8Array(32)
-      crypto.getRandomValues(challenge)
-
-      const prfSalt = ensureBiometricPrfSalt()
-
-      const createCredentialOptions: PublicKeyCredentialCreationOptions = {
-        challenge,
-        rp: {
-          name: 'MyWallet',
-          id: window.location.hostname
-        },
-        user: {
-          id: getConsistentUserId(),
-          name: 'wallet-user',
-          displayName: 'MyWallet User'
-        },
-        pubKeyCredParams: [
-          { alg: -7, type: 'public-key' }, // ES256
-          { alg: -257, type: 'public-key' } // RS256
-        ],
-        authenticatorSelection: {
-          authenticatorAttachment: 'platform',
-          userVerification: 'required',
-          requireResidentKey: false
-        },
-        timeout: 60000,
-        attestation: 'direct',
-        extensions: {
-          prf: { eval: { first: prfSalt } },
-          hmacCreateSecret: true,
-        } as any,
-      }
-
-      const credential = await navigator.credentials.create({
-        publicKey: createCredentialOptions
-      }) as PublicKeyCredential
-
-      if (credential) {
-        // Store credential ID for future authentication
-        const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)))
-        localStorage.setItem('wallet_biometric_credential_id', credentialId)
-
+      if (isNativeMobilePlatform()) {
+        localStorage.setItem(
+          "wallet_biometric_credential_id",
+          "native-biometric-secure-store",
+        )
         setIsEnrolled(true)
-        setCredentialId(credentialId)
+        setCredentialId("native-biometric-secure-store")
+      } else {
+        const challenge = new Uint8Array(32)
+        crypto.getRandomValues(challenge)
+        const prfSalt = ensureBiometricPrfSalt()
 
-        const cachedPin = SecureKeyManager.getCachedSessionPin()
-        if (!cachedPin) {
-          setBiometricEnabled(false)
-          setIsKeyWrapped(false)
-          setAuthError("Biometric enrolled. Unlock once with your PIN to finish setup.")
-          return
+        const createCredentialOptions: PublicKeyCredentialCreationOptions = {
+          challenge,
+          rp: {
+            name: "MyWallet",
+            id: window.location.hostname,
+          },
+          user: {
+            id: getConsistentUserId(),
+            name: "wallet-user",
+            displayName: "MyWallet User",
+          },
+          pubKeyCredParams: [
+            { alg: -7, type: "public-key" },
+            { alg: -257, type: "public-key" },
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            userVerification: "required",
+            requireResidentKey: false,
+          },
+          timeout: 60000,
+          attestation: "direct",
+          extensions: {
+            prf: { eval: { first: prfSalt } },
+            hmacCreateSecret: true,
+          } as unknown as AuthenticationExtensionsClientInputs,
         }
 
-        const wrapped = await wrapPinWithBiometric(cachedPin)
-        if (!wrapped) {
-          setBiometricEnabled(false)
-          setIsKeyWrapped(false)
-          setAuthError("Biometric enrolled, but secure key storage isn't supported on this device.")
-          return
+        const credential = (await navigator.credentials.create({
+          publicKey: createCredentialOptions,
+        })) as PublicKeyCredential | null
+
+        if (!credential) {
+          throw new Error("Biometric credential creation failed")
         }
 
-        setIsKeyWrapped(true)
-        
-        // Notify parent that enrollment succeeded (for cross-device tracking)
-        onEnrollmentSuccess?.()
+        const nextCredentialId = btoa(
+          String.fromCharCode(...new Uint8Array(credential.rawId)),
+        )
+        localStorage.setItem("wallet_biometric_credential_id", nextCredentialId)
+        setIsEnrolled(true)
+        setCredentialId(nextCredentialId)
       }
 
+      const cachedPin = SecureKeyManager.getCachedSessionPin()
+      if (!cachedPin) {
+        setBiometricEnabled(false)
+        setIsKeyWrapped(false)
+        setAuthError("Biometric enrolled. Unlock once with your PIN to finish setup.")
+        return
+      }
+
+      const wrapped = await wrapPinWithBiometric(cachedPin)
+      if (!wrapped) {
+        setBiometricEnabled(false)
+        setIsKeyWrapped(false)
+        setAuthError(
+          "Biometric enrolled, but secure key storage is not supported on this device.",
+        )
+        return
+      }
+
+      setIsKeyWrapped(true)
+      onEnrollmentSuccess?.()
     } catch (error) {
-      console.error('Biometric enrollment failed:', error)
-      let errorMessage = 'Biometric enrollment failed'
+      console.error("Biometric enrollment failed:", error)
+      let errorMessage = "Biometric enrollment failed"
 
       if (error instanceof Error) {
         switch (error.name) {
-          case 'NotAllowedError':
-            errorMessage = 'Biometric enrollment was cancelled or denied. Please try again and allow access.'
+          case "NotAllowedError":
+            errorMessage =
+              "Biometric enrollment was canceled or denied. Please try again and allow access."
             break
-          case 'NotSupportedError':
-            errorMessage = 'This device does not support biometric authentication.'
+          case "NotSupportedError":
+            errorMessage = "This device does not support biometric authentication."
             break
-          case 'SecurityError':
-            errorMessage = 'Security error: Please ensure you\'re accessing the app securely (HTTPS or localhost).'
+          case "SecurityError":
+            errorMessage =
+              "Security error: please ensure you are accessing the app securely."
             break
-          case 'AbortError':
-            errorMessage = 'Biometric enrollment was cancelled.'
+          case "AbortError":
+            errorMessage = "Biometric enrollment was canceled."
             break
-          case 'InvalidStateError':
-            errorMessage = 'Biometric credentials already exist. Please disable first if you want to re-enroll.'
+          case "InvalidStateError":
+            errorMessage =
+              "Biometric credentials already exist. Disable biometric unlock before re-enrolling."
             break
           default:
             errorMessage = `Enrollment failed: ${error.message}`
@@ -203,9 +205,6 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
       }
 
       setAuthError(errorMessage)
-      if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
-        setAuthError(errorMessage + " Tip: Make sure your device screen lock (PIN/Biometric) is enabled in device settings.")
-      }
       onError?.(errorMessage)
     } finally {
       setIsAuthenticating(false)
@@ -214,7 +213,7 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
 
   const authenticateBiometric = async () => {
     if (!isSupported || !isEnrolled || !credentialId) {
-      const error = 'Biometric authentication is not properly configured'
+      const error = "Biometric authentication is not properly configured"
       setAuthError(error)
       onError?.(error)
       return
@@ -230,23 +229,24 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
         return
       }
       onAuthenticated?.()
-
     } catch (error) {
-      let errorMessage = 'Biometric authentication failed'
+      let errorMessage = "Biometric authentication failed"
 
       if (error instanceof Error) {
         switch (error.name) {
-          case 'NotAllowedError':
-            errorMessage = 'Biometric authentication was cancelled or denied. Please try again.'
+          case "NotAllowedError":
+            errorMessage =
+              "Biometric authentication was canceled or denied. Please try again."
             break
-          case 'SecurityError':
-            errorMessage = 'Security error: Please ensure you\'re accessing the app securely (HTTPS or localhost).'
+          case "SecurityError":
+            errorMessage =
+              "Security error: please ensure you are accessing the app securely."
             break
-          case 'AbortError':
-            errorMessage = 'Biometric authentication was cancelled.'
+          case "AbortError":
+            errorMessage = "Biometric authentication was canceled."
             break
-          case 'NotSupportedError':
-            errorMessage = 'Biometric authentication is not supported on this device.'
+          case "NotSupportedError":
+            errorMessage = "Biometric authentication is not supported on this device."
             break
           default:
             errorMessage = `Authentication failed: ${error.message}`
@@ -254,31 +254,18 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
       }
 
       setAuthError(errorMessage)
-      if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
-        setAuthError(errorMessage + " Tip: Make sure your device is unlocked and screen lock is configured.")
-      }
       onError?.(errorMessage)
     } finally {
       setIsAuthenticating(false)
     }
   }
 
-  const disableBiometric = () => {
-    clearBiometricKeyData()
+  const disableBiometric = async () => {
+    await clearBiometricKeyData()
     setIsEnrolled(false)
     setCredentialId(null)
     setIsKeyWrapped(false)
     setAuthError(null)
-  }
-
-  const getBrowserSupportInfo = () => {
-    const userAgent = navigator.userAgent
-    const isChrome = /Chrome/.test(userAgent) && /Google Inc/.test(navigator.vendor)
-    const isFirefox = /Firefox/.test(userAgent)
-    const isSafari = /Safari/.test(userAgent) && /Apple Computer/.test(navigator.vendor)
-    const isEdge = /Edg/.test(userAgent)
-
-    return { isChrome, isFirefox, isSafari, isEdge }
   }
 
   if (!pinEnabled) {
@@ -294,7 +281,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
           <Alert className="border-primary/20 bg-primary/5">
             <AlertTriangle className="w-4 h-4 text-primary" />
             <AlertDescription className="text-primary">
-              <strong>PIN Required</strong>Biometric authentication requires PIN protection to be enabled first. Please set up your PIN in the section above.
+              <strong>PIN Required</strong>
+              Biometric authentication requires PIN protection to be enabled first.
+              Please set up your PIN in the section above.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -312,41 +301,42 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Status */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${
-                isSupported ? (isEnrolled ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'
-              }`} />
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isSupported ? (isEnrolled ? "bg-green-500" : "bg-yellow-500") : "bg-red-500"
+                }`}
+              />
               <span className="text-sm">
                 {isSupported
-                  ? (isEnrolled
-                    ? (isKeyWrapped ? 'Biometric authentication enabled' : 'Biometric enrolled; finish setup with PIN')
-                    : 'Biometric available but not enrolled')
-                  : 'Biometric authentication not supported'
-                }
+                  ? isEnrolled
+                    ? isKeyWrapped
+                      ? "Biometric authentication enabled"
+                      : "Biometric enrolled; finish setup with PIN"
+                    : "Biometric available but not enrolled"
+                  : "Biometric authentication not supported"}
               </span>
             </div>
-            <Badge variant={isEnrolled ? 'default' : 'secondary'}>
-              {isEnrolled ? (isKeyWrapped ? 'Enabled' : 'Pending') : 'Disabled'}
+            <Badge variant={isEnrolled ? "default" : "secondary"}>
+              {isEnrolled ? (isKeyWrapped ? "Enabled" : "Pending") : "Disabled"}
             </Badge>
           </div>
 
-          {/* Browser Info */}
-          {!isSupported && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          {!isSupported && supportPlatform === "web" && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-blue-600" />
                 <span className="text-sm text-blue-700">
-                  For best compatibility, use Chrome, Firefox, Safari, or Edge on a secure connection (HTTPS).
+                  For best compatibility, use Chrome, Firefox, Safari, or Edge on
+                  a secure connection (HTTPS).
                 </span>
               </div>
             </div>
           )}
 
-          {/* Error Message */}
           {authError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-600" />
                 <span className="text-sm text-red-700">{authError}</span>
@@ -354,7 +344,6 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-2">
             {!isEnrolled ? (
               <Button
@@ -363,7 +352,7 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
                 className="flex items-center gap-2"
               >
                 <Shield className="w-4 h-4" />
-                {isAuthenticating ? 'Enrolling...' : 'Enable Biometric'}
+                {isAuthenticating ? "Enrolling..." : "Enable Biometric"}
               </Button>
             ) : (
               <>
@@ -373,7 +362,7 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
                   className="flex items-center gap-2"
                 >
                   <Unlock className="w-4 h-4" />
-                  {isAuthenticating ? 'Authenticating...' : 'Authenticate'}
+                  {isAuthenticating ? "Authenticating..." : "Authenticate"}
                 </Button>
                 {!isKeyWrapped && (
                   <Button
@@ -388,7 +377,7 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
                       try {
                         const wrapped = await wrapPinWithBiometric(cachedPin)
                         if (!wrapped) {
-                          setAuthError("Secure biometric storage isn't supported on this device.")
+                          setAuthError("Secure biometric storage is not supported on this device.")
                           return
                         }
                         setIsKeyWrapped(true)
@@ -405,7 +394,9 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
                 )}
                 <Button
                   variant="outline"
-                  onClick={disableBiometric}
+                  onClick={() => {
+                    void disableBiometric()
+                  }}
                   className="flex items-center gap-2"
                 >
                   <Lock className="w-4 h-4" />
@@ -415,13 +406,14 @@ export function BiometricAuth({ pinEnabled = false, onAuthenticated, onError, on
             )}
           </div>
 
-          {/* Information */}
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p>• Biometric authentication uses your device's fingerprint or face recognition</p>
-            <p>• Your biometric data never leaves your device and is stored securely</p>
-            <p>• You can disable biometric authentication at any time</p>
-            <p>• Requires HTTPS connection or localhost for security</p>
-            <p>• Works with Chrome, Firefox, Safari, and Edge browsers</p>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>- Biometric authentication uses your device biometric sensor</p>
+            <p>- Native iOS and Android builds store the protected PIN in OS-backed secure storage</p>
+            <p>- Your biometric data never leaves your device</p>
+            <p>- You can disable biometric authentication at any time</p>
+            {supportPlatform === "web" && (
+              <p>- Web support requires HTTPS or localhost and a compatible browser</p>
+            )}
           </div>
         </CardContent>
       </Card>
