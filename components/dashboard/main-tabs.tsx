@@ -109,6 +109,21 @@ export function MainTabs({
   debtAccounts = [],
 }: MainTabsProps) {
   const [activeTab, setActiveTab] = useState("transactions")
+  const toolsContentRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to tools content when Tools tab is active (for mobile)
+  useEffect(() => {
+    if (activeTab === "tools" && toolsContentRef.current) {
+      setTimeout(() => {
+        // Scroll down a bit to show the second row of tool cards
+        const element = toolsContentRef.current
+        if (!element) return
+        const rect = element.getBoundingClientRect()
+        const scrollOffset = window.scrollY + rect.top - 100 // Offset to show second row
+        window.scrollTo({ top: scrollOffset, behavior: "smooth" })
+      }, 150)
+    }
+  }, [activeTab])
 
   useEffect(() => {
     const validateSession = () => {
@@ -272,8 +287,8 @@ export function MainTabs({
     pickTab(allTabs, "debt-credit"),
     pickTab(allTabs, "categories"),
     pickTab(allTabs, "portfolio"),
-    pickTab(allTabs, "insights"),
-    pickTab(allTabs, "shift-tracker"),
+    pickTab(allTabs, "shift-tracker"),  // Second-to-last
+    pickTab(allTabs, "insights"),        // Last
   ]
 
   return (
@@ -406,6 +421,7 @@ export function MainTabs({
           </TabsContent>
 
           <TabsContent
+            ref={toolsContentRef}
             value="tools"
             className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-4 duration-300"
           >
@@ -428,29 +444,21 @@ export function MainTabs({
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 lg:hidden">
+            {/* Mobile: 4 compact tool cards in a row */}
+            <div className="grid grid-cols-4 gap-2 lg:hidden">
               {mobileHubCards.map((tool) => (
                 <button
                   key={tool.value}
                   type="button"
                   onClick={() => setActiveTab(tool.value)}
-                  className="flex flex-col items-center justify-center p-6 bg-card border rounded-xl shadow-sm hover:bg-muted/50 transition-all active:scale-95"
+                  className="flex flex-col items-center justify-center p-2 bg-card border rounded-xl shadow-sm hover:bg-muted/50 transition-all active:scale-95"
                 >
-                  <div className="p-3 bg-primary/10 rounded-full mb-3 text-primary">
-                    <tool.icon className="w-8 h-8" />
+                  <div className="p-1.5 bg-primary/10 rounded-full mb-1.5 text-primary">
+                    <tool.icon className="w-5 h-5" />
                   </div>
-                  <span className="font-semibold text-lg">{tool.label}</span>
-                  <span className="text-xs text-muted-foreground mt-1 text-center">
-                    {tool.description}
-                  </span>
+                  <span className="font-medium text-[11px] leading-tight text-center">{tool.label}</span>
                 </button>
               ))}
-            </div>
-
-            <div className="p-4 bg-muted/20 rounded-lg border border-border/40 text-center lg:hidden">
-              <p className="text-sm text-muted-foreground">
-                Open a tool above, then use the bottom menu to switch sections.
-              </p>
             </div>
           </TabsContent>
         </div>

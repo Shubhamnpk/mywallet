@@ -52,7 +52,7 @@ export function DebtDetailsDialog({
     const accountTransactions = useMemo(() => {
         if (!accountId) return []
         return transactions
-            .filter((t: any) => t.accountId === accountId)
+            .filter((t: any) => t.accountId === accountId || t.debtAccountId === accountId)
             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [accountId, transactions])
 

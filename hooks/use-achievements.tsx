@@ -1,8 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import type { Goal, Achievement, UserProfile, Transaction, Budget, DebtAccount } from "@/types/wallet"
-import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import {
   Trophy,
   Star,
@@ -335,38 +334,25 @@ export function useAchievements({
     return newAchievements
   }, [goals, transactions, budgets, debtAccounts])
 
-  const [isLoaded, setIsLoaded] = useState(false)
-
-  // Load celebrated achievements from local storage on mount
+  // Initialize celebrated achievements from userProfile (syncs across devices)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      void (async () => {
-        try {
-          const stored = await loadFromLocalStorage(["celebratedAchievements"])
-          const ids = stored.celebratedAchievements
-          if (Array.isArray(ids)) {
-            ids.forEach((id: string) => celebratedAchievements.current.add(id))
-          }
-        } catch (e) {
-        } finally {
-          setIsLoaded(true)
-        }
-      })()
+    const ids = userProfile.celebratedAchievements
+    if (Array.isArray(ids)) {
+      celebratedAchievements.current = new Set(ids)
+      return
     }
-  }, [])
+    celebratedAchievements.current = new Set()
+  }, [userProfile.celebratedAchievements])
 
   // Trigger celebrations for newly unlocked achievements
   useEffect(() => {
-    if (!isLoaded) return
-
     const unlockedAchievements = achievements.filter(a => a.unlocked && !celebratedAchievements.current.has(a.id))
 
     if (unlockedAchievements.length > 0 && !celebration.show) {
       const achievement = unlockedAchievements[0] // Celebrate the first new achievement
 
-      // Update local storage immediately to prevent double celebration if component re-renders
+      // Add to celebrated set immediately to prevent double celebration
       celebratedAchievements.current.add(achievement.id)
-      void saveToLocalStorage('celebratedAchievements', Array.from(celebratedAchievements.current), true)
 
       setTimeout(() => {
         setCelebration({
@@ -376,27 +362,36 @@ export function useAchievements({
         })
       }, 1000)
     }
-  }, [achievements, celebration.show, goals, isLoaded])
+  }, [achievements, celebration.show, goals])
 
 
   const unlockedAchievements = achievements.filter(a => a.unlocked)
   const lockedAchievements = achievements.filter(a => !a.unlocked)
 
-  const dismissCelebration = () => {
+  // Get current celebrated achievements as array (for updating userProfile)
+  const getCelebratedAchievements = useCallback(() => {
+    return Array.from(celebratedAchievements.current)
+  }, [])
+
+  const dismissCelebration = useCallback(() => {
     if (celebration.achievement) {
       celebratedAchievements.current.add(celebration.achievement.id)
-      if (typeof window !== 'undefined') {
-        void saveToLocalStorage('celebratedAchievements', Array.from(celebratedAchievements.current), true)
-      }
     }
     setCelebration({ show: false, achievement: null })
-  }
+  }, [celebration.achievement])
+
+  // Mark multiple achievements as celebrated (e.g., when batch celebrating)
+  const markAsCelebrated = useCallback((achievementIds: string[]) => {
+    achievementIds.forEach(id => celebratedAchievements.current.add(id))
+  }, [])
 
   return {
     achievements,
     unlockedAchievements,
     lockedAchievements,
     celebration,
-    dismissCelebration
+    dismissCelebration,
+    getCelebratedAchievements,
+    markAsCelebrated
   }
 }

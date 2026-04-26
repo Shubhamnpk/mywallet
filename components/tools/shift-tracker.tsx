@@ -51,41 +51,17 @@ function weekKey(dateStr: string) {
   return `${f(mon)}__${f(sun)}`;
 }
 
+// Month names - short and full versions
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 function fd(d: string) {
   const [y, mo, day] = d.split("-");
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return `${parseInt(day, 10)} ${months[parseInt(mo, 10) - 1]} ${y}`;
+  return `${parseInt(day, 10)} ${MONTHS_SHORT[parseInt(mo, 10) - 1]} ${y}`;
 }
 
 function mname(m: string) {
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-  return months[parseInt(m, 10) - 1];
+  return MONTHS_FULL[parseInt(m, 10) - 1];
 }
 
 interface ShiftTrackerProps {

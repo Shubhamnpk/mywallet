@@ -30,7 +30,7 @@ interface FormData {
   description: string
   customDate: string
   expenseMode: "quick_action" | "payment_source"
-  allocationType: "" | "direct" | "goal" | "debt" | "credit"
+  allocationType: "" | "direct" | "goal" | "debt" | "credit" | "goal_transfer" | "debt_loan"
   allocationTarget: string
   receiptImage?: string
 }
@@ -80,7 +80,7 @@ const initialFormData: FormData = {
 }
 
 export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initialAmount, initialDescription, initialType, initialCategory, initialReceiptImage }: UnifiedTransactionDialogProps = {}) {
-  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal, transferToGoal } =
+  const { addTransaction, userProfile, calculateTimeEquivalent, goals, settings, categories, addCategory, addDebtAccount, addDebtToAccount, debtAccounts, creditAccounts, balance, completeTransactionWithDebt, addDebtToAccount: addDebtCharge, updateCreditBalance, makeDebtPayment, spendFromGoal, transferToGoal, addFromGoal, addFromDebt } =
     useWalletData()
   const { playSound } = useAccessibility()
   const isMobile = useIsMobile()
@@ -223,10 +223,10 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   }, [availableGoals, debtAccounts, creditAccounts])
 
   const allocationTargets = useMemo(() => {
-    if (formData.allocationType === "goal") {
+    if (formData.allocationType === "goal" || formData.allocationType === "goal_transfer") {
       return availableGoals
     }
-    if (formData.allocationType === "debt") {
+    if (formData.allocationType === "debt" || formData.allocationType === "debt_loan") {
       return debtAccounts || []
     }
     if (formData.allocationType === "credit") {
@@ -253,8 +253,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       baseCategories = contextCategories.sort()
     }
 
-    // For expense type, add special Goal and Debt categories at the beginning
-    if (type === "expense") {
+    // For expense and income types, add special Goal and Debt categories at the beginning
+    if (type === "expense" || type === "income") {
       const specialCategories: string[] = []
       if (availableGoals.length > 0) {
         specialCategories.push("🎯 Goal")
@@ -314,8 +314,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const isFormValid = useMemo(() => {
     const isExpensePaymentSource = type === "expense" && formData.expenseMode === "payment_source"
 
-    // If Goal or Debt category is selected directly, it bypasses some normal expense flow
-    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+    // If Goal or Debt category is selected directly (for expense or income), it bypasses normal flow
+    const isSpecialCategory = (formData.category === "Goal" || formData.category === "Debt")
 
     if (isSpecialCategory) {
       return Object.keys(errors).length === 0 &&
@@ -337,7 +337,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
       numAmount > 0 &&
       ((formData.allocationType === "direct" && formData.category) ||
         (formData.allocationType === "goal" && formData.allocationTarget) ||
+        (formData.allocationType === "goal_transfer" && formData.allocationTarget) ||
         (formData.allocationType === "debt" && formData.allocationTarget) ||
+        (formData.allocationType === "debt_loan" && formData.allocationTarget) ||
         (formData.allocationType === "credit" && formData.allocationTarget))
   }, [errors, formData, numAmount, type])
 
@@ -577,6 +579,60 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             return
           }
           transactionResult = paymentResult.transaction
+        } else if (type === "income" && formData.allocationType === "goal_transfer") {
+          // Handle income from Goal - transfer from goal to main balance
+          const selectedGoal = goals.find((g) => g.id === formData.allocationTarget)
+          if (!selectedGoal) {
+            setIsSubmitting(false)
+            toast.error("Goal not found", {
+              description: "Please select a valid goal account."
+            })
+            playSound("transaction-failed")
+            return
+          }
+
+          const result = await addFromGoal(
+            formData.allocationTarget,
+            numAmount,
+            formData.description.trim() || `Transfer from ${selectedGoal.title || selectedGoal.name || "Goal"}`,
+            formData.category || "Income"
+          )
+          if (!result.success) {
+            setIsSubmitting(false)
+            toast.error("Failed to transfer from goal", {
+              description: result.error || "Unable to process goal transfer."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = result.transaction
+        } else if (type === "income" && formData.allocationType === "debt_loan") {
+          // Handle income from Debt - take loan from debt account
+          const selectedDebt = debtAccounts?.find((d) => d.id === formData.allocationTarget)
+          if (!selectedDebt) {
+            setIsSubmitting(false)
+            toast.error("Debt account not found", {
+              description: "Please select a valid debt account."
+            })
+            playSound("transaction-failed")
+            return
+          }
+
+          const result = await addFromDebt(
+            formData.allocationTarget,
+            numAmount,
+            formData.description.trim() || `Loan from ${selectedDebt.name || "Debt Account"}`,
+            formData.category || "Income"
+          )
+          if (!result.success) {
+            setIsSubmitting(false)
+            toast.error("Failed to get loan from debt account", {
+              description: result.error || "Unable to process debt loan."
+            })
+            playSound("transaction-failed")
+            return
+          }
+          transactionResult = result.transaction
         } else if (isExpensePaymentSource && formData.allocationType === "credit") {
           const creditAccount = creditAccounts.find(c => c.id === formData.allocationTarget);
           if (creditAccount) {
@@ -772,7 +828,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   )
 
   const canSubmitNow = useMemo(() => {
-    const isSpecialCategory = type === "expense" && (formData.category === "Goal" || formData.category === "Debt")
+    const isSpecialCategory = (formData.category === "Goal" || formData.category === "Debt")
     const isInCooldown = cooldownRemaining > 0
     if (isInCooldown) return false
     if (isSpecialCategory) return isFormValid
@@ -844,7 +900,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
     setShowAddCategory(false)
   }, [])
 
-  const handleAllocationTypeChange = useCallback((newAllocationType: "" | "direct" | "goal" | "debt" | "credit") => {
+  const handleAllocationTypeChange = useCallback((newAllocationType: "" | "direct" | "goal" | "debt" | "credit" | "goal_transfer" | "debt_loan") => {
     setFormData((prev) => ({
       ...prev,
       allocationType: newAllocationType,
@@ -1627,7 +1683,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                       // Check if this is a special category (Goal or Debt)
                       if (value === "🎯 Goal") {
                         handleFieldChange("category", "Goal")
-                        handleAllocationTypeChange("goal")
+                        // For income, use goal_transfer; for expense, use goal
+                        handleAllocationTypeChange(type === "income" ? "goal_transfer" : "goal")
                         // Auto-select if there's only one goal available
                         if (availableGoals.length === 1) {
                           const singleGoal = availableGoals[0]
@@ -1642,7 +1699,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                         }
                       } else if (value === "💳 Debt") {
                         handleFieldChange("category", "Debt")
-                        handleAllocationTypeChange("debt")
+                        // For income, use debt_loan; for expense, use debt
+                        handleAllocationTypeChange(type === "income" ? "debt_loan" : "debt")
                         // Auto-select if there's only one debt account available
                         if (debtAccounts?.length === 1) {
                           const singleDebt = debtAccounts[0]
@@ -1659,7 +1717,8 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                         handleFieldChange("category", value)
                         handleFieldChange("subcategory", "")
                         // If switching from special category to regular, reset allocation
-                        if (formData.allocationType === "goal" || formData.allocationType === "debt") {
+                        if (formData.allocationType === "goal" || formData.allocationType === "debt" ||
+                            formData.allocationType === "goal_transfer" || formData.allocationType === "debt_loan") {
                           handleAllocationTypeChange("direct")
                         }
                       }
@@ -1728,7 +1787,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                   )}
 
                   {/* Inline Allocation Target Selection for Goal/Debt */}
-                  {(type === "expense" && !showExpenseFundingStep && (formData.category === "Goal" || formData.category === "Debt")) && (
+                  {((type === "expense" && !showExpenseFundingStep) || type === "income") && (formData.category === "Goal" || formData.category === "Debt") && (
                     <div className="mt-3 p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-3 animate-in fade-in zoom-in-95 duration-200">
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 rounded-lg bg-primary/10">

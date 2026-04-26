@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>MyWallet Mobile</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 45%),
+          linear-gradient(180deg, #07111f, #0f172a 55%, #111827);
+        color: #f8fafc;
+      }
+
+      main {
+        width: min(32rem, calc(100vw - 2rem));
+        padding: 1.5rem;
+        border-radius: 1.25rem;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        box-shadow: 0 20px 60px rgba(2, 6, 23, 0.45);
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.5rem;
+      }
+
+      p {
+        margin: 0.5rem 0;
+        line-height: 1.5;
+        color: #cbd5e1;
+      }
+
+      code {
+        display: inline-block;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.375rem;
+        background: rgba(30, 41, 59, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>MyWallet mobile shell is ready.</h1>
+      <p>
+        Set <code>CAPACITOR_SERVER_URL</code> to your deployed Next.js app URL before
+        syncing the native projects.
+      </p>
+      <p>
+        This placeholder exists so the native shells can be generated safely even
+        before a production URL is configured.
+      </p>
+    </main>
+  </body>
+  </html>

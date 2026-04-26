@@ -34,6 +34,10 @@ export interface UserProfile {
   settings?: {
     zeroHoldingsEnabled?: boolean
   }
+  /** IDs of achievements whose celebration modal has been seen */
+  celebratedAchievements?: string[]
+  /** Whether biometric was enabled on ANY device (for cross-device prompts) */
+  biometricEnabledOnAnyDevice?: boolean
 }
 
 export interface NotificationSettings {
@@ -92,7 +96,7 @@ export interface Transaction {
   location?: string
   recurring?: boolean
   recurringFrequency?: "daily" | "weekly" | "monthly" | "yearly"
-  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt"
+  allocationType?: "direct" | "goal" | "budget" | "debt" | "credit" | "fastdebt" | "goal_transfer" | "debt_loan"
   allocationTarget?: string
   subcategory?: string
   total?: number

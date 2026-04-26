@@ -10,12 +10,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Pencil, ChevronDown } from "lucide-react"
+import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Pencil, ChevronDown, ArrowRightLeft } from "lucide-react"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
+import { useWalletData } from "@/hooks/use-wallet-data"
 import { toast } from "sonner"
 
 function toDateInputValue(iso: string) {
@@ -29,7 +30,12 @@ function toDateInputValue(iso: string) {
 
 function canEditTransaction(t: Transaction) {
   if (t.status === "repayment" || t.status === "debt") return false
-  if (t.allocationType === "credit" || t.allocationType === "debt" || t.allocationType === "fastdebt") return false
+  if (
+    t.allocationType === "credit" ||
+    t.allocationType === "debt" ||
+    t.allocationType === "fastdebt" ||
+    t.allocationType === "debt_loan"
+  ) return false
   return true
 }
 
@@ -64,6 +70,7 @@ export function TransactionDetailsModal({
   const [formDate, setFormDate] = useState("")
   const [formSubcategory, setFormSubcategory] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const { goals, debtAccounts } = useWalletData()
 
   const syncFormFromTransaction = useCallback((t: Transaction) => {
     setFormAmount(String(t.amount))
@@ -112,6 +119,12 @@ export function TransactionDetailsModal({
   }
 
   const handleSaveEdit = async () => {
+    if (!editable) {
+      toast.error("This linked transaction cannot be edited here")
+      setIsEditing(false)
+      return
+    }
+
     const num = Number.parseFloat(formAmount)
     if (!Number.isFinite(num) || num <= 0) {
       toast.error("Enter a valid amount")
@@ -189,26 +202,27 @@ export function TransactionDetailsModal({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <Tag className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Category</p>
-                    <Badge variant="secondary">{transaction.category}</Badge>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center gap-1">
+                      <p className="text-sm text-muted-foreground">Date:</p>
+                      <p className="font-medium">
+                        {new Date(transaction.date).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Date</p>
-                    <p className="font-medium">
-                      {new Date(transaction.date).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Tag className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center gap-1">
+                      <p className="text-sm text-muted-foreground">Category:</p>
+                      <Badge variant="secondary">{transaction.category}</Badge>
+                    </div>
                   </div>
                 </div>
 
@@ -309,6 +323,55 @@ export function TransactionDetailsModal({
                     </div>
                   </div>
                 )}
+
+                {/* Goal/Debt Transfer Breakdown */}
+                {(transaction.allocationType === "goal_transfer" || transaction.allocationType === "debt_loan") && (
+                  <Collapsible className="rounded-xl border border-primary/20 bg-primary/5">
+                    <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-sm hover:bg-primary/10 rounded-t-xl [&[data-state=open]>svg]:rotate-180">
+                      <div className="flex items-center gap-2">
+                        <ArrowRightLeft className="w-4 h-4 text-primary" />
+                        <span className="font-medium text-primary">Transfer Details</span>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-primary transition-transform duration-200" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="p-3 pt-0 space-y-2">
+                      {/* Get account name */}
+                      {(() => {
+                        const account = transaction.allocationType === "goal_transfer"
+                          ? goals.find(g => g.id === transaction.allocationTarget)
+                          : debtAccounts?.find(d => d.id === transaction.allocationTarget)
+                        const accountName = account
+                          ? ('title' in account ? account.title : account.name) || account.id
+                          : "Unknown Account"
+                        return (
+                          <>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">From:</span>
+                              <span className="font-medium flex items-center gap-1">
+                                {transaction.allocationType === "goal_transfer" ? "🎯" : "💳"} {accountName}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">To:</span>
+                              <span className="font-medium">Main Balance</span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Amount:</span>
+                              <span className="font-medium text-primary">
+                                {formatCurrency(transaction.amount, userProfile.currency, userProfile.customCurrency)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-primary/10">
+                              {transaction.allocationType === "goal_transfer"
+                                ? `Money transferred from "${accountName}" goal to your main balance`
+                                : `Money borrowed from "${accountName}" debt account to your main balance`}
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
               </div>
             </>
           ) : (
@@ -364,46 +427,75 @@ export function TransactionDetailsModal({
 
           <Separator />
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => handleDialogOpenChange(false)} className="flex-1 min-w-[6rem] bg-transparent">
-              Close
-            </Button>
-            {editable && !isEditing && (
-              <Button type="button" variant="secondary" onClick={() => setIsEditing(true)} className="flex items-center gap-2">
-                <Pencil className="w-4 h-4" />
-                Edit
-              </Button>
-            )}
-            {editable && isEditing && (
-              <>
+          {/* Footer Buttons */}
+          {!isEditing ? (
+            /* View Mode: Edit and Delete side by side, full width */
+            <div className={`grid gap-3 ${editable ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {editable && (
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => {
-                    syncFormFromTransaction(transaction)
-                    setIsEditing(false)
-                  }}
-                  disabled={isSaving}
+                  variant="secondary"
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center justify-center gap-2 w-full"
                 >
-                  Cancel
+                  <Pencil className="w-4 h-4" />
+                  Edit
                 </Button>
-                <Button type="button" onClick={() => void handleSaveEdit()} disabled={isSaving}>
-                  {isSaving ? "Saving…" : "Save"}
+              )}
+              {/* Only show Delete here if editable - otherwise show in non-editable section below */}
+              {editable && onDelete && (
+                <Button
+                  variant="destructive"
+                  onClick={handleDelete}
+                  className="flex items-center justify-center gap-2 w-full"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
                 </Button>
-              </>
-            )}
-            {onDelete && (
-              <Button variant="destructive" onClick={handleDelete} className="flex items-center gap-2">
+              )}
+            </div>
+          ) : (
+            /* Edit Mode: Cancel and Save side by side, full width */
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  syncFormFromTransaction(transaction)
+                  setIsEditing(false)
+                }}
+                disabled={isSaving}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleSaveEdit()}
+                disabled={isSaving}
+                className="w-full"
+              >
+                {isSaving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          )}
+
+          {/* Non-editable transactions - Full width Delete button */}
+          {!editable && onDelete && (
+            <div className="space-y-2">
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                className="flex items-center justify-center gap-2 w-full"
+              >
                 <Trash2 className="w-4 h-4" />
                 Delete
               </Button>
-            )}
-          </div>
-          {!editable && (
-            <p className="text-xs text-muted-foreground">
-              Debt- and credit-linked rows cannot be edited here without breaking linked balances. Delete and re-add if you
-              need to correct one.
-            </p>
+              <p className="text-xs text-muted-foreground text-center">
+                Debt-, credit-, and debt-loan-linked rows cannot be edited here without breaking linked balances. Delete and
+                re-add if you need to correct one.
+              </p>
+            </div>
           )}
         </div>
       </DialogContent>

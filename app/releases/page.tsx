@@ -1,17 +1,19 @@
 import releasesData from "@/data/releases.json"
 import packageJson from "@/package.json"
-import { CheckCircle2, Globe, History, Home, Rocket, Settings2 } from "lucide-react"
+import { CheckCircle2, Globe, History, Home, Rocket, Settings2, Tag } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 type ReleaseStatus = "current" | "stable"
+type ReleaseCategory = "Feature" | "Bugfix" | "Improvement" | "Major" | "UX" | "Security" | "Performance"
 
 interface ReleaseItem {
   version: string
   date: string
   status: ReleaseStatus
+  category?: ReleaseCategory
   title: string
   highlights: string[]
 }
@@ -24,6 +26,16 @@ export const metadata = {
 function formatReleaseDate(value: string) {
   const parsed = new Date(`${value}T00:00:00`)
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+}
+
+const categoryColors: Record<ReleaseCategory, string> = {
+  Feature: "bg-blue-500/10 text-blue-600 border-blue-200",
+  Bugfix: "bg-red-500/10 text-red-600 border-red-200",
+  Improvement: "bg-green-500/10 text-green-600 border-green-200",
+  Major: "bg-purple-500/10 text-purple-600 border-purple-200",
+  UX: "bg-pink-500/10 text-pink-600 border-pink-200",
+  Security: "bg-amber-500/10 text-amber-600 border-amber-200",
+  Performance: "bg-cyan-500/10 text-cyan-600 border-cyan-200",
 }
 
 export default function ReleasesPage() {
@@ -116,6 +128,12 @@ export default function ReleasesPage() {
                   <Badge className={release.status === "current" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}>
                     {release.status === "current" ? "Current" : "Stable"}
                   </Badge>
+                  {release.category && (
+                    <Badge variant="outline" className={`text-xs ${categoryColors[release.category]}`}>
+                      <Tag className="w-3 h-3 mr-1" />
+                      {release.category}
+                    </Badge>
+                  )}
                   <span className="text-sm text-muted-foreground">{formatReleaseDate(release.date)}</span>
                   <span className="ml-auto text-xs text-muted-foreground/80">#{releases.length - index}</span>
                 </div>

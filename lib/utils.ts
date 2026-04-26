@@ -48,18 +48,6 @@ export function generateId(prefix = ""): string {
   return `${prefix}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-export function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout)
-    timeout = setTimeout(() => func(...args), wait)
-  }
-}
 export function formatCurrencyLocalized(amount: number, currency: string, locale = "en-US", customCurrency?: { code: string; symbol: string; name: string; }): string {
   if (currency === "CUSTOM" && customCurrency) {
     return `${customCurrency.symbol}${amount.toFixed(2)}`

@@ -65,10 +65,13 @@ export function AddTransactionModal({
             setIsLoadingCoins(true)
             try {
                 const res = await fetch("/api/crypto/coinlore/popular")
-                const data = await res.json()
-                if (mounted && res.ok && Array.isArray(data?.coins)) {
-                    setPopularCoins(data.coins)
+                if (!res.ok) {
+                    throw new Error(`Failed to load coins: ${res.status}`)
                 }
+                const data = await res.json()
+                if (mounted && Array.isArray(data?.coins)) {
+                    setPopularCoins(data.coins)
+                }          
             } finally {
                 if (mounted) setIsLoadingCoins(false)
             }

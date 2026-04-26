@@ -35,7 +35,8 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     unlockedAchievements,
     lockedAchievements,
     celebration,
-    dismissCelebration
+    dismissCelebration,
+    getCelebratedAchievements
   } = useAchievements({
     goals,
     transactions,
@@ -43,6 +44,19 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     debtAccounts,
     userProfile: userProfile!
   })
+
+  // Wrapped dismiss that saves to userProfile for cross-device sync
+  const handleDismissCelebration = () => {
+    dismissCelebration()
+    // Save celebrated achievements to userProfile for sync
+    const celebratedIds = getCelebratedAchievements()
+    if (userProfile && JSON.stringify(userProfile.celebratedAchievements) !== JSON.stringify(celebratedIds)) {
+      void updateUserProfile({
+        ...userProfile,
+        celebratedAchievements: celebratedIds
+      })
+    }
+  }
   const [formData, setFormData] = useState<any>(
     userProfile || {
       name: "",
@@ -656,7 +670,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
             unlockedAchievements={unlockedAchievements}
             lockedAchievements={lockedAchievements}
             celebration={celebration}
-            onDismissCelebration={dismissCelebration}
+            onDismissCelebration={handleDismissCelebration}
           />
         </CardContent>
       </Card>
