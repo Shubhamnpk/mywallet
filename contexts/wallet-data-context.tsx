@@ -98,6 +98,7 @@ type WalletDataContextType = {
   updatePortfolio: (id: string, updates: Partial<Portfolio>) => Promise<void>
   clearPortfolioHistory: () => Promise<void>
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
+  refreshMarketData: () => Promise<void>
   syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
   applyMeroShareIPO: (
     credentials: any,

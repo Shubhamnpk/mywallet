@@ -93,7 +93,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,} = useWalletData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,refreshMarketData,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,} = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -428,7 +428,9 @@ export function PortfolioList() {
             await recomputePortfolio()
             // Fetch latest prices for all items
             await fetchPortfolioPrices(undefined, true)
-            toast.success("Portfolio sync completed")
+            // Refresh market feeds used by overview and notifications as part of the same manual sync.
+            await refreshMarketData()
+            toast.success("Portfolio and market data synced")
         } catch (error: any) {
             toast.error(error.message || "Failed to sync portfolio")
         } finally {
@@ -1144,6 +1146,13 @@ export function PortfolioList() {
                 ),
             )
 
+        const parseSortableIpoDate = (value?: string) => {
+            if (!value) return Number.POSITIVE_INFINITY
+            const parsed = new Date(value)
+            const timestamp = parsed.getTime()
+            return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp
+        }
+
         const ipoStatusOrder: Record<string, number> = { open: 0, upcoming: 1, closed: 2 }
         const sortedIPOs = [...upcomingIPOs].sort((a, b) => {
             const aRank = ipoStatusOrder[a.status ?? ""] ?? 3
@@ -1151,10 +1160,21 @@ export function PortfolioList() {
             if (aRank !== bRank) return aRank - bRank
 
             if (a.status === "open" && b.status === "open") {
+                const closingDateDiff =
+                    parseSortableIpoDate(a.closingDate) - parseSortableIpoDate(b.closingDate)
+                if (closingDateDiff !== 0) return closingDateDiff
+
                 const aApplied = isIpoApplied(a)
                 const bApplied = isIpoApplied(b)
                 if (aApplied !== bApplied) return aApplied ? 1 : -1
             }
+
+            if (a.status === "upcoming" && b.status === "upcoming") {
+                const openingDateDiff =
+                    parseSortableIpoDate(a.openingDate) - parseSortableIpoDate(b.openingDate)
+                if (openingDateDiff !== 0) return openingDateDiff
+            }
+
             return 0
         })
 

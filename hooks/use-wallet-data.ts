@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { DataIntegrityManager } from "@/lib/data-integrity"
 import { SecureKeyManager } from "@/lib/key-manager"
 import type {
@@ -67,6 +67,7 @@ const REMOTE_PUSH_AUTO_SYNC_INTERVAL_MS = 6 * HOUR_MS
 const IPO_PER_COMPANY_COOLDOWN_MS = 24 * HOUR_MS
 const DELETE_UNDO_WINDOW_MS = 5000
 const UNITS_EPSILON = 1e-12
+const MARKET_DATA_REFRESH_INTERVAL_MS = 10 * 60 * 1000
 const APP_BOOT_TS = Date.now()
 const REMOTE_PUSH_AUTO_SYNC_KEY = "wallet_remote_push_auto_sync_at_v1"
 
@@ -383,6 +384,211 @@ export function useWalletData() {
   const pendingTransactionDeletionRef = useRef<PendingTransactionDeletion | null>(null)
   const userProfileRef = useRef<UserProfile | null>(null)
   const shareTransactionsRef = useRef<ShareTransaction[]>([])
+
+  const refreshMarketData = useCallback(async () => {
+    const sectorsTask = fetch("/api/nepse/sectors")
+      .then(res => res.json())
+      .then(data => {
+        const sMap: Record<string, string> = {}
+        const nMap: Record<string, string> = {}
+        Object.entries(data).forEach(([sector, scrips]) => {
+          if (Array.isArray(scrips)) {
+            scrips.forEach((scrip: any) => {
+              const symbol = normalizeStockSymbol(typeof scrip === "string" ? scrip : (scrip.symbol || ""))
+              if (symbol) {
+                sMap[symbol] = sector
+                if (scrip.name) {
+                  nMap[symbol] = scrip.name.trim()
+                }
+              }
+            })
+          }
+        })
+        setSectorsMap(prev => ({ ...prev, ...sMap }))
+        setScripNamesMap(prev => ({ ...prev, ...nMap }))
+      })
+
+    const localNamesTask = fetch("/name.json")
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return
+        const nMap: Record<string, string> = {}
+        data.forEach((item: any) => {
+          if (item.symbol && item.name) {
+            nMap[normalizeStockSymbol(item.symbol)] = item.name.trim()
+          }
+        })
+        setScripNamesMap(prev => ({ ...prev, ...nMap }))
+        void saveToLocalStorage("scripNamesMap", nMap)
+      })
+
+    const upcomingIposTask = fetch("/api/nepse/upcoming")
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return
+        const processedIPOs: UpcomingIPO[] = data.map(ipo => {
+          const normalizedReservedFor =
+            typeof ipo?.reserved_for === "string" ? ipo.reserved_for.trim() : ""
+
+          const normalizedReservedFlag =
+            typeof ipo?.is_reserved_share === "boolean"
+              ? ipo.is_reserved_share
+              : typeof ipo?.is_reserved_share === "string"
+                ? ipo.is_reserved_share.trim().toLowerCase() === "true"
+                : typeof ipo?.is_reserved_share === "number"
+                  ? ipo.is_reserved_share === 1
+                  : normalizedReservedFor.length > 0
+
+          const baseIpo: UpcomingIPO = {
+            ...ipo,
+            is_reserved_share: normalizedReservedFlag,
+            reserved_for: normalizedReservedFor,
+          }
+          const dates = parseNepaliDateRange(ipo.date_range)
+          if (!dates) return baseIpo
+
+          const statusInfo = getIPOStatus(dates.start, dates.end)
+          return {
+            ...baseIpo,
+            ...statusInfo,
+            openingDate: dates.start.toISOString(),
+            closingDate: dates.end.toISOString(),
+          }
+        })
+        setUpcomingIPOs(processedIPOs)
+      })
+
+    const topStocksTask = fetch("/api/nepse/top-stocks")
+      .then(async (res) => {
+        const data = await res.json()
+        return {
+          data,
+          headerDate: res.headers.get("date"),
+        }
+      })
+      .then(({ data, headerDate }: { data: TopStocksData; headerDate: string | null }) => {
+        if (!data || typeof data !== "object") return
+        const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
+          ? new Date(headerDate).toISOString()
+          : new Date().toISOString()
+
+        setTopStocks({
+          top_gainer: Array.isArray(data.top_gainer) ? data.top_gainer : [],
+          top_loser: Array.isArray(data.top_loser) ? data.top_loser : [],
+          top_turnover: Array.isArray(data.top_turnover) ? data.top_turnover : [],
+          top_trade: Array.isArray(data.top_trade) ? data.top_trade : [],
+          top_transaction: Array.isArray(data.top_transaction) ? data.top_transaction : [],
+          last_updated: typeof data.last_updated === "string" ? data.last_updated : undefined,
+          fetched_at: typeof data.fetched_at === "string" ? data.fetched_at : fetchedAt,
+        })
+      })
+
+    const marketSummaryTask = fetch("/api/nepse/market-summary")
+      .then(res => res.json())
+      .then((data: MarketSummaryMetric[]) => {
+        if (Array.isArray(data)) {
+          setMarketSummary(data)
+        }
+      })
+
+    const marketSummaryHistoryTask = fetch("/api/nepse/market-summary/history")
+      .then(res => res.json())
+      .then((data: MarketSummaryHistoryItem[]) => {
+        if (Array.isArray(data)) {
+          setMarketSummaryHistory(data)
+        }
+      })
+
+    const marketStatusTask = fetch("/api/nepse/market-status")
+      .then(async (res) => {
+        const data = await res.json()
+        return {
+          data,
+          headerDate: res.headers.get("date"),
+        }
+      })
+      .then(({ data, headerDate }: { data: any; headerDate: string | null }) => {
+        if (!data || typeof data !== "object") return
+
+        const rawStatus = typeof data.status === "string" ? data.status.trim() : ""
+        const statusLower = rawStatus.toLowerCase()
+        const rawIsOpen = data.is_open ?? data.market_open ?? data.open
+
+        const isOpen = typeof rawIsOpen === "boolean"
+          ? rawIsOpen
+          : typeof rawIsOpen === "number"
+            ? rawIsOpen === 1
+            : typeof rawIsOpen === "string"
+              ? ["open", "opened", "true", "1", "yes"].includes(rawIsOpen.trim().toLowerCase())
+              : statusLower.includes("open")
+                ? true
+                : statusLower.includes("close")
+                  ? false
+                  : null
+
+        const normalizedLastChecked = typeof data.last_checked === "string"
+          ? data.last_checked
+          : typeof data.lastCheck === "string"
+            ? data.lastCheck
+            : typeof data.last_updated === "string"
+              ? data.last_updated
+              : undefined
+
+        const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
+          ? new Date(headerDate).toISOString()
+          : new Date().toISOString()
+
+        setMarketStatus({
+          isOpen,
+          status: rawStatus || undefined,
+          last_checked: normalizedLastChecked,
+          fetched_at: fetchedAt,
+        })
+      })
+
+    const noticesTask = fetch("/api/nepse/notices")
+      .then(res => res.json())
+      .then((data: NepseNoticesBundle) => {
+        if (data && typeof data === "object") {
+          setNoticesBundle(data)
+        }
+      })
+
+    const disclosuresTask = fetch("/api/nepse/disclosures")
+      .then(res => res.json())
+      .then((data: NepseDisclosure[]) => {
+        if (Array.isArray(data)) {
+          setDisclosures(data)
+        }
+      })
+
+    const exchangeMessagesTask = fetch("/api/nepse/exchange-messages")
+      .then(res => res.json())
+      .then((data: NepseExchangeMessage[]) => {
+        if (Array.isArray(data)) {
+          setExchangeMessages(data)
+        }
+      })
+
+    const results = await Promise.allSettled([
+      sectorsTask,
+      localNamesTask,
+      upcomingIposTask,
+      topStocksTask,
+      marketSummaryTask,
+      marketSummaryHistoryTask,
+      marketStatusTask,
+      noticesTask,
+      disclosuresTask,
+      exchangeMessagesTask,
+    ])
+
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Error refreshing market dataset #${index + 1}:`, result.reason)
+      }
+    })
+  }, [])
   const normalizeAssetType = (assetType?: "stock" | "crypto") => assetType === "crypto" ? "crypto" : "stock"
   const getHoldingKey = (portfolioId: string, symbol: string, assetType?: "stock" | "crypto", cryptoId?: string) => {
     const normalizedAssetType = normalizeAssetType(assetType)
@@ -886,210 +1092,21 @@ export function useWalletData() {
     if (!isLoaded) return
     if (!userProfile?.meroShare?.shareFeaturesEnabled) return
 
-      // Fetch sectors and names from remote API
-      fetch("/api/nepse/sectors")
-        .then(res => res.json())
-        .then(data => {
-          const sMap: Record<string, string> = {}
-          const nMap: Record<string, string> = {}
-          Object.entries(data).forEach(([sector, scrips]) => {
-            if (Array.isArray(scrips)) {
-              scrips.forEach((scrip: any) => {
-                const symbol = normalizeStockSymbol(typeof scrip === 'string' ? scrip : (scrip.symbol || ""))
-                if (symbol) {
-                  sMap[symbol] = sector
-                  if (scrip.name) {
-                    nMap[symbol] = scrip.name.trim()
-                  }
-                }
-              })
-            }
-          })
-          setSectorsMap(prev => ({ ...prev, ...sMap }))
-          setScripNamesMap(prev => ({ ...prev, ...nMap }))
-        })
-        .catch(err => console.error("Error pre-fetching sectors:", err))
+    setIsIPOsLoading(true)
+    void refreshMarketData().finally(() => setIsIPOsLoading(false))
+  }, [isLoaded, refreshMarketData, userProfile?.meroShare?.shareFeaturesEnabled, userProfile?.createdAt])
 
-      // Fetch specific company names from local name.json
-      fetch("/name.json")
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const nMap: Record<string, string> = {}
-            data.forEach((item: any) => {
-              if (item.symbol && item.name) {
-                nMap[normalizeStockSymbol(item.symbol)] = item.name.trim()
-              }
-            })
-            setScripNamesMap(prev => ({ ...prev, ...nMap }))
-            saveToLocalStorage("scripNamesMap", nMap)
-          }
-        })
-        .catch(err => console.error("Error fetching name.json:", err))
+  useEffect(() => {
+    if (!isLoaded) return
+    if (!userProfile?.meroShare?.shareFeaturesEnabled) return
 
-      // Fetch upcoming IPOs
+    const intervalId = window.setInterval(() => {
       setIsIPOsLoading(true)
-      fetch("/api/nepse/upcoming")
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const processedIPOs: UpcomingIPO[] = data.map(ipo => {
-              const normalizedReservedFor =
-                typeof ipo?.reserved_for === "string" ? ipo.reserved_for.trim() : ""
+      void refreshMarketData().finally(() => setIsIPOsLoading(false))
+    }, MARKET_DATA_REFRESH_INTERVAL_MS)
 
-              const normalizedReservedFlag =
-                typeof ipo?.is_reserved_share === "boolean"
-                  ? ipo.is_reserved_share
-                  : typeof ipo?.is_reserved_share === "string"
-                    ? ipo.is_reserved_share.trim().toLowerCase() === "true"
-                    : typeof ipo?.is_reserved_share === "number"
-                      ? ipo.is_reserved_share === 1
-                      : normalizedReservedFor.length > 0
-
-              const baseIpo: UpcomingIPO = {
-                ...ipo,
-                is_reserved_share: normalizedReservedFlag,
-                reserved_for: normalizedReservedFor,
-              }
-              const dates = parseNepaliDateRange(ipo.date_range)
-              if (dates) {
-                const statusInfo = getIPOStatus(dates.start, dates.end)
-                return {
-                  ...baseIpo,
-                  ...statusInfo,
-                  openingDate: dates.start.toISOString(),
-                  closingDate: dates.end.toISOString()
-                }
-              }
-              return baseIpo
-            })
-            setUpcomingIPOs(processedIPOs)
-
-          }
-        })
-        .catch(err => console.error("Error fetching upcoming IPOs:", err))
-        .finally(() => setIsIPOsLoading(false))
-
-      fetch("/api/nepse/top-stocks")
-        .then(async (res) => {
-          const data = await res.json()
-          return {
-            data,
-            headerDate: res.headers.get("date"),
-          }
-        })
-        .then(({ data, headerDate }: { data: TopStocksData; headerDate: string | null }) => {
-          if (data && typeof data === "object") {
-            const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
-              ? new Date(headerDate).toISOString()
-              : new Date().toISOString()
-
-            setTopStocks({
-              top_gainer: Array.isArray(data.top_gainer) ? data.top_gainer : [],
-              top_loser: Array.isArray(data.top_loser) ? data.top_loser : [],
-              top_turnover: Array.isArray(data.top_turnover) ? data.top_turnover : [],
-              top_trade: Array.isArray(data.top_trade) ? data.top_trade : [],
-              top_transaction: Array.isArray(data.top_transaction) ? data.top_transaction : [],
-              last_updated: typeof data.last_updated === "string" ? data.last_updated : undefined,
-              fetched_at: typeof data.fetched_at === "string" ? data.fetched_at : fetchedAt,
-            })
-          }
-        })
-        .catch(err => console.error("Error fetching top stocks:", err))
-
-      fetch("/api/nepse/market-summary")
-        .then(res => res.json())
-        .then((data: MarketSummaryMetric[]) => {
-          if (Array.isArray(data)) {
-            setMarketSummary(data)
-          }
-        })
-        .catch(err => console.error("Error fetching market summary:", err))
-
-      fetch("/api/nepse/market-summary/history")
-        .then(res => res.json())
-        .then((data: MarketSummaryHistoryItem[]) => {
-          if (Array.isArray(data)) {
-            setMarketSummaryHistory(data)
-          }
-        })
-        .catch(err => console.error("Error fetching market summary history:", err))
-
-      fetch("/api/nepse/market-status")
-        .then(async (res) => {
-          const data = await res.json()
-          return {
-            data,
-            headerDate: res.headers.get("date"),
-          }
-        })
-        .then(({ data, headerDate }: { data: any; headerDate: string | null }) => {
-          if (!data || typeof data !== "object") return
-
-          const rawStatus = typeof data.status === "string" ? data.status.trim() : ""
-          const statusLower = rawStatus.toLowerCase()
-          const rawIsOpen = data.is_open ?? data.market_open ?? data.open
-
-          const isOpen = typeof rawIsOpen === "boolean"
-            ? rawIsOpen
-            : typeof rawIsOpen === "number"
-              ? rawIsOpen === 1
-              : typeof rawIsOpen === "string"
-                ? ["open", "opened", "true", "1", "yes"].includes(rawIsOpen.trim().toLowerCase())
-                : statusLower.includes("open")
-                  ? true
-                  : statusLower.includes("close")
-                    ? false
-                    : null
-
-          const normalizedLastChecked = typeof data.last_checked === "string"
-            ? data.last_checked
-            : typeof data.lastCheck === "string"
-              ? data.lastCheck
-              : typeof data.last_updated === "string"
-                ? data.last_updated
-                : undefined
-
-          const fetchedAt = headerDate && !Number.isNaN(Date.parse(headerDate))
-            ? new Date(headerDate).toISOString()
-            : new Date().toISOString()
-
-          setMarketStatus({
-            isOpen,
-            status: rawStatus || undefined,
-            last_checked: normalizedLastChecked,
-            fetched_at: fetchedAt,
-          })
-        })
-        .catch(err => console.error("Error fetching market status:", err))
-
-      fetch("/api/nepse/notices")
-        .then(res => res.json())
-        .then((data: NepseNoticesBundle) => {
-          if (data && typeof data === "object") {
-            setNoticesBundle(data)
-          }
-        })
-        .catch(err => console.error("Error fetching notices bundle:", err))
-
-      fetch("/api/nepse/disclosures")
-        .then(res => res.json())
-        .then((data: NepseDisclosure[]) => {
-          if (Array.isArray(data)) {
-            setDisclosures(data)
-          }
-        })
-        .catch(err => console.error("Error fetching disclosures:", err))
-
-      fetch("/api/nepse/exchange-messages")
-        .then(res => res.json())
-        .then((data: NepseExchangeMessage[]) => {
-          if (Array.isArray(data)) {
-            setExchangeMessages(data)
-          }
-        })
-        .catch(err => console.error("Error fetching exchange messages:", err))
-  }, [isLoaded, userProfile?.meroShare?.shareFeaturesEnabled, userProfile?.createdAt])
+    return () => window.clearInterval(intervalId)
+  }, [isLoaded, refreshMarketData, userProfile?.meroShare?.shareFeaturesEnabled])
 
   // Automatically refresh share and crypto prices on app load if features are enabled
   useEffect(() => {
@@ -4389,6 +4406,7 @@ export function useWalletData() {
     updatePortfolio,
     clearPortfolioHistory,
     fetchPortfolioPrices,
+    refreshMarketData,
     syncMeroSharePortfolio,
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,
