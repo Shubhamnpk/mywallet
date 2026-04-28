@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3 } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -28,6 +29,7 @@ import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
+import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
@@ -93,8 +95,9 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,refreshMarketData,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,} = useWalletData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,refreshMarketData,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,updateShareTransaction} = useWalletData()
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
+    const currencySymbol = userProfile?.currency ? `${userProfile.currency} ` : "Rs. "
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
@@ -116,7 +119,6 @@ export function PortfolioList() {
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
-    // Confirmation modal state for replacing native confirm()
     const [confirmModal, setConfirmModal] = useState<{
         open: boolean
         title: string
@@ -132,6 +134,11 @@ export function PortfolioList() {
     const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
     const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
     const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
+    const [investmentBreakdownModal, setInvestmentBreakdownModal] = useState<{
+        open: boolean
+        title: string
+        portfolioId?: string | null
+    }>({ open: false, title: "", portfolioId: null })
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
@@ -144,6 +151,8 @@ export function PortfolioList() {
         cryptoId?: string
         portfolioId: string
     }>({ open: false, symbol: "", portfolioId: "" })
+    const [editingTransaction, setEditingTransaction] = useState<ShareTransaction | null>(null)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [zeroHoldingsEnabled, setZeroHoldingsEnabled] = useState(() => {
         return userProfile?.settings?.zeroHoldingsEnabled !== false
     })
@@ -532,6 +541,18 @@ export function PortfolioList() {
         }
     }
 
+    const handleUpdateTransaction = async (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => {
+        try {
+            await updateShareTransaction(id, updates)
+            toast.success("Transaction updated")
+        } catch (error: any) {
+            toast.error("Could not update transaction", {
+                description: error?.message || "Please try again.",
+            })
+            throw error
+        }
+    }
+
     const handleSellConfirmKeep = async () => {
         toast.success(`${sellConfirmModal.symbol} kept as zero-unit holding`)
         setSellConfirmModal({ open: false, symbol: "", portfolioId: "" })
@@ -770,6 +791,77 @@ export function PortfolioList() {
         }
     }, [activePortfolioItems, safeNumber])
 
+    const capitalSummaryByPortfolioId = useMemo(() => {
+        const summaries = new Map<string, { freshInvestment: number; reinvestment: number }>()
+        portfolios.forEach((p) => summaries.set(p.id, { freshInvestment: 0, reinvestment: 0 }))
+
+        shareTransactions.forEach((tx) => {
+            const amount = Number.isFinite(tx.quantity) && Number.isFinite(tx.price) ? tx.quantity * tx.price : 0
+            if (amount <= 0) return
+
+            const prev = summaries.get(tx.portfolioId) || { freshInvestment: 0, reinvestment: 0 }
+            if (tx.type === "reinvestment") {
+                summaries.set(tx.portfolioId, {
+                    ...prev,
+                    reinvestment: prev.reinvestment + amount,
+                })
+                return
+            }
+
+            if (tx.type === "buy" || tx.type === "ipo" || tx.type === "merger_in") {
+                summaries.set(tx.portfolioId, {
+                    ...prev,
+                    freshInvestment: prev.freshInvestment + amount,
+                })
+            }
+        })
+
+        return summaries
+    }, [portfolios, shareTransactions])
+
+    const includedPortfolioIds = useMemo(
+        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
+        [portfolios],
+    )
+
+    const getInvestmentBreakdown = useCallback((portfolioId?: string | null) => {
+        const selectedItems = portfolio.filter((item) => !portfolioId || item.portfolioId === portfolioId)
+        const currentInvested = selectedItems
+            .filter((item) => item.units > 0)
+            .reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
+
+        if (portfolioId) {
+            const capitalSummary = capitalSummaryByPortfolioId.get(portfolioId) || { freshInvestment: 0, reinvestment: 0 }
+            return {
+                currentInvested,
+                freshInvestment: capitalSummary.freshInvestment,
+                reinvestment: capitalSummary.reinvestment,
+            }
+        }
+
+        return portfolios
+            .filter((p) => includedPortfolioIds.has(p.id))
+            .reduce(
+                (sum, p) => {
+                    const capitalSummary = capitalSummaryByPortfolioId.get(p.id) || { freshInvestment: 0, reinvestment: 0 }
+                    return {
+                        currentInvested,
+                        freshInvestment: sum.freshInvestment + capitalSummary.freshInvestment,
+                        reinvestment: sum.reinvestment + capitalSummary.reinvestment,
+                    }
+                },
+                { currentInvested, freshInvestment: 0, reinvestment: 0 },
+            )
+    }, [capitalSummaryByPortfolioId, includedPortfolioIds, portfolio, portfolios, safeNumber])
+
+    const openInvestmentBreakdown = useCallback((title: string, portfolioId?: string | null) => {
+        setInvestmentBreakdownModal({
+            open: true,
+            title,
+            portfolioId: portfolioId ?? null,
+        })
+    }, [])
+
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
         const scripMap = new Map<string, { value: number; units: number; sector: string }>()
@@ -912,11 +1004,6 @@ export function PortfolioList() {
 
         return summaries
     }, [portfolio, portfolios])
-
-    const includedPortfolioIds = useMemo(
-        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
-        [portfolios],
-    )
 
     const handleTogglePortfolioIncluded = async (portfolioToToggle: Portfolio) => {
         try {
@@ -1260,6 +1347,51 @@ export function PortfolioList() {
         setSelectedOverviewNotificationDocUrl(previewUrl)
     }
 
+    const investmentBreakdown = useMemo(
+        () => getInvestmentBreakdown(investmentBreakdownModal.portfolioId),
+        [getInvestmentBreakdown, investmentBreakdownModal.portfolioId],
+    )
+
+    const renderInvestmentBreakdownModal = () => (
+        <Dialog
+            open={investmentBreakdownModal.open}
+            onOpenChange={(open) => setInvestmentBreakdownModal((prev) => ({ ...prev, open }))}
+        >
+            <DialogContent className="max-w-md w-[94vw]">
+                <DialogHeader>
+                    <DialogTitle className="text-base sm:text-lg font-black">
+                        {investmentBreakdownModal.title || "Investment Breakdown"}
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 text-left">
+                    <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Current Invested</p>
+                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString()}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Cost basis of holdings that are currently active.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                            <p className="text-[10px] uppercase font-black tracking-widest text-primary">Fresh Capital</p>
+                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">New money added by the user.</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                            <p className="text-[10px] uppercase font-black tracking-widest text-cyan-700">Reinvestment</p>
+                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">Buys funded from previous sales.</p>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-amber-700">Note</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            Fresh capital and reinvestment are historical funding sources, so they may differ from current invested value after sells or position rotation.
+                        </p>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
+
     const renderOverviewHeader = () => {
         const includedPortfolios = portfolios.filter((p) => includedPortfolioIds.has(p.id))
         const totalInvest = includedPortfolios.reduce((sum, p) => sum + (portfolioSummaryById.get(p.id)?.investment || 0), 0)
@@ -1333,7 +1465,10 @@ export function PortfolioList() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card
+                    className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left cursor-pointer hover:border-primary/30 transition-colors"
+                    onClick={() => openInvestmentBreakdown("Total Investment Breakdown")}
+                >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
                         <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString()}</CardTitle>
@@ -1619,6 +1754,7 @@ export function PortfolioList() {
                     confirmText={confirmModal.confirmText}
                     destructive={confirmModal.destructive}
                 />
+                {renderInvestmentBreakdownModal()}
                 <Dialog
                     open={Boolean(selectedOverviewNotification)}
                     onOpenChange={closeOverviewNotificationDetails}
@@ -2433,9 +2569,9 @@ export function PortfolioList() {
                             stockOptions={stockOptions}
                             portfolioStockOptions={portfolioStockOptions}
                             portfolioCryptoOptions={portfolioCryptoOptions}
+                            currencySymbol={currencySymbol}
                         />
                     </div>
-
                 </div>
             </div>
 
@@ -2477,6 +2613,7 @@ export function PortfolioList() {
                 confirmText={confirmModal.confirmText}
                 destructive={confirmModal.destructive}
             />
+            {renderInvestmentBreakdownModal()}
 
             {/* Import Price Modal */}
             <ImportVerificationModal
@@ -2538,7 +2675,10 @@ export function PortfolioList() {
                         </CardContent>
                     </Card>
 
-                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
+                    <Card
+                        className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2 cursor-pointer"
+                        onClick={() => openInvestmentBreakdown("Portfolio Investment Breakdown", activePortfolioId)}
+                    >
                         <CardHeader className="pb-1 text-left px-2 sm:px-4 pt-2 sm:pt-4">
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Total Stake</CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
@@ -3301,7 +3441,7 @@ export function PortfolioList() {
                                     </div>
                                 ) : (
                                     sortedTransactions.map((tx) => {
-                                        const isCredit = ['buy', 'ipo', 'bonus', 'gift', 'merger_in'].includes(tx.type)
+                                        const isCredit = ['buy', 'ipo', 'reinvestment', 'bonus', 'gift', 'merger_in'].includes(tx.type)
                                         return (
                                             <div
                                                 key={tx.id}
@@ -3321,12 +3461,14 @@ export function PortfolioList() {
                                                     <div className={cn(
                                                         "w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border shadow-sm shrink-0",
                                                         tx.type === 'buy' ? "bg-blue-500/10 text-blue-600 border-blue-500/10" :
+                                                            tx.type === 'reinvestment' ? "bg-cyan-500/10 text-cyan-600 border-cyan-500/10" :
                                                             tx.type === 'sell' ? "bg-orange-500/10 text-orange-600 border-orange-500/10" :
                                                                 tx.type === 'bonus' || tx.type === 'gift' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
                                                                     tx.type === 'ipo' ? "bg-green-500/10 text-green-600 border-green-500/10" :
                                                                         "bg-muted text-foreground border-muted-foreground/20"
                                                     )}>
                                                         {tx.type === 'buy' && <ArrowDownLeft className="w-4 h-4 sm:w-6 sm:h-6" />}
+                                                        {tx.type === 'reinvestment' && <RefreshCcw className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'sell' && <ArrowUpRight className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {(tx.type === 'bonus' || tx.type === 'gift') && <Gift className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'ipo' && <FileText className="w-4 h-4 sm:w-6 sm:h-6" />}
@@ -3358,27 +3500,52 @@ export function PortfolioList() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                                        onClick={() => {
-                                                            showConfirm(
-                                                                "Delete Transaction",
-                                                                `Are you sure you want to delete this transaction for ${tx.symbol}?`,
-                                                                () => {
-                                                                    deleteShareTransaction(tx.id).then((updated) => {
-                                                                        toast.success("Transaction deleted")
-                                                                        fetchPortfolioPrices(updated)
-                                                                    })
-                                                                },
-                                                                "Delete",
-                                                                true
-                                                            )
-                                                        }}
-                                                    >
-                                                        <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-primary opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <MoreVertical className="w-4 h-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-40 bg-popover border-border shadow-lg">
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setEditingTransaction(tx)
+                                                                    setIsEditModalOpen(true)
+                                                                }}
+                                                                className="cursor-pointer text-foreground hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:text-primary rounded-sm"
+                                                            >
+                                                                <Edit3 className="w-4 h-4 mr-2 text-primary" />
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    showConfirm(
+                                                                        "Delete Transaction",
+                                                                        `Are you sure you want to delete this transaction for ${tx.symbol}?`,
+                                                                        () => {
+                                                                            deleteShareTransaction(tx.id).then((updated) => {
+                                                                                toast.success("Transaction deleted")
+                                                                                fetchPortfolioPrices(updated)
+                                                                            })
+                                                                        },
+                                                                        "Delete",
+                                                                        true
+                                                                    )
+                                                                }}
+                                                                className="cursor-pointer text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive rounded-sm"
+                                                            >
+                                                                <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             </div>
                                         )
@@ -3389,6 +3556,22 @@ export function PortfolioList() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            <EditTransactionModal
+                open={isEditModalOpen}
+                onOpenChange={(next) => {
+                    setIsEditModalOpen(next)
+                    if (!next) {
+                        setEditingTransaction(null)
+                    }
+                }}
+                transaction={editingTransaction}
+                onUpdate={handleUpdateTransaction}
+                stockOptions={stockOptions}
+                portfolioStockOptions={portfolioStockOptions}
+                portfolioCryptoOptions={portfolioCryptoOptions}
+                currencySymbol={currencySymbol}
+            />
 
             {portfolio.length > 0 && (
                 <div className="flex items-center justify-center gap-2 bg-muted/20 py-2 rounded-full border border-muted/50 mx-auto max-w-fit px-6">

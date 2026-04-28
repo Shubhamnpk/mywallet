@@ -3899,6 +3899,49 @@ export function useWalletData() {
     return await deleteMultipleShareTransactions([id])
   }
 
+  const updateShareTransaction = async (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => {
+    const currentTransactions = shareTransactionsRef.current
+    const transactionIndex = currentTransactions.findIndex((t) => t.id === id)
+    if (transactionIndex === -1) {
+      throw new Error("Transaction not found")
+    }
+
+    const existingTx = currentTransactions[transactionIndex]
+
+    // Normalize updates similar to addShareTransaction
+    const normalizedSymbol = updates.symbol ? normalizeStockSymbol(updates.symbol) : existingTx.symbol
+    const normalizedType = updates.type || existingTx.type
+    const normalizedAssetType = updates.assetType ? normalizeAssetType(updates.assetType) : existingTx.assetType
+    const cryptoId = updates.cryptoId !== undefined ? updates.cryptoId?.trim() || undefined : existingTx.cryptoId
+
+    // Handle price normalization for bonus/gift types
+    let normalizedPrice = updates.price !== undefined ? updates.price : existingTx.price
+    if (normalizedType === "bonus" || normalizedType === "gift") {
+      normalizedPrice = 0
+    }
+
+    const updatedTransaction: ShareTransaction = {
+      ...existingTx,
+      ...updates,
+      id, // Ensure id is preserved
+      symbol: normalizedSymbol,
+      type: normalizedType,
+      assetType: normalizedAssetType,
+      cryptoId,
+      price: normalizedPrice,
+    }
+
+    const updatedTransactions = [...currentTransactions]
+    updatedTransactions[transactionIndex] = updatedTransaction
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+
+    const { newPortfolio: updatedPortfolio, zeroUnitHoldings } = await recomputePortfolio(updatedTransactions)
+    return { updatedTransaction, updatedPortfolio, zeroUnitHoldings }
+  }
+
   const recomputePortfolio = async (transactionsToUse?: ShareTransaction[]) => {
     const txs = transactionsToUse || shareTransactions
     const newPortfolio: PortfolioItem[] = []
@@ -3929,7 +3972,7 @@ export function useWalletData() {
         const existing = portfolio.find((p) => getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId) === key)
 
         sortedSymbolTxs.forEach((t) => {
-          if (t.type === "buy" || t.type === "ipo" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
+          if (t.type === "buy" || t.type === "ipo" || t.type === "reinvestment" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
             totalUnits = normalizeUnits(totalUnits + t.quantity)
             const unitPrice = (t.type === "bonus" || t.type === "gift")
               ? 0
@@ -4428,6 +4471,7 @@ export function useWalletData() {
     completeSipInstallment,
     deleteShareTransaction,
     deleteMultipleShareTransactions,
+    updateShareTransaction,
     recomputePortfolio,
     importShareData,
     refreshData,

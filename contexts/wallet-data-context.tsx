@@ -110,6 +110,7 @@ type WalletDataContextType = {
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
+  updateShareTransaction: (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>
   deleteMultipleShareTransactions: (ids: string[]) => Promise<PortfolioItem[] | undefined>
   recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<{ newPortfolio: PortfolioItem[]; zeroUnitHoldings: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>

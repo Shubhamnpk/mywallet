@@ -3,7 +3,7 @@
 import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2} from "lucide-react"
+import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,11 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
 import { SIPSetupModal } from "./sip-setup-modal"
+import { EditTransactionModal } from "./edit-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipDisplayTransactionsForPlan, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
 
@@ -57,7 +59,7 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item: initialItem, open, onOpenChange }: StockDetailModalProps) {
-    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue, completeSipInstallment, deleteShareTransaction } = useWalletData()
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -72,6 +74,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
     const [initialEnrollmentTransactionId, setInitialEnrollmentTransactionId] = useState<string | null>(null)
     const [isCompletingSip, setIsCompletingSip] = useState(false)
     const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null)
+    const [editingTransaction, setEditingTransaction] = useState<ShareTransaction | null>(null)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("overview")
     const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
@@ -441,6 +445,23 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         } finally {
             setDeletingTransactionId(null)
         }
+    }
+
+    const handleUpdateTransaction = async (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => {
+        try {
+            await updateShareTransaction(id, updates)
+            toast.success("Transaction updated")
+        } catch (error: any) {
+            toast.error("Could not update transaction", {
+                description: error?.message || "Please try again.",
+            })
+            throw error
+        }
+    }
+
+    const handleEditClick = (tx: ShareTransaction) => {
+        setEditingTransaction(tx)
+        setIsEditModalOpen(true)
     }
 
     const totalSipGross = useMemo(() =>
@@ -914,10 +935,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                         <div className={cn(
                                                             "w-8 h-8 rounded-lg flex items-center justify-center",
                                                             tx.type === "buy" || tx.type === "ipo" ? "bg-green-500/10 text-green-600" :
+                                                                tx.type === "reinvestment" ? "bg-cyan-500/10 text-cyan-600" :
                                                                 tx.type === "sell" ? "bg-red-500/10 text-red-600" :
                                                                     "bg-blue-500/10 text-blue-600"
                                                         )}>
                                                             {tx.type === "buy" || tx.type === "ipo" ? <ArrowDownLeft className="w-4 h-4" /> :
+                                                                tx.type === "reinvestment" ? <RefreshCcw className="w-4 h-4" /> :
                                                                 tx.type === "sell" ? <ArrowUpRight className="w-4 h-4" /> :
                                                                     <Gift className="w-4 h-4" />}
                                                         </div>
@@ -942,20 +965,39 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-2">
                                                         <div className="text-right">
                                                             <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
                                                             <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
                                                         </div>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
-                                                            onClick={() => void handleDeleteTransaction(tx.id)}
-                                                            disabled={deletingTransactionId === tx.id}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary"
+                                                                >
+                                                                    <MoreVertical className="w-4 h-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-40 bg-popover border-border shadow-lg">
+                                                                <DropdownMenuItem
+                                                                    onClick={() => handleEditClick(tx)}
+                                                                    className="cursor-pointer text-foreground hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:text-primary rounded-sm"
+                                                                >
+                                                                    <Edit3 className="w-4 h-4 mr-2 text-primary" />
+                                                                    Edit
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem
+                                                                    onClick={() => void handleDeleteTransaction(tx.id)}
+                                                                    disabled={deletingTransactionId === tx.id}
+                                                                    className="cursor-pointer text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive rounded-sm"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                                                                    Delete
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
                                                     </div>
                                                 </div>
                                             ))
@@ -1420,6 +1462,24 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                         setInitialEnrollmentTransactionId(null)
                     }
                 }}
+            />
+            <EditTransactionModal
+                open={isEditModalOpen}
+                onOpenChange={(next) => {
+                    setIsEditModalOpen(next)
+                    if (!next) {
+                        setEditingTransaction(null)
+                    }
+                }}
+                transaction={editingTransaction}
+                onUpdate={handleUpdateTransaction}
+                portfolioStockOptions={portfolio
+                    .filter((p) => p.assetType !== "crypto")
+                    .map((p) => ({ symbol: p.symbol, name: scripNamesMap[p.symbol] || p.symbol }))}
+                portfolioCryptoOptions={portfolio
+                    .filter((p) => p.assetType === "crypto")
+                    .map((p) => ({ id: p.cryptoId, symbol: p.symbol, name: scripNamesMap[p.symbol] || p.symbol }))}
+                currencySymbol={currencySymbol}
             />
             <Dialog
                 open={isPdfOpen}

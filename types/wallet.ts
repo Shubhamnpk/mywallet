@@ -306,7 +306,7 @@ export interface ShareTransaction {
   symbol: string
   assetType?: "stock" | "crypto"
   cryptoId?: string
-  type: "buy" | "sell" | "bonus" | "gift" | "ipo" | "merger_in" | "merger_out"
+  type: "buy" | "sell" | "bonus" | "gift" | "ipo" | "reinvestment" | "merger_in" | "merger_out"
   quantity: number
   price: number
   date: string
