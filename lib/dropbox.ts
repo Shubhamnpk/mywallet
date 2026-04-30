@@ -5,6 +5,12 @@ export const DROPBOX_TOKEN_SCOPE_KEY = "wallet_dropbox_token_scope"
 export const DROPBOX_TOKEN_TYPE_KEY = "wallet_dropbox_token_type"
 const DROPBOX_PKCE_STATE_KEY = "wallet_dropbox_pkce_state"
 const DROPBOX_PKCE_VERIFIER_KEY = "wallet_dropbox_pkce_verifier"
+const DROPBOX_STORAGE_PREFIX = "wallet_dropbox_"
+export const DROPBOX_REQUIRED_SCOPES = [
+  "account_info.read",
+  "files.content.read",
+  "files.content.write",
+] as const
 
 export type DropboxTokenResponse = {
   access_token: string
@@ -35,6 +41,7 @@ export function buildDropboxAuthUrl(
     codeChallenge?: string
     codeChallengeMethod?: "S256" | "plain"
     tokenAccessType?: "online" | "offline"
+    scope?: string | readonly string[]
   } = {},
 ): string {
   const params = new URLSearchParams({
@@ -47,8 +54,18 @@ export function buildDropboxAuthUrl(
   if (options.codeChallenge) params.set("code_challenge", options.codeChallenge)
   if (options.codeChallengeMethod) params.set("code_challenge_method", options.codeChallengeMethod)
   if (options.tokenAccessType) params.set("token_access_type", options.tokenAccessType)
+  if (options.scope) {
+    const scope = typeof options.scope === "string" ? options.scope : options.scope.join(" ")
+    params.set("scope", scope)
+  }
 
   return `https://www.dropbox.com/oauth2/authorize?${params.toString()}`
+}
+
+export function getMissingDropboxScopes(scope: string | null | undefined): string[] {
+  if (!scope) return []
+  const granted = new Set(scope.split(/\s+/).filter(Boolean))
+  return DROPBOX_REQUIRED_SCOPES.filter((requiredScope) => !granted.has(requiredScope))
 }
 
 function getStorageItem(key: string): string | null {
@@ -152,13 +169,25 @@ export function storeDropboxToken(token: string, expiresInSeconds?: number): voi
 export function clearDropboxToken(): void {
   if (typeof window === "undefined") return
 
-  localStorage.removeItem(DROPBOX_TOKEN_KEY)
-  localStorage.removeItem(DROPBOX_TOKEN_EXPIRES_KEY)
-  localStorage.removeItem(DROPBOX_REFRESH_TOKEN_KEY)
-  localStorage.removeItem(DROPBOX_TOKEN_SCOPE_KEY)
-  localStorage.removeItem(DROPBOX_TOKEN_TYPE_KEY)
-  localStorage.removeItem(DROPBOX_PKCE_STATE_KEY)
-  localStorage.removeItem(DROPBOX_PKCE_VERIFIER_KEY)
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(DROPBOX_STORAGE_PREFIX)) {
+      localStorage.removeItem(key)
+    }
+  }
+}
+
+export async function revokeDropboxToken(accessToken: string): Promise<void> {
+  const response = await fetch("https://api.dropboxapi.com/2/auth/token/revoke", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await readDropboxError(response, "Failed to revoke Dropbox token"))
+  }
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -209,6 +238,7 @@ export async function createDropboxAuthRequest(
       codeChallenge,
       codeChallengeMethod: "S256",
       tokenAccessType: "offline",
+      scope: DROPBOX_REQUIRED_SCOPES,
     }),
     state,
   }
@@ -280,7 +310,22 @@ export async function refreshDropboxAccessToken(
 
 async function readDropboxError(response: Response, fallback: string): Promise<string> {
   const errorText = await response.text().catch(() => "")
-  return errorText || fallback
+  if (!errorText) return fallback
+
+  try {
+    const data = JSON.parse(errorText) as {
+      error?: unknown
+      error_summary?: string
+      user_message?: { text?: string } | string
+    }
+    const userMessage = typeof data.user_message === "string" ? data.user_message : data.user_message?.text
+    const summary = data.error_summary || (typeof data.error === "string" ? data.error : "")
+    const message = userMessage || summary
+    if (message) return message
+  } catch {
+  }
+
+  return errorText
 }
 
 export async function uploadToDropbox(

@@ -144,6 +144,14 @@ export function DataSettings() {
     )
   }
 
+  const getDropboxReconnectMessage = (error: unknown, action: "upload" | "download") => {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.toLowerCase().includes("missing_scope")) {
+      return `Dropbox needs file ${action === "upload" ? "write" : "read"} permission. Enable the Dropbox app permission, then reconnect Dropbox.`
+    }
+    return `Dropbox access is no longer valid. Reconnect to ${action} backups.`
+  }
+
   const handleCreateBackup = (destination: "download" | "dropbox") => {
     if (destination === "dropbox" && !hasDropboxConfig) {
       toast({
@@ -163,23 +171,45 @@ export function DataSettings() {
     }
 
     const existingSession = getDropboxSession()
+    let canRefreshExistingSession = Boolean(existingSession?.refreshToken)
     if (existingSession && !Dropbox.isDropboxAccessTokenExpired(existingSession, 60_000)) {
-      setHasDropboxToken(true)
-      setDropboxNeedsReconnect(false)
-      setDropboxError(null)
-      return existingSession.accessToken
+      const missingScopes = Dropbox.getMissingDropboxScopes(existingSession.scope)
+      if (missingScopes.length > 0) {
+        canRefreshExistingSession = false
+        markDropboxReconnectRequired(
+          `Dropbox needs these permissions: ${missingScopes.join(", ")}. Reconnect Dropbox to continue.`,
+        )
+        if (!interactive) {
+          throw new Error(`Dropbox is missing required permissions: ${missingScopes.join(", ")}`)
+        }
+      } else {
+        setHasDropboxToken(true)
+        setDropboxNeedsReconnect(false)
+        setDropboxError(null)
+        return existingSession.accessToken
+      }
     }
 
-    if (existingSession?.refreshToken) {
+    if (existingSession?.refreshToken && canRefreshExistingSession) {
       try {
         const refreshed = await Dropbox.refreshDropboxAccessToken(existingSession.refreshToken)
         const nextSession = Dropbox.storeDropboxAuthSession(refreshed, {
           refreshToken: existingSession.refreshToken,
         })
-        setHasDropboxToken(true)
-        setDropboxNeedsReconnect(false)
-        setDropboxError(null)
-        return nextSession.accessToken
+        const missingScopes = Dropbox.getMissingDropboxScopes(nextSession.scope)
+        if (missingScopes.length > 0) {
+          markDropboxReconnectRequired(
+            `Dropbox needs these permissions: ${missingScopes.join(", ")}. Reconnect Dropbox to continue.`,
+          )
+          if (!interactive) {
+            throw new Error(`Dropbox is missing required permissions: ${missingScopes.join(", ")}`)
+          }
+        } else {
+          setHasDropboxToken(true)
+          setDropboxNeedsReconnect(false)
+          setDropboxError(null)
+          return nextSession.accessToken
+        }
       } catch (error) {
         markDropboxReconnectRequired("Dropbox session expired. Reconnect to continue backups.")
 
@@ -321,15 +351,37 @@ export function DataSettings() {
     }
   }
 
-  const handleDropboxDisconnect = () => {
+  const handleDropboxDisconnect = async () => {
+    const session = getDropboxSession()
+    if (session?.accessToken) {
+      try {
+        await Dropbox.revokeDropboxToken(session.accessToken)
+      } catch (error) {
+        console.warn("Dropbox token revoke failed:", error)
+      }
+    }
+
     Dropbox.clearDropboxToken()
     setDropboxAccount(null)
     setDropboxError(null)
     setHasDropboxToken(false)
     setDropboxNeedsReconnect(false)
+    setIsDropboxConnecting(false)
+    setIsDropboxPushing(false)
+    setIsDropboxPulling(false)
+    setIsDropboxRefreshing(false)
+    setShowDropboxBackupPinPrompt(false)
+    setShowDropboxLocalPinPrompt(false)
+    setDropboxBackupPin("")
+    setDropboxLocalPin("")
+    setBackupSizeMode("essential")
+    setPendingDropboxContent(null)
+    setPendingDecryptedBackup(null)
+    setDropboxBackupPinAction("pull")
+    setDropboxLocalPinAction("import")
     toast({
       title: "Dropbox Disconnected",
-      description: "Dropbox access has been removed from this device.",
+      description: "Dropbox access, keys, and backup preferences have been removed from this device.",
     })
   }
 
@@ -717,7 +769,7 @@ export function DataSettings() {
       })
     } catch (error) {
       if (isDropboxAuthorizationError(error)) {
-        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to upload backups.")
+        markDropboxReconnectRequired(getDropboxReconnectMessage(error, "upload"))
       }
       toast({
         title: "Dropbox Backup Failed",
@@ -788,7 +840,7 @@ export function DataSettings() {
       await runDropboxImport(decrypted, pinToUse)
     } catch (error) {
       if (isDropboxAuthorizationError(error)) {
-        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to download backups.")
+        markDropboxReconnectRequired(getDropboxReconnectMessage(error, "download"))
       }
       toast({
         title: "Dropbox Restore Failed",
@@ -1055,7 +1107,7 @@ export function DataSettings() {
                   <p className="text-xs text-muted-foreground">
                     Push overwrites <span className="font-mono">mywallet-backup.json</span>. Pull downloads it for Import.
                   </p>
-                  <Button onClick={handleDropboxDisconnect} variant="ghost" size="sm" className="w-full">
+                  <Button onClick={() => void handleDropboxDisconnect()} variant="ghost" size="sm" className="w-full">
                     Disconnect Dropbox
                   </Button>
                 </div>
