@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Camera, Mic, Calculator, Lock, Gamepad2, ArrowLeftRight, Clock } from "lucide-react"
+import { Plus, Camera, Mic, Calculator, Lock, Gamepad2, ArrowLeftRight, Clock, GripHorizontal, X, Minimize2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, History } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import {Dialog,DialogContent,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScanner from "./receipt-scanner"
@@ -15,6 +14,7 @@ import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
 import { CurrencyConverterDialog } from "./currency-converter-dialog"
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog"
 import { appendShiftToStorage } from "@/lib/shift-tracker-storage"
+import { Input } from "@/components/ui/input"
 
 declare global {
   interface Window {
@@ -39,6 +39,71 @@ const quickActions = [
   { id: "lock", icon: Lock, label: "Lock", color: "bg-red-500" },
 ]
 
+const calculatorButtons = [
+  "7", "8", "9", "/", "Del",
+  "4", "5", "6", "*", "C",
+  "1", "2", "3", "+", "%",
+  "0", "00", ".", "-", "=",
+]
+
+const normalizeCalculatorExpression = (value: string) =>
+  value
+    .replace(/[xX]/g, "*")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[^0-9+\-*/.()%]/g, "")
+
+const toEvaluableExpression = (value: string) =>
+  normalizeCalculatorExpression(value).replace(/(\d+(?:\.\d+)?)%/g, "($1/100)")
+
+const formatCalculatorResult = (value: number) => {
+  if (!Number.isFinite(value)) return "Error"
+  const rounded = Number(value.toFixed(10))
+  return Object.is(rounded, -0) ? "0" : String(rounded)
+}
+
+const calculateExpressionResult = (value: string) => {
+  const expression = toEvaluableExpression(value)
+  if (!expression || /[+\-*/.]$/.test(expression) || !/^[0-9+\-*/.()%]+$/.test(expression)) {
+    return "Error"
+  }
+
+  try {
+    const result = Function(`"use strict"; return (${expression})`)()
+    return formatCalculatorResult(Number(result))
+  } catch {
+    return "Error"
+  }
+}
+
+const getCalculatorPreview = (value: string) => {
+  const normalized = normalizeCalculatorExpression(value)
+  if (!normalized) return "0"
+  if (/[+\-*/.]$/.test(normalized)) return "..."
+  const result = calculateExpressionResult(normalized)
+  return result === "Error" ? "..." : result
+}
+
+const CALCULATOR_PANEL_WIDTH = 384
+const CALCULATOR_PANEL_HEIGHT = 560
+const CALCULATOR_SCREEN_GAP = 16
+const CALCULATOR_SNAP_DISTANCE = 28
+
+type CalculatorDockEdge = "left" | "right" | "top" | "bottom"
+
+type CalculatorPanelState = {
+  id: string
+  x: number
+  y: number
+  expression: string
+  display: string
+  history: Array<{ expression: string; result: string }>
+  view: "keys" | "history"
+  isDragging: boolean
+  isDocked: boolean
+  dockEdge: CalculatorDockEdge
+}
+
 const getVoiceAction = (isListening: boolean) => ({
   id: "voice",
   icon: Mic,
@@ -53,10 +118,7 @@ export function FloatingAddButton({
 }: FloatingAddButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false)
-  const [calculatorValue, setCalculatorValue] = useState("")
-  const [calculatorDisplay, setCalculatorDisplay] = useState("0")
-  const [calculatorExpression, setCalculatorExpression] = useState("")
+  const [calculators, setCalculators] = useState<CalculatorPanelState[]>([])
   const [isListening, setIsListening] = useState(false)
   const [prefilledAmount, setPrefilledAmount] = useState("")
   const [prefilledDescription, setPrefilledDescription] = useState("")
@@ -71,6 +133,7 @@ export function FloatingAddButton({
   const { isAuthenticated, lockApp } = useAuthentication()
   const isMobile = useIsMobile()
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const calculatorDragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
 
   const vibrateTap = useCallback(() => {
     if (navigator.vibrate) {
@@ -84,13 +147,85 @@ export function FloatingAddButton({
     }
   }, [])
 
+  const clampCalculatorPosition = useCallback((position: { x: number; y: number }) => {
+    if (typeof window === "undefined") return position
+
+    const panelWidth = Math.min(CALCULATOR_PANEL_WIDTH, window.innerWidth - CALCULATOR_SCREEN_GAP * 2)
+    const panelHeight = Math.min(CALCULATOR_PANEL_HEIGHT, window.innerHeight - CALCULATOR_SCREEN_GAP * 2)
+    const maxX = Math.max(CALCULATOR_SCREEN_GAP, window.innerWidth - panelWidth - CALCULATOR_SCREEN_GAP)
+    const maxY = Math.max(CALCULATOR_SCREEN_GAP, window.innerHeight - panelHeight - CALCULATOR_SCREEN_GAP)
+    let x = Math.min(Math.max(position.x, CALCULATOR_SCREEN_GAP), maxX)
+    let y = Math.min(Math.max(position.y, CALCULATOR_SCREEN_GAP), maxY)
+
+    if (x - CALCULATOR_SCREEN_GAP <= CALCULATOR_SNAP_DISTANCE) x = CALCULATOR_SCREEN_GAP
+    if (maxX - x <= CALCULATOR_SNAP_DISTANCE) x = maxX
+    if (y - CALCULATOR_SCREEN_GAP <= CALCULATOR_SNAP_DISTANCE) y = CALCULATOR_SCREEN_GAP
+    if (maxY - y <= CALCULATOR_SNAP_DISTANCE) y = maxY
+
+    return { x, y }
+  }, [])
+
+  const getNearestCalculatorEdge = useCallback((position: { x: number; y: number }): CalculatorDockEdge => {
+    if (typeof window === "undefined") return "right"
+    const panelWidth = Math.min(CALCULATOR_PANEL_WIDTH, window.innerWidth - CALCULATOR_SCREEN_GAP * 2)
+    const panelHeight = Math.min(CALCULATOR_PANEL_HEIGHT, window.innerHeight - CALCULATOR_SCREEN_GAP * 2)
+    const distances = {
+      left: position.x,
+      right: window.innerWidth - (position.x + panelWidth),
+      top: position.y,
+      bottom: window.innerHeight - (position.y + panelHeight),
+    }
+    return (Object.entries(distances).sort((a, b) => a[1] - b[1])[0]?.[0] || "right") as CalculatorDockEdge
+  }, [])
+
+  const updateCalculator = useCallback((id: string, updater: (calculator: CalculatorPanelState) => CalculatorPanelState) => {
+    setCalculators((current) => current.map((calculator) => (calculator.id === id ? updater(calculator) : calculator)))
+  }, [])
+
+  const openCalculator = useCallback(() => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now())
+    setCalculators((current) => {
+      const panelWidth =
+        typeof window !== "undefined"
+          ? Math.min(CALCULATOR_PANEL_WIDTH, window.innerWidth - CALCULATOR_SCREEN_GAP * 2)
+          : CALCULATOR_PANEL_WIDTH
+      const offset = Math.min(current.length, 4) * 24
+      const position =
+        typeof window !== "undefined"
+          ? clampCalculatorPosition({
+              x: window.innerWidth - panelWidth - 24 - offset,
+              y: 80 + offset,
+            })
+          : { x: 24, y: 80 }
+
+      return [
+        ...current,
+        {
+          id,
+          ...position,
+          expression: "",
+          display: "0",
+          history: [],
+          view: "keys",
+          isDragging: false,
+          isDocked: false,
+          dockEdge: getNearestCalculatorEdge(position),
+        },
+      ]
+    })
+  }, [clampCalculatorPosition, getNearestCalculatorEdge])
+
   const handleMainAction = useCallback(() => {
     if (isExpanded) {
       setIsExpanded(false);
       return;
     }
     vibrateTap();
-    (onAddTransaction ? onAddTransaction() : setIsDialogOpen(true))
+    if (onAddTransaction) {
+      onAddTransaction()
+    } else {
+      setIsDialogOpen(true)
+    }
   }, [isExpanded, onAddTransaction, vibrateTap])
   const handleActionClick = useCallback(
     (actionId: string) => {
@@ -98,7 +233,11 @@ export function FloatingAddButton({
 
       switch (actionId) {
         case "lock":
-          onLockWallet?.() ?? lockApp()
+          if (onLockWallet) {
+            onLockWallet()
+          } else {
+            lockApp()
+          }
           break
         case "scan":
           setIsReceiptScannerOpen(true)
@@ -107,7 +246,7 @@ export function FloatingAddButton({
           startVoiceRecognition()
           break
         case "calc":
-          setIsCalculatorOpen(true)
+          openCalculator()
           break
         case "convert":
           setIsCurrencyConverterOpen(true)
@@ -122,43 +261,178 @@ export function FloatingAddButton({
           setIsDialogOpen(true)
       }
     },
-    [onLockWallet, lockApp]
+    [onLockWallet, lockApp, openCalculator]
   )
 
-  const handleCalculatorButton = useCallback((value: string) => {
-    if (value === "=") {
-      try {
-        // Replace calculator symbols and handle percentage
-        const processedExpression = calculatorExpression
-          .replace(/×/g, "*")
-          .replace(/÷/g, "/")
-          .replace(/%/g, "*0.01")
-        const result = eval(processedExpression)
-        setCalculatorDisplay(result.toString())
-        setCalculatorExpression(result.toString())
-      } catch {
-        setCalculatorDisplay("Error")
-        setCalculatorExpression("")
-      }
-    } else if (value === "C") {
-      setCalculatorDisplay("0")
-      setCalculatorExpression("")
-    } else if (value === "⌫") {
-      const newExpression = calculatorExpression.slice(0, -1)
-      setCalculatorExpression(newExpression)
-      setCalculatorDisplay(newExpression || "0")
-    } else {
-      const newExpression = calculatorExpression + value
-      setCalculatorExpression(newExpression)
-      setCalculatorDisplay(newExpression)
-    }
-  }, [calculatorExpression])
+  const setCalculatorInput = useCallback((id: string, value: string) => {
+    const normalized = normalizeCalculatorExpression(value)
+    updateCalculator(id, (calculator) => ({
+      ...calculator,
+      expression: normalized,
+      display: getCalculatorPreview(normalized),
+    }))
+  }, [updateCalculator])
 
-  const handleCalculatorClose = useCallback(() => {
-    setIsCalculatorOpen(false)
-    setCalculatorDisplay("0")
-    setCalculatorExpression("")
+  const handleCalculatorButton = useCallback((id: string, value: string) => {
+    updateCalculator(id, (calculator) => {
+      if (value === "=") {
+        const formatted = calculateExpressionResult(calculator.expression)
+        const shouldSave =
+          formatted !== "Error" &&
+          formatted !== "0" &&
+          calculator.expression.trim() !== "" &&
+          calculator.expression !== formatted
+        return {
+          ...calculator,
+          display: formatted,
+          expression: formatted === "Error" ? "" : formatted,
+          history: shouldSave
+            ? [
+                { expression: calculator.expression, result: formatted },
+                ...calculator.history.filter((item) => item.expression !== calculator.expression || item.result !== formatted),
+              ].slice(0, 5)
+            : calculator.history,
+        }
+      }
+
+      if (value === "C") {
+        return { ...calculator, display: "0", expression: "" }
+      }
+
+      if (value === "Del") {
+        const expression = calculator.expression.slice(0, -1)
+        return { ...calculator, expression, display: getCalculatorPreview(expression) }
+      }
+
+      const expression = `${calculator.display === "Error" ? "" : calculator.expression}${value}`
+      return { ...calculator, expression, display: getCalculatorPreview(expression) }
+    })
+  }, [updateCalculator])
+
+  const closeCalculator = useCallback((id: string) => {
+    setCalculators((current) => current.filter((calculator) => calculator.id !== id))
   }, [])
+
+  const useCalculatorHistoryItem = useCallback((id: string, item: { expression: string; result: string }) => {
+    updateCalculator(id, (calculator) => ({
+      ...calculator,
+      expression: item.result,
+      display: item.result,
+    }))
+  }, [updateCalculator])
+
+  const clearCalculatorHistory = useCallback((id: string) => {
+    updateCalculator(id, (calculator) => ({ ...calculator, history: [], view: "keys" }))
+  }, [updateCalculator])
+
+  const setCalculatorView = useCallback((id: string, view: CalculatorPanelState["view"]) => {
+    updateCalculator(id, (calculator) => ({ ...calculator, view }))
+  }, [updateCalculator])
+
+  const handleCalculatorKeyDown = useCallback((id: string, event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" || event.key === "=") {
+      event.preventDefault()
+      handleCalculatorButton(id, "=")
+      return
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeCalculator(id)
+    }
+  }, [closeCalculator, handleCalculatorButton])
+
+  const handleCalculatorDragStart = useCallback((id: string, event: PointerEvent<HTMLDivElement>) => {
+    if (isMobile) return
+    const calculator = calculators.find((item) => item.id === id)
+    if (!calculator || calculator.isDocked) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    calculatorDragRef.current = {
+      id,
+      offsetX: event.clientX - calculator.x,
+      offsetY: event.clientY - calculator.y,
+    }
+    updateCalculator(id, (item) => ({ ...item, isDragging: true }))
+  }, [calculators, isMobile, updateCalculator])
+
+  const handleCalculatorDragMove = useCallback((id: string, event: PointerEvent<HTMLDivElement>) => {
+    if (isMobile || calculatorDragRef.current?.id !== id) return
+    const position = clampCalculatorPosition({
+      x: event.clientX - calculatorDragRef.current.offsetX,
+      y: event.clientY - calculatorDragRef.current.offsetY,
+    })
+    updateCalculator(id, (calculator) => ({
+      ...calculator,
+      ...position,
+      dockEdge: getNearestCalculatorEdge(position),
+    }))
+  }, [clampCalculatorPosition, getNearestCalculatorEdge, isMobile, updateCalculator])
+
+  const handleCalculatorDragEnd = useCallback((id: string, event: PointerEvent<HTMLDivElement>) => {
+    if (isMobile) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    calculatorDragRef.current = null
+    updateCalculator(id, (calculator) => {
+      const position = clampCalculatorPosition(calculator)
+      return {
+        ...calculator,
+        ...position,
+        isDragging: false,
+        dockEdge: getNearestCalculatorEdge(position),
+      }
+    })
+  }, [clampCalculatorPosition, getNearestCalculatorEdge, isMobile, updateCalculator])
+
+  const dockCalculator = useCallback((id: string) => {
+    updateCalculator(id, (calculator) => ({
+      ...calculator,
+      isDocked: true,
+      isDragging: false,
+      dockEdge: getNearestCalculatorEdge(calculator),
+    }))
+  }, [getNearestCalculatorEdge, updateCalculator])
+
+  const restoreCalculator = useCallback((id: string) => {
+    updateCalculator(id, (calculator) => {
+      const panelWidth =
+        typeof window !== "undefined"
+          ? Math.min(CALCULATOR_PANEL_WIDTH, window.innerWidth - CALCULATOR_SCREEN_GAP * 2)
+          : CALCULATOR_PANEL_WIDTH
+      const panelHeight =
+        typeof window !== "undefined"
+          ? Math.min(CALCULATOR_PANEL_HEIGHT, window.innerHeight - CALCULATOR_SCREEN_GAP * 2)
+          : CALCULATOR_PANEL_HEIGHT
+      const maxX =
+        typeof window !== "undefined"
+          ? Math.max(CALCULATOR_SCREEN_GAP, window.innerWidth - panelWidth - CALCULATOR_SCREEN_GAP)
+          : calculator.x
+      const maxY =
+        typeof window !== "undefined"
+          ? Math.max(CALCULATOR_SCREEN_GAP, window.innerHeight - panelHeight - CALCULATOR_SCREEN_GAP)
+          : calculator.y
+      const position = clampCalculatorPosition({
+        x: calculator.dockEdge === "left" ? CALCULATOR_SCREEN_GAP : calculator.dockEdge === "right" ? maxX : calculator.x,
+        y: calculator.dockEdge === "top" ? CALCULATOR_SCREEN_GAP : calculator.dockEdge === "bottom" ? maxY : calculator.y,
+      })
+      return { ...calculator, ...position, isDocked: false }
+    })
+  }, [clampCalculatorPosition, updateCalculator])
+
+  useEffect(() => {
+    if (calculators.length === 0) return
+    const handleResize = () => {
+      setCalculators((current) =>
+        current.map((calculator) => ({
+          ...calculator,
+          ...clampCalculatorPosition(calculator),
+        })),
+      )
+    }
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [calculators.length, clampCalculatorPosition])
 
   // Helper function to parse voice transcript
   const parseVoiceTranscript = useCallback((transcript: string) => {
@@ -338,13 +612,21 @@ export function FloatingAddButton({
     toast.success(`Receipt scanned! Amount: $${data.amount}`)
   }, [])
 
-  const handleUseResult = useCallback(() => {
-    setPrefilledAmount(calculatorDisplay)
-    setIsCalculatorOpen(false)
+  const handleUseResult = useCallback((calculator: CalculatorPanelState) => {
+    const result =
+      /^-?\d+(?:\.\d+)?$/.test(calculator.display)
+        ? calculator.display
+        : calculateExpressionResult(calculator.expression)
+
+    if (result === "Error" || result === "0") {
+      updateCalculator(calculator.id, (item) => ({ ...item, display: result }))
+      return
+    }
+
+    setPrefilledAmount(result)
+    closeCalculator(calculator.id)
     setIsDialogOpen(true)
-    setCalculatorDisplay("0")
-    setCalculatorExpression("")
-  }, [calculatorDisplay])
+  }, [closeCalculator, updateCalculator])
 
   return (
     <>
@@ -468,76 +750,247 @@ export function FloatingAddButton({
         initialReceiptImage={prefilledReceiptImage}
       />
 
-      {/* Calculator Dialog */}
-      <Dialog open={isCalculatorOpen} onOpenChange={handleCalculatorClose}>
-        <DialogContent className="sm:max-w-sm md:max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
-          <DialogHeader>
-            <DialogTitle>Quick Calculator</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Display */}
-            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-hidden">
-              <div
-                className="text-right text-2xl font-mono transition-all duration-200 ease-out transform"
-                aria-label="Calculator display"
-                style={{
-                  minHeight: '2.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'flex-end'
-                }}
-              >
-                {calculatorDisplay}
+      {/* Calculator Panels */}
+      {calculators.map((calculator, index) => {
+        const dockIcon =
+          calculator.dockEdge === "left" ? <ChevronRight className="h-5 w-5" /> :
+          calculator.dockEdge === "right" ? <ChevronLeft className="h-5 w-5" /> :
+          calculator.dockEdge === "top" ? <ChevronDown className="h-5 w-5" /> :
+          <ChevronUp className="h-5 w-5" />
+
+        if (calculator.isDocked) {
+          const dockStyle =
+            calculator.dockEdge === "left"
+              ? { left: 0, top: calculator.y }
+              : calculator.dockEdge === "right"
+                ? { right: 0, top: calculator.y }
+                : calculator.dockEdge === "top"
+                  ? { left: calculator.x, top: 0 }
+                  : { left: calculator.x, bottom: 0 }
+
+          return (
+            <button
+              key={calculator.id}
+              type="button"
+              className={cn(
+                "fixed z-[70] flex items-center justify-center border bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105 active:scale-95",
+                calculator.dockEdge === "left" && "h-14 w-9 rounded-r-xl border-l-0",
+                calculator.dockEdge === "right" && "h-14 w-9 rounded-l-xl border-r-0",
+                calculator.dockEdge === "top" && "h-9 w-14 rounded-b-xl border-t-0",
+                calculator.dockEdge === "bottom" && "h-9 w-14 rounded-t-xl border-b-0",
+              )}
+              style={dockStyle}
+              onClick={() => restoreCalculator(calculator.id)}
+              aria-label="Restore calculator"
+              title="Restore calculator"
+            >
+              {dockIcon}
+            </button>
+          )
+        }
+
+        return (
+          <div
+            key={calculator.id}
+            className={cn(
+              "fixed z-[70] w-[calc(100vw_-_2rem)] max-w-sm rounded-2xl border bg-background shadow-2xl ring-1 ring-border/50",
+              "sm:w-96",
+              calculator.isDragging && "select-none shadow-primary/20"
+            )}
+            style={
+              isMobile
+                ? { left: 16, right: 16, bottom: 96 + index * 12 }
+                : { left: calculator.x, top: calculator.y }
+            }
+          >
+            <div
+              className={cn(
+                "flex items-center justify-between gap-2 border-b px-4 py-3",
+                !isMobile && "cursor-grab active:cursor-grabbing"
+              )}
+              onPointerDown={(event) => handleCalculatorDragStart(calculator.id, event)}
+              onPointerMove={(event) => handleCalculatorDragMove(calculator.id, event)}
+              onPointerUp={(event) => handleCalculatorDragEnd(calculator.id, event)}
+              onPointerCancel={(event) => handleCalculatorDragEnd(calculator.id, event)}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <Calculator className="h-5 w-5 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold leading-tight">Quick Calculator</h2>
+                  <p className="hidden text-[11px] text-muted-foreground sm:block">Drag to move. Dock to edges.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
+                {!isMobile && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => dockCalculator(calculator.id)}
+                    aria-label="Dock calculator to edge"
+                    title="Dock calculator"
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => closeCalculator(calculator.id)}
+                  aria-label="Close calculator"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 
-            {/* Button Grid */}
-            <div className="grid grid-cols-5 gap-2">
-              {[
-                "7", "8", "9", "÷", "⌫",
-                "4", "5", "6", "×", "C",
-                "1", "2", "3", "+", "%",
-                "0", ".", "-", "=",
-              ].map((btn, index) => (
+            <div className="space-y-4 p-4">
+              <div className="rounded-xl border bg-muted/30 p-3 shadow-inner">
+                <Input
+                  value={calculator.expression}
+                  onChange={(event) => setCalculatorInput(calculator.id, event.target.value)}
+                  onKeyDown={(event) => handleCalculatorKeyDown(calculator.id, event)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Calculator expression"
+                  className="h-12 border-0 bg-transparent px-0 text-right font-mono text-2xl font-bold shadow-none focus-visible:ring-0"
+                  placeholder="0"
+                />
+                <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs text-muted-foreground">
+                  <span>Live result</span>
+                  <span className="max-w-[220px] truncate font-mono text-foreground">{calculator.display}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 rounded-xl border bg-muted/20 p-1">
                 <Button
-                  key={btn}
-                  variant={btn === "=" ? "default" : "outline"}
-                  size="lg"
-                  onClick={() => handleCalculatorButton(btn)}
-                  className={cn(
-                    "h-12 text-lg font-semibold transition-all duration-150 ease-out",
-                    "hover:scale-105 hover:shadow-md active:scale-95 active:shadow-sm",
-                    "focus:ring-2 focus:ring-primary/20 focus:outline-none",
-                    btn === "0" && "col-span-2",
-                    (btn === "C" || btn === "⌫") && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
-                    btn === "=" && "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg active:bg-blue-800",
-                    "animate-in slide-in-from-bottom-1 fade-in-0"
-                  )}
-                  style={{ animationDelay: `${index * 20}ms` }}
-                  aria-label={`Calculator button ${btn}`}
+                  type="button"
+                  variant={calculator.view === "keys" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 rounded-lg text-xs"
+                  onClick={() => setCalculatorView(calculator.id, "keys")}
                 >
-                  {btn}
+                  Keys
                 </Button>
-              ))}
-            </div>
+                <Button
+                  type="button"
+                  variant={calculator.view === "history" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 rounded-lg text-xs"
+                  onClick={() => setCalculatorView(calculator.id, "history")}
+                  disabled={calculator.history.length === 0}
+                >
+                  <History className="mr-1.5 h-3.5 w-3.5" />
+                  History
+                  {calculator.history.length > 0 && (
+                    <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-[10px] text-primary">
+                      {calculator.history.length}
+                    </span>
+                  )}
+                </Button>
+              </div>
 
-            {/* Use Result Button */}
-            <Button
-              onClick={handleUseResult}
-              className={cn(
-                "w-full mt-2 transition-all duration-200 ease-out",
-                "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]",
-                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              {calculator.view === "history" ? (
+                <div className="min-h-[248px] rounded-xl border bg-muted/15 p-2">
+                  {calculator.history.length > 0 ? (
+                    <>
+                      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                          <History className="h-3.5 w-3.5" />
+                          Recent calculations
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() => clearCalculatorHistory(calculator.id)}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        {calculator.history.map((item, historyIndex) => (
+                          <button
+                            key={`${item.expression}-${item.result}-${historyIndex}`}
+                            type="button"
+                            className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted"
+                            onClick={() => useCalculatorHistoryItem(calculator.id, item)}
+                            title="Use this result"
+                          >
+                            <span className="min-w-0 truncate font-mono text-muted-foreground">{item.expression}</span>
+                            <span className="shrink-0 font-mono font-semibold text-foreground">{item.result}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full min-h-[232px] flex-col items-center justify-center text-center text-xs text-muted-foreground">
+                      <History className="mb-2 h-6 w-6 opacity-60" />
+                      Run a calculation to save history.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-5 gap-2">
+                    {calculatorButtons.map((btn, buttonIndex) => (
+                      <Button
+                        key={btn}
+                        variant={btn === "=" ? "default" : "outline"}
+                        size="lg"
+                        onClick={() => handleCalculatorButton(calculator.id, btn)}
+                        className={cn(
+                          "h-12 rounded-xl text-lg font-semibold transition-all duration-150 ease-out",
+                          "hover:scale-105 hover:shadow-md active:scale-95 active:shadow-sm",
+                          "focus:ring-2 focus:ring-primary/20 focus:outline-none",
+                          (btn === "C" || btn === "Del") && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
+                          ["/", "*", "+", "-", "%"].includes(btn) && "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10",
+                          btn === "=" && "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg",
+                          "animate-in slide-in-from-bottom-1 fade-in-0"
+                        )}
+                        style={{ animationDelay: `${buttonIndex * 20}ms` }}
+                        aria-label={`Calculator button ${btn}`}
+                      >
+                        {btn}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleCalculatorButton(calculator.id, "C")}
+                      className="rounded-xl"
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      onClick={() => handleUseResult(calculator)}
+                      className={cn(
+                        "rounded-xl transition-all duration-200 ease-out",
+                        "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]",
+                        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                      )}
+                      disabled={calculator.display === "0" || calculator.display === "Error" || calculator.display === "..."}
+                    >
+                      Use Result
+                    </Button>
+                  </div>
+                </>
               )}
-              disabled={calculatorDisplay === "0" || calculatorDisplay === "Error"}
-            >
-              Use Result in Transaction
-            </Button>
-
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
+        )
+      })}
       <CurrencyConverterDialog
         isOpen={isCurrencyConverterOpen}
         onOpenChange={setIsCurrencyConverterOpen}

@@ -1,14 +1,14 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, PiggyBank, ReceiptText, Settings, Share, Target, TrendingUp } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, PiggyBank, ReceiptText, Settings, Share, Target, Trash2, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UpcomingIPO, UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -16,6 +16,7 @@ import { BillReminderSystem } from "@/components/productivity/bill-reminder-syst
 import { IPODetailModal } from "@/components/portfolio/modals/ipo-detail-modal"
 import { loadFromLocalStorage } from "@/lib/storage"
 import {
+  clearLiveNotificationHistory,
   clearNotificationHistory,
   NOTIFICATION_HISTORY_EVENT,
   readNotificationHistory,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/notification-history"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
+const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
 const LIVE_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000
 
 type HeaderNotification = {
@@ -60,6 +62,17 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     if (typeof window === "undefined") return {}
     try {
       const raw = localStorage.getItem(HEADER_NOTIFICATIONS_READ_KEY)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === "object" ? parsed : {}
+    } catch {
+      return {}
+    }
+  })
+  const [dismissedMap, setDismissedMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {}
+    try {
+      const raw = localStorage.getItem(HEADER_NOTIFICATIONS_DISMISSED_KEY)
       if (!raw) return {}
       const parsed = JSON.parse(raw)
       return parsed && typeof parsed === "object" ? parsed : {}
@@ -268,8 +281,8 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   }, [liveDeliveredNotifications])
 
   const liveNotifications = useMemo<HeaderNotification[]>(
-    () => [...deliveredLiveItems, ...notifications].slice(0, 40),
-    [deliveredLiveItems, notifications],
+    () => [...deliveredLiveItems, ...notifications].filter((item) => !dismissedMap[item.id]).slice(0, 40),
+    [deliveredLiveItems, notifications, dismissedMap],
   )
 
   const unreadCount = liveNotifications.filter((n) => !readMap[n.id]).length
@@ -295,6 +308,31 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
       next[n.id] = true
     })
     persistReadMap(next)
+  }
+
+  const persistDismissedMap = (next: Record<string, boolean>) => {
+    setDismissedMap(next)
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem(HEADER_NOTIFICATIONS_DISMISSED_KEY, JSON.stringify(next))
+    } catch {
+    }
+  }
+
+  const clearLiveNotifications = () => {
+    if (liveNotifications.length === 0) return
+    const nextDismissed = { ...dismissedMap }
+    const nextRead = { ...readMap }
+
+    liveNotifications.forEach((notification) => {
+      nextDismissed[notification.id] = true
+      nextRead[notification.id] = true
+    })
+
+    clearLiveNotificationHistory(Date.now() - LIVE_NOTIFICATION_WINDOW_MS)
+    persistDismissedMap(nextDismissed)
+    persistReadMap(nextRead)
+    setHistory(readNotificationHistory())
   }
 
   const navigateToTab = (tab: string) => {
@@ -391,9 +429,54 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                     {unreadCount > 0 ? `${unreadCount} unread alert${unreadCount === 1 ? "" : "s"}` : "All caught up"}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs font-bold" onClick={markAllAsRead}>
-                  Mark all read
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setBillDialogOpen(true)}
+                    aria-label="Open bill reminders"
+                    title="Bill reminders"
+                  >
+                    <ReceiptText className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => router.push("/settings?tab=notifications")}
+                    aria-label="Open notification settings"
+                    title="Notification settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={markAllAsRead}
+                    disabled={liveNotifications.length === 0}
+                    aria-label="Mark all notifications as read"
+                    title="Mark all read"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={clearLiveNotifications}
+                    disabled={liveNotifications.length === 0}
+                    aria-label="Clear live notifications"
+                    title="Clear live notifications"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <Tabs defaultValue="live" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 rounded-none border-b h-9">
@@ -478,25 +561,6 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                   </Button>
                 </TabsContent>
               </Tabs>
-              <DropdownMenuSeparator />
-              <div className="p-2 space-y-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setBillDialogOpen(true)
-                  }}
-                >
-                  <ReceiptText className="mr-2 h-4 w-4" />
-                  Bill reminders
-                </Button>
-                <Button variant="outline" size="sm" className="w-full" onClick={() => router.push("/settings?tab=notifications")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Notification settings
-                </Button>
-              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
