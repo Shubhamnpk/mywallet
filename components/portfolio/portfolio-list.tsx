@@ -74,6 +74,17 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
+type ImportQueueItem = {
+    id: string
+    symbol: string
+    defaultPrice: number
+    type: string
+    date?: string
+    quantity?: number
+    description?: string
+    priceOptional?: boolean
+}
+
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
 const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     [
@@ -105,8 +116,9 @@ export function PortfolioList() {
     const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [isChartExpanded, setIsChartExpanded] = useState(false)
-    const [importQueue, setImportQueue] = useState<{ symbol: string, defaultPrice: number, type: string }[]>([])
+    const [importQueue, setImportQueue] = useState<ImportQueueItem[]>([])
     const [importPrices, setImportPrices] = useState<Record<string, string>>({})
+    const [importTransactionPrices, setImportTransactionPrices] = useState<Record<string, string>>({})
     const [pendingImport, setPendingImport] = useState<{ type: string, data: string } | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
@@ -740,7 +752,8 @@ export function PortfolioList() {
                     type = 'history'
                 }
 
-                const symbolsToPrice = new Map<string, { symbol: string, defaultPrice: number, type: string }>()
+                const symbolsToPrice = new Map<string, ImportQueueItem>()
+                const transactionPriceQueue: ImportQueueItem[] = []
 
                 if (type === 'portfolio') {
                     rows.slice(1).forEach(row => {
@@ -748,35 +761,63 @@ export function PortfolioList() {
                         const symbol = row[1]
                         const ltp = parseFloat(row[5]) || parseFloat(row[3]) || 100
                         if (symbol) {
-                            symbolsToPrice.set(symbol, { symbol, defaultPrice: ltp, type: 'Holding' })
+                            symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: ltp, type: 'Holding' })
                         }
                     })
                 } else {
-                    rows.slice(1).forEach(row => {
+                    rows.slice(1).forEach((row, rowIndex) => {
                         if (row.length < 7) return
                         const symbol = row[1]
+                        const date = row[2]
                         const desc = row[6]
                         const credit = parseFloat(row[3]) || 0
-                        const isIpo = desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')
-                        const isMerger = desc.includes('Merger') && credit > 0
-                        const isBuy = !isIpo && !isMerger && credit > 0 && !desc.includes('BONUS')
+                        const upperDesc = desc.toUpperCase()
+                        const isBonus = upperDesc.includes('CA-BONUS') || upperDesc.includes('BONUS') || upperDesc.includes('CA-RIGHTS')
+                        const isIpo = upperDesc.includes('IPO') || upperDesc.includes('INITIAL PUBLIC OFFERING')
+                        const isMerger = upperDesc.includes('MERGER') && credit > 0
+                        const isBuy = !isIpo && !isMerger && !isBonus && credit > 0
 
                         if (symbol && (isIpo || isBuy || isMerger)) {
                             const typeStr = isIpo ? 'IPO' : (isMerger ? 'Merger' : 'Buy')
                             const def = (isIpo || isMerger) ? getFaceValue(symbol) : 0
-                            symbolsToPrice.set(symbol, { symbol, defaultPrice: def, type: typeStr })
+                            if (!symbolsToPrice.has(symbol)) {
+                                if (isBuy) {
+                                    symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
+                                }
+                            }
+                            if (isBuy) {
+                                transactionPriceQueue.push({
+                                    id: `${symbol}__row_${rowIndex + 1}`,
+                                    symbol,
+                                    defaultPrice: def,
+                                    type: typeStr,
+                                    date,
+                                    quantity: credit,
+                                    description: desc,
+                                    priceOptional: true,
+                                })
+                            }
                         }
                     })
                 }
 
                 if (symbolsToPrice.size > 0) {
                     const queue = Array.from(symbolsToPrice.values())
-                    setImportQueue(queue)
                     const initialPrices: Record<string, string> = {}
                     queue.forEach(item => {
                         initialPrices[item.symbol] = item.defaultPrice.toString()
                     })
+                    const initialTransactionPrices: Record<string, string> = {}
+                    transactionPriceQueue.forEach(item => {
+                        initialTransactionPrices[item.id] = item.defaultPrice > 0 ? item.defaultPrice.toString() : ""
+                    })
                     setImportPrices(initialPrices)
+                    setImportTransactionPrices(initialTransactionPrices)
+                    if (transactionPriceQueue.length > 0) {
+                        setImportQueue([...queue, ...transactionPriceQueue])
+                    } else {
+                        setImportQueue(queue)
+                    }
                     setPendingImport({ type, data: content })
                     setIsImportModalOpen(true)
                 } else {
@@ -800,10 +841,17 @@ export function PortfolioList() {
             Object.entries(importPrices).forEach(([sym, price]) => {
                 resolved[sym] = parseFloat(price) || 0
             })
+            Object.entries(importTransactionPrices).forEach(([id, price]) => {
+                const parsed = parseFloat(price)
+                if (Number.isFinite(parsed) && parsed > 0) {
+                    resolved[id] = parsed
+                }
+            })
 
             const updated = await importShareData(pendingImport.type as any, pendingImport.data, resolved)
             setIsImportModalOpen(false)
             setPendingImport(null)
+            setImportTransactionPrices({})
             toast.success("Data imported with cost prices")
             // Refresh with the newly imported data
             if (updated) fetchPortfolioPrices(updated)
@@ -3011,6 +3059,8 @@ export function PortfolioList() {
                 importQueue={importQueue}
                 importPrices={importPrices}
                 setImportPrices={setImportPrices}
+                importTransactionPrices={importTransactionPrices}
+                setImportTransactionPrices={setImportTransactionPrices}
                 onConfirm={handleConfirmImport}
             />
 

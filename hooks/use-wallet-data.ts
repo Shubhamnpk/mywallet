@@ -4150,7 +4150,7 @@ export function useWalletData() {
         return match?.id
       }
 
-      rows.slice(1).forEach(row => {
+      rows.slice(1).forEach((row, rowIndex) => {
         if (row.length < 7) return
         const symbol = row[1]
         const date = row[2]
@@ -4170,7 +4170,10 @@ export function useWalletData() {
         let price = 0
         if (txType === 'ipo' || txType === 'buy' || txType === 'merger_in') {
           const defaultPrice = (txType === 'ipo' || txType === 'merger_in' || isRecognizedSipLikeBuy(desc, symbol)) ? getFaceValue(symbol) : 0
-          price = resolvedPrices && resolvedPrices[symbol] !== undefined
+          const rowPriceKey = `${symbol}__row_${rowIndex + 1}`
+          price = resolvedPrices && resolvedPrices[rowPriceKey] !== undefined
+            ? resolvedPrices[rowPriceKey]
+            : resolvedPrices && resolvedPrices[symbol] !== undefined
             ? resolvedPrices[symbol]
             : defaultPrice
         }

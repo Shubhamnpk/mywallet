@@ -7,6 +7,25 @@ export class SecureWallet {
   private static readonly IV_LENGTH = 12
   private static readonly TAG_LENGTH = 16
   private static readonly PBKDF2_ITERATIONS = 100000
+  private static readonly BASE64_CHUNK_SIZE = 0x8000
+
+  private static bytesToBase64(bytes: Uint8Array): string {
+    let binary = ""
+    for (let i = 0; i < bytes.length; i += this.BASE64_CHUNK_SIZE) {
+      const chunk = bytes.subarray(i, i + this.BASE64_CHUNK_SIZE)
+      binary += String.fromCharCode(...chunk)
+    }
+    return btoa(binary)
+  }
+
+  private static base64ToBytes(value: string): Uint8Array {
+    const binary = atob(value)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  }
 
   // Generate a cryptographically secure key from PIN using PBKDF2
   static async deriveKeyFromPin(pin: string, salt: Uint8Array): Promise<CryptoKey> {
@@ -68,8 +87,8 @@ export class SecureWallet {
       combined.set(iv)
       combined.set(new Uint8Array(encryptedBuffer), iv.length)
 
-      // Return base64 encoded result
-      return btoa(String.fromCharCode(...combined))
+      // Return base64 encoded result without spreading the entire backup at once.
+      return this.bytesToBase64(combined)
     } catch (error) {
       throw new Error("Encryption failed: " + (error as Error).message)
     }
@@ -79,11 +98,7 @@ export class SecureWallet {
   static async decryptData(encryptedData: string, key: CryptoKey): Promise<string> {
     try {
       // Decode base64
-      const combined = new Uint8Array(
-        atob(encryptedData)
-          .split("")
-          .map((char) => char.charCodeAt(0)),
-      )
+      const combined = this.base64ToBytes(encryptedData)
 
       // Extract IV and encrypted data
       const iv = combined.slice(0, this.IV_LENGTH)
@@ -127,8 +142,8 @@ export class SecureWallet {
     )
 
     const hashArray = new Uint8Array(hashBuffer)
-    const hashBase64 = btoa(String.fromCharCode(...hashArray))
-    const saltBase64 = btoa(String.fromCharCode(...pinSalt))
+    const hashBase64 = this.bytesToBase64(hashArray)
+    const saltBase64 = this.bytesToBase64(pinSalt)
 
     return {
       hash: hashBase64,
@@ -139,11 +154,7 @@ export class SecureWallet {
   // Validate PIN against stored hash
   static async validatePin(inputPin: string, storedHash: string, storedSalt: string): Promise<boolean> {
     try {
-      const salt = new Uint8Array(
-        atob(storedSalt)
-          .split("")
-          .map((char) => char.charCodeAt(0)),
-      )
+      const salt = this.base64ToBytes(storedSalt)
 
       const { hash } = await this.hashPin(inputPin, salt)
       return hash === storedHash
@@ -161,7 +172,7 @@ export class SecureWallet {
     const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer)
     const hashArray = new Uint8Array(hashBuffer)
 
-    return btoa(String.fromCharCode(...hashArray))
+    return this.bytesToBase64(hashArray)
   }
 
   // Verify data integrity
