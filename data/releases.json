@@ -1,17 +1,17 @@
 {
-  "currentBuild": "2026.04.25",
+  "currentBuild": "2026.04.30",
   "releases": [
     {
       "version": "2.0.4",
-      "date": "2026-04-26",
+      "date": "2026-04-30",
       "status": "current",
-      "category": "Improvement",
-      "title": "Mobile UX, Achievements, and Native Security Improvements",
+      "category": "UX",
+      "title": "Dropbox Cleanup, Notification Controls, and Floating Calculator",
       "highlights": [
-        "Improved the mobile tools tab flow and dashboard layout for a smoother small-screen experience.",
-        "Added achievement search, sorting, and progressive reveal to make milestones easier to browse.",
-        "Expanded native mobile shell updates across Android and iOS project assets and configuration.",
-        "Refined biometric and session security support for the mobile app experience."
+        "Disconnecting Dropbox now revokes the active token when possible and clears all local Dropbox backup keys.",
+        "Added missing Dropbox scope detection so users are guided to reconnect when backup permissions are incomplete.",
+        "Added compact notification actions for bill reminders, notification settings, mark-all-read, and clearing live notifications.",
+        "Upgraded the floating calculator with keyboard input, live results, movable desktop windows, docking, multiple instances, and a tabbed history view."
       ]
     },
     {

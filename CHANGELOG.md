@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.4](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.3...mywallet-v2.0.4) (2026-04-30)
+
+
+### Features
+
+* **calculator:** add movable floating calculator panels with keyboard input, live results, docking, multiple instances, and tabbed history
+* **notifications:** add compact notification controls for bill reminders, settings, mark-all-read, and clearing live notifications
+
+
+### Improvements
+
+* **dropbox:** revoke connected tokens on disconnect and clear all local Dropbox backup keys
+* **dropbox:** detect missing backup scopes and guide users to reconnect with the required permissions
+
 ## [2.0.3](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.2...mywallet-v2.0.3) (2026-04-21)
 
 

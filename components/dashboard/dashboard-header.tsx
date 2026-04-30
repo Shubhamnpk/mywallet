@@ -5,7 +5,7 @@ import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, PiggyBank, Rece
 import { useRouter } from "next/navigation"
 import type { UpcomingIPO, UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -26,6 +26,26 @@ import {
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
 const LIVE_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000
+
+const normalizeIPOText = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+
+const getNotificationIPOQuery = (item: NotificationHistoryItem) =>
+  normalizeIPOText(`${item.dedupeKey} ${item.title} ${item.body}`)
+    .replace(/\bipo\b/g, " ")
+    .replace(/\bcompany\b/g, " ")
+    .replace(/\bopen(?:ing)?\b/g, " ")
+    .replace(/\bclosing\b/g, " ")
+    .replace(/\bsoon\b/g, " ")
+    .replace(/\btoday\b/g, " ")
+    .replace(/\btomorrow\b/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
 
 type HeaderNotification = {
   id: string
@@ -252,15 +272,42 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     }
   }, [history])
 
+  const findIPOForNotification = useCallback((item: NotificationHistoryItem) => {
+    if (item.source !== "ipo" && !/\bipo\b/i.test(`${item.title} ${item.body} ${item.dedupeKey}`)) {
+      return null
+    }
+
+    const query = getNotificationIPOQuery(item)
+    if (!query) return null
+
+    return upcomingIPOs.find((ipo) => {
+      const company = normalizeIPOText(ipo.company || "")
+      const url = normalizeIPOText(ipo.url || "")
+      const queryParts = query.split(" ").filter((part) => part.length > 2)
+
+      return Boolean(
+        (company &&
+          (query.includes(company) ||
+            company.includes(query) ||
+            queryParts.some((part) => company.includes(part)))) ||
+          (url && query.includes(url)),
+      )
+    }) || null
+  }, [upcomingIPOs])
+
   const deliveredLiveItems = useMemo<HeaderNotification[]>(() => {
-    return liveDeliveredNotifications.map((item) => ({
+    return liveDeliveredNotifications.map((item) => {
+      const ipo = findIPOForNotification(item)
+      const isIPO = item.source === "ipo" || Boolean(ipo)
+
+      return ({
       id: `delivered-${item.id}`,
       title: item.title,
       description: item.body,
       type:
         item.source === "budget" || item.source === "bill"
           ? "warning"
-          : item.source === "ipo"
+          : isIPO
             ? "success"
             : "info",
       sourceLabel: `${item.source} · ${item.channel}`,
@@ -271,14 +318,16 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           ? "Manage Bill"
           : item.source === "budget"
             ? "Review Budget"
-            : item.source === "ipo"
-              ? "Open IPOs"
+            : isIPO
+              ? "View IPO"
               : "Open Settings",
       opensBillDialog: item.source === "bill",
-      targetTab: item.source === "budget" ? "budgets" : item.source === "ipo" ? "portfolio" : undefined,
-      settingsUrl: item.source !== "bill" && item.source !== "budget" && item.source !== "ipo" ? "/settings?tab=notifications" : undefined,
-    }))
-  }, [liveDeliveredNotifications])
+      ipo: ipo || undefined,
+      targetTab: item.source === "budget" ? "budgets" : isIPO ? "portfolio" : undefined,
+      settingsUrl: item.source !== "bill" && item.source !== "budget" && !isIPO ? "/settings?tab=notifications" : undefined,
+      })
+    })
+  }, [findIPOForNotification, liveDeliveredNotifications])
 
   const liveNotifications = useMemo<HeaderNotification[]>(
     () => [...deliveredLiveItems, ...notifications].filter((item) => !dismissedMap[item.id]).slice(0, 40),
@@ -351,6 +400,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
       return
     }
     if (notification.ipo) {
+      navigateToTab("portfolio")
       setSelectedIPO(notification.ipo)
       setIpoDialogOpen(true)
       return
