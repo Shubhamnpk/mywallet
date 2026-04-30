@@ -41,7 +41,7 @@ export function ImportVerificationModal({
 }: ImportVerificationModalProps) {
     const [expandedSymbols, setExpandedSymbols] = useState<Record<string, boolean>>({})
     const symbolItems = useMemo(
-        () => importQueue.filter((item) => !item.id?.includes("__row_") && item.type !== "IPO" && item.type !== "Merger"),
+        () => importQueue.filter((item) => !item.id?.includes("__row_") && item.type !== "Merger"),
         [importQueue]
     )
     const transactionItems = useMemo(() => importQueue.filter((item) => item.id?.includes("__row_") && item.type === "Buy"), [importQueue])
@@ -105,6 +105,7 @@ export function ImportVerificationModal({
                         {symbolItems.map((item) => {
                             const symbolTransactions = transactionsBySymbol[item.symbol] || []
                             const hasMultipleTransactions = symbolTransactions.length > 1
+                            const isIpo = item.type === "IPO"
                             const expanded = expandedSymbols[item.symbol] ?? false
                             const customCount = symbolTransactions.filter((transaction) => {
                                 const rowId = transaction.id || transaction.symbol
@@ -125,9 +126,16 @@ export function ImportVerificationModal({
                                                 </Badge>
                                             )}
                                         </div>
+                                        {isIpo && (
+                                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
+                                                Auto-filled Face Value
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <Label className="text-[11px] font-black text-muted-foreground uppercase w-20">Buy Price</Label>
+                                        <Label className="text-[11px] font-black text-muted-foreground uppercase w-20">
+                                            {isIpo ? "IPO Price" : "Buy Price"}
+                                        </Label>
                                         <Input
                                             type="number"
                                             value={importPrices[item.symbol] || ""}

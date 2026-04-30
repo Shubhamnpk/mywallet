@@ -780,10 +780,10 @@ export function PortfolioList() {
                         if (symbol && (isIpo || isBuy || isMerger)) {
                             const typeStr = isIpo ? 'IPO' : (isMerger ? 'Merger' : 'Buy')
                             const def = (isIpo || isMerger) ? getFaceValue(symbol) : 0
-                            if (!symbolsToPrice.has(symbol)) {
-                                if (isBuy) {
-                                    symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
-                                }
+                            if (isBuy) {
+                                symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
+                            } else if (isIpo && !symbolsToPrice.has(symbol)) {
+                                symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
                             }
                             if (isBuy) {
                                 transactionPriceQueue.push({
