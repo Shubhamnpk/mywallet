@@ -279,7 +279,23 @@ async function postDropboxTokenRequest(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "")
-    throw new Error(errorText || "Dropbox token request failed")
+    if (!errorText) {
+      throw new Error(`Dropbox token request failed (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""})`)
+    }
+
+    try {
+      const data = JSON.parse(errorText) as { error?: string; error_description?: string }
+      throw new Error(
+        `Dropbox token request failed (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}): ${
+          data.error_description || data.error || errorText
+        }`,
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Dropbox token request failed")) {
+        throw error
+      }
+      throw new Error(`Dropbox token request failed (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}): ${errorText}`)
+    }
   }
 
   return (await response.json()) as DropboxTokenResponse
@@ -310,7 +326,8 @@ export async function refreshDropboxAccessToken(
 
 async function readDropboxError(response: Response, fallback: string): Promise<string> {
   const errorText = await response.text().catch(() => "")
-  if (!errorText) return fallback
+  const prefix = `${fallback} (HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""})`
+  if (!errorText) return prefix
 
   try {
     const data = JSON.parse(errorText) as {
@@ -321,11 +338,22 @@ async function readDropboxError(response: Response, fallback: string): Promise<s
     const userMessage = typeof data.user_message === "string" ? data.user_message : data.user_message?.text
     const summary = data.error_summary || (typeof data.error === "string" ? data.error : "")
     const message = userMessage || summary
-    if (message) return message
+    if (message) return `${prefix}: ${message}`
   } catch {
   }
 
-  return errorText
+  return `${prefix}: ${errorText}`
+}
+
+function describeDropboxNetworkError(error: unknown, fallback: string): string {
+  if (error instanceof DOMException) {
+    return `${fallback}: ${error.name}${error.message ? ` - ${error.message}` : ""}`
+  }
+  if (error instanceof TypeError) {
+    return `${fallback}: network request failed. Check your internet connection, ad blocker/privacy blocker, CORS, or Dropbox availability.`
+  }
+  if (error instanceof Error) return `${fallback}: ${error.message}`
+  return fallback
 }
 
 export async function uploadToDropbox(
@@ -335,21 +363,26 @@ export async function uploadToDropbox(
   options: { overwrite?: boolean } = {},
 ): Promise<void> {
   const { overwrite = false } = options
-  const response = await fetch("https://content.dropboxapi.com/2/files/upload", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/octet-stream",
-      "Dropbox-API-Arg": JSON.stringify({
-        path: `/${filename}`,
-        mode: overwrite ? "overwrite" : "add",
-        autorename: true,
-        mute: false,
-        strict_conflict: false,
-      }),
-    },
-    body: content,
-  })
+  let response: Response
+  try {
+    response = await fetch("https://content.dropboxapi.com/2/files/upload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path: `/${filename}`,
+          mode: overwrite ? "overwrite" : "add",
+          autorename: true,
+          mute: false,
+          strict_conflict: false,
+        }),
+      },
+      body: content,
+    })
+  } catch (error) {
+    throw new Error(describeDropboxNetworkError(error, "Failed to upload backup to Dropbox"))
+  }
 
   if (!response.ok) {
     throw new Error(await readDropboxError(response, "Failed to upload backup to Dropbox"))

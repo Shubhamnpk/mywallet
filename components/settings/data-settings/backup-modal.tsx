@@ -2,13 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -85,6 +84,7 @@ export function BackupModal({
   const [exportPin, setExportPin] = useState("")
   const [isExporting, setIsExporting] = useState(false)
   const [isCustomizeMode, setIsCustomizeMode] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [backupOptions, setBackupOptions] = useState<BackupOptions>({
     userProfile: true,
     transactions: true,
@@ -209,7 +209,9 @@ export function BackupModal({
   const handleExportData = async () => {
     const cachedPin = SecureKeyManager.getCachedSessionPin()
     const pinToUse = exportPin || cachedPin || ""
+    setExportError(null)
     if (!pinToUse) {
+      setExportError("Please enter your wallet PIN to create an encrypted backup.")
       toast({
         title: "PIN Required",
         description: "Please enter your wallet PIN to create an encrypted backup.",
@@ -218,6 +220,7 @@ export function BackupModal({
       return
     }
     if (pinToUse.length !== 6) {
+      setExportError("PIN must be 6 digits.")
       toast({
         title: "Invalid PIN",
         description: "PIN must be 6 digits.",
@@ -230,6 +233,7 @@ export function BackupModal({
     try {
       // Enforce wallet PIN: backups can only be encrypted with the active wallet PIN.
       if (!SecurePinManager.hasPin()) {
+        setExportError("Set a wallet PIN in Security settings before creating encrypted backups.")
         toast({
           title: "Wallet PIN Required",
           description: "Set a wallet PIN in Security settings before creating encrypted backups.",
@@ -240,6 +244,7 @@ export function BackupModal({
 
       const validation = await SecurePinManager.validatePin(pinToUse)
       if (!validation.success) {
+        setExportError("Backup blocked. Use your current wallet PIN.")
         toast({
           title: "Invalid Wallet PIN",
           description: "Backup blocked. Use your current wallet PIN.",
@@ -323,9 +328,11 @@ export function BackupModal({
       onClose()
       onBackupComplete()
     } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Failed to create encrypted backup. Please try again."
+      setExportError(message)
       toast({
         title: "Backup Failed",
-        description: "Failed to create encrypted backup. Please try again.",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -370,7 +377,17 @@ export function BackupModal({
                 </InputOTPGroup>
               </InputOTP>
             </div>
+            {SecureKeyManager.getCachedSessionPin() && exportPin.length === 0 && (
+              <p className="text-center text-xs text-muted-foreground">Using your unlocked wallet session.</p>
+            )}
           </div>
+
+          {exportError && (
+            <Alert variant="destructive">
+              <AlertTitle>Export failed</AlertTitle>
+              <AlertDescription className="break-words text-xs">{exportError}</AlertDescription>
+            </Alert>
+          )}
 
           <div className="flex items-center space-x-2">
             <Checkbox
@@ -424,12 +441,13 @@ export function BackupModal({
             </div>
           )}
           <AlertDialogCancel onClick={onClose}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleExportData}
-            disabled={exportPin.length !== 6 || isExporting}
+          <Button
+            type="button"
+            onClick={() => void handleExportData()}
+            disabled={(!SecureKeyManager.getCachedSessionPin() && exportPin.length !== 6) || isExporting}
           >
             {isExporting ? "Creating..." : "Export"}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
