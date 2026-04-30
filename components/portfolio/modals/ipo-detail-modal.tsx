@@ -58,6 +58,9 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         onOpenChange(false)
         router.push("/settings?tab=meroshare")
     }
+    const openMeroShareLogin = () => {
+        window.open("https://meroshare.cdsc.com.np/#/login", "_blank", "noopener,noreferrer")
+    }
 
     const handleAutomatedApply = useCallback(async (
         showBrowser = false,
@@ -388,7 +391,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                         } else if (canAutomate) {
                                             handleAutomatedApply();
                                         } else {
-                                            openMeroShareSettings();
+                                            openMeroShareLogin();
                                         }
                                     } else if (ipo.status === 'closed' && canAutomate) {
                                         handleCheckAllotment();
@@ -401,7 +404,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                     <>
                                         {canAutomate
                                             ? (isAppliedForIpo ? "Check Result" : "Apply Now")
-                                            : 'Setup'}
+                                            : 'Apply Now'}
                                         <ArrowRight className={cn("w-3.5 h-3.5", !isApplying && "animate-pulse")} />
                                     </>
                                 ) : (

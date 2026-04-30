@@ -1464,11 +1464,22 @@ export function PortfolioList() {
                 return url ? [{ label: "Exchange Circular", url }] : []
             })(),
         }))
+        const ipoItems = upcomingIPOs.slice(0, 6).map((ipo) => ({
+            id: `ipo-${ipo.company}-${ipo.openingDate || ipo.announcement_date || ipo.date_range}`,
+            title: ipo.status === "open" ? "IPO Open Now" : ipo.status === "upcoming" ? "IPO Opening Soon" : "IPO Update",
+            text: `${ipo.company}${ipo.status === "open" ? " is open for application." : ipo.status === "upcoming" ? " is coming soon." : " IPO details are available."}`,
+            tone: ipo.status === "open" ? "success" as const : ipo.status === "upcoming" ? "info" as const : "warning" as const,
+            category: "ipo" as const,
+            timestamp: parseDateToTimestamp(ipo.openingDate || ipo.announcement_date || ipo.scraped_at),
+            details: ipo.full_text || `${ipo.company} IPO timeline: ${ipo.date_range}.`,
+            documents: [] as Array<{ label: string; url: string }>,
+            ipo,
+        }))
 
-        return [...general, ...company, ...exchange]
+        return [...ipoItems, ...general, ...company, ...exchange]
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
             .slice(0, 14)
-    }, [noticesBundle, disclosures, exchangeMessages])
+    }, [noticesBundle, disclosures, exchangeMessages, upcomingIPOs])
 
     const overviewNotificationsWithMeta = useMemo(() => {
         const formatter = new Intl.DateTimeFormat(undefined, {
@@ -1606,6 +1617,11 @@ export function PortfolioList() {
     }, [ipoFilter, showAllIPOs, upcomingIPOs, userProfile?.meroShare?.applicationLogs])
 
     const openOverviewNotificationDetails = (id: string) => {
+        const notification = overviewNotificationsWithMeta.find((item) => item.id === id)
+        if (notification?.category === "ipo" && "ipo" in notification && notification.ipo) {
+            handleViewIPODetail(notification.ipo)
+            return
+        }
         setSelectedOverviewNotificationId(id)
         setSelectedOverviewNotificationDocUrl(null)
     }
@@ -2284,11 +2300,20 @@ export function PortfolioList() {
                                                                 <div
                                                                     key={item.id}
                                                                     className={cn(
-                                                                        "rounded-xl border px-3 py-2",
+                                                                        "rounded-xl border px-3 py-2 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary/30",
                                                                         item.tone === "info" && "border-info/20 bg-info/5",
                                                                         item.tone === "warning" && "border-amber-500/20 bg-amber-500/5",
                                                                         item.tone === "success" && "border-success/20 bg-success/5",
                                                                     )}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    onClick={() => openOverviewNotificationDetails(item.id)}
+                                                                    onKeyDown={(event) => {
+                                                                        if (event.key === "Enter" || event.key === " ") {
+                                                                            event.preventDefault()
+                                                                            openOverviewNotificationDetails(item.id)
+                                                                        }
+                                                                    }}
                                                                 >
                                                                     <div className="flex items-start justify-between gap-2">
                                                                         <div>
@@ -2312,9 +2337,12 @@ export function PortfolioList() {
                                                                             size="sm"
                                                                             variant="outline"
                                                                             className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-wider"
-                                                                            onClick={() => openOverviewNotificationDetails(item.id)}
+                                                                            onClick={(event) => {
+                                                                                event.stopPropagation()
+                                                                                openOverviewNotificationDetails(item.id)
+                                                                            }}
                                                                         >
-                                                                            View Details
+                                                                            {item.category === "ipo" ? "Open IPO" : "View Details"}
                                                                         </Button>
                                                                     </div>
                                                                 </div>
@@ -3751,11 +3779,6 @@ export function PortfolioList() {
                                                             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                                                                 <h4 className="font-extrabold text-sm sm:text-base tracking-tight">{item.symbol}</h4>
                                                                 {showSoldStocks && latestSellInfo ? (
-                                                                    <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-amber-500/10 font-bold border-amber-500/30 uppercase tracking-widest text-amber-600">
-                                                                        SOLD
-                                                                    </Badge>
-                                                                ) : null}
-                                                                {showSoldStocks && latestSellInfo ? (
                                                                     <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/40 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground">
                                                                         {formatTimeSince(latestSellInfo.date)}
                                                                     </Badge>
@@ -3786,12 +3809,7 @@ export function PortfolioList() {
                                                                     <>
                                                                         <span className="text-[10px] font-black uppercase tracking-tighter text-amber-600/80">
                                                                             Sold {formatUnits(soldQuantity)} units
-                                                                        </span>
-                                                                        <span className="hidden sm:inline text-[10px] opacity-20">•</span>
-                                                                        <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">
-                                                                            Last sold {formatTimeSince(latestSellInfo.date)}
-                                                                        </span>
-                                                                        {hasSoldPrice ? (
+                                                                        </span>                                                                        {hasSoldPrice ? (
                                                                             <>
                                                                                 <span className="hidden sm:inline text-[10px] opacity-20">•</span>
                                                                                 <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
