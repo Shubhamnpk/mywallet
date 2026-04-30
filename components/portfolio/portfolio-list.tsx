@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3 } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1440,6 +1440,7 @@ export function PortfolioList() {
             timestamp: parseDateToTimestamp((n as { addedDate?: string }).addedDate),
             details: n.noticeHeading || "No details available for this notice.",
             documents: [] as Array<{ label: string; url: string }>,
+            actionLabel: "Read Notice",
         }))
         const company = disclosures.slice(0, 6).map((d) => ({
             id: `disclosure-${d.id}`,
@@ -1450,6 +1451,7 @@ export function PortfolioList() {
             timestamp: parseDateToTimestamp(d.addedDate),
             details: stripHtml(d.newsBody) || d.newsHeadline || "No details available for this disclosure.",
             documents: toDocuments(d.applicationDocumentDetailsList),
+            actionLabel: d.applicationDocumentDetailsList?.length ? "Open Filing" : "Read Disclosure",
         }))
         const exchange = exchangeMessages.slice(0, 6).map((m) => ({
             id: `exchange-${m.id}`,
@@ -1463,9 +1465,10 @@ export function PortfolioList() {
                 const url = resolveNepseDocumentUrl(m.filePath || null)
                 return url ? [{ label: "Exchange Circular", url }] : []
             })(),
+            actionLabel: m.filePath ? "Open Circular" : "Read Message",
         }))
-        const ipoItems = upcomingIPOs.slice(0, 6).map((ipo) => ({
-            id: `ipo-${ipo.company}-${ipo.openingDate || ipo.announcement_date || ipo.date_range}`,
+        const ipoItems = upcomingIPOs.slice(0, 6).map((ipo, index) => ({
+            id: `ipo-${ipo.company}-${ipo.status || "unknown"}-${ipo.openingDate || ipo.announcement_date || ipo.date_range || ipo.url || index}-${index}`,
             title: ipo.status === "open" ? "IPO Open Now" : ipo.status === "upcoming" ? "IPO Opening Soon" : "IPO Update",
             text: `${ipo.company}${ipo.status === "open" ? " is open for application." : ipo.status === "upcoming" ? " is coming soon." : " IPO details are available."}`,
             tone: ipo.status === "open" ? "success" as const : ipo.status === "upcoming" ? "info" as const : "warning" as const,
@@ -1473,6 +1476,7 @@ export function PortfolioList() {
             timestamp: parseDateToTimestamp(ipo.openingDate || ipo.announcement_date || ipo.scraped_at),
             details: ipo.full_text || `${ipo.company} IPO timeline: ${ipo.date_range}.`,
             documents: [] as Array<{ label: string; url: string }>,
+            actionLabel: ipo.status === "open" ? "Apply / View" : "View IPO",
             ipo,
         }))
 
@@ -1500,6 +1504,19 @@ export function PortfolioList() {
         () => overviewNotificationsWithMeta.find((item) => item.id === selectedOverviewNotificationId) || null,
         [overviewNotificationsWithMeta, selectedOverviewNotificationId],
     )
+
+    const overviewNotificationStats = useMemo(() => ({
+        total: overviewNotificationsWithMeta.length,
+        ipo: overviewNotificationsWithMeta.filter((item) => item.category === "ipo").length,
+        filings: overviewNotificationsWithMeta.filter((item) => item.documents.length > 0).length,
+    }), [overviewNotificationsWithMeta])
+
+    const getOverviewNotificationIcon = (category: string) => {
+        if (category === "ipo") return <BellRing className="w-4 h-4" />
+        if (category === "disclosure") return <FileText className="w-4 h-4" />
+        if (category === "exchange") return <Activity className="w-4 h-4" />
+        return <Info className="w-4 h-4" />
+    }
 
     const ipoInsights = useMemo(() => {
         const normalizeIpoName = (value?: string) =>
@@ -2054,14 +2071,26 @@ export function PortfolioList() {
                 >
                     <DialogContent className="max-w-3xl w-[95vw] max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
                         <DialogHeader className="border-b border-muted/30 px-5 py-4">
-                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
-                                {selectedOverviewNotification?.title || "Notification"}
-                            </DialogTitle>
-                            {selectedOverviewNotification ? (
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            <div className="flex items-start gap-3">
+                                <div className={cn(
+                                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                                    selectedOverviewNotification?.tone === "success" && "border-success/20 bg-success/10 text-success",
+                                    selectedOverviewNotification?.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
+                                    selectedOverviewNotification?.tone === "info" && "border-info/20 bg-info/10 text-info",
+                                )}>
+                                    {selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
+                                </div>
+                                <div className="min-w-0">
+                                    <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
+                                        {selectedOverviewNotification?.title || "Notification"}
+                                    </DialogTitle>
+                                    {selectedOverviewNotification ? (
+                                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                                     {selectedOverviewNotification.category} • {selectedOverviewNotification.dateLabel}
                                 </p>
-                            ) : null}
+                                    ) : null}
+                                </div>
+                            </div>
                         </DialogHeader>
                         {selectedOverviewNotification && (
                             <ScrollArea className="flex-1 px-5 py-4">
@@ -2106,6 +2135,26 @@ export function PortfolioList() {
                                             </div>
                                         </div>
                                     )}
+                                    <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
+                                        {selectedOverviewNotification.documents[0] && (
+                                            <Button
+                                                type="button"
+                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                onClick={() => openOverviewNotificationDocument(selectedOverviewNotification.documents[0].url)}
+                                            >
+                                                <FileText className="mr-2 w-3.5 h-3.5" />
+                                                Open Filing
+                                            </Button>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                            onClick={() => closeOverviewNotificationDetails(false)}
+                                        >
+                                            Done
+                                        </Button>
+                                    </div>
                                     {selectedOverviewNotificationDocUrl && (
                                         <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
                                             <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
@@ -2289,10 +2338,25 @@ export function PortfolioList() {
                                                 )}
                                                 {overviewNotificationsWithMeta.length > 0 && (
                                                     <div>
-                                                        <div className="flex items-center gap-2 mb-2">
+                                                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                             <div className="flex items-center gap-2">
-                                                                <Activity className="w-4 h-4 text-primary" />
+                                                                <BellRing className="w-4 h-4 text-primary" />
                                                                 <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                <Badge variant="secondary" className="h-5 rounded-md text-[9px] font-black uppercase">
+                                                                    {overviewNotificationStats.total} Alerts
+                                                                </Badge>
+                                                                {overviewNotificationStats.ipo > 0 && (
+                                                                    <Badge className="h-5 rounded-md bg-success/10 text-success border-success/20 text-[9px] font-black uppercase">
+                                                                        {overviewNotificationStats.ipo} IPO
+                                                                    </Badge>
+                                                                )}
+                                                                {overviewNotificationStats.filings > 0 && (
+                                                                    <Badge variant="outline" className="h-5 rounded-md text-[9px] font-black uppercase">
+                                                                        {overviewNotificationStats.filings} Filings
+                                                                    </Badge>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
@@ -2300,7 +2364,7 @@ export function PortfolioList() {
                                                                 <div
                                                                     key={item.id}
                                                                     className={cn(
-                                                                        "rounded-xl border px-3 py-2 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary/30",
+                                                                        "group rounded-xl border px-3 py-3 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary/30",
                                                                         item.tone === "info" && "border-info/20 bg-info/5",
                                                                         item.tone === "warning" && "border-amber-500/20 bg-amber-500/5",
                                                                         item.tone === "success" && "border-success/20 bg-success/5",
@@ -2316,22 +2380,40 @@ export function PortfolioList() {
                                                                     }}
                                                                 >
                                                                     <div className="flex items-start justify-between gap-2">
-                                                                        <div>
-                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                                                {item.title}
-                                                                            </p>
+                                                                        <div className="flex min-w-0 gap-3">
+                                                                            <div className={cn(
+                                                                                "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-transform group-hover:scale-105",
+                                                                                item.tone === "info" && "border-info/20 bg-info/10 text-info",
+                                                                                item.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
+                                                                                item.tone === "success" && "border-success/20 bg-success/10 text-success",
+                                                                            )}>
+                                                                                {getOverviewNotificationIcon(item.category)}
+                                                                            </div>
+                                                                            <div className="min-w-0">
+                                                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                                        {item.title}
+                                                                                    </p>
+                                                                                    {item.documents.length > 0 && (
+                                                                                        <Badge variant="outline" className="h-4 rounded px-1 text-[8px] font-black uppercase">
+                                                                                            {item.documents.length} Doc
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
                                                                             <p className="text-xs font-semibold text-foreground/90 line-clamp-3">
                                                                                 {item.text}
                                                                             </p>
-                                                                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                                                {item.dateLabel}
-                                                                            </p>
+                                                                                <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                                                    <Calendar className="w-3 h-3" />
+                                                                                    {item.dateLabel}
+                                                                                </p>
+                                                                            </div>
                                                                         </div>
                                                                         <Badge variant="secondary" className="h-5 text-[9px] font-black uppercase">
                                                                             {item.category}
                                                                         </Badge>
                                                                     </div>
-                                                                    <div className="mt-2 flex items-center gap-1.5">
+                                                                    <div className="mt-2 flex items-center justify-end gap-2 border-t border-current/10 pt-2">
                                                                         <Button
                                                                             type="button"
                                                                             size="sm"
@@ -2342,7 +2424,8 @@ export function PortfolioList() {
                                                                                 openOverviewNotificationDetails(item.id)
                                                                             }}
                                                                         >
-                                                                            {item.category === "ipo" ? "Open IPO" : "View Details"}
+                                                                            {item.actionLabel}
+                                                                            <ArrowUpRight className="ml-1.5 w-3 h-3" />
                                                                         </Button>
                                                                     </div>
                                                                 </div>
