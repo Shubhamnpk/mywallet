@@ -56,9 +56,10 @@ interface StockDetailModalProps {
     item: PortfolioItem | null
     open: boolean
     onOpenChange: (open: boolean) => void
+    mode?: "holding" | "sold"
 }
 
-export function StockDetailModal({ item: initialItem, open, onOpenChange }: StockDetailModalProps) {
+export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
     const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
@@ -127,13 +128,18 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
             setSelectedDividendKey(null)
             setIsPdfOpen(false)
             setIsSipModalOpen(false)
-            setActiveTab("overview")
+            setActiveTab(mode === "sold" ? "sold" : "overview")
             setPdfUrl(null)
             setPdfSourceUrl(null)
         }
-    }, [open])
+    }, [open, mode])
+
+    useEffect(() => {
+        if (open) setActiveTab(mode === "sold" ? "sold" : "overview")
+    }, [open, mode, initialItem?.id])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
+    const isSoldDetailMode = mode === "sold"
     const isBitcoin = Boolean(
         isCrypto &&
         item &&
@@ -183,6 +189,29 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
         if (units === 0) return "0"
         if (Math.abs(units) < 1) return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
+    const formatTimeSince = (dateValue?: string | number) => {
+        if (!dateValue) return "Unknown date"
+        const timestamp = typeof dateValue === "number" ? dateValue : new Date(dateValue).getTime()
+        if (!Number.isFinite(timestamp)) return "Unknown date"
+        const diffMs = Date.now() - timestamp
+        const isFuture = diffMs < 0
+        const absMs = Math.abs(diffMs)
+        const minutes = Math.floor(absMs / 60000)
+        const hours = Math.floor(minutes / 60)
+        const days = Math.floor(hours / 24)
+        const months = Math.floor(days / 30)
+        const years = Math.floor(days / 365)
+        const value = years > 0
+            ? `${years}y`
+            : months > 0
+                ? `${months}mo`
+                : days > 0
+                    ? `${days}d`
+                    : hours > 0
+                        ? `${hours}h`
+                        : `${Math.max(minutes, 1)}m`
+        return isFuture ? `in ${value}` : `${value} ago`
     }
     const formatValue = (amount: number) => {
         if (!Number.isFinite(amount)) return "0"
@@ -379,6 +408,40 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [item, shareTransactions, symbol])
 
+    const soldTransactions = useMemo(
+        () => matchedTransactions.filter((tx) => tx.type === "sell"),
+        [matchedTransactions],
+    )
+
+    const soldDetailStats = useMemo(() => {
+        const soldUnits = soldTransactions.reduce((sum, tx) => sum + (Number.isFinite(tx.quantity) ? tx.quantity : 0), 0)
+        const soldValue = soldTransactions.reduce((sum, tx) => {
+            const quantity = Number.isFinite(tx.quantity) ? tx.quantity : 0
+            const price = Number.isFinite(tx.price) ? tx.price : 0
+            return sum + quantity * price
+        }, 0)
+        const sellTimestamps = soldTransactions
+            .map((tx) => new Date(tx.date).getTime())
+            .filter((timestamp) => Number.isFinite(timestamp))
+        const latestSellAt = sellTimestamps.length > 0 ? Math.max(...sellTimestamps) : null
+        const firstSellAt = sellTimestamps.length > 0 ? Math.min(...sellTimestamps) : null
+        const averageSoldPrice = soldUnits > 0 ? soldValue / soldUnits : 0
+        const currentTradingValue = soldUnits * current
+        const valueDifference = currentTradingValue - soldValue
+
+        return {
+            soldUnits,
+            soldValue,
+            latestSellAt,
+            firstSellAt,
+            averageSoldPrice,
+            currentTradingValue,
+            valueDifference,
+            valueDifferencePercentage: soldValue > 0 ? (valueDifference / soldValue) * 100 : 0,
+            hasRecordedSellValue: averageSoldPrice > 0,
+        }
+    }, [current, soldTransactions])
+
     const sipTransactions = useMemo(() => {
         if (!existingSipPlan) return []
         return getSipDisplayTransactionsForPlan(existingSipPlan, matchedTransactions)
@@ -535,7 +598,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
 
                         <div className="flex items-center justify-between mb-2 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
-                                {isCrypto ? "Crypto Details" : "Stock Details"}
+                                {isSoldDetailMode ? "Sold Transaction Details" : isCrypto ? "Crypto Details" : "Stock Details"}
                             </Badge>
                             {item.lastUpdated && (
                                 <div className="flex items-center gap-1.5 grayscale opacity-60">
@@ -550,7 +613,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                             <div className="flex-1">
                                 <DialogTitle className="text-3xl font-black tracking-tight flex items-center flex-wrap gap-2">
                                     {item.symbol}
-                                    {isZeroHolding ? (
+                                    {isSoldDetailMode ? (
+                                        <Badge className="bg-amber-500/10 text-amber-600 text-[10px] font-black uppercase tracking-widest border-amber-500/30">
+                                            SOLD LOTS
+                                        </Badge>
+                                    ) : isZeroHolding ? (
                                         <Badge className="bg-amber-500/10 text-amber-600 text-[10px] font-black uppercase tracking-widest border-amber-500/30">
                                             SOLD
                                         </Badge>
@@ -566,7 +633,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                     </p>
                                 )}
                                 <DialogDescription className="text-sm font-medium mt-1 text-left">
-                                    {isZeroHolding ? (
+                                    {isSoldDetailMode ? (
+                                        <span className="text-amber-600/80">
+                                            {formatUnits(soldDetailStats.soldUnits)} sold units across {soldTransactions.length} transaction{soldTransactions.length === 1 ? "" : "s"}
+                                            {soldDetailStats.latestSellAt ? ` · last sold ${formatTimeSince(soldDetailStats.latestSellAt)}` : ""}
+                                        </span>
+                                    ) : isZeroHolding ? (
                                         isSold && lastExitInfo ? (
                                             <span className="text-amber-600/80">
                                                 Sold {lastExitInfo.quantity} units @ {currencySymbol}{lastExitInfo.price} on {new Date(lastExitInfo.date).toLocaleDateString()}
@@ -615,8 +687,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                                 <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                     Overview
                                 </TabsTrigger>
+                                {isSoldDetailMode && (
+                                    <TabsTrigger value="sold" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                        Sold Lots
+                                    </TabsTrigger>
+                                )}
                                 <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
-                                    History
+                                    {isSoldDetailMode ? "All Tx" : "History"}
                                 </TabsTrigger>
                                 {!isCrypto && (
                                     <TabsTrigger
@@ -646,6 +723,138 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange }: Stoc
                         <div className="flex-1 min-h-0 bg-muted/5 overflow-hidden">
                             <ScrollArea className="h-[280px] sm:h-[370px]">
                                 <div className="p-6 pt-2 space-y-4">
+                                    {isSoldDetailMode && (
+                                        <TabsContent value="sold" className="m-0 space-y-4">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="p-4 rounded-2xl border bg-muted/20 border-muted/50">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Recorded Sold Value</p>
+                                                    <p className="mt-1 text-xl font-black font-mono">
+                                                        {soldDetailStats.hasRecordedSellValue ? `${currencySymbol} ${formatValue(soldDetailStats.soldValue)}` : "Not recorded"}
+                                                    </p>
+                                                    <div className="mt-2 flex flex-wrap gap-1">
+                                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider">
+                                                            {formatUnits(soldDetailStats.soldUnits)} units
+                                                        </Badge>
+                                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider">
+                                                            {soldTransactions.length} tx
+                                                        </Badge>
+                                                        {soldDetailStats.latestSellAt && (
+                                                            <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider">
+                                                                Last {formatTimeSince(soldDetailStats.latestSellAt)}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-2 text-[10px] font-bold text-muted-foreground">
+                                                        {soldDetailStats.hasRecordedSellValue ? `Avg ${currencySymbol} ${formatValue(soldDetailStats.averageSoldPrice)}` : "Sell price is 0 in imported data"}
+                                                    </p>
+                                                </div>
+                                                <div className={cn(
+                                                    "p-4 rounded-2xl border",
+                                                    soldDetailStats.hasRecordedSellValue
+                                                        ? soldDetailStats.valueDifference > 0
+                                                            ? "bg-red-500/5 border-red-500/10"
+                                                            : soldDetailStats.valueDifference < 0
+                                                                ? "bg-green-500/5 border-green-500/10"
+                                                                : "bg-muted/20 border-muted/50"
+                                                        : "bg-primary/5 border-primary/10"
+                                                )}>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                        {soldDetailStats.hasRecordedSellValue ? "Today vs Sold" : "Current Price"}
+                                                    </p>
+                                                    <p className={cn(
+                                                        "mt-1 text-xl font-black font-mono",
+                                                        soldDetailStats.hasRecordedSellValue
+                                                            ? soldDetailStats.valueDifference > 0
+                                                                ? "text-red-600"
+                                                                : soldDetailStats.valueDifference < 0
+                                                                    ? "text-green-600"
+                                                                    : "text-muted-foreground"
+                                                            : "text-primary"
+                                                    )}>
+                                                        {soldDetailStats.hasRecordedSellValue
+                                                            ? `${soldDetailStats.valueDifference >= 0 ? "+" : ""}${currencySymbol} ${formatValue(soldDetailStats.valueDifference)}`
+                                                            : `${currencySymbol} ${formatValue(current)}`}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] font-bold text-muted-foreground">
+                                                        Trading value {currencySymbol} {formatValue(soldDetailStats.currentTradingValue)}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] font-bold text-muted-foreground">
+                                                        {soldDetailStats.hasRecordedSellValue
+                                                            ? `${soldDetailStats.valueDifferencePercentage >= 0 ? "+" : ""}${soldDetailStats.valueDifferencePercentage.toFixed(2)}%`
+                                                            : `${formatUnits(soldDetailStats.soldUnits)} units at current price`}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sell transaction lots</p>
+                                                {soldTransactions.length > 0 ? (
+                                                    soldTransactions.map((tx) => {
+                                                        const txSoldValue = tx.quantity * tx.price
+                                                        const txTradingValue = tx.quantity * current
+                                                        const txDifference = txTradingValue - txSoldValue
+                                                        const hasTxPrice = tx.price > 0
+                                                        return (
+                                                            <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500/10 text-red-600">
+                                                                                <ArrowUpRight className="w-4 h-4" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-[11px] font-black uppercase">{formatUnits(tx.quantity)} units sold</p>
+                                                                                <p className="text-[9px] font-bold text-muted-foreground">
+                                                                                    {new Date(tx.date).toLocaleDateString()} · {formatTimeSince(tx.date)}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        {tx.description && (
+                                                                            <p className="mt-2 text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-right shrink-0">
+                                                                        <p className="text-[11px] font-black font-mono">
+                                                                            {hasTxPrice ? `${currencySymbol}${formatValue(txSoldValue)}` : "Price N/A"}
+                                                                        </p>
+                                                                        <p className="text-[9px] font-bold text-muted-foreground">
+                                                                            @ {currencySymbol}{formatValue(tx.price)}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-muted/20 pt-2">
+                                                                    <div>
+                                                                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Today value</p>
+                                                                        <p className="text-[11px] font-black font-mono">{currencySymbol}{formatValue(txTradingValue)}</p>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">{hasTxPrice ? "Difference" : "Recorded price"}</p>
+                                                                        <p className={cn(
+                                                                            "text-[11px] font-black font-mono",
+                                                                            hasTxPrice
+                                                                                ? txDifference > 0
+                                                                                    ? "text-red-600"
+                                                                                    : txDifference < 0
+                                                                                        ? "text-green-600"
+                                                                                        : "text-muted-foreground"
+                                                                                : "text-muted-foreground"
+                                                                        )}>
+                                                                            {hasTxPrice
+                                                                                ? `${txDifference >= 0 ? "+" : ""}${currencySymbol}${formatValue(txDifference)}`
+                                                                                : "Not captured"}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })
+                                                ) : (
+                                                    <p className="text-xs text-center text-muted-foreground py-8">No sell transactions found for this stock.</p>
+                                                )}
+                                            </div>
+                                        </TabsContent>
+                                    )}
+
                                     <TabsContent value="overview" className="m-0 space-y-6">
                                         {/* Performance Card */}
                                         <div className="grid grid-cols-2 gap-3">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3 } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3 } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -111,12 +111,14 @@ export function PortfolioList() {
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState("holdings")
+    const [holdingsView, setHoldingsView] = useState<"list" | "grid">("list")
     const [chartView, setChartView] = useState<"sector" | "scrip">("sector")
     const [chartMetric, setChartMetric] = useState<"value" | "units">("value")
     const [chartMode, setChartMode] = useState<"allocation" | "movers">("allocation")
     const [selectedTxs, setSelectedTxs] = useState<string[]>([])
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
+    const [selectedStockDetailMode, setSelectedStockDetailMode] = useState<"holding" | "sold">("holding")
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [confirmModal, setConfirmModal] = useState<{
@@ -189,6 +191,29 @@ export function PortfolioList() {
             return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
         }
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    }
+    const formatTimeSince = (dateValue?: string | number) => {
+        if (!dateValue) return "Unknown date"
+        const timestamp = typeof dateValue === "number" ? dateValue : new Date(dateValue).getTime()
+        if (!Number.isFinite(timestamp)) return "Unknown date"
+        const diffMs = Date.now() - timestamp
+        const isFuture = diffMs < 0
+        const absMs = Math.abs(diffMs)
+        const minutes = Math.floor(absMs / 60000)
+        const hours = Math.floor(minutes / 60)
+        const days = Math.floor(hours / 24)
+        const months = Math.floor(days / 30)
+        const years = Math.floor(days / 365)
+        const value = years > 0
+            ? `${years}y`
+            : months > 0
+                ? `${months}mo`
+                : days > 0
+                    ? `${days}d`
+                    : hours > 0
+                        ? `${hours}h`
+                        : `${Math.max(minutes, 1)}m`
+        return isFuture ? `in ${value}` : `${value} ago`
     }
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
@@ -319,6 +344,7 @@ export function PortfolioList() {
     }
 
     const handleViewStockDetail = (item: PortfolioItem) => {
+        setSelectedStockDetailMode(showSoldStocks ? "sold" : "holding")
         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
         if (isCrypto) {
             fetchPortfolioPrices([item], true)
@@ -374,15 +400,89 @@ export function PortfolioList() {
                 (item) =>
                     item.portfolioId === activePortfolioId &&
                     item.symbol.toLowerCase().includes(deferredSearchQuery.toLowerCase()) &&
-                    (showSoldStocks ? item.units <= 0 : item.units > 0),
+                    item.units > 0,
             ),
-        [portfolio, activePortfolioId, deferredSearchQuery, showSoldStocks],
+        [portfolio, activePortfolioId, deferredSearchQuery],
     )
 
     const portfolioTransactions = useMemo(
         () => shareTransactions.filter((t) => t.portfolioId === activePortfolioId),
         [shareTransactions, activePortfolioId],
     )
+
+    const soldPortfolioRows = useMemo(() => {
+        const itemLookup = new Map<string, PortfolioItem>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .forEach((item) => {
+                const key = [
+                    normalizeStockSymbol(item.symbol),
+                    item.assetType || "stock",
+                    (item.cryptoId || "").trim(),
+                ].join("|")
+                itemLookup.set(key, item)
+            })
+
+        const grouped = new Map<string, ShareTransaction[]>()
+        portfolioTransactions
+            .filter((tx) => tx.type === "sell")
+            .forEach((tx) => {
+                const key = [
+                    normalizeStockSymbol(tx.symbol),
+                    tx.assetType || "stock",
+                    (tx.cryptoId || "").trim(),
+                ].join("|")
+                grouped.set(key, [...(grouped.get(key) || []), tx])
+            })
+
+        return Array.from(grouped.entries())
+            .map(([key, sellTxs]) => {
+                const [symbol, assetType, cryptoId] = key.split("|")
+                const existingItem = itemLookup.get(key)
+                const sortedSellTxs = [...sellTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                const latestSell = sortedSellTxs[0]
+                const soldQuantity = sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity), 0)
+                const soldValue = sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity) * safeNumber(tx.price), 0)
+                const fallbackPrice = soldValue > 0 && soldQuantity > 0 ? soldValue / soldQuantity : 0
+                const item: PortfolioItem = existingItem || {
+                    id: `sold-${activePortfolioId}-${key}`,
+                    portfolioId: activePortfolioId || latestSell.portfolioId,
+                    symbol: symbol || latestSell.symbol,
+                    assetType: assetType === "crypto" ? "crypto" : "stock",
+                    cryptoId,
+                    assetName: scripNamesMap?.[symbol] || symbol || latestSell.symbol,
+                    units: 0,
+                    buyPrice: fallbackPrice,
+                    currentPrice: fallbackPrice,
+                    sector: assetType === "crypto" || cryptoId ? "Crypto" : "Others",
+                    isKeptZeroHolding: true,
+                }
+
+                return {
+                    item,
+                    sellTxs: sortedSellTxs,
+                    latestSell,
+                    soldQuantity,
+                    soldValue,
+                    latestSellAt: new Date(latestSell.date).getTime(),
+                }
+            })
+            .filter((row) => {
+                const query = deferredSearchQuery.toLowerCase()
+                if (!query) return true
+                return (
+                    row.item.symbol.toLowerCase().includes(query) ||
+                    (row.item.assetName || "").toLowerCase().includes(query)
+                )
+            })
+            .sort((a, b) => b.latestSellAt - a.latestSellAt)
+    }, [activePortfolioId, deferredSearchQuery, portfolio, portfolioTransactions, safeNumber, scripNamesMap])
+
+    const soldPortfolioRowsByItemId = useMemo(() => {
+        const rows = new Map<string, (typeof soldPortfolioRows)[number]>()
+        soldPortfolioRows.forEach((row) => rows.set(row.item.id, row))
+        return rows
+    }, [soldPortfolioRows])
 
     const sortedTransactions = useMemo(
         () =>
@@ -862,6 +962,180 @@ export function PortfolioList() {
         })
     }, [])
 
+    const soldPortfolioStats = useMemo(() => {
+        const holdingLookup = new Map<string, PortfolioItem>()
+        activePortfolioItems.forEach((item) => {
+            const key = [
+                normalizeStockSymbol(item.symbol),
+                item.assetType || "stock",
+                (item.cryptoId || "").trim(),
+            ].join("|")
+            holdingLookup.set(key, item)
+        })
+
+        const sectorMap = new Map<string, { value: number; count: number; units: number; symbols: Set<string> }>()
+        const scripMap = new Map<string, { value: number; units: number; sector: string }>()
+        const comparisonMap = new Map<string, {
+            symbol: string
+            sector: string
+            units: number
+            soldValue: number
+            todayValue: number
+        }>()
+        const soldSymbols = new Set<string>()
+        let totalSoldValue = 0
+        let totalSoldTodayValue = 0
+        let totalSoldUnits = 0
+        let latestSoldAt = 0
+
+        portfolioTransactions.forEach((tx) => {
+            if (tx.type !== "sell") return
+            const quantity = safeNumber(tx.quantity)
+            const price = safeNumber(tx.price)
+            const value = quantity * price
+            if (quantity <= 0) return
+
+            const symbol = normalizeStockSymbol(tx.symbol)
+            const key = [symbol, tx.assetType || "stock", (tx.cryptoId || "").trim()].join("|")
+            const holding = holdingLookup.get(key)
+            const sector = holding?.sector || (tx.assetType === "crypto" || tx.cryptoId ? "Crypto" : "Others")
+            const displaySymbol = symbol || tx.symbol
+            const txDate = new Date(tx.date).getTime()
+            const currentPrice = isFiniteNumber(holding?.currentPrice)
+                ? holding.currentPrice
+                : (isFiniteNumber(holding?.buyPrice) ? holding.buyPrice : price)
+            const todayValue = quantity * currentPrice
+
+            totalSoldValue += value
+            totalSoldTodayValue += todayValue
+            totalSoldUnits += quantity
+            soldSymbols.add(displaySymbol)
+            if (Number.isFinite(txDate)) latestSoldAt = Math.max(latestSoldAt, txDate)
+
+            const currentSector = sectorMap.get(sector) || { value: 0, count: 0, units: 0, symbols: new Set<string>() }
+            currentSector.value += value
+            currentSector.units += quantity
+            currentSector.symbols.add(displaySymbol)
+            currentSector.count = currentSector.symbols.size
+            sectorMap.set(sector, currentSector)
+
+            const currentScrip = scripMap.get(displaySymbol) || { value: 0, units: 0, sector }
+            scripMap.set(displaySymbol, {
+                value: currentScrip.value + value,
+                units: currentScrip.units + quantity,
+                sector: currentScrip.sector || sector,
+            })
+
+            const currentComparison = comparisonMap.get(displaySymbol) || {
+                symbol: displaySymbol,
+                sector,
+                units: 0,
+                soldValue: 0,
+                todayValue: 0,
+            }
+            comparisonMap.set(displaySymbol, {
+                ...currentComparison,
+                units: currentComparison.units + quantity,
+                soldValue: currentComparison.soldValue + value,
+                todayValue: currentComparison.todayValue + todayValue,
+            })
+        })
+
+        const reinvestedAmount = portfolioTransactions.reduce((sum, tx) => {
+            if (tx.type !== "reinvestment") return sum
+            const amount = safeNumber(tx.quantity) * safeNumber(tx.price)
+            return amount > 0 ? sum + amount : sum
+        }, 0)
+
+        const totalBase = chartMetric === "units" ? totalSoldUnits : totalSoldValue
+        const sectorData = Array.from(sectorMap.entries())
+            .map(([name, data]) => ({
+                name,
+                value: data.value,
+                count: data.count,
+                units: data.units,
+                color: getSectorColor(name),
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
+            }))
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
+
+        const scripData = Array.from(scripMap.entries())
+            .map(([name, data]) => ({
+                name,
+                value: data.value,
+                units: data.units,
+                sector: data.sector,
+                color: getSectorVariantColor(data.sector, name),
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
+            }))
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
+
+        const comparisons = Array.from(comparisonMap.values())
+            .map((row) => {
+                const difference = row.todayValue - row.soldValue
+                return {
+                    ...row,
+                    difference,
+                    differencePercentage: row.soldValue > 0 ? (difference / row.soldValue) * 100 : 0,
+                }
+            })
+
+        const missedUpsideRows = comparisons.filter((row) => row.difference > 0)
+        const savedDownsideRows = comparisons.filter((row) => row.difference < 0)
+        const flatRows = comparisons.filter((row) => Math.abs(row.differencePercentage) < 0.0001)
+
+        const summarizeComparisonRows = (rows: typeof comparisons) => {
+            const units = rows.reduce((sum, row) => sum + row.units, 0)
+            const soldValue = rows.reduce((sum, row) => sum + row.soldValue, 0)
+            const todayValue = rows.reduce((sum, row) => sum + row.todayValue, 0)
+            const difference = todayValue - soldValue
+            return {
+                units,
+                soldValue,
+                todayValue,
+                difference,
+                differencePercentage: soldValue > 0 ? (difference / soldValue) * 100 : 0,
+            }
+        }
+
+        const missedUpside = missedUpsideRows
+            .sort((a, b) => b.differencePercentage - a.differencePercentage)
+            .slice(0, 5)
+
+        const savedDownside = savedDownsideRows
+            .sort((a, b) => a.differencePercentage - b.differencePercentage)
+            .slice(0, 5)
+
+        const flat = flatRows
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 5)
+
+        return {
+            totalSoldValue,
+            totalSoldTodayValue,
+            soldValueDifference: totalSoldTodayValue - totalSoldValue,
+            soldValueDifferencePercentage: totalSoldValue > 0 ? ((totalSoldTodayValue - totalSoldValue) / totalSoldValue) * 100 : 0,
+            totalSoldUnits,
+            soldScrips: soldSymbols.size,
+            soldSectors: sectorMap.size,
+            reinvestedAmount,
+            reinvestedPercentage: totalSoldValue > 0 ? (reinvestedAmount / totalSoldValue) * 100 : 0,
+            latestSoldAt,
+            sectorData,
+            scripData,
+            missedUpside,
+            savedDownside,
+            flat,
+            missedUpsideTotal: summarizeComparisonRows(missedUpsideRows),
+            savedDownsideTotal: summarizeComparisonRows(savedDownsideRows),
+            flatTotal: summarizeComparisonRows(flatRows),
+        }
+    }, [activePortfolioItems, chartMetric, portfolioTransactions, safeNumber])
+
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
         const scripMap = new Map<string, { value: number; units: number; sector: string }>()
@@ -923,7 +1197,9 @@ export function PortfolioList() {
         return { sectorData: memoSectorData, scripData: memoScripData }
     }, [activePortfolioItemsForCalculations, currentValue, chartMetric, safeNumber])
 
-    const activeChartData = chartView === "sector" ? sectorData : scripData
+    const activeChartData = showSoldStocks
+        ? (chartView === "sector" ? soldPortfolioStats.sectorData : soldPortfolioStats.scripData)
+        : (chartView === "sector" ? sectorData : scripData)
 
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItemsForCalculations
@@ -1720,6 +1996,7 @@ export function PortfolioList() {
                     item={selectedStock}
                     open={isStockDetailOpen}
                     onOpenChange={setIsStockDetailOpen}
+                    mode={selectedStockDetailMode}
                 />
                 <SellConfirmationModal
                     symbol={sellConfirmModal.symbol}
@@ -2580,6 +2857,7 @@ export function PortfolioList() {
                 item={selectedStock}
                 open={isStockDetailOpen}
                 onOpenChange={setIsStockDetailOpen}
+                mode={selectedStockDetailMode}
             />
 
             {/* Sell Confirmation Modal */}
@@ -2632,37 +2910,66 @@ export function PortfolioList() {
                     <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-md overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[110px] sm:min-w-[120px] flex-1 lg:min-w-0 lg:p-2">
                         <CardHeader className="pb-1 px-2 sm:px-4 pt-2 sm:pt-4">
                             <div className="flex items-center justify-between mb-0.5">
-                                <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">Net Worth</CardDescription>
+                                <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">
+                                    {showSoldStocks ? "Total Sold" : "Net Worth"}
+                                </CardDescription>
                                 <div className="p-0.5 bg-primary/10 rounded-lg text-primary">
-                                    <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                    {showSoldStocks ? <ArrowUpRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
                                 </div>
                             </div>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
-                                रु {currentValue.toLocaleString()}
+                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
-                            <div className={cn(
-                                "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
-                                totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
-                            )}>
-                                {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
-                            </div>
+                            {showSoldStocks ? (
+                                <div className="flex flex-wrap gap-1">
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                        {formatUnits(soldPortfolioStats.totalSoldUnits)} Units Sold
+                                    </div>
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-success/10 text-success border border-success/20">
+                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} Reinvested
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={cn(
+                                    "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
+                                    totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                                )}>
+                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
                     <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
                         <CardHeader className="pb-1 space-y-0 text-left px-2 sm:px-4 pt-2 sm:pt-4">
-                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Today's Move</CardDescription>
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
+                                {showSoldStocks ? "Today Value" : "Today's Move"}
+                            </CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
-                                <span className={todayChange >= 0 ? "text-success" : "text-error"}>
-                                    {todayChange >= 0 ? "+" : ""}{todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
+                                    {showSoldStocks
+                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                 </span>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
                             <div className="flex items-center gap-1">
-                                {todayChange >= 0 ? (
+                                {showSoldStocks ? (
+                                    <div className={cn(
+                                        "text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border",
+                                        soldPortfolioStats.soldValueDifference >= 0
+                                            ? "text-error bg-error/10 border-error/20"
+                                            : "text-success bg-success/10 border-success/20"
+                                    )}>
+                                        {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
+                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
+                                        {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
+                                    </div>
+                                ) : todayChange >= 0 ? (
                                     <div className="text-[8px] sm:text-[9px] font-black text-success bg-success/10 px-1 py-0.5 rounded border border-success/20">
                                         +{todayChangePercentage.toFixed(1)}%
                                     </div>
@@ -2676,19 +2983,34 @@ export function PortfolioList() {
                     </Card>
 
                     <Card
-                        className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2 cursor-pointer"
-                        onClick={() => openInvestmentBreakdown("Portfolio Investment Breakdown", activePortfolioId)}
+                        className={cn(
+                            "border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2",
+                            !showSoldStocks && "cursor-pointer"
+                        )}
+                        onClick={() => {
+                            if (!showSoldStocks) openInvestmentBreakdown("Portfolio Investment Breakdown", activePortfolioId)
+                        }}
                     >
                         <CardHeader className="pb-1 text-left px-2 sm:px-4 pt-2 sm:pt-4">
-                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Total Stake</CardDescription>
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
+                                {showSoldStocks ? "Sold Spread" : "Total Stake"}
+                            </CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
-                                रु {totalInvestment.toLocaleString()}
+                                {showSoldStocks
+                                    ? `${soldPortfolioStats.soldScrips} Scrips`
+                                    : `${currencySymbol}${totalInvestment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
-                            <Badge variant="secondary" className="bg-primary/5 text-primary text-[8px] sm:text-[9px] rounded border-primary/20 font-black px-1 uppercase tracking-wide">
-                                {portfolio.length} Scrips
-                            </Badge>
+                            {showSoldStocks ? (
+                                <Badge variant="outline" className="text-[8px] sm:text-[9px] rounded font-black px-1 uppercase tracking-wide">
+                                    {soldPortfolioStats.soldSectors} Sectors
+                                </Badge>
+                            ) : (
+                                <Badge variant="secondary" className="bg-primary/5 text-primary text-[8px] sm:text-[9px] rounded border-primary/20 font-black px-1 uppercase tracking-wide">
+                                    {portfolio.length} Scrips
+                                </Badge>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -2708,13 +3030,22 @@ export function PortfolioList() {
                                         <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                                     )}
                                     <span className="truncate">
-                                        {chartMode === "allocation"
+                                        {showSoldStocks
+                                            ? (chartMode === "allocation"
+                                                ? (chartView === "sector" ? "Sold by Sector" : "Sold by Stock")
+                                                : "Sold Comparison")
+                                            : chartMode === "allocation"
                                             ? (chartView === "sector" ? "Sector Allocation" : "Stock Allocation")
                                             : "Top Movers"}
                                     </span>
                                 </CardTitle>
                                 <CardDescription className="text-xs font-medium hidden sm:block">
-                                    {chartMode === "allocation"
+                                    {showSoldStocks
+                                        ? (chartMode === "allocation" ? (chartView === "sector"
+                                            ? "Sold value grouped by industry sector"
+                                            : "Sold value grouped by individual scrip")
+                                            : "Current value compared with your sold value")
+                                        : chartMode === "allocation"
                                         ? (chartView === "sector"
                                             ? "Portfolio distribution by industry sector"
                                             : "Portfolio weighting by individual scrip")
@@ -2747,7 +3078,7 @@ export function PortfolioList() {
                                         className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "movers" && "bg-background shadow-sm")}
                                         onClick={() => setChartMode("movers")}
                                     >
-                                        Movers
+                                        {showSoldStocks ? "Compare" : "Movers"}
                                     </Button>
                                 </div>
                                 {chartMode === "allocation" && (
@@ -2801,10 +3132,10 @@ export function PortfolioList() {
                                 <TrendingUp className="w-8 h-8 text-primary/40 mb-2" />
                             )}
                             <span className="text-xs font-bold text-muted-foreground">
-                                Tap to view {chartMode === "allocation" ? "chart" : "movers"}
+                                Tap to view {chartMode === "allocation" ? "chart" : showSoldStocks ? "comparison" : "movers"}
                             </span>
                         </div>
-                        {activePortfolioItems.length > 0 ? (
+                        {(chartMode === "allocation" ? activeChartData.length > 0 : (showSoldStocks ? soldPortfolioStats.missedUpside.length > 0 || soldPortfolioStats.savedDownside.length > 0 || soldPortfolioStats.flat.length > 0 : activePortfolioItems.length > 0)) ? (
                             chartMode === "allocation" ? (
                                 <div className="flex h-full items-center justify-center relative">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -2896,6 +3227,135 @@ export function PortfolioList() {
                                             />
                                         </PieChart>
                                     </ResponsiveContainer>
+                                </div>
+                            ) : showSoldStocks ? (
+                                <div className={cn(
+                                    "h-full w-full p-4 sm:p-6 grid gap-4 min-h-0",
+                                    soldPortfolioStats.flat.length > 0 ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-2",
+                                )}>
+                                    {soldPortfolioStats.missedUpside.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-error">Missed Upside</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
+                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <TrendingUp className="w-3.5 h-3.5 text-error" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.missedUpsideTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.missedUpside.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-error">
+                                                                +{row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {soldPortfolioStats.savedDownside.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-success">Saved Downside</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
+                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <TrendingDown className="w-3.5 h-3.5 text-success" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.savedDownsideTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.savedDownside.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-success">
+                                                                {row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {soldPortfolioStats.flat.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Flat Since Sold</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-muted-foreground bg-muted/40 border border-muted px-1.5 py-0.5 rounded-md">
+                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.flatTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.flat.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-muted-foreground">
+                                                                {row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : hasMoverData || hasNoMoverData ? (
                                 <div className={cn(
@@ -3022,7 +3482,9 @@ export function PortfolioList() {
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />
-                                <p className="text-xs font-bold uppercase tracking-widest opacity-40">Add holdings to see distribution data</p>
+                                <p className="text-xs font-bold uppercase tracking-widest opacity-40">
+                                    {showSoldStocks ? "Sell transactions will appear here by sector" : "Add holdings to see distribution data"}
+                                </p>
                             </div>
                         )}
                     </CardContent>
@@ -3075,8 +3537,15 @@ export function PortfolioList() {
                             <span className="hidden sm:inline">Sold Stocks</span>
                         </Button>
                         <div className="hidden sm:flex items-center bg-background/50 border border-muted/50 rounded-xl px-2 h-10 gap-1 shadow-inner">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary bg-primary/10 shadow-sm border border-primary/10">
-                                <LayoutGrid className="w-4 h-4" />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-primary bg-primary/10 shadow-sm border border-primary/10"
+                                onClick={() => setHoldingsView((view) => view === "list" ? "grid" : "list")}
+                                title={holdingsView === "list" ? "Switch to grid view" : "Switch to list view"}
+                                aria-label={holdingsView === "list" ? "Switch to grid view" : "Switch to list view"}
+                            >
+                                {holdingsView === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
                             </Button>
                         </div>
                     </div>
@@ -3087,16 +3556,41 @@ export function PortfolioList() {
                         <div className="flex items-center justify-between px-2">
                             <div className="flex flex-col gap-1">
                                 <h3 className="font-bold text-lg flex items-center gap-2">
-                                    My Holdings
-                                    <Badge variant="secondary" className="rounded-full font-black">{activePortfolioItemsForCalculations.length}</Badge>
-                                    <div className="flex gap-1 ml-1">
+                                    {showSoldStocks ? "Sold Holdings" : "My Holdings"}
+                                    <Badge variant="secondary" className="rounded-full font-black">
+                                        {showSoldStocks ? soldPortfolioRows.length : activePortfolioItemsForCalculations.length}
+                                    </Badge>
+                                    {showSoldStocks && (
+                                        <TooltipProvider>
+                                            <UITooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-primary"
+                                                        aria-label="How to read sold holdings"
+                                                    >
+                                                        <Info className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right" className="max-w-xs text-xs">
+                                                    <div className="space-y-1">
+                                                        <p><strong>Sold Holdings</strong> are grouped from sell transactions, not active units.</p>
+                                                        <p><strong>Missed Upside</strong>: sold units are worth more today.</p>
+                                                        <p><strong>Saved Downside</strong>: sold units are worth less today.</p>
+                                                        <p><strong>Trading value</strong>: sold units multiplied by current price.</p>
+                                                    </div>
+                                                </TooltipContent>
+                                            </UITooltip>
+                                        </TooltipProvider>
+                                    )}
+                                    {!showSoldStocks && <div className="flex gap-1 ml-1">
                                         <Badge className="bg-success/10 text-success border-success/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) > p.buyPrice).length}↑
                                         </Badge>
                                         <Badge className="bg-error/10 text-error border-error/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) < p.buyPrice).length}↓
                                         </Badge>
-                                    </div>
+                                    </div>}
                                 </h3>
                                 {activePortfolioItemsForCalculations.length > 0 && activePortfolioItemsForCalculations[0]?.lastUpdated && (
                                     <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5 ml-1">
@@ -3123,8 +3617,15 @@ export function PortfolioList() {
                         </div>
 
                         <ScrollArea className="h-[500px] rounded-2xl border bg-card/50 backdrop-blur-sm shadow-inner">
-                            <div className="p-4 space-y-3 text-left">
-                                {portfolio.length === 0 && activePortfolioId ? (
+                            <div
+                                className={cn(
+                                    "p-4 text-left",
+                                    holdingsView === "grid"
+                                        ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
+                                        : "space-y-3"
+                                )}
+                            >
+                                {!showSoldStocks && portfolio.length === 0 && activePortfolioId ? (
                                     // Loading skeleton state
                                     <div className="space-y-3">
                                         {[1, 2, 3, 4, 5].map((i) => (
@@ -3141,14 +3642,18 @@ export function PortfolioList() {
                                             </div>
                                         ))}
                                     </div>
-                                ) : filteredPortfolio.length === 0 ? (
+                                ) : (showSoldStocks ? soldPortfolioRows.length === 0 : filteredPortfolio.length === 0) ? (
                                     <div className="flex flex-col items-center justify-center py-20 text-center">
                                         <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mb-4 ring-8 ring-muted/20">
                                             <TrendingUp className="w-10 h-10 text-muted-foreground/50" />
                                         </div>
-                                        <h3 className="text-xl font-bold">No active holdings</h3>
+                                        <h3 className="text-xl font-bold">
+                                            {showSoldStocks ? "No sold stocks" : "No active holdings"}
+                                        </h3>
                                         <p className="text-sm text-muted-foreground max-w-[300px] mt-2">
-                                            Start by adding transactions or upload your Mero Share CSV to see your portfolio in action.
+                                            {showSoldStocks
+                                                ? "Sell transactions will appear here after you record or import them."
+                                                : "Start by adding transactions or upload your Mero Share CSV to see your portfolio in action."}
                                         </p>
                                         <div className="flex flex-col sm:flex-row gap-3 mt-6">
                                             <Button
@@ -3170,7 +3675,7 @@ export function PortfolioList() {
                                         </div>
                                     </div>
                                 ) : (
-                                    filteredPortfolio.map((item) => {
+                                    (showSoldStocks ? soldPortfolioRows.map((row) => row.item) : filteredPortfolio).map((item) => {
                                         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
                                         const safeBuyPrice = Number.isFinite(item.buyPrice) ? item.buyPrice : 0
                                         const current = Number.isFinite(item.currentPrice) ? item.currentPrice! : safeBuyPrice
@@ -3191,16 +3696,25 @@ export function PortfolioList() {
                                         const showDailyChange = !isZeroHolding && hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
                                         const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
                                         const isDailyProfit = dailyChange > 0
+                                        const isSoldViewRow = showSoldStocks
 
-                                        // For zero holdings, get last exit info (sell or merger_out)
-                                        const lastExitInfo = isZeroHolding ? (() => {
-                                            const relevantTxs = shareTransactions.filter(
-                                                (tx) =>
-                                                    tx.portfolioId === item.portfolioId &&
-                                                    normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
-                                                    tx.assetType === (item.assetType || "stock") &&
-                                                    (tx.cryptoId || "") === (item.cryptoId || "")
-                                            )
+                                        const soldRow = showSoldStocks ? soldPortfolioRowsByItemId.get(item.id) : undefined
+                                        const relevantTxs = shareTransactions.filter(
+                                            (tx) =>
+                                                tx.portfolioId === item.portfolioId &&
+                                                normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
+                                                tx.assetType === (item.assetType || "stock") &&
+                                                (tx.cryptoId || "") === (item.cryptoId || "")
+                                        )
+                                        const sellTxs = soldRow?.sellTxs || relevantTxs.filter((tx) => tx.type === "sell")
+                                        const soldQuantity = soldRow?.soldQuantity ?? sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity), 0)
+                                        const soldValue = soldRow?.soldValue ?? sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity) * safeNumber(tx.price), 0)
+                                        const soldTodayValue = soldQuantity * current
+                                        const soldDifference = soldTodayValue - soldValue
+                                        const averageSoldPrice = soldQuantity > 0 ? soldValue / soldQuantity : 0
+                                        const hasSoldPrice = averageSoldPrice > 0
+                                        const latestSellInfo = soldRow?.latestSell || [...sellTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                                        const lastExitInfo = (isZeroHolding || showSoldStocks) ? (() => {
                                             const exitTxs = relevantTxs
                                                 .filter((tx) => tx.type === "sell" || tx.type === "merger_out")
                                                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -3221,7 +3735,9 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isZeroHolding
+                                                            isSoldViewRow
+                                                                ? "bg-amber-500/5 text-amber-600 border-amber-500/20"
+                                                                : isZeroHolding
                                                                 ? "bg-muted/30 text-muted-foreground border-muted/40"
                                                                 : isDailyNeutral
                                                                     ? "bg-muted/40 text-muted-foreground border-muted/30"
@@ -3234,7 +3750,17 @@ export function PortfolioList() {
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                                                                 <h4 className="font-extrabold text-sm sm:text-base tracking-tight">{item.symbol}</h4>
-                                                                {isZeroHolding ? (
+                                                                {showSoldStocks && latestSellInfo ? (
+                                                                    <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-amber-500/10 font-bold border-amber-500/30 uppercase tracking-widest text-amber-600">
+                                                                        SOLD
+                                                                    </Badge>
+                                                                ) : null}
+                                                                {showSoldStocks && latestSellInfo ? (
+                                                                    <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/40 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground">
+                                                                        {formatTimeSince(latestSellInfo.date)}
+                                                                    </Badge>
+                                                                ) : null}
+                                                                {!showSoldStocks && isZeroHolding ? (
                                                                     isSold ? (
                                                                         <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-amber-500/10 font-bold border-amber-500/30 uppercase tracking-widest text-amber-600">
                                                                             SOLD
@@ -3248,15 +3774,40 @@ export function PortfolioList() {
                                                                             {item.sector || "Others"}
                                                                         </Badge>
                                                                     )
-                                                                ) : (
+                                                                ) : !showSoldStocks ? (
                                                                     <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/50 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground/80">
                                                                         {item.sector || "Others"}
                                                                     </Badge>
-                                                                )}
+                                                                ) : null}
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">
-                                                                {isZeroHolding ? (
+                                                                {showSoldStocks && latestSellInfo ? (
+                                                                    <>
+                                                                        <span className="text-[10px] font-black uppercase tracking-tighter text-amber-600/80">
+                                                                            Sold {formatUnits(soldQuantity)} units
+                                                                        </span>
+                                                                        <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                        <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">
+                                                                            Last sold {formatTimeSince(latestSellInfo.date)}
+                                                                        </span>
+                                                                        {hasSoldPrice ? (
+                                                                            <>
+                                                                                <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                                <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
+                                                                                    Avg {isCrypto ? "$" : "रु"} {formatHoldingAmount(averageSoldPrice, isCrypto)}
+                                                                                </span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                                <span className="text-[10px] font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded-md border border-muted">
+                                                                                    Sell price not recorded
+                                                                                </span>
+                                                                            </>
+                                                                        )}
+                                                                    </>
+                                                                ) : isZeroHolding ? (
                                                                     <span className={cn(
                                                                         "text-[10px] font-black uppercase tracking-tighter",
                                                                         isSold ? "text-amber-600/80" : isMerged ? "text-purple-600/80" : "text-muted-foreground"
@@ -3298,7 +3849,29 @@ export function PortfolioList() {
 
                                                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                                                         <div className="text-right flex flex-col items-end">
-                                                            {isZeroHolding ? (
+                                                            {showSoldStocks && latestSellInfo ? (
+                                                                <>
+                                                                    <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
+                                                                        {formatUnits(soldQuantity)} Units
+                                                                    </div>
+                                                                    <div className={cn(
+                                                                        "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
+                                                                        hasSoldPrice
+                                                                            ? (soldDifference > 0 ? "text-error" : soldDifference < 0 ? "text-success" : "text-muted-foreground")
+                                                                            : "text-primary"
+                                                                    )}>
+                                                                        <span className="hidden sm:inline">
+                                                                            Trading value
+                                                                        </span>
+                                                                        <span>{isCrypto ? "$" : "रु"}{formatHoldingAmount(soldTodayValue, isCrypto)}</span>
+                                                                    </div>
+                                                                    {hasSoldPrice && (
+                                                                        <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60">
+                                                                            Sold value {isCrypto ? "$" : "रु"}{formatHoldingAmount(soldValue, isCrypto)}
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            ) : isZeroHolding ? (
                                                                 <>
                                                                     <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight text-muted-foreground">
                                                                         {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
@@ -3328,7 +3901,7 @@ export function PortfolioList() {
                                                             )}
                                                         </div>
 
-                                                        {!isZeroHolding && (
+                                                        {!isZeroHolding && !showSoldStocks && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
