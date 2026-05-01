@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { usePortfolioData } from "@/hooks/use-portfolio-data"
+import { useNepseData } from "@/hooks/use-nepse-data"
 import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -106,7 +107,10 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,refreshMarketData,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,updateShareTransaction} = useWalletData()
+    const portfolioData = usePortfolioData()
+    const nepseData = useNepseData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction} = portfolioData
+    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const currencySymbol = userProfile?.currency ? `${userProfile.currency} ` : "Rs. "
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")

@@ -16,7 +16,7 @@ import type { Category, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
-import { useWalletData } from "@/hooks/use-wallet-data"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
 
 function toDateInputValue(iso: string) {

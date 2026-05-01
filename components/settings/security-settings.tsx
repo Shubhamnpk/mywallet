@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useSecurityData } from "@/hooks/use-security-data"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
@@ -26,7 +26,7 @@ interface SecuritySettingsProps {
 }
 
 export function SecuritySettings({ onLock }: SecuritySettingsProps) {
-  const { userProfile, updateUserProfile } = useWalletData()
+  const { userProfile, updateUserProfile } = useSecurityData()
   const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
   const [pinEnabled, setPinEnabled] = useState(!!userProfile?.securityEnabled && !!userProfile?.pin)

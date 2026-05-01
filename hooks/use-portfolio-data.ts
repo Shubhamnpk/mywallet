@@ -1,0 +1,73 @@
+"use client"
+
+import { useMemo } from "react"
+import { useWalletData } from "@/contexts/wallet-data-context"
+
+export function usePortfolioData() {
+  const wallet = useWalletData()
+
+  return useMemo(
+    () => ({
+      portfolio: wallet.portfolio,
+      shareTransactions: wallet.shareTransactions,
+      portfolios: wallet.portfolios,
+      activePortfolioId: wallet.activePortfolioId,
+      userProfile: wallet.userProfile,
+      updateUserProfile: wallet.updateUserProfile,
+      saveSipPlan: wallet.saveSipPlan,
+      deleteSipPlan: wallet.deleteSipPlan,
+      enrollShareTransactionInSipPlan: wallet.enrollShareTransactionInSipPlan,
+      enrollMultipleShareTransactionsInSipPlan: wallet.enrollMultipleShareTransactionsInSipPlan,
+      completeSipInstallment: wallet.completeSipInstallment,
+      addPortfolioItem: wallet.addPortfolioItem,
+      updatePortfolioItem: wallet.updatePortfolioItem,
+      deletePortfolioItem: wallet.deletePortfolioItem,
+      toggleZeroHolding: wallet.toggleZeroHolding,
+      addPortfolio: wallet.addPortfolio,
+      switchPortfolio: wallet.switchPortfolio,
+      deletePortfolio: wallet.deletePortfolio,
+      updatePortfolio: wallet.updatePortfolio,
+      clearPortfolioHistory: wallet.clearPortfolioHistory,
+      fetchPortfolioPrices: wallet.fetchPortfolioPrices,
+      syncMeroSharePortfolio: wallet.syncMeroSharePortfolio,
+      getFaceValue: wallet.getFaceValue,
+      addShareTransaction: wallet.addShareTransaction,
+      updateShareTransaction: wallet.updateShareTransaction,
+      deleteShareTransaction: wallet.deleteShareTransaction,
+      deleteMultipleShareTransactions: wallet.deleteMultipleShareTransactions,
+      recomputePortfolio: wallet.recomputePortfolio,
+      importShareData: wallet.importShareData,
+    }),
+    [
+      wallet.portfolio,
+      wallet.shareTransactions,
+      wallet.portfolios,
+      wallet.activePortfolioId,
+      wallet.userProfile,
+      wallet.updateUserProfile,
+      wallet.saveSipPlan,
+      wallet.deleteSipPlan,
+      wallet.enrollShareTransactionInSipPlan,
+      wallet.enrollMultipleShareTransactionsInSipPlan,
+      wallet.completeSipInstallment,
+      wallet.addPortfolioItem,
+      wallet.updatePortfolioItem,
+      wallet.deletePortfolioItem,
+      wallet.toggleZeroHolding,
+      wallet.addPortfolio,
+      wallet.switchPortfolio,
+      wallet.deletePortfolio,
+      wallet.updatePortfolio,
+      wallet.clearPortfolioHistory,
+      wallet.fetchPortfolioPrices,
+      wallet.syncMeroSharePortfolio,
+      wallet.getFaceValue,
+      wallet.addShareTransaction,
+      wallet.updateShareTransaction,
+      wallet.deleteShareTransaction,
+      wallet.deleteMultipleShareTransactions,
+      wallet.recomputePortfolio,
+      wallet.importShareData,
+    ],
+  )
+}

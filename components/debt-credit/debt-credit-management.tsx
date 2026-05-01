@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Banknote } from "lucide-react"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useDebtCreditData } from "@/hooks/use-debt-credit-data"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -33,7 +33,7 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
-  const wallet = useWalletData()
+  const wallet = useDebtCreditData()
   const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
 

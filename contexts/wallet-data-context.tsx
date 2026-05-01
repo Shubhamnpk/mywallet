@@ -1,9 +1,9 @@
 "use client"
 
 import { createContext, useContext, type ReactNode } from "react"
-import { useWalletData as useWalletDataHook } from "@/hooks/use-wallet-data"
+import { useWalletStore } from "@/hooks/use-wallet-store"
 import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, } from "@/types/wallet"
-type WalletDataContextType = {
+export type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
   budgets: Budget[]
@@ -134,7 +134,7 @@ interface WalletDataProviderProps {
 }
 
 export function WalletDataProvider({ children }: WalletDataProviderProps) {
-  const walletData = useWalletDataHook()
+  const walletData = useWalletStore()
 
   if (!walletData.isLoaded) {
     return (
