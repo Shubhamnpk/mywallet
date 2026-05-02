@@ -5,3 +5,223 @@
 ✓ Ready in 1333ms
 Creating turbopack project { dir: 'D:\\bitnepal\\projects\\mywallet-app', testMode: true }
 
+ GET / 200 in 942ms (next.js: 294ms, application-code: 649ms)
+ GET / 200 in 244ms (next.js: 25ms, application-code: 219ms)
+ GET /api/nepse/sectors 200 in 776ms (next.js: 260ms, application-code: 516ms)
+ GET /api/nepse/upcoming 200 in 784ms (next.js: 394ms, application-code: 390ms)
+ GET /api/nepse/market-summary 200 in 831ms (next.js: 599ms, application-code: 232ms)
+ GET /api/nepse/market-summary/history 200 in 841ms (next.js: 690ms, application-code: 152ms)
+ GET /api/nepse/market-status 200 in 389ms (next.js: 75ms, application-code: 314ms)
+ GET /api/nepse/notices 200 in 416ms (next.js: 156ms, application-code: 260ms)
+ GET /api/nepse/disclosures 200 in 367ms (next.js: 163ms, application-code: 204ms)
+ GET /api/nepse/exchange-messages 200 in 296ms (next.js: 183ms, application-code: 113ms)
+ GET /api/nepse/top-stocks 200 in 1453ms (next.js: 495ms, application-code: 958ms)
+ GET /settings 200 in 239ms (next.js: 109ms, application-code: 130ms)
+ GET / 200 in 76ms (next.js: 8ms, application-code: 68ms)
+ GET /settings 200 in 93ms (next.js: 12ms, application-code: 81ms)
+ GET /settings?tab=meroshare 200 in 157ms (next.js: 10ms, application-code: 148ms)
+ GET /settings?tab=meroshare 200 in 77ms (next.js: 6ms, application-code: 70ms)
+ GET /api/meroshare/dps 200 in 300ms (next.js: 105ms, application-code: 195ms)
+ GET /api/meroshare/dps 200 in 155ms (next.js: 6ms, application-code: 150ms)
+ GET /settings?tab=theme 200 in 173ms (next.js: 7ms, application-code: 166ms)
+ GET /settings?tab=theme 200 in 97ms (next.js: 8ms, application-code: 89ms)
+ GET /settings?tab=data 200 in 121ms (next.js: 6ms, application-code: 115ms)
+ GET /settings?tab=data 200 in 59ms (next.js: 6ms, application-code: 53ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET /api/nepse/sectors 200 in 23ms (next.js: 10ms, application-code: 13ms)
+ GET /api/nepse/market-summary/history 200 in 23ms (next.js: 9ms, application-code: 14ms)
+ GET /api/nepse/upcoming 200 in 39ms (next.js: 28ms, application-code: 12ms)
+ GET /api/nepse/top-stocks 200 in 62ms (next.js: 43ms, application-code: 19ms)
+ GET /api/nepse/market-summary 200 in 78ms (next.js: 66ms, application-code: 11ms)
+ GET /api/nepse/market-status 200 in 97ms (next.js: 81ms, application-code: 17ms)
+ GET /api/nepse/notices 200 in 15ms (next.js: 5ms, application-code: 10ms)
+ GET /api/nepse/disclosures 200 in 27ms (next.js: 6ms, application-code: 21ms)
+ GET /api/nepse/exchange-messages 200 in 53ms (next.js: 32ms, application-code: 21ms)
+ GET / 200 in 60ms (next.js: 6ms, application-code: 54ms)
+ GET /api/nepse/sectors 200 in 18ms (next.js: 6ms, application-code: 13ms)
+ GET /api/nepse/sectors 200 in 19ms (next.js: 7ms, application-code: 12ms)
+ GET /api/crypto/coinlore?ids=90 200 in 168ms (next.js: 27ms, application-code: 140ms)
+ GET /api/crypto/coinlore?ids=90 200 in 428ms (next.js: 181ms, application-code: 247ms)
+ GET /api/nepse/today 200 in 712ms (next.js: 91ms, application-code: 621ms)
+ GET /api/nepse/today 200 in 461ms (next.js: 6ms, application-code: 456ms)
+ GET /settings 200 in 89ms (next.js: 11ms, application-code: 78ms)
+ GET / 200 in 79ms (next.js: 8ms, application-code: 72ms)
+ GET /api/nepse/proposed-dividend/history-all-years 200 in 232ms (next.js: 101ms, application-code: 131ms)
+ GET /api/nepse/today 200 in 44ms (next.js: 27ms, application-code: 17ms)
+ GET /api/nepse/sectors 200 in 60ms (next.js: 48ms, application-code: 13ms)
+ GET /api/crypto/coinlore?ids=90 200 in 261ms (next.js: 9ms, application-code: 252ms)
+ GET /api/nepse/sectors 200 in 60ms (next.js: 45ms, application-code: 15ms)
+ GET /api/nepse/upcoming 200 in 76ms (next.js: 64ms, application-code: 12ms)
+ GET /api/nepse/market-summary/history 200 in 39ms (next.js: 30ms, application-code: 10ms)
+ GET /api/nepse/market-status 200 in 19ms (next.js: 9ms, application-code: 10ms)
+ GET /api/nepse/notices 200 in 18ms (next.js: 9ms, application-code: 9ms)
+ GET /api/nepse/disclosures 200 in 36ms (next.js: 20ms, application-code: 15ms)
+ GET /api/nepse/exchange-messages 200 in 18ms (next.js: 3ms, application-code: 14ms)
+ GET /api/nepse/top-stocks 200 in 532ms (next.js: 13ms, application-code: 519ms)
+ GET /api/nepse/market-summary 200 in 489ms (next.js: 15ms, application-code: 474ms)
+ GET /api/nepse/sectors 200 in 33ms (next.js: 14ms, application-code: 19ms)
+ GET /api/nepse/upcoming 200 in 49ms (next.js: 36ms, application-code: 14ms)
+ GET /api/nepse/top-stocks 200 in 74ms (next.js: 52ms, application-code: 22ms)
+ GET /api/nepse/market-summary 200 in 91ms (next.js: 80ms, application-code: 10ms)
+ GET /api/nepse/market-summary/history 200 in 110ms (next.js: 93ms, application-code: 17ms)
+ GET /api/nepse/market-status 200 in 25ms (next.js: 13ms, application-code: 12ms)
+ GET /api/nepse/notices 200 in 691ms (next.js: 29ms, application-code: 662ms)
+ GET /api/nepse/exchange-messages 200 in 696ms (next.js: 66ms, application-code: 629ms)
+ GET /api/nepse/disclosures 200 in 742ms (next.js: 51ms, application-code: 691ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET /api/nepse/sectors 200 in 88ms (next.js: 66ms, application-code: 22ms)
+ GET /api/nepse/sectors 200 in 87ms (next.js: 69ms, application-code: 18ms)
+ GET /api/nepse/today 200 in 635ms (next.js: 14ms, application-code: 621ms)
+ GET /api/nepse/today 200 in 521ms (next.js: 12ms, application-code: 509ms)
+ GET /api/crypto/coinlore?ids=90 200 in 575ms (next.js: 44ms, application-code: 531ms)
+ GET /api/crypto/coinlore?ids=90 200 in 699ms (next.js: 91ms, application-code: 608ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+✓ Compiled in 1274ms
+ GET / 200 in 442ms (next.js: 160ms, application-code: 282ms)
+ GET / 200 in 146ms (next.js: 6ms, application-code: 140ms)
+ GET / 200 in 90ms (next.js: 5ms, application-code: 85ms)
+ GET / 200 in 91ms (next.js: 36ms, application-code: 55ms)
+ GET /api/nepse/sectors 200 in 119ms (next.js: 93ms, application-code: 26ms)
+ GET /api/nepse/upcoming 200 in 61ms (next.js: 49ms, application-code: 12ms)
+ GET /api/nepse/market-summary/history 200 in 70ms (next.js: 57ms, application-code: 13ms)
+ GET /api/nepse/market-status 200 in 129ms (next.js: 116ms, application-code: 13ms)
+ GET /api/nepse/notices 200 in 192ms (next.js: 180ms, application-code: 12ms)
+ GET /api/nepse/disclosures 200 in 58ms (next.js: 43ms, application-code: 15ms)
+ GET /api/nepse/exchange-messages 200 in 119ms (next.js: 104ms, application-code: 15ms)
+ GET /api/nepse/market-summary 200 in 849ms (next.js: 174ms, application-code: 676ms)
+ GET /api/nepse/top-stocks 200 in 888ms (next.js: 107ms, application-code: 781ms)
+ GET /settings?tab=about 200 in 720ms (next.js: 161ms, application-code: 559ms)
+ GET /settings 200 in 83ms (next.js: 9ms, application-code: 73ms)
+ GET /settings?tab=about 200 in 158ms (next.js: 6ms, application-code: 152ms)
+ GET /settings?tab=about 200 in 96ms (next.js: 8ms, application-code: 88ms)
+✓ Compiled in 476ms
+ GET /settings?tab=about 200 in 232ms (next.js: 114ms, application-code: 118ms)
+✓ Compiled in 538ms
+ GET /settings?tab=about 200 in 230ms (next.js: 138ms, application-code: 92ms)
+✓ Compiled in 482ms
+ GET /settings?tab=about 200 in 259ms (next.js: 155ms, application-code: 104ms)
+[browser] Uncaught ReferenceError: handleTermsOfService is not defined
+    at AboutSettings (components/settings/about-settings.tsx:274:85)
+    at SettingsPageClient (components/settings/settings-page-client.tsx:142:13)
+    at SettingsPage (app\settings\page.tsx:21:7)
+  272 | ...4 h-4 ml-auto" />
+  273 | ...
+> 274 | ...ssName="justify-start h-auto p-4" onClick={handleTermsOfService}>
+      |                                               ^
+  275 | ...
+  276 | ...um">Terms of Service</div>
+  277 | ...ext-muted-foreground">Our terms and conditions</div>
+✓ Compiled in 837ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /settings?tab=about 200 in 732ms (next.js: 200ms, application-code: 532ms)
+ GET /api/nepse/sectors 200 in 298ms (next.js: 241ms, application-code: 57ms)
+ GET /api/nepse/upcoming 200 in 415ms (next.js: 383ms, application-code: 32ms)
+ GET /api/nepse/market-summary/history 200 in 1119ms (next.js: 1088ms, application-code: 31ms)
+ GET /api/nepse/market-summary 200 in 2.1s (next.js: 708ms, application-code: 1381ms)
+ GET /api/nepse/market-status 200 in 1182ms (next.js: 96ms, application-code: 1086ms)
+ GET /api/nepse/notices 200 in 1227ms (next.js: 260ms, application-code: 967ms)
+ GET /api/nepse/sectors 200 in 52ms (next.js: 27ms, application-code: 25ms)
+ GET /api/nepse/exchange-messages 200 in 1466ms (next.js: 424ms, application-code: 1041ms)
+ GET /api/nepse/today 200 in 710ms (next.js: 161ms, application-code: 549ms)
+ GET /api/nepse/top-stocks 200 in 2.8s (next.js: 557ms, application-code: 2.3s)
+ GET /api/crypto/coinlore?ids=90 200 in 490ms (next.js: 165ms, application-code: 325ms)
+ GET /api/nepse/disclosures 200 in 1645ms (next.js: 266ms, application-code: 1379ms)
+ GET /api/nepse/sectors 200 in 89ms (next.js: 71ms, application-code: 18ms)
+ GET /api/nepse/market-status 200 in 23ms (next.js: 7ms, application-code: 16ms)
+ GET /api/nepse/upcoming 200 in 556ms (next.js: 19ms, application-code: 538ms)
+ GET /api/nepse/market-summary 200 in 465ms (next.js: 10ms, application-code: 454ms)
+ GET /api/nepse/notices 200 in 486ms (next.js: 26ms, application-code: 460ms)
+ GET /api/nepse/market-summary/history 200 in 580ms (next.js: 29ms, application-code: 551ms)
+ GET /api/nepse/sectors 200 in 15ms (next.js: 5ms, application-code: 11ms)
+ GET /api/nepse/top-stocks 200 in 739ms (next.js: 45ms, application-code: 694ms)
+ GET /api/nepse/disclosures 200 in 663ms (next.js: 5ms, application-code: 658ms)
+ GET /api/nepse/exchange-messages 200 in 324ms (next.js: 12ms, application-code: 312ms)
+ GET /api/nepse/today 200 in 310ms (next.js: 10ms, application-code: 300ms)
+ GET /api/crypto/coinlore?ids=90 200 in 609ms (next.js: 10ms, application-code: 599ms)
+✓ Compiled in 971ms
+ GET /settings?tab=about 200 in 299ms (next.js: 190ms, application-code: 109ms)
+ GET /settings?tab=about 200 in 608ms (next.js: 9ms, application-code: 600ms)
+ GET /api/nepse/sectors 200 in 96ms (next.js: 78ms, application-code: 18ms)
+ GET /api/nepse/upcoming 200 in 48ms (next.js: 39ms, application-code: 9ms)
+ GET /api/nepse/market-summary/history 200 in 108ms (next.js: 96ms, application-code: 12ms)
+ GET /api/nepse/notices 200 in 50ms (next.js: 39ms, application-code: 12ms)
+ GET /api/nepse/disclosures 200 in 104ms (next.js: 92ms, application-code: 12ms)
+ GET /api/nepse/exchange-messages 200 in 53ms (next.js: 42ms, application-code: 11ms)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+⨯ Error: failed to pipe response
+    at ignore-listed frames {
+  [cause]: TypeError: fetch failed
+      at ignore-listed frames {
+    [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+        at ignore-listed frames {
+      code: 'UND_ERR_CONNECT_TIMEOUT'
+    }
+  }
+}
+ GET /api/nepse/top-stocks 500 in 11.1s (next.js: 99ms, application-code: 11.0s)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+⨯ Error: failed to pipe response
+    at ignore-listed frames {
+  [cause]: TypeError: fetch failed
+      at ignore-listed frames {
+    [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+        at ignore-listed frames {
+      code: 'UND_ERR_CONNECT_TIMEOUT'
+    }
+  }
+}
+ GET /api/nepse/market-status 500 in 10.9s (next.js: 46ms, application-code: 10.9s)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+      at ignore-listed frames {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+⨯ Error: failed to pipe response
+    at ignore-listed frames {
+  [cause]: TypeError: fetch failed
+      at ignore-listed frames {
+    [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: shubhamnpk.github.io:443, timeout: 10000ms)
+        at ignore-listed frames {
+      code: 'UND_ERR_CONNECT_TIMEOUT'
+    }
+  }
+}
+ GET /api/nepse/market-summary 500 in 11.2s (next.js: 47ms, application-code: 11.1s)
