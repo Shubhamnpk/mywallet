@@ -49,6 +49,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GoalProgressVisualization } from "./goal-progress-visualization"
 import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
+import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
 
 interface EnhancedGoalsListProps {
   goals: Goal[]
@@ -60,6 +61,7 @@ type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
   const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
 
   // Get currency symbol
   const currencySymbol = useMemo(() => {
@@ -288,19 +290,27 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     if (range === "all") return items
 
     const now = new Date()
-    const start = new Date(now)
+    let start: Date
+    let end: Date
 
     if (range === "active-month") {
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
+      const activeMonth = getCalendarMonthRange(now, calendarSystem)
+      start = activeMonth.start
+      end = activeMonth.end
     } else {
+      start = new Date(now)
       const day = start.getDay()
       const diff = day === 0 ? 6 : day - 1
       start.setDate(start.getDate() - diff)
       start.setHours(0, 0, 0, 0)
+      end = new Date(start)
+      end.setDate(end.getDate() + 7)
     }
 
-    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+    return items.filter((transaction) => {
+      const time = new Date(transaction.date).getTime()
+      return time >= start.getTime() && time < end.getTime()
+    })
   }
 
   const getGoalHistoryMeta = (transaction: Transaction) => {
@@ -592,7 +602,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               </div>
                               <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Target</p>
-                                <p className="text-sm font-bold text-foreground">{new Date(activeDeadline).toLocaleDateString()}</p>
+                                <p className="text-sm font-bold text-foreground">{formatAppDate(activeDeadline, calendarSystem)}</p>
                               </div>
                               <div className="p-3 rounded-xl border bg-background shadow-sm hover:border-primary/20 transition-colors">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Daily Save</p>
@@ -659,7 +669,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                 </Badge>
                               )}
                               <Badge variant="outline" className="text-[11px] font-medium py-0.5 opacity-70">
-                                Created {new Date(goal.createdAt).toLocaleDateString()}
+                                Created {formatAppDate(goal.createdAt, calendarSystem)}
                               </Badge>
                             </div>
                           </div>
@@ -767,7 +777,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                               </Badge>
                             )}
                             <Badge variant="secondary" className="text-xs md:text-sm">
-                              Created {new Date(goal.createdAt).toLocaleDateString()}
+                              Created {formatAppDate(goal.createdAt, calendarSystem)}
                             </Badge>
                           </div>
                         </CardContent>
@@ -880,7 +890,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                     {historyMeta.label}
                                   </Badge>
                                   <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter bg-muted px-1.5 py-0.5 rounded">
-                                    {new Date(transaction.date).toLocaleDateString()}
+                                    {formatAppDate(transaction.date, calendarSystem)}
                                   </span>
                                 </div>
                                 <p className="font-semibold text-sm leading-tight text-foreground/90 group-hover:text-foreground transition-colors">

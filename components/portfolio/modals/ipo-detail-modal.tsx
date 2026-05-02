@@ -10,6 +10,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 interface IPODetailModalProps {
     ipo: UpcomingIPO | null
@@ -20,6 +21,7 @@ interface IPODetailModalProps {
 export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps) {
     const router = useRouter()
     const { userProfile, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
+    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [hasAppliedInSession, setHasAppliedInSession] = useState(false)
@@ -229,7 +231,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 <div className="hidden sm:flex items-center gap-1.5 opacity-50">
                                     <Clock className="w-3 h-3" />
                                     <span className="text-[10px] font-black uppercase tracking-widest">
-                                        Data Sync: {new Date(ipo.scraped_at).toLocaleDateString()}
+                                        Data Sync: {formatAppDate(ipo.scraped_at, calendarSystem)}
                                     </span>
                                 </div>
                             )}
@@ -326,7 +328,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                         )}
                                         {ipo.openingDate && (
                                             <span className="text-[10px] font-medium text-primary/40 uppercase bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                {new Date(ipo.openingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                {formatAppDate(ipo.openingDate, calendarSystem, { month: 'short', day: 'numeric' })}
                                             </span>
                                         )}
                                     </div>
@@ -347,7 +349,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                         )}
                                         {ipo.closingDate && (
                                             <span className="text-[10px] font-medium text-muted-foreground/40 uppercase bg-muted/20 px-1.5 py-0.5 rounded-md border border-muted/30">
-                                                {new Date(ipo.closingDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                {formatAppDate(ipo.closingDate, calendarSystem, { month: 'short', day: 'numeric' })}
                                             </span>
                                         )}
                                     </div>

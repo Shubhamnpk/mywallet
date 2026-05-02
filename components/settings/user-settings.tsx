@@ -11,13 +11,20 @@ import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { LogOut, Trash2, Upload, Save, Plus, PencilLine, Camera, X, User, ImageIcon } from "lucide-react"
+import { CalendarDays, LogOut, Trash2, Save, PencilLine, Camera, X, ImageIcon } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { useAchievements } from "@/hooks/use-achievements"
 import { AchievementsProfile } from "@/components/achievements/achievements-profile"
 import { compressImageToDataUrl } from "@/lib/image-utils"
+import { getCalendarSystem } from "@/lib/app-calendar"
+
+const normalizeProfileFormData = (profile: any) => ({
+  ...profile,
+  calendarSystem: getCalendarSystem(profile?.calendarSystem),
+  customCurrency: profile?.customCurrency || { code: "", symbol: "", name: "" },
+})
 
 export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: string }) {
   const {
@@ -61,6 +68,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     userProfile || {
       name: "",
       currency: "USD",
+      calendarSystem: "AD",
       customCurrency: { code: "", symbol: "", name: "" },
       monthlyEarning: 0,
       workingHoursPerDay: 8,
@@ -80,13 +88,13 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   useEffect(() => {
     if (userProfile) {
       // merge to ensure customCurrency exists
-      setFormData({ ...userProfile, customCurrency: userProfile.customCurrency || { code: "", symbol: "", name: "" } })
+      setFormData(normalizeProfileFormData(userProfile))
       setShowCustomCurrency(userProfile.currency === "CUSTOM")
     }
   }, [userProfile])
 
   useEffect(() => {
-    setHasChanges(JSON.stringify(formData) !== JSON.stringify(userProfile))
+    setHasChanges(JSON.stringify(formData) !== JSON.stringify(userProfile ? normalizeProfileFormData(userProfile) : userProfile))
   }, [formData, userProfile])
 
   const updateField = (key: string, value: any) => {
@@ -158,7 +166,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   const handleCancelChanges = () => {
     if (userProfile) {
       // Reset form data to original values
-      setFormData({ ...userProfile, customCurrency: userProfile.customCurrency || { code: "", symbol: "", name: "" } })
+      setFormData(normalizeProfileFormData(userProfile))
       setShowCustomCurrency(userProfile.currency === "CUSTOM")
       setAvatarPreview(null)
       setShowAvatarDialog(false)
@@ -395,6 +403,12 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                         {getCurrencyLabel(formData.currency, formData.customCurrency)}
                       </span>
                     </div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border">
+                      <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        {getCalendarSystem(formData.calendarSystem) === "BS" ? "Nepali BS" : "Gregorian AD"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -447,6 +461,24 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                             {currency.label}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="calendar-system" className="text-sm font-medium">Calendar</Label>
+                    <Select
+                      value={getCalendarSystem(formData.calendarSystem)}
+                      onValueChange={(value: "AD" | "BS") => updateField("calendarSystem", value)}
+                    >
+                      <SelectTrigger
+                        id="calendar-system"
+                        className={`h-11 ${highlightQuery.toLowerCase().includes("calendar") ? "ring-2 ring-primary" : ""}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AD">Gregorian AD</SelectItem>
+                        <SelectItem value="BS">Nepali BS</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

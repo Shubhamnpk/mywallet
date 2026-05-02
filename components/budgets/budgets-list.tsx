@@ -33,6 +33,7 @@ import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown, isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -44,6 +45,7 @@ interface BudgetsListProps {
 
 export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
   const { transactions } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
@@ -56,38 +58,47 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set())
 
-  const getPeriodStart = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all") => {
+  const getPeriodRange = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all") => {
     const now = new Date()
     let start: Date
+    let end: Date
     const range = overrideRange || (budget.period === "monthly" ? "active-month" : budget.period === "weekly" ? "this-week" : budget.period === "yearly" ? "this-year" : "all")
 
     if (range === "all") {
-      return new Date(0)
+      return { start: new Date(0), end: new Date(8640000000000000) }
     }
 
     if (range === "active-month") {
-      start = new Date(now.getFullYear(), now.getMonth(), 1)
+      return getCalendarMonthRange(now, calendarSystem)
     } else if (range === "this-week") {
       start = new Date(now)
       const day = start.getDay()
       const diff = day === 0 ? 6 : day - 1
       start.setDate(start.getDate() - diff)
+      end = new Date(start)
+      end.setDate(end.getDate() + 7)
     } else if (range === "this-year" || budget.period === "yearly") {
       start = new Date(now.getFullYear(), 0, 1)
+      end = new Date(now.getFullYear() + 1, 0, 1)
     } else {
       start = new Date(0)
+      end = new Date(8640000000000000)
     }
     
     start.setHours(0, 0, 0, 0)
-    return start
+    end.setHours(0, 0, 0, 0)
+    return { start, end }
   }
 
   const getCurrentPeriodSpent = (budget: Budget) => {
     const budgetTransactions = getBudgetTransactions(budget)
-    const start = getPeriodStart(budget)
+    const { start, end } = getPeriodRange(budget)
 
     return budgetTransactions
-      .filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+      .filter((transaction) => {
+        const time = new Date(transaction.date).getTime()
+        return time >= start.getTime() && time < end.getTime()
+      })
       .reduce((sum, transaction) => sum + transaction.amount, 0)
   }
 
@@ -145,7 +156,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
     })
 
     return filtered
-  }, [budgets, searchQuery, statusFilter, sortBy, sortOrder, transactions])
+  }, [budgets, searchQuery, statusFilter, sortBy, sortOrder, transactions, calendarSystem])
 
 
   const handleAddBudget = (budgetData: any) => {
@@ -217,8 +228,11 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
 
   const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "this-year" | "all", budget: Budget) => {
     if (range === "all") return items
-    const start = getPeriodStart(budget, range)
-    return items.filter((transaction) => new Date(transaction.date).getTime() >= start.getTime())
+    const { start, end } = getPeriodRange(budget, range)
+    return items.filter((transaction) => {
+      const time = new Date(transaction.date).getTime()
+      return time >= start.getTime() && time < end.getTime()
+    })
   }
 
   return (
@@ -599,7 +613,7 @@ export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget,
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60 bg-muted dark:bg-muted/80 px-1.5 py-0.5 rounded">
-                                      {new Date(transaction.date).toLocaleDateString()}
+                                      {formatAppDate(transaction.date, calendarSystem)}
                                     </span>
                                     <span className="text-[10px] font-bold uppercase tracking-tighter text-primary/60 bg-primary/5 dark:bg-primary/10 px-1.5 py-0.5 rounded">
                                       {transaction.category}

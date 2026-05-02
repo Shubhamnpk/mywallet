@@ -7,6 +7,8 @@ import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogT
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue,} from "@/components/ui/select"
+import { AppDateInput } from "@/components/ui/app-date-input"
+import type { CalendarSystem } from "@/lib/app-calendar"
 
 interface AddTransactionModalProps {
     open: boolean
@@ -27,6 +29,7 @@ interface AddTransactionModalProps {
     portfolioStockOptions?: StockOption[]
     portfolioCryptoOptions?: CryptoHoldingOption[]
     currencySymbol?: string
+    calendarSystem?: CalendarSystem
 }
 
 type CryptoCoinOption = {
@@ -54,7 +57,8 @@ export function AddTransactionModal({
     stockOptions = [],
     portfolioStockOptions = [],
     portfolioCryptoOptions = [],
-    currencySymbol = "Rs. "
+    currencySymbol = "Rs. ",
+    calendarSystem = "AD"
 }: AddTransactionModalProps) {
     const [popularCoins, setPopularCoins] = useState<CryptoCoinOption[]>([])
     const [isLoadingCoins, setIsLoadingCoins] = useState(false)
@@ -336,12 +340,12 @@ export function AddTransactionModal({
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="date" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Date</Label>
-                        <Input
+                        <AppDateInput
                             id="date"
-                            type="date"
                             className="rounded-xl border-muted-foreground/20 font-medium"
                             value={newTx.date}
-                            onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
+                            calendarSystem={calendarSystem}
+                            onChange={(date) => setNewTx({ ...newTx, date })}
                         />
                     </div>
 

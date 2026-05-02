@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AppDateInput } from "@/components/ui/app-date-input"
+import type { CalendarSystem } from "@/lib/app-calendar"
 import type { ShareTransaction } from "@/types/wallet"
 
 interface EditTransactionModalProps {
@@ -18,6 +20,7 @@ interface EditTransactionModalProps {
     portfolioStockOptions?: StockOption[]
     portfolioCryptoOptions?: CryptoHoldingOption[]
     currencySymbol?: string
+    calendarSystem?: CalendarSystem
 }
 
 type CryptoCoinOption = {
@@ -46,7 +49,8 @@ export function EditTransactionModal({
     stockOptions = [],
     portfolioStockOptions = [],
     portfolioCryptoOptions = [],
-    currencySymbol = "Rs. "
+    currencySymbol = "Rs. ",
+    calendarSystem = "AD"
 }: EditTransactionModalProps) {
     const [popularCoins, setPopularCoins] = useState<CryptoCoinOption[]>([])
     const [isLoadingCoins, setIsLoadingCoins] = useState(false)
@@ -398,12 +402,12 @@ export function EditTransactionModal({
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="edit-date" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Date</Label>
-                        <Input
+                        <AppDateInput
                             id="edit-date"
-                            type="date"
                             className="rounded-xl border-muted-foreground/20 font-medium"
                             value={formData.date}
-                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                            calendarSystem={calendarSystem}
+                            onChange={(date) => setFormData({ ...formData, date })}
                         />
                     </div>
                     {/* Total Amount Display */}

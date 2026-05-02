@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { formatAppDate, getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
 
 interface SpendingTrendsAnalysisProps {
   transactions: Transaction[]
@@ -45,16 +46,17 @@ function TrendCard({ title, value, subtitle, bgColor, titleColor, valueColor }: 
 
 export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTrendsAnalysisProps) {
   const trendData = useMemo(() => {
-    const now = new Date()
-    const monthlyData: Record<string, { income: number; expenses: number; count: number }> = {}
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const monthlyData: Record<string, { income: number; expenses: number; count: number; anchor: Date }> = {}
 
     // Group transactions by month
     transactions.forEach((transaction) => {
       const date = new Date(transaction.date)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      if (Number.isNaN(date.getTime())) return
+      const monthKey = getCalendarMonthKey(date, calendarSystem)
 
       if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { income: 0, expenses: 0, count: 0 }
+        monthlyData[monthKey] = { income: 0, expenses: 0, count: 0, anchor: getCalendarMonthRange(date, calendarSystem).start }
       }
 
       if (transaction.type === 'income') {
@@ -71,11 +73,8 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
       .slice(-12)
 
     const trends: TrendData[] = sortedMonths.map((monthKey, index) => {
-      const [year, month] = monthKey.split('-')
-      const monthDate = new Date(parseInt(year), parseInt(month) - 1)
-      const monthName = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-
       const current = monthlyData[monthKey]
+      const monthName = formatAppDate(current.anchor, calendarSystem, { month: 'short', year: 'numeric' })
       const prevMonthsKey = sortedMonths.slice(0, index)
       const prevNetValues = prevMonthsKey.map(k => monthlyData[k].income - monthlyData[k].expenses)
 
@@ -88,8 +87,7 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
 
       // Calculate Weekend vs Weekday Ratio
       const monthTransactions = transactions.filter(t => {
-        const d = new Date(t.date)
-        return d.getMonth() === monthDate.getMonth() && d.getFullYear() === monthDate.getFullYear()
+        return getCalendarMonthKey(t.date, calendarSystem) === monthKey
       })
       const weekendSpending = monthTransactions.filter(t => [0, 6].includes(new Date(t.date).getDay())).reduce((s, t) => s + t.amount, 0)
       const weekdaySpending = monthTransactions.filter(t => ![0, 6].includes(new Date(t.date).getDay())).reduce((s, t) => s + t.amount, 0)
@@ -142,7 +140,7 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
     }
 
     return { trends, summary }
-  }, [transactions])
+  }, [transactions, userProfile.calendarSystem])
 
   const { trends, summary } = trendData
 

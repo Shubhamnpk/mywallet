@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat } from "lucide-react"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 type QRContentType = 'url' | 'email' | 'phone' | 'wifi' | 'contact' | 'calendar' | 'bitcoin' | 'text'
 interface QRPoint {
   x: number
@@ -77,6 +79,8 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   onFlashlightToggle,
   onSwitchCamera
 }) => {
+  const { userProfile } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [qrScanResult, setQrScanResult] = useState<QRScanResult | null>(null)
@@ -1008,7 +1012,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                   <p className="text-sm font-medium">Event Details:</p>
                   <p className="text-xs">Summary: {qrScanResult.beautified.summary}</p>
                   {qrScanResult.beautified.startDate && (
-                    <p className="text-xs">Start: {new Date(qrScanResult.beautified.startDate).toLocaleString()}</p>
+                    <p className="text-xs">Start: {formatAppDateTime(qrScanResult.beautified.startDate, calendarSystem)}</p>
                   )}
                   {qrScanResult.beautified.location && (
                     <p className="text-xs">Location: {qrScanResult.beautified.location}</p>

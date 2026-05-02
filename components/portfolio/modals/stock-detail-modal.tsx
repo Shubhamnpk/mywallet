@@ -18,6 +18,7 @@ import { SIPSetupModal } from "./sip-setup-modal"
 import { EditTransactionModal } from "./edit-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipDisplayTransactionsForPlan, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 type ProposedDividendRecord = {
     id: number
@@ -83,6 +84,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
+    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
 
     const item = useMemo(() => {
         if (!initialItem) return null
@@ -641,11 +643,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     ) : isZeroHolding ? (
                                         isSold && lastExitInfo ? (
                                             <span className="text-amber-600/80">
-                                                Sold {lastExitInfo.quantity} units @ {currencySymbol}{lastExitInfo.price} on {new Date(lastExitInfo.date).toLocaleDateString()}
+                                                Sold {lastExitInfo.quantity} units @ {currencySymbol}{lastExitInfo.price} on {formatAppDate(lastExitInfo.date, calendarSystem)}
                                             </span>
                                         ) : isMerged && lastExitInfo ? (
                                             <span className="text-purple-600/80">
-                                                Merged Out {lastExitInfo.quantity} units on {new Date(lastExitInfo.date).toLocaleDateString()}
+                                                Merged Out {lastExitInfo.quantity} units on {formatAppDate(lastExitInfo.date, calendarSystem)}
                                             </span>
                                         ) : "Zero Units"
                                     ) : (
@@ -657,7 +659,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         <PiggyBank className="h-3.5 w-3.5" />
                                         {existingSipPlan.status === "paused" ? "SIP Paused" : "SIP Active"}
                                         <span className="text-primary/70">
-                                            {sipSchedule?.nextDate ? `Next ${formatSipDate(sipSchedule.nextDate.toISOString())}` : "Schedule ready"}
+                                            {sipSchedule?.nextDate ? `Next ${formatSipDate(sipSchedule.nextDate.toISOString(), calendarSystem)}` : "Schedule ready"}
                                         </span>
                                     </div>
                                 )}
@@ -805,7 +807,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                             <div>
                                                                                 <p className="text-[11px] font-black uppercase">{formatUnits(tx.quantity)} units sold</p>
                                                                                 <p className="text-[9px] font-bold text-muted-foreground">
-                                                                                    {new Date(tx.date).toLocaleDateString()} · {formatTimeSince(tx.date)}
+                                                                                    {formatAppDate(tx.date, calendarSystem)} · {formatTimeSince(tx.date)}
                                                                                 </p>
                                                                             </div>
                                                                         </div>
@@ -874,7 +876,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 </p>
                                                             </div>
                                                             <div className="text-[10px] font-bold text-muted-foreground">
-                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${new Date(lastExitInfo.date).toLocaleDateString()}` : "Sold"}
+                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${formatAppDate(lastExitInfo.date, calendarSystem)}` : "Sold"}
                                                             </div>
                                                             {/* Total Amount */}
                                                             <div className="border-t border-amber-500/20 pt-2 mt-1">
@@ -949,7 +951,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 Merged Out
                                                             </div>
                                                             <div className="text-lg font-black font-mono text-purple-600">
-                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${new Date(lastExitInfo.date).toLocaleDateString()}` : "Merged"}
+                                                                {lastExitInfo ? `${lastExitInfo.quantity} units on ${formatAppDate(lastExitInfo.date, calendarSystem)}` : "Merged"}
                                                             </div>
                                                             <div className="text-[10px] font-bold text-muted-foreground">
                                                                 This holding was merged out and is no longer active
@@ -1084,7 +1086,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     <Badge
                                                         variant="outline"
                                                         className="text-[9px] font-black uppercase tracking-widest"
-                                                        title={holdingStartDate ? `Since ${holdingStartDate.toLocaleDateString()}` : "No transactions"}
+                                                        title={holdingStartDate ? `Since ${formatAppDate(holdingStartDate, calendarSystem)}` : "No transactions"}
                                                     >
                                                         {holdingPeriodLabel}
                                                     </Badge>
@@ -1155,7 +1157,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         </div>
                                                         <div>
                                                             <p className="text-[11px] font-black uppercase">{tx.type}</p>
-                                                            <p className="text-[9px] font-bold text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                            <p className="text-[9px] font-bold text-muted-foreground">{formatAppDate(tx.date, calendarSystem)}</p>
                                                             {tx.description && (
                                                                 <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
                                                             )}
@@ -1338,7 +1340,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Next installment</p>
                                                     <p className="mt-1 text-sm font-black">
-                                                        {sipSchedule?.nextDate ? formatSipDate(sipSchedule.nextDate.toISOString()) : "Not scheduled"}
+                                                        {sipSchedule?.nextDate ? formatSipDate(sipSchedule.nextDate.toISOString(), calendarSystem) : "Not scheduled"}
                                                     </p>
                                                     <p className="mt-1 text-[10px] text-muted-foreground">
                                                         {sipSchedule?.isDueToday
@@ -1435,13 +1437,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     <div>
                                                                     <p className="text-[11px] font-black uppercase flex items-center gap-2">
                                                                         <PiggyBank className="w-3.5 h-3.5 text-primary" />
-                                                                        {formatSipDate(tx.sipDueDate || tx.date)}
+                                                                        {formatSipDate(tx.sipDueDate || tx.date, calendarSystem)}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground mt-1">
                                                                         Gross {currencySymbol} {formatValue(getSipGrossAmount(tx))} • DPS {currencySymbol} {formatValue(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {currencySymbol} {formatValue(getSipNetAmount(tx))}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground">
-                                                                        Completed {new Date(tx.date).toLocaleDateString()}
+                                                                        Completed {formatAppDate(tx.date, calendarSystem)}
                                                                     </p>
                                                                     </div>
                                                                 </div>
@@ -1469,7 +1471,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             <div key={tx.id} className="px-3 py-3 flex items-center justify-between gap-3">
                                                                 <div>
                                                                     <p className="text-[11px] font-black uppercase">{tx.type}</p>
-                                                                    <p className="text-[10px] text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</p>
+                                                                    <p className="text-[10px] text-muted-foreground">{formatAppDate(tx.date, calendarSystem)}</p>
                                                                     <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
@@ -1511,7 +1513,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             {news.title}
                                                         </h4>
                                                             <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
-                                                                {news.publishedAt ? new Date(news.publishedAt).toLocaleDateString() : "Recent"}
+                                                                {news.publishedAt ? formatAppDate(news.publishedAt, calendarSystem) : "Recent"}
                                                             </span>
                                                         </div>
                                                         {news.summary ? (
@@ -1547,7 +1549,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             {notice.newsHeadline}
                                                         </h4>
                                                         <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
-                                                            {notice.addedDate ? new Date(notice.addedDate).toLocaleDateString() : "Recent"}
+                                                            {notice.addedDate ? formatAppDate(notice.addedDate, calendarSystem) : "Recent"}
                                                         </span>
                                                     </div>
                                                     <Button

@@ -60,6 +60,12 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import type { DateRange } from "react-day-picker";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  formatAppDate,
+  formatAppMonthKey,
+  getCalendarMonthKey,
+  getCalendarSystem,
+} from "@/lib/app-calendar";
 
 /** Dispatched by the main floating + button when the Shift tracker tab is active. */
 export const SHIFT_TRACKER_OPEN_LOG_EVENT = "wallet-shift-tracker-open-log";
@@ -130,7 +136,8 @@ const MONTHS_FULL = [
   "December",
 ];
 
-function fd(d: string) {
+function fd(d: string, calendarSystem = "AD") {
+  if (calendarSystem === "BS") return formatAppDate(d, "BS");
   const [y, mo, day] = d.split("-");
   return `${parseInt(day, 10)} ${MONTHS_SHORT[parseInt(mo, 10) - 1]} ${y}`;
 }
@@ -181,6 +188,11 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const currencySymbol = getCurrencySymbol(
     userProfile?.currency ?? "USD",
     userProfile?.customCurrency,
+  );
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem);
+  const monthKey = useCallback(
+    (date: string) => getCalendarMonthKey(date, calendarSystem),
+    [calendarSystem],
   );
 
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -379,7 +391,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
   const shiftPaymentLabel = (s: Shift) => {
     const main = s.note || formatShiftTimeRange(s);
-    return `${fd(s.date)} | ${main}`;
+    return `${fd(s.date, calendarSystem)} | ${main}`;
   };
 
   const getCoveredShiftsForPayment = useCallback(
@@ -397,7 +409,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           );
         case "month":
           return shifts.filter(
-            (shift) => shift.date.slice(0, 7) === payment.periodKey,
+            (shift) => monthKey(shift.date) === payment.periodKey,
           );
         case "all":
           return shifts;
@@ -413,7 +425,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
       const targetShifts = sourceShifts.filter((shift) => {
         if (type === "day") return shift.date === key;
         if (type === "week") return weekKey(shift.date) === key;
-        if (type === "month") return shift.date.slice(0, 7) === key;
+        if (type === "month") return monthKey(shift.date) === key;
         return true;
       });
 
@@ -439,7 +451,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
         return sum + payment.amount * (matchedEarn / coveredEarn);
       }, 0);
     },
-    [payments, shifts, getCoveredShiftsForPayment, getShiftRate, weekKey],
+    [payments, shifts, getCoveredShiftsForPayment, getShiftRate, monthKey],
   );
 
   const recordIncomeForPayment = async (
@@ -594,13 +606,13 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   };
 
   /* Stats */
-  const thisMonth = todayStr().slice(0, 7);
+  const thisMonth = monthKey(todayStr());
   const scopedShifts = useMemo(
     () =>
       statView === "month"
-        ? shifts.filter((s) => s.date.slice(0, 7) === thisMonth)
+        ? shifts.filter((s) => monthKey(s.date) === thisMonth)
         : shifts,
-    [shifts, statView, thisMonth],
+    [shifts, statView, thisMonth, monthKey],
   );
   let atE = 0,
     moE = 0,
@@ -610,7 +622,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     atH += s.hours;
     const r = getShiftRate(s);
     atE += s.hours * r;
-    if (s.date.slice(0, 7) === thisMonth) {
+    if (monthKey(s.date) === thisMonth) {
       moH += s.hours;
       moE += s.hours * r;
     }
@@ -628,7 +640,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     }
     if (p.type === "week") {
       const [a, b] = p.periodKey.split("__");
-      if (a.slice(0, 7) === thisMonth || b.slice(0, 7) === thisMonth) {
+      if (monthKey(a) === thisMonth || monthKey(b) === thisMonth) {
         const weekShifts = shifts.filter(
           (s) => weekKey(s.date) === p.periodKey,
         );
@@ -637,20 +649,20 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           0,
         );
         const moWeekEarn = weekShifts
-          .filter((s) => s.date.slice(0, 7) === thisMonth)
+          .filter((s) => monthKey(s.date) === thisMonth)
           .reduce((acc, s) => acc + s.hours * getShiftRate(s), 0);
         if (weekEarn > 0) moP += p.amount * (moWeekEarn / weekEarn);
       }
       return;
     }
     if (p.type === "day") {
-      const pMonth = p.periodKey ? p.periodKey.slice(0, 7) : "";
+      const pMonth = p.periodKey ? monthKey(p.periodKey) : "";
       if (pMonth === thisMonth) moP += p.amount;
       return;
     }
     if (p.type === "shift") {
       const shift = shifts.find((s) => String(s.id) === String(p.periodKey));
-      if (shift && shift.date.slice(0, 7) === thisMonth) moP += p.amount;
+      if (shift && monthKey(shift.date) === thisMonth) moP += p.amount;
     }
   });
 
@@ -872,6 +884,8 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
             shiftIsPaid={shiftIsPaid}
             weekKey={weekKey}
             mname={mname}
+            calendarSystem={calendarSystem}
+            monthKey={monthKey}
             onOpenDetails={setDetailShiftId}
             onOpenActions={setActionShiftId}
             currencySymbol={currencySymbol}
@@ -927,11 +941,11 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                           {paymentDateRange?.from ? (
                             paymentDateRange?.to ? (
                               <>
-                                {paymentDateRange.from.toLocaleDateString()} -{" "}
-                                {paymentDateRange.to.toLocaleDateString()}
+                                {formatAppDate(paymentDateRange.from, calendarSystem)} -{" "}
+                                {formatAppDate(paymentDateRange.to, calendarSystem)}
                               </>
                             ) : (
-                              paymentDateRange.from.toLocaleDateString()
+                              formatAppDate(paymentDateRange.from, calendarSystem)
                             )
                           ) : (
                             <span>Pick a date range</span>
@@ -1046,7 +1060,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                         {p.label}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {fd(p.date)} · {p.type}
+                        {fd(p.date, calendarSystem)} · {p.type}
                         {p.walletTransactionId
                           ? " · linked to transaction"
                           : ""}
@@ -1278,7 +1292,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           {detailShift && (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <DetailItem label="Date" value={fd(detailShift.date)} />
+                <DetailItem label="Date" value={fd(detailShift.date, calendarSystem)} />
                 <DetailItem label="Duration" value={fh(detailShift.hours)} />
                 <DetailItem
                   label="Start"
@@ -1332,7 +1346,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                 </SheetTitle>
                 {actionShift && (
                   <p className="text-sm text-muted-foreground">
-                    {fd(actionShift.date)} · {fh(actionShift.hours)}
+                    {fd(actionShift.date, calendarSystem)} · {fh(actionShift.hours)}
                   </p>
                 )}
               </div>
@@ -1463,6 +1477,8 @@ function PeriodsBody({
   shiftIsPaid,
   weekKey,
   mname,
+  calendarSystem,
+  monthKey,
   onOpenDetails,
   onOpenActions,
   currencySymbol,
@@ -1485,12 +1501,14 @@ function PeriodsBody({
     amount: number,
   ) => void;
   fh: (h: number) => string;
-  fd: (d: string) => string;
+  fd: (d: string, calendarSystem?: "AD" | "BS") => string;
   formatMoney: (n: number, symbol?: string) => string;
   formatShiftTimeRange: (s: Shift) => string;
   shiftIsPaid: (s: Shift) => boolean;
   weekKey: (d: string) => string;
   mname: (m: string) => string;
+  calendarSystem: "AD" | "BS";
+  monthKey: (date: string) => string;
   onOpenDetails: (id: number) => void;
   onOpenActions: (id: number) => void;
   currencySymbol: string;
@@ -1567,7 +1585,7 @@ function PeriodsBody({
                   key={s.id}
                   className="border-b last:border-0 hover:bg-muted/40"
                 >
-                  <td className="px-3 py-2 align-middle">{fd(s.date)}</td>
+                  <td className="px-3 py-2 align-middle">{fd(s.date, calendarSystem)}</td>
                   <td className="px-3 py-2 align-middle">
                     <button
                       type="button"
@@ -1630,19 +1648,18 @@ function PeriodsBody({
   let labelFn: (k: string) => string;
   if (periodView === "day") {
     keyFn = (d) => d;
-    labelFn = (k) => fd(k);
+    labelFn = (k) => fd(k, calendarSystem);
   } else if (periodView === "week") {
     keyFn = (d) => weekKey(d);
     labelFn = (k) => {
       const [a, b] = k.split("__");
-      return `${fd(a)} – ${fd(b)}`;
+      const start = fd(a, calendarSystem);
+      const end = fd(b, calendarSystem);
+      return `${start} - ${end}`;
     };
   } else {
-    keyFn = (d) => d.slice(0, 7);
-    labelFn = (k) => {
-      const [y, m] = k.split("-");
-      return `${mname(m)} ${y}`;
-    };
+    keyFn = (d) => monthKey(d);
+    labelFn = (k) => formatAppMonthKey(k, calendarSystem);
   }
 
   const map: Record<string, { shifts: Shift[]; hours: number; earn: number }> =
@@ -1769,7 +1786,7 @@ function PeriodsBody({
                           className="border-b last:border-0 hover:bg-muted/40"
                         >
                           <td className="px-3 py-2 align-middle">
-                            {fd(s.date)}
+                            {fd(s.date, calendarSystem)}
                           </td>
                           <td className="px-3 py-2 align-middle">
                             <button
@@ -1909,3 +1926,4 @@ function Pager({
     </div>
   );
 }
+

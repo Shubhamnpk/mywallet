@@ -1,0 +1,7 @@
+▲ Next.js 16.2.3 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.1.66:3001
+- Environments: .env.local
+✓ Ready in 1333ms
+Creating turbopack project { dir: 'D:\\bitnepal\\projects\\mywallet-app', testMode: true }
+

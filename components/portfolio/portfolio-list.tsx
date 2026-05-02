@@ -21,6 +21,7 @@ import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger }
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
@@ -112,6 +113,7 @@ export function PortfolioList() {
     const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction} = portfolioData
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
+    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
     const currencySymbol = userProfile?.currency ? `${userProfile.currency} ` : "Rs. "
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -186,7 +188,7 @@ export function PortfolioList() {
         quantity: Number.NaN,
         price: Number.NaN,
         type: "buy" as ShareTransaction['type'],
-        date: new Date().toISOString().split('T')[0],
+        date: todayAdDateKey(),
         description: ""
     })
     const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
@@ -285,7 +287,7 @@ export function PortfolioList() {
                 quantity: Number.NaN,
                 price: price || Number.NaN,
                 type: type || 'buy',
-                date: new Date().toISOString().split('T')[0],
+                date: todayAdDateKey(),
                 description: `${type || 'buy'} ${symbol}`
             })
             
@@ -615,7 +617,7 @@ export function PortfolioList() {
                 quantity: Number.NaN,
                 price: Number.NaN,
                 type: "buy",
-                date: new Date().toISOString().split('T')[0],
+                date: todayAdDateKey(),
                 description: ""
             })
             setIsAddDialogOpen(false)
@@ -1464,7 +1466,7 @@ export function PortfolioList() {
         }
 
         const dailySeries = normalized.map((row) => ({
-            date: new Date(row.sortTs).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+            date: formatAppDate(new Date(row.sortTs), calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" }),
             turnoverCr: Number(((row.totalTurnover || 0) / 10000000).toFixed(2)),
             transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
         }))
@@ -3010,6 +3012,7 @@ export function PortfolioList() {
                             portfolioStockOptions={portfolioStockOptions}
                             portfolioCryptoOptions={portfolioCryptoOptions}
                             currencySymbol={currencySymbol}
+                            calendarSystem={calendarSystem}
                         />
                     </div>
                 </div>
@@ -4213,7 +4216,7 @@ export function PortfolioList() {
                                                             {tx.description}
                                                         </p>
                                                         <span className="text-[9px] sm:text-[10px] text-muted-foreground opacity-70">
-                                                            {new Date(tx.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                            {formatAppDate(tx.date, calendarSystem)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -4299,6 +4302,7 @@ export function PortfolioList() {
                 portfolioStockOptions={portfolioStockOptions}
                 portfolioCryptoOptions={portfolioCryptoOptions}
                 currencySymbol={currencySymbol}
+                calendarSystem={calendarSystem}
             />
 
             {portfolio.length > 0 && (

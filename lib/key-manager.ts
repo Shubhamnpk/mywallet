@@ -83,13 +83,10 @@ export class SecureKeyManager {
         return await this.getDefaultEncryptionKey()
       }
 
-      // PIN-based key exists, but caller didn't provide PIN and no cache available.
+      // PIN-based key exists, but caller didn't provide PIN and no in-memory key is available.
       if (!pin) {
-        const sessionPin = this.getSessionPin()
-        if (!sessionPin) {
-          return null
-        }
-        pin = sessionPin
+        this.clearSessionPin()
+        return null
       }
 
       const salt = new Uint8Array(
@@ -112,21 +109,15 @@ export class SecureKeyManager {
   }
 
   static cacheSessionPin(pin: string): void {
-    try {
-      if (typeof window === "undefined") return
-      sessionStorage.setItem(this.SESSION_PIN_KEY, pin)
-    } catch {
-      // Ignore sessionStorage errors in restricted environments
-    }
+    // Backward-compatible API for old callers. The PIN is intentionally not cached.
+    // Successful getMasterKey(pin) calls cache the derived CryptoKey in memory instead.
+    void pin
+    this.clearSessionPin()
   }
 
   static getCachedSessionPin(): string | null {
-    try {
-      if (typeof window === "undefined") return null
-      return sessionStorage.getItem(this.SESSION_PIN_KEY)
-    } catch {
-      return null
-    }
+    this.clearSessionPin()
+    return null
   }
 
   static clearSessionPin(): void {
@@ -134,15 +125,6 @@ export class SecureKeyManager {
       if (typeof window === "undefined") return
       sessionStorage.removeItem(this.SESSION_PIN_KEY)
     } catch {
-    }
-  }
-
-  private static getSessionPin(): string | null {
-    try {
-      if (typeof window === "undefined") return null
-      return sessionStorage.getItem(this.SESSION_PIN_KEY)
-    } catch {
-      return null
     }
   }
 
@@ -223,7 +205,10 @@ export class SecureKeyManager {
 
     // Set up automatic cache cleanup
     setTimeout(() => {
-      this.keyCache.delete(keyId)
+      const cached = this.keyCache.get(keyId)
+      if (cached && cached.expires <= Date.now()) {
+        this.keyCache.delete(keyId)
+      }
     }, this.SESSION_TIMEOUT)
   }
 
@@ -486,4 +471,11 @@ export class SecureKeyManager {
       overallRisk,
     }
   }
+}
+
+try {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem("wallet_session_pin")
+  }
+} catch {
 }

@@ -18,6 +18,7 @@ import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 function BadgeRow({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -84,6 +85,7 @@ export function TransactionsList({
   fetchTransactions,
 }: TransactionsListProps) {
   const { updateTransaction, categories: walletCategories } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -223,11 +225,11 @@ export function TransactionsList({
                     {dateRange?.from ? (
                       dateRange?.to ? (
                         <>
-                          {dateRange.from.toLocaleDateString()} -{" "}
-                          {dateRange.to.toLocaleDateString()}
+                          {formatAppDate(dateRange.from, calendarSystem)} -{" "}
+                          {formatAppDate(dateRange.to, calendarSystem)}
                         </>
                       ) : (
-                        dateRange.from.toLocaleDateString()
+                        formatAppDate(dateRange.from, calendarSystem)
                       )
                     ) : (
                       <span>Pick a date range</span>
@@ -358,7 +360,9 @@ export function TransactionsList({
                           {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.total ?? transaction.amount, userProfile.currency, userProfile.customCurrency)}
                         </p>
                       </div>
-                      <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground`}>{new Date(transaction.date).toLocaleDateString()}</span>
+                      <span className={`${isMobile ? 'text-xs' : 'text-sm'} text-muted-foreground`}>
+                        {formatAppDate(transaction.date, calendarSystem)}
+                      </span>
                     </div>
                   </li>
                 ))}

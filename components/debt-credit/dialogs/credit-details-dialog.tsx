@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 interface CreditDetailsDialogProps {
     open: boolean
@@ -20,6 +21,7 @@ export function CreditDetailsDialog({
     transactions,
     userProfile
 }: CreditDetailsDialogProps) {
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
@@ -50,7 +52,7 @@ export function CreditDetailsDialog({
                                                     <div className="flex justify-between">
                                                         <div>
                                                             <p className="font-medium">{tx.type === 'payment' ? 'Payment' : tx.type === 'charge' ? 'Charge' : 'Purchase'}</p>
-                                                            <p className="text-xs text-muted-foreground">{new Date(tx.date).toLocaleString()}</p>
+                                                            <p className="text-xs text-muted-foreground">{formatAppDate(tx.date, calendarSystem)}</p>
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="font-semibold">{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}</p>

@@ -14,6 +14,7 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { getCalendarMonthKey, getCalendarSystem } from "@/lib/app-calendar"
 
 interface SpendingBenchmarksProps {
   transactions: Transaction[]
@@ -41,13 +42,14 @@ const mockPeerData = {
 
 export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchmarksProps) {
   const benchmarkData = useMemo(() => {
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
     const userSpending: Record<string, number> = {}
 
     // Calculate user's monthly spending by category
     transactions
       .filter(t => t.type === 'expense')
       .forEach(transaction => {
-        const monthKey = new Date(transaction.date).toISOString().slice(0, 7) // YYYY-MM
+        const monthKey = getCalendarMonthKey(transaction.date, calendarSystem)
         const categoryKey = `${transaction.category}_${monthKey}`
 
         if (!userSpending[transaction.category]) {
@@ -58,7 +60,7 @@ export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchm
 
     // Calculate monthly averages
     const monthsCount = new Set(
-      transactions.map(t => new Date(t.date).toISOString().slice(0, 7))
+      transactions.map(t => getCalendarMonthKey(t.date, calendarSystem)).filter(Boolean)
     ).size || 1
 
     const benchmarks: BenchmarkData[] = Object.entries(userSpending).map(([category, total]) => {
@@ -89,7 +91,7 @@ export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchm
     })
 
     return benchmarks.sort((a, b) => b.userAverage - a.userAverage).slice(0, 6)
-  }, [transactions])
+  }, [transactions, userProfile.calendarSystem])
 
   const overallPercentile = useMemo(() => {
     if (benchmarkData.length === 0) return 50

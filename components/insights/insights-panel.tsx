@@ -14,6 +14,7 @@ import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
 import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
+import { formatAppMonthKey, getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
 
 interface InsightsPanelProps {
   transactions: Transaction[]
@@ -57,14 +58,10 @@ export function InsightsPanel({
   const totalExpenses = transactions.filter(isTrueExpense).reduce((sum, t) => sum + t.amount, 0)
   const netWorth = totalIncome - totalExpenses
   const now = new Date()
-  const currentMonth = now.getMonth()
-  const currentYear = now.getFullYear()
-  const lastMonthDate = new Date(currentYear, currentMonth - 1, 1)
-  const lastMonth = lastMonthDate.getMonth()
-  const lastMonthYear = lastMonthDate.getFullYear()
-
-  const isSameMonth = (date: Date, month: number, year: number) =>
-    date.getMonth() === month && date.getFullYear() === year
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const currentMonthRange = getCalendarMonthRange(now, calendarSystem)
+  const lastMonthRange = getCalendarMonthRange(now, calendarSystem, -1)
+  const activeMonthLabel = formatAppMonthKey(currentMonthRange.key, calendarSystem)
 
   const parseDate = (value: string) => {
     const parsed = new Date(value)
@@ -73,11 +70,11 @@ export function InsightsPanel({
 
   const thisMonthTransactions = transactions.filter((t) => {
     const date = parseDate(t.date)
-    return date ? isSameMonth(date, currentMonth, currentYear) : false
+    return date ? isWithinDateRange(date, currentMonthRange.start, currentMonthRange.end) : false
   })
   const lastMonthTransactions = transactions.filter((t) => {
     const date = parseDate(t.date)
-    return date ? isSameMonth(date, lastMonth, lastMonthYear) : false
+    return date ? isWithinDateRange(date, lastMonthRange.start, lastMonthRange.end) : false
   })
 
   const thisMonthIncome = thisMonthTransactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
@@ -87,7 +84,13 @@ export function InsightsPanel({
 
   const atRiskBudgets = budgets
     .filter((b) => b.limit > 0)
-    .map((b) => ({ ...b, usage: (b.spent / b.limit) * 100 }))
+    .map((b) => {
+      const categorySet = new Set([b.category, ...(b.categories || [])].filter(Boolean).map((category) => category.toLowerCase()))
+      const activeSpent = thisMonthTransactions
+        .filter((transaction) => isTrueExpense(transaction) && categorySet.has((transaction.category || "").toLowerCase()))
+        .reduce((sum, transaction) => sum + transaction.amount, 0)
+      return { ...b, spent: activeSpent, usage: (activeSpent / b.limit) * 100 }
+    })
     .filter((b) => b.usage >= 80)
     .sort((a, b) => b.usage - a.usage)
     .slice(0, 3)
@@ -144,8 +147,9 @@ export function InsightsPanel({
   const { overallScore } = useFinancialHealthScore(transactions, userProfile, budgets, goals, debtAccounts, balance)
 
   // Smart Advisor Logic
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const dayOfMonth = now.getDate()
+  const dayMs = 24 * 60 * 60 * 1000
+  const daysInMonth = Math.max(1, Math.round((currentMonthRange.end.getTime() - currentMonthRange.start.getTime()) / dayMs))
+  const dayOfMonth = Math.min(daysInMonth, Math.max(1, Math.floor((now.getTime() - currentMonthRange.start.getTime()) / dayMs) + 1))
   const daysRemaining = Math.max(1, daysInMonth - dayOfMonth)
 
   const dailySpendingThisMonth = thisMonthExpenses / (dayOfMonth || 1)
@@ -260,7 +264,7 @@ export function InsightsPanel({
           type: 'info',
           icon: <Clock className="w-5 h-5 text-slate-400" />,
           title: 'Stagnant Goal',
-          description: `You haven't contributed to "${g.title || g.name}" this month. Even a small amount keeps the habit alive.`,
+          description: `You haven't contributed to "${g.title || g.name}" in ${activeMonthLabel}. Even a small amount keeps the habit alive.`,
           action: 'Transfer Now',
           tab: 'goals'
         })
@@ -301,12 +305,11 @@ export function InsightsPanel({
     topCategories.forEach(([cat, amt]) => {
       // Find average spending for this category in previous months (simple heuristic)
       const previousTotal = transactions
-        .filter(t => t.type === 'expense' && t.category === cat && !isSameMonth(new Date(t.date), currentMonth, currentYear))
+        .filter(t => t.type === 'expense' && t.category === cat && !isWithinDateRange(t.date, currentMonthRange.start, currentMonthRange.end))
         .reduce((sum, t) => sum + t.amount, 0)
 
       const categoryMonthsCount = new Set(transactions.map(t => {
-        const d = new Date(t.date)
-        return `${d.getFullYear()}-${d.getMonth()}`
+        return getCalendarMonthKey(t.date, calendarSystem)
       })).size - 1
 
       const avgMonthlyForCat = categoryMonthsCount > 0 ? previousTotal / categoryMonthsCount : amt
@@ -371,7 +374,7 @@ export function InsightsPanel({
     }
 
     return items
-  }, [atRiskBudgets, expenseChangePercent, savingsRate, timeWalletActive, topGoals, dailySpendingThisMonth, dailySafetyBudget, totalWorkTimeEarned, totalWorkTimeSpent, userProfile, transactions, balance, goals, debtAccounts, daysInMonth, dayOfMonth, daysRemaining, thisMonthExpenses, thisMonthIncome, budgets])
+  }, [atRiskBudgets, expenseChangePercent, savingsRate, timeWalletActive, topGoals, dailySpendingThisMonth, dailySafetyBudget, totalWorkTimeEarned, totalWorkTimeSpent, userProfile, transactions, balance, goals, debtAccounts, daysInMonth, dayOfMonth, daysRemaining, thisMonthExpenses, thisMonthIncome, budgets, calendarSystem, currentMonthRange.start, currentMonthRange.end, activeMonthLabel])
 
   const handleSmartAction = (insight: any) => {
     if (insight.actionId === 'setup_ef') {
@@ -463,8 +466,8 @@ export function InsightsPanel({
             </h2>
             <p className="text-muted-foreground text-lg max-w-xl">
               {thisMonthIncome > thisMonthExpenses
-                ? `You're on track to save ${formatCurrency(potentialSavings, userProfile.currency, userProfile.customCurrency)} this month. Keep your daily spending below ${formatCurrency(dailySafetyBudget, userProfile.currency, userProfile.customCurrency)}.`
-                : "Your expenses currently exceed your income. Let's look for ways to optimize your spending for the rest of the month."}
+                ? `You're on track to save ${formatCurrency(potentialSavings, userProfile.currency, userProfile.customCurrency)} in ${activeMonthLabel}. Keep your daily spending below ${formatCurrency(dailySafetyBudget, userProfile.currency, userProfile.customCurrency)}.`
+                : `Your expenses currently exceed your income. Let's look for ways to optimize your spending for the rest of ${activeMonthLabel}.`}
             </p>
             <div className="flex flex-wrap gap-3 justify-center md:justify-start">
               <Button onClick={() => setIsModalOpen(true)} className="rounded-full px-6 font-bold shadow-lg shadow-primary/20">

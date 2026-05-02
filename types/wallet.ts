@@ -3,6 +3,7 @@ export interface UserProfile {
   name: string
   monthlyEarning: number
   currency: string
+  calendarSystem?: "AD" | "BS"
   workingHoursPerDay: number
   workingDaysPerMonth: number
   pin?: string

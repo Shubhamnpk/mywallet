@@ -57,6 +57,7 @@ import {
 } from "@/lib/notification-history"
 import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
+import { getCalendarSystem } from "@/lib/app-calendar"
 import { toast } from "sonner"
 import { showUndoToast } from "@/components/ui/undo-toast"
 
@@ -989,7 +990,7 @@ export function useWalletStore() {
               emitReminder(
                 `sip-upcoming-${plan.id}`,
                 `SIP due in ${schedule.daysUntilNext} day${schedule.daysUntilNext === 1 ? "" : "s"}`,
-                `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString())}. Keep ${amountLabel} ready.`,
+                `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString(), getCalendarSystem(userProfile?.calendarSystem))}. Keep ${amountLabel} ready.`,
                 18 * HOUR_MS,
                 "sip",
             )
@@ -997,9 +998,9 @@ export function useWalletStore() {
 
           if (schedule.isRecentlyMissed && schedule.previousDate) {
             emitReminder(
-              `sip-missed-${plan.id}-${formatSipDate(schedule.previousDate.toISOString())}`,
+              `sip-missed-${plan.id}-${formatSipDate(schedule.previousDate.toISOString(), getCalendarSystem(userProfile?.calendarSystem))}`,
               `SIP missed: ${planLabel}`,
-              `The installment scheduled on ${formatSipDate(schedule.previousDate.toISOString())} may still be pending.`,
+              `The installment scheduled on ${formatSipDate(schedule.previousDate.toISOString(), getCalendarSystem(userProfile?.calendarSystem))} may still be pending.`,
               24 * HOUR_MS,
               "sip",
             )
@@ -1450,6 +1451,7 @@ export function useWalletStore() {
     const completeProfile = {
       ...profileData,
       securityEnabled: profileData.securityEnabled,
+      calendarSystem: getCalendarSystem(profileData.calendarSystem),
       notificationSettings: normalizeNotificationSettings(profileData.notificationSettings ?? getDefaultNotificationSettings()),
       sipPlans: normalizeSipPlans(profileData.sipPlans),
       createdAt: new Date().toISOString(),
@@ -1658,6 +1660,7 @@ export function useWalletStore() {
     const updatedProfile = {
       ...currentProfile,
       ...updates,
+      calendarSystem: getCalendarSystem(updates.calendarSystem ?? currentProfile.calendarSystem),
       notificationSettings: normalizeNotificationSettings({
         ...currentProfile.notificationSettings,
         ...(updates.notificationSettings || {}),

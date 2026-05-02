@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { AppDateInput } from "@/components/ui/app-date-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -28,6 +29,7 @@ import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Settings2 } from "lucide-react"
+import { getCalendarSystem, toAdDateKey } from "@/lib/app-calendar"
 
 interface SIPSetupModalProps {
   item: PortfolioItem | null
@@ -51,10 +53,7 @@ type SIPFormState = {
 const NO_ENROLLMENT_VALUE = "__none__"
 
 const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, "0")
-  const day = `${date.getDate()}`.padStart(2, "0")
-  return `${year}-${month}-${day}`
+  return toAdDateKey(date)
 }
 
 const getDefaultStartDate = () => {
@@ -72,7 +71,8 @@ export function SIPSetupModal({
   onOpenChange,
   onPlanSaved,
 }: SIPSetupModalProps) {
-  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan } = useWalletData()
+  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, userProfile } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
     frequency: "monthly",
@@ -291,8 +291,8 @@ export function SIPSetupModal({
 
       toast.success(existingPlan ? "SIP plan updated" : "SIP plan created", {
         description: selectedEnrollmentTx && !existingPlan
-          ? `${assetLabel} is scheduled from ${formatSipDate(form.startDate)} and ${historicalTransactionsToEnroll.length} history installment${historicalTransactionsToEnroll.length === 1 ? "" : "s"} were linked.`
-          : `${assetLabel} is now scheduled from ${formatSipDate(form.startDate)}.`,
+          ? `${assetLabel} is scheduled from ${formatSipDate(form.startDate, calendarSystem)} and ${historicalTransactionsToEnroll.length} history installment${historicalTransactionsToEnroll.length === 1 ? "" : "s"} were linked.`
+          : `${assetLabel} is now scheduled from ${formatSipDate(form.startDate, calendarSystem)}.`,
       })
       onPlanSaved?.(existingPlan ? "updated" : "created")
       onOpenChange(false)
@@ -353,7 +353,7 @@ export function SIPSetupModal({
                   <SelectItem value={NO_ENROLLMENT_VALUE}>Skip past buys</SelectItem>
                   {enrollableTransactions.map((tx) => (
                     <SelectItem key={tx.id} value={tx.id}>
-                      {formatSipDate(tx.date)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
+                      {formatSipDate(tx.date, calendarSystem)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -377,7 +377,7 @@ export function SIPSetupModal({
 
           <div className="flex items-center justify-between py-2 border-y">
             <div>
-              <p className="text-xs text-muted-foreground">Next: {nextInstallment ? formatSipDate(nextInstallment.toISOString()) : "Pick a date"}</p>
+              <p className="text-xs text-muted-foreground">Next: {nextInstallment ? formatSipDate(nextInstallment.toISOString(), calendarSystem) : "Pick a date"}</p>
               <p className="text-sm font-medium">~{computedUnits > 0 ? computedUnits.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "0"} units @ {referencePrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
             </div>
             <div className="text-right">
@@ -421,11 +421,11 @@ export function SIPSetupModal({
             </div>
             <div className="space-y-2">
               <Label htmlFor="sip-date">Start date</Label>
-              <Input
+              <AppDateInput
                 id="sip-date"
-                type="date"
                 value={form.startDate}
-                onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
+                calendarSystem={calendarSystem}
+                onChange={(date) => setForm((current) => ({ ...current, startDate: date }))}
               />
             </div>
           </div>
@@ -515,7 +515,7 @@ export function SIPSetupModal({
 
           <div className="p-4">
             <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
-              Transactions from {selectedEnrollmentTx ? formatSipDate(selectedEnrollmentTx?.date) : "start date"}
+              Transactions from {selectedEnrollmentTx ? formatSipDate(selectedEnrollmentTx?.date, calendarSystem) : "start date"}
             </p>
 
             <ScrollArea className="h-[300px] pr-2">
@@ -553,7 +553,7 @@ export function SIPSetupModal({
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{formatSipDate(tx.date)}</span>
+                          <span className="font-medium">{formatSipDate(tx.date, calendarSystem)}</span>
                           {tx.type !== "buy" && (
                             <Badge variant="secondary" className="text-[9px] h-4 capitalize">
                               {tx.type}

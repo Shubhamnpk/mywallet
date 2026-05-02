@@ -10,6 +10,7 @@ import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDo
 import { useDebtCreditData } from "@/hooks/use-debt-credit-data"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 import {
   validateAccountName,
   validateAmount,
@@ -33,6 +34,7 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const wallet = useDebtCreditData()
   const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
@@ -621,7 +623,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                             {tx.type === 'payment' ? '💰 Payment' : tx.type === 'charge' ? '➕ Charge' : '📝 Other'}
                                           </p>
                                           <p className="text-xs text-muted-foreground">
-                                            {new Date(tx.date).toLocaleDateString()}
+                                            {formatAppDate(tx.date, calendarSystem)}
                                           </p>
                                         </div>
                                         <div className="text-right">
@@ -885,7 +887,7 @@ export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps)
                                             {tx.type === 'payment' ? '💰 Payment' : tx.type === 'charge' ? '💳 Charge' : '📝 Other'}
                                           </p>
                                           <p className="text-xs text-muted-foreground">
-                                            {new Date(tx.date).toLocaleDateString()}
+                                            {formatAppDate(tx.date, calendarSystem)}
                                           </p>
                                         </div>
                                         <div className="text-right">

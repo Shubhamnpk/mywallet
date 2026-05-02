@@ -1,4 +1,6 @@
 import type { ShareTransaction, SIPPlan } from "@/types/wallet"
+import type { CalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 export const SIP_DEFAULT_DPS_CHARGE = 5
@@ -50,10 +52,10 @@ const addFrequency = (value: Date, frequency: SIPPlan["frequency"]) => {
   return addMonths(value, 1)
 }
 
-export const formatSipDate = (value?: string | null) => {
+export const formatSipDate = (value?: string | null, calendarSystem: CalendarSystem = "AD") => {
   const parsed = parseDateOnly(value)
   if (!parsed) return "Not set"
-  return parsed.toLocaleDateString(undefined, {
+  return formatAppDate(parsed, calendarSystem, {
     year: "numeric",
     month: "short",
     day: "numeric",

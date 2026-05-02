@@ -32,11 +32,13 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 
 const MEROSHARE_DEV_MODE_KEY = "wallet_meroshare_dev_mode"
 
 export function MeroShareSettings() {
     const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
+    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
     const [showPassword, setShowPassword] = useState(false)
     const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
     const [isLoadingDps, setIsLoadingDps] = useState(false)
@@ -749,7 +751,7 @@ export function MeroShareSettings() {
                                 <div className="space-y-1">
                                     <div className="text-sm font-semibold">{log.ipoName}</div>
                                     <div className="text-[11px] text-muted-foreground">
-                                        {new Date(log.createdAt).toLocaleString()} | Action: {log.action === "apply" ? "Apply" : "Report Check"}{typeof log.requestedKitta === "number" ? ` | Kitta: ${log.requestedKitta}` : ""} | Source: {log.source === "live-apply" ? "Live Apply" : log.source === "live-auto" ? "Live Auto" : log.source === "settings-test" ? "Settings Test" : log.source === "live-check" ? "Live Check" : "Settings Check"}
+                                        {formatAppDateTime(log.createdAt, calendarSystem)} | Action: {log.action === "apply" ? "Apply" : "Report Check"}{typeof log.requestedKitta === "number" ? ` | Kitta: ${log.requestedKitta}` : ""} | Source: {log.source === "live-apply" ? "Live Apply" : log.source === "live-auto" ? "Live Auto" : log.source === "settings-test" ? "Settings Test" : log.source === "live-check" ? "Live Check" : "Settings Check"}
                                     </div>
                                     <div className="text-xs text-muted-foreground">{log.message}</div>
                                 </div>

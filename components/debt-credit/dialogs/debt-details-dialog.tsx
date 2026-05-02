@@ -9,6 +9,7 @@ import { getTimeSinceCreation, calculateInterest } from "../debt-credit-utils"
 import type { UserProfile } from "@/types/wallet"
 import { Receipt, TrendingDown, TrendingUp, CreditCard, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
 
 interface DebtDetailsDialogProps {
     open: boolean
@@ -30,18 +31,22 @@ export function DebtDetailsDialog({
     userProfile
 }: DebtDetailsDialogProps) {
     const [historyRange, setHistoryRange] = useState<HistoryRange>("active-month")
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
 
-    const getPeriodStart = (range: HistoryRange): Date => {
+    const getPeriodRange = (range: HistoryRange) => {
         const now = new Date()
         if (range === "this-week") {
             const day = now.getDay()
             const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-            return new Date(now.getFullYear(), now.getMonth(), diff)
+            const start = new Date(now.getFullYear(), now.getMonth(), diff)
+            const end = new Date(start)
+            end.setDate(end.getDate() + 7)
+            return { start, end }
         }
         if (range === "active-month") {
-            return new Date(now.getFullYear(), now.getMonth(), 1)
+            return getCalendarMonthRange(now, calendarSystem)
         }
-        return new Date(0)
+        return { start: new Date(0), end: new Date(8640000000000000) }
     }
 
     const account = useMemo(() => {
@@ -58,9 +63,12 @@ export function DebtDetailsDialog({
 
     const filteredTransactions = useMemo(() => {
         if (historyRange === "all") return accountTransactions
-        const start = getPeriodStart(historyRange)
-        return accountTransactions.filter((t: any) => new Date(t.date).getTime() >= start.getTime())
-    }, [accountTransactions, historyRange])
+        const { start, end } = getPeriodRange(historyRange)
+        return accountTransactions.filter((t: any) => {
+            const time = new Date(t.date).getTime()
+            return time >= start.getTime() && time < end.getTime()
+        })
+    }, [accountTransactions, historyRange, calendarSystem])
 
     const paymentTotal = useMemo(() => {
         return filteredTransactions
@@ -223,7 +231,7 @@ export function DebtDetailsDialog({
                                                                 {meta.label}
                                                             </Badge>
                                                             <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tighter bg-muted px-1.5 py-0.5 rounded">
-                                                                {new Date(tx.date).toLocaleDateString()}
+                                                                {formatAppDate(tx.date, calendarSystem)}
                                                             </span>
                                                         </div>
                                                         <p className="font-semibold text-sm leading-tight text-foreground/90 group-hover:text-foreground transition-colors">

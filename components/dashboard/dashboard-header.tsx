@@ -22,6 +22,7 @@ import {
   readNotificationHistory,
   type NotificationHistoryItem,
 } from "@/lib/notification-history"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
@@ -77,6 +78,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {}
@@ -558,7 +560,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                             <p className="text-[9px] text-muted-foreground mt-1 inline-flex items-center gap-1 group-focus:text-muted-foreground">
                               <Clock className="h-3 w-3" />
                               {n.sourceLabel ? `${n.sourceLabel}${n.deliveredAt ? " · " : ""}` : ""}
-                              {n.deliveredAt ? new Date(n.deliveredAt).toLocaleString() : ""}
+                              {n.deliveredAt ? formatAppDateTime(new Date(n.deliveredAt), calendarSystem) : ""}
                             </p>
                           )}
                           <div className="mt-1 inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary group-focus:text-primary">
@@ -584,7 +586,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium truncate">{h.title}</span>
                             <span className="text-[10px] text-muted-foreground shrink-0">
-                              {new Date(h.at).toLocaleString()}
+                              {formatAppDateTime(new Date(h.at), calendarSystem)}
                             </span>
                           </div>
                           <p className="text-muted-foreground line-clamp-2">{h.body}</p>

@@ -960,9 +960,6 @@ export function DataSettings() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-primary/10 p-2">
-                  <Download className="h-5 w-5 text-primary" />
-                </div>
                 <div>
                   <h3 className="font-semibold">Export Data</h3>
                   <p className="text-sm text-muted-foreground">Create encrypted backup</p>
@@ -976,9 +973,6 @@ export function DataSettings() {
 
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-green-500/10 p-2">
-                  <Upload className="h-5 w-5 text-green-600" />
-                </div>
                 <div>
                   <h3 className="font-semibold">Import Data</h3>
                   <p className="text-sm text-muted-foreground">Restore from backup</p>

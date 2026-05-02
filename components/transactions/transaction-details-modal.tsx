@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
 import { Input } from "@/components/ui/input"
+import { AppDateInput } from "@/components/ui/app-date-input"
 import { Label } from "@/components/ui/label"
 import { AmountInput } from "@/components/ui/amount-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -18,14 +19,12 @@ import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
+import { formatAppDate, getCalendarSystem, todayAdDateKey, toAdDateKey } from "@/lib/app-calendar"
 
 function toDateInputValue(iso: string) {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
+  if (Number.isNaN(d.getTime())) return todayAdDateKey()
+  return toAdDateKey(d)
 }
 
 function canEditTransaction(t: Transaction) {
@@ -71,6 +70,7 @@ export function TransactionDetailsModal({
   const [formSubcategory, setFormSubcategory] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const { goals, debtAccounts } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
 
   const syncFormFromTransaction = useCallback((t: Transaction) => {
     setFormAmount(String(t.amount))
@@ -208,7 +208,7 @@ export function TransactionDetailsModal({
                     <div className="flex items-center gap-1">
                       <p className="text-sm text-muted-foreground">Date:</p>
                       <p className="font-medium">
-                        {new Date(transaction.date).toLocaleDateString("en-US", {
+                        {formatAppDate(transaction.date, calendarSystem, {
                           year: "numeric",
                           month: "long",
                           day: "numeric",
@@ -402,7 +402,12 @@ export function TransactionDetailsModal({
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="tx-edit-date">Date</Label>
-                  <Input id="tx-edit-date" type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+                  <AppDateInput
+                    id="tx-edit-date"
+                    value={formDate}
+                    calendarSystem={calendarSystem}
+                    onChange={setFormDate}
+                  />
                 </div>
               </div>
               <div className="space-y-1">

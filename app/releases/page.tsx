@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatAppDate } from "@/lib/app-calendar"
 
 type ReleaseStatus = "current" | "stable"
 type ReleaseCategory = "Feature" | "Bugfix" | "Improvement" | "Major" | "UX" | "Security" | "Performance"
@@ -25,7 +26,7 @@ export const metadata = {
 
 function formatReleaseDate(value: string) {
   const parsed = new Date(`${value}T00:00:00`)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+  return Number.isNaN(parsed.getTime()) ? value : formatAppDate(parsed, "BS")
 }
 
 const categoryColors: Record<ReleaseCategory, string> = {
