@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils"
 import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
@@ -76,6 +77,36 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
+const parsePositiveNumber = (value?: string) => {
+    if (!value) return 0
+    const parsed = Number.parseFloat(value.replace(/,/g, "").trim())
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+const normalizeCompany = (value?: string) =>
+    (value || "")
+        .toLowerCase()
+        .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, "")
+        .replace(/[().,-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+
+const getFiscalYearSortValue = (value?: string) => {
+    if (!value) return Number.NEGATIVE_INFINITY
+    const match = value.match(/\d{4}/)
+    return match ? Number(match[0]) : Number.NEGATIVE_INFINITY
+}
+
+const getDefaultDividendYear = (years: string[]) => {
+    if (years.length === 0) return ""
+    const currentYear = new Date().getFullYear()
+    const latestCompletedYear = years.find((year) => {
+        const sortValue = getFiscalYearSortValue(year)
+        return Number.isFinite(sortValue) && sortValue < currentYear
+    })
+    return latestCompletedYear || years[0]
+}
+
 type ImportQueueItem = {
     id: string
     symbol: string
@@ -85,6 +116,17 @@ type ImportQueueItem = {
     quantity?: number
     description?: string
     priceOptional?: boolean
+}
+
+type ProposedDividendRecord = {
+    id: number
+    symbol: string
+    company_name: string
+    cash_dividend?: string
+    bonus_share?: string
+    fiscal_year?: string
+    announcement_date?: string
+    scraped_at?: string
 }
 
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
@@ -153,6 +195,13 @@ export function PortfolioList() {
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
     const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
     const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
+    const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
+    const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
+    const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
+    const [selectedDividendYear, setSelectedDividendYear] = useState<string>("")
+    const [dividendViewMode, setDividendViewMode] = useState<"historical" | "current">("historical")
+    const [isDividendSectionOpen, setIsDividendSectionOpen] = useState(false)
+    const [expandedDividendPortfolios, setExpandedDividendPortfolios] = useState<Set<string>>(new Set())
     const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
     const [investmentBreakdownModal, setInvestmentBreakdownModal] = useState<{
         open: boolean
@@ -236,11 +285,130 @@ export function PortfolioList() {
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
     const safeNumber = useCallback((value?: number) => (isFiniteNumber(value) ? value : 0), [])
+    const dividendEligibleHoldings = useMemo(
+        () => portfolio.filter((item) => (item.assetType || "stock") === "stock" && !item.cryptoId && item.units > 0),
+        [portfolio],
+    )
+    const hasDividendEligibleHoldings = dividendEligibleHoldings.length > 0
+    const stockTransactionCatalog = useMemo(() => {
+        const map = new Map<string, {
+            portfolioId: string
+            symbol: string
+            assetName: string
+            sector?: string
+            currentUnits: number
+        }>()
+
+        portfolio
+            .filter((item) => (item.assetType || "stock") === "stock" && !item.cryptoId)
+            .forEach((item) => {
+                const normalizedSymbol = normalizeStockSymbol(item.symbol)
+                const key = `${item.portfolioId}|${normalizedSymbol}`
+                map.set(key, {
+                    portfolioId: item.portfolioId,
+                    symbol: normalizedSymbol || item.symbol,
+                    assetName: scripNamesMap[normalizedSymbol] || item.assetName || item.symbol,
+                    sector: item.sector,
+                    currentUnits: item.units || 0,
+                })
+            })
+
+        shareTransactions
+            .filter((tx) => (tx.assetType || "stock") === "stock" && !tx.cryptoId)
+            .forEach((tx) => {
+                const normalizedSymbol = normalizeStockSymbol(tx.symbol)
+                const key = `${tx.portfolioId}|${normalizedSymbol}`
+                if (!map.has(key)) {
+                    map.set(key, {
+                        portfolioId: tx.portfolioId,
+                        symbol: normalizedSymbol || tx.symbol,
+                        assetName: scripNamesMap[normalizedSymbol] || tx.symbol,
+                        sector: undefined,
+                        currentUnits: 0,
+                    })
+                }
+            })
+
+        return Array.from(map.values())
+    }, [portfolio, scripNamesMap, shareTransactions])
+
+    const loadDividendHistory = useCallback(async () => {
+        if (dividendHistory || isDividendHistoryLoading) return
+        setIsDividendHistoryLoading(true)
+        setDividendHistoryError(null)
+        try {
+            const response = await fetch("/api/nepse/proposed-dividend/history-all-years")
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error || "Failed to fetch dividend history")
+            }
+            if (!Array.isArray(data)) {
+                throw new Error("Dividend history response was invalid")
+            }
+            setDividendHistory(data as ProposedDividendRecord[])
+        } catch (error: any) {
+            setDividendHistoryError(error?.message || "Could not load dividend history right now.")
+        } finally {
+            setIsDividendHistoryLoading(false)
+        }
+    }, [dividendHistory, isDividendHistoryLoading])
+
+    useEffect(() => {
+        if (viewMode !== "overview" || !isOverviewFeedOpen || !isDividendSectionOpen || !hasDividendEligibleHoldings) return
+        void loadDividendHistory()
+    }, [hasDividendEligibleHoldings, isDividendSectionOpen, isOverviewFeedOpen, loadDividendHistory, viewMode])
 
     // Helper to show custom confirmation modal
     const showConfirm = useCallback((title: string, description: string, onConfirm: () => void, confirmText = "Confirm", destructive = false) => {
         setConfirmModal({ open: true, title, description, onConfirm, confirmText, destructive })
     }, [])
+
+    const toggleDividendPortfolioExpansion = useCallback((portfolioId: string) => {
+        setExpandedDividendPortfolios((prev) => {
+            const next = new Set(prev)
+            if (next.has(portfolioId)) {
+                next.delete(portfolioId)
+            } else {
+                next.add(portfolioId)
+            }
+            return next
+        })
+    }, [])
+
+    // SIP plan detection and management
+    const normalizedSipPlans = useMemo(() => {
+        return normalizeSipPlans(userProfile?.sipPlans)
+    }, [userProfile?.sipPlans])
+
+    const getSipPlanForPortfolioItem = useCallback((item: PortfolioItem) => {
+        return normalizedSipPlans.find((plan) =>
+            plan.portfolioId === item.portfolioId &&
+            normalizeStockSymbol(plan.symbol) === normalizeStockSymbol(item.symbol) &&
+            plan.assetType === "stock"
+        ) || null
+    }, [normalizedSipPlans])
+
+    const isSipPlanInvalid = useCallback((plan: any) => {
+        if (!plan) return false
+        // Check for invalid SIP plan conditions
+        const hasInvalidAmount = !Number.isFinite(plan.installmentAmount) || plan.installmentAmount <= 0
+        const hasInvalidDate = !plan.startDate || isNaN(new Date(plan.startDate).getTime())
+        const hasInvalidFrequency = !["weekly", "monthly", "quarterly"].includes(plan.frequency)
+        return hasInvalidAmount || hasInvalidDate || hasInvalidFrequency
+    }, [])
+
+    const handleDeleteSipPlan = useCallback(async (planId: string, symbol: string) => {
+        try {
+            await portfolioData.deleteSipPlan?.(planId)
+            toast.success("SIP plan deleted", {
+                description: `SIP plan for ${symbol} has been removed.`
+            })
+        } catch (error: any) {
+            toast.error("Failed to delete SIP plan", {
+                description: error?.message || "Please try again."
+            })
+        }
+    }, [portfolioData])
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -978,6 +1146,199 @@ export function PortfolioList() {
         [portfolios],
     )
 
+    const availableDividendYears = useMemo(() => {
+        const years = Array.from(
+            new Set(
+                (dividendHistory || [])
+                    .map((record) => (record.fiscal_year || "").trim())
+                    .filter(Boolean),
+            ),
+        )
+        return years.sort((a, b) => getFiscalYearSortValue(b) - getFiscalYearSortValue(a) || b.localeCompare(a))
+    }, [dividendHistory])
+
+    useEffect(() => {
+        if (availableDividendYears.length === 0) return
+        if (selectedDividendYear && availableDividendYears.includes(selectedDividendYear)) return
+        setSelectedDividendYear(getDefaultDividendYear(availableDividendYears))
+    }, [availableDividendYears, selectedDividendYear])
+
+    const selectedYearDividendHistory = useMemo(() => {
+        if (!selectedDividendYear) return []
+        return (dividendHistory || [])
+            .filter((record) => (record.fiscal_year || "").trim() === selectedDividendYear)
+            .sort((a, b) => {
+                const left = parseDateToTimestamp(a.announcement_date) ?? Number.NEGATIVE_INFINITY
+                const right = parseDateToTimestamp(b.announcement_date) ?? Number.NEGATIVE_INFINITY
+                return right - left
+            })
+    }, [dividendHistory, selectedDividendYear])
+
+    const getUnitsHeldForDividendDate = useCallback((portfolioId: string, symbol: string, cutoffDate?: string) => {
+        if (!cutoffDate) return 0
+        const cutoffTs = parseDateToTimestamp(cutoffDate)
+        if (!Number.isFinite(cutoffTs)) return 0
+        const safeCutoffTs = cutoffTs as number
+
+        const units = shareTransactions
+            .filter((tx) =>
+                tx.portfolioId === portfolioId &&
+                (tx.assetType || "stock") === "stock" &&
+                !tx.cryptoId &&
+                normalizeStockSymbol(tx.symbol) === symbol,
+            )
+            .filter((tx) => {
+                const txTs = parseDateToTimestamp(tx.date)
+                return Number.isFinite(txTs) && (txTs ?? Number.POSITIVE_INFINITY) <= safeCutoffTs
+            })
+            .sort((a, b) => (parseDateToTimestamp(a.date) ?? 0) - (parseDateToTimestamp(b.date) ?? 0))
+            .reduce((sum, tx) => {
+                const quantity = safeNumber(tx.quantity)
+                if (tx.type === "buy" || tx.type === "ipo" || tx.type === "reinvestment" || tx.type === "bonus" || tx.type === "gift" || tx.type === "merger_in") {
+                    return sum + quantity
+                }
+                if (tx.type === "sell" || tx.type === "merger_out") {
+                    return sum - quantity
+                }
+                return sum
+            }, 0)
+
+        return Number(units.toFixed(4))
+    }, [safeNumber, shareTransactions])
+
+    const dividendSummaryByPortfolio = useMemo(() => {
+        const portfolioNameById = new Map(portfolios.map((entry) => [entry.id, entry.name]))
+
+        const sourceHoldings = dividendViewMode === "current"
+            ? dividendEligibleHoldings.map((item) => ({
+                portfolioId: item.portfolioId,
+                symbol: normalizeStockSymbol(item.symbol) || item.symbol,
+                assetName: scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol,
+                sector: item.sector,
+                units: item.units || 0,
+                matchedRecord: selectedYearDividendHistory.find((record) => {
+                    const normalizedSymbol = normalizeStockSymbol(item.symbol)
+                    const normalizedHoldingName = normalizeCompany(scripNamesMap[normalizedSymbol] || item.assetName || item.symbol)
+                    const recordSymbol = normalizeStockSymbol(record.symbol)
+                    if (normalizedSymbol && recordSymbol === normalizedSymbol) return true
+                    const recordName = normalizeCompany(record.company_name)
+                    return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
+                }),
+            }))
+            : stockTransactionCatalog.map((item) => {
+                const normalizedHoldingName = normalizeCompany(item.assetName || item.symbol)
+                const matchedRecord = selectedYearDividendHistory.find((record) => {
+                    const recordSymbol = normalizeStockSymbol(record.symbol)
+                    if (item.symbol && recordSymbol === item.symbol) return true
+                    const recordName = normalizeCompany(record.company_name)
+                    return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
+                })
+                const units = matchedRecord
+                    ? getUnitsHeldForDividendDate(item.portfolioId, item.symbol, matchedRecord.announcement_date || matchedRecord.scraped_at)
+                    : 0
+                return {
+                    ...item,
+                    units,
+                    matchedRecord,
+                }
+            })
+
+        return sourceHoldings
+            .filter((item) => item.units > 0 || Boolean(item.matchedRecord))
+            .filter((item) => item.units > 0)
+            .reduce((acc, item) => {
+                const cashPercent = parsePositiveNumber(item.matchedRecord?.cash_dividend)
+                const bonusPercent = parsePositiveNumber(item.matchedRecord?.bonus_share)
+                const faceValue = item.sector === "Mutual Fund" ? 10 : getFaceValue(item.symbol)
+                const estimatedCash = Number(((item.units * faceValue * cashPercent) / 100).toFixed(2))
+                const estimatedBonusUnits = Number(((item.units * bonusPercent) / 100).toFixed(4))
+                const portfolioId = item.portfolioId
+                const existing = acc.get(portfolioId) || {
+                    portfolioId,
+                    portfolioName: portfolioNameById.get(portfolioId) || "Portfolio",
+                    includeInTotals: includedPortfolioIds.has(portfolioId),
+                    holdingsCount: 0,
+                    matchedCount: 0,
+                    estimatedCash: 0,
+                    estimatedBonusUnits: 0,
+                    holdings: [] as Array<{
+                        symbol: string
+                        assetName: string
+                        units: number
+                        cashPercent: number
+                        bonusPercent: number
+                        estimatedCash: number
+                        estimatedBonusUnits: number
+                        announcementDate?: string
+                    }>,
+                }
+
+                existing.holdingsCount += 1
+                if (item.matchedRecord) {
+                    existing.matchedCount += 1
+                }
+                existing.estimatedCash += estimatedCash
+                existing.estimatedBonusUnits += estimatedBonusUnits
+                existing.holdings.push({
+                    symbol: item.symbol,
+                    assetName: item.assetName,
+                    units: item.units,
+                    cashPercent,
+                    bonusPercent,
+                    estimatedCash,
+                    estimatedBonusUnits,
+                    announcementDate: item.matchedRecord?.announcement_date,
+                })
+
+                acc.set(portfolioId, existing)
+                return acc
+            }, new Map<string, {
+                portfolioId: string
+                portfolioName: string
+                includeInTotals: boolean
+                holdingsCount: number
+                matchedCount: number
+                estimatedCash: number
+                estimatedBonusUnits: number
+                holdings: Array<{
+                    symbol: string
+                    assetName: string
+                    units: number
+                    cashPercent: number
+                    bonusPercent: number
+                    estimatedCash: number
+                    estimatedBonusUnits: number
+                    announcementDate?: string
+                }>
+            }>())
+    }, [dividendEligibleHoldings, dividendViewMode, getFaceValue, getUnitsHeldForDividendDate, includedPortfolioIds, portfolios, scripNamesMap, selectedYearDividendHistory, stockTransactionCatalog])
+
+    const dividendPortfolioRows = useMemo(() =>
+        Array.from(dividendSummaryByPortfolio.values())
+            .sort((a, b) =>
+                Number(b.includeInTotals) - Number(a.includeInTotals) ||
+                b.estimatedCash - a.estimatedCash ||
+                a.portfolioName.localeCompare(b.portfolioName),
+            ),
+    [dividendSummaryByPortfolio])
+
+    const dividendOverviewTotals = useMemo(() => {
+        const includedRows = dividendPortfolioRows.filter((row) => row.includeInTotals)
+        return includedRows.reduce((sum, row) => ({
+            portfolios: sum.portfolios + 1,
+            holdings: sum.holdings + row.holdingsCount,
+            matched: sum.matched + row.matchedCount,
+            estimatedCash: sum.estimatedCash + row.estimatedCash,
+            estimatedBonusUnits: sum.estimatedBonusUnits + row.estimatedBonusUnits,
+        }), {
+            portfolios: 0,
+            holdings: 0,
+            matched: 0,
+            estimatedCash: 0,
+            estimatedBonusUnits: 0,
+        })
+    }, [dividendPortfolioRows])
+
     const getInvestmentBreakdown = useCallback((portfolioId?: string | null) => {
         const selectedItems = portfolio.filter((item) => !portfolioId || item.portfolioId === portfolioId)
         const currentInvested = selectedItems
@@ -1475,9 +1836,32 @@ export function PortfolioList() {
     }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
 
     const overviewNotifications = useMemo(() => {
+        // Add invalid SIP plan notifications
+        const invalidSipNotifications = normalizedSipPlans
+            .filter(plan => isSipPlanInvalid(plan))
+            .map(plan => {
+                // Find the portfolio name for better context
+                const portfolioName = portfolios.find(p => p.id === plan.portfolioId)?.name || 'Unknown Portfolio'
+                return {
+                    id: `sip-invalid-${plan.id}`,
+                    category: "sip" as const,
+                    title: "Invalid SIP Plan Detected",
+                    text: `SIP plan for ${plan.symbol} in "${portfolioName}" has invalid configuration`,
+                    details: `The SIP plan for ${plan.symbol} in portfolio "${portfolioName}" has invalid data that needs attention. Please review and fix plan configuration or delete it. Each portfolio's SIP is calculated separately.`,
+                    timestamp: plan.updatedAt,
+                    tone: "warning" as const,
+                    documents: [] as Array<{ label: string; url: string }>,
+                    planId: plan.id,
+                    symbol: plan.symbol,
+                    portfolioId: plan.portfolioId,
+                    portfolioName,
+                    actionLabel: "View Details"
+                }
+            })
+
         const toDocuments = (docs?: NepseDisclosure["applicationDocumentDetailsList"]) =>
             (docs || [])
-                .map((doc) => {
+                .map((doc: any) => {
                     const resolvedUrl = resolveNepseDocumentUrl(doc.fileUrl || doc.filePath || null)
                     if (!resolvedUrl) return null
                     const label = (doc.fileUrl || doc.filePath || "Document").split("/").pop() || "Document"
@@ -1534,10 +1918,10 @@ export function PortfolioList() {
             ipo,
         }))
 
-        return [...ipoItems, ...general, ...company, ...exchange]
-            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        return [...invalidSipNotifications, ...ipoItems, ...general, ...company, ...exchange]
+            .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
             .slice(0, 14)
-    }, [noticesBundle, disclosures, exchangeMessages, upcomingIPOs])
+    }, [noticesBundle, disclosures, exchangeMessages, upcomingIPOs, normalizedSipPlans, isSipPlanInvalid])
 
     const overviewNotificationsWithMeta = useMemo(() => {
         const formatter = new Intl.DateTimeFormat(undefined, {
@@ -1563,12 +1947,14 @@ export function PortfolioList() {
         total: overviewNotificationsWithMeta.length,
         ipo: overviewNotificationsWithMeta.filter((item) => item.category === "ipo").length,
         filings: overviewNotificationsWithMeta.filter((item) => item.documents.length > 0).length,
+        sip: overviewNotificationsWithMeta.filter((item) => item.category === "sip").length,
     }), [overviewNotificationsWithMeta])
 
     const getOverviewNotificationIcon = (category: string) => {
         if (category === "ipo") return <BellRing className="w-4 h-4" />
         if (category === "disclosure") return <FileText className="w-4 h-4" />
         if (category === "exchange") return <Activity className="w-4 h-4" />
+        if (category === "sip") return <Calendar className="w-4 h-4" />
         return <Info className="w-4 h-4" />
     }
 
@@ -1692,6 +2078,17 @@ export function PortfolioList() {
         if (notification?.category === "ipo" && "ipo" in notification && notification.ipo) {
             handleViewIPODetail(notification.ipo)
             return
+        }
+        if (notification?.category === "sip" && "planId" in notification && "symbol" in notification && "portfolioId" in notification) {
+            // Handle SIP notifications by opening the specific portfolio item
+            const portfolioItem = portfolio.find(item => 
+                item.portfolioId === notification.portfolioId &&
+                normalizeStockSymbol(item.symbol) === normalizeStockSymbol(notification.symbol)
+            )
+            if (portfolioItem) {
+                handleViewStockDetail(portfolioItem)
+                return
+            }
         }
         setSelectedOverviewNotificationId(id)
         setSelectedOverviewNotificationDocUrl(null)
@@ -1899,6 +2296,236 @@ export function PortfolioList() {
                 </Badge>
             </div>
             </>
+        )
+    }
+
+    const renderDividendSection = () => {
+        const canShowDividendSection = hasDividendEligibleHoldings
+
+        if (!canShowDividendSection) {
+            return (
+                <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                        Add active stock holdings to estimate portfolio dividends.
+                    </p>
+                </div>
+            )
+        }
+
+        if (!isDividendSectionOpen) {
+            return (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5">
+                    <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        onClick={() => setIsDividendSectionOpen(true)}
+                    >
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Gift className="w-4 h-4 text-amber-600" />
+                            <div>
+                                <p className="text-sm font-black uppercase tracking-widest">Dividend Outlook</p>
+                                <p className="text-[10px] font-semibold text-muted-foreground">
+                                    Closed by default. Open to view yearly dividend estimates.
+                                </p>
+                            </div>
+                        </div>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                </div>
+            )
+        }
+
+        if (!hasDividendEligibleHoldings) {
+            return (
+                <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                        Add active stock holdings to estimate portfolio dividends.
+                    </p>
+                </div>
+            )
+        }
+
+        if (!dividendHistory && !dividendHistoryError) {
+            return (
+                <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground">Loading dividend history...</p>
+                </div>
+            )
+        }
+
+        if (dividendHistoryError && !dividendHistory) {
+            return (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                    <p className="text-xs font-semibold text-destructive">{dividendHistoryError}</p>
+                </div>
+            )
+        }
+
+        return (
+            <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                        type="button"
+                        className="flex items-center gap-2 text-left"
+                        onClick={() => setIsDividendSectionOpen(false)}
+                    >
+                        <Gift className="w-4 h-4 text-amber-600" />
+                        <h4 className="text-sm font-black uppercase tracking-widest">Dividend Outlook</h4>
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                    <div className="text-[10px] font-semibold text-muted-foreground">
+                        Money summary is hidden while this section is open.
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1">
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "historical" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("historical")}
+                            >
+                                Historical
+                            </Button>
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "current" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("current")}
+                            >
+                                Current
+                            </Button>
+                        </div>
+                        <Badge variant="outline" className="h-6 rounded-md text-[9px] font-black uppercase">
+                            {dividendViewMode === "historical" ? "Uses units on dividend date" : "Uses current holdings"}
+                        </Badge>
+                        <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
+                            <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                <SelectValue placeholder="Select FY" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableDividendYears.map((year) => (
+                                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Cash Dividend</p>
+                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Across included portfolios only.</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Bonus Units</p>
+                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Projected units from bonus shares.</p>
+                    </div>
+                    <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Matched Holdings</p>
+                        <p className="mt-1 text-lg font-black">{dividendOverviewTotals.matched}/{dividendOverviewTotals.holdings}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                            {dividendViewMode === "historical" ? "Historical matched holdings for the selected year." : "Current matched holdings for the selected year."}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Included Portfolios</p>
+                        <p className="mt-1 text-lg font-black">{dividendOverviewTotals.portfolios}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Excluded portfolios stay visible below.</p>
+                    </div>
+                </div>
+
+                {dividendHistoryError && dividendHistory && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{dividendHistoryError}</p>
+                    </div>
+                )}
+
+                {selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                            No proposed dividend records were found for {selectedDividendYear}.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {dividendPortfolioRows.map((row) => {
+                            const isExpanded = expandedDividendPortfolios.has(row.portfolioId)
+                            return (
+                                <div key={row.portfolioId} className="rounded-xl border border-muted/30 bg-background/70">
+                                    <button
+                                        type="button"
+                                        className="flex w-full flex-col gap-3 p-3 text-left transition-colors hover:bg-primary/[0.03] sm:flex-row sm:items-start sm:justify-between"
+                                        onClick={() => toggleDividendPortfolioExpansion(row.portfolioId)}
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-black">{row.portfolioName}</p>
+                                                {!row.includeInTotals && (
+                                                    <Badge variant="outline" className="h-5 rounded-md text-[9px] font-black uppercase border-amber-500/30 text-amber-700 dark:text-amber-300">
+                                                        Excluded from totals
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                {row.matchedCount}/{row.holdingsCount} holdings matched for {selectedDividendYear}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-3 sm:min-w-[260px] sm:justify-end">
+                                            <div className="grid flex-1 grid-cols-2 gap-3 text-left">
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">{currencySymbol}{row.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">{row.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                </div>
+                                            </div>
+                                            <div className={cn("shrink-0 rounded-full p-2 transition-transform duration-200", isExpanded && "rotate-180")}>
+                                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                            </div>
+                                        </div>
+                                    </button>
+                                    {isExpanded && (
+                                        <div className="border-t border-muted/20 px-3 pb-3 pt-3">
+                                            <div className="grid gap-2 md:grid-cols-2">
+                                                {row.holdings.map((holding) => (
+                                                    <div key={`${row.portfolioId}-${holding.symbol}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="text-[11px] font-black uppercase">{holding.symbol}</p>
+                                                                <p className="truncate text-[10px] text-muted-foreground">{holding.assetName}</p>
+                                                            </div>
+                                                            <Badge variant={holding.cashPercent > 0 || holding.bonusPercent > 0 ? "secondary" : "outline"} className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                {holding.cashPercent > 0 || holding.bonusPercent > 0 ? "matched" : "no record"}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="mt-2 text-[10px] text-muted-foreground">
+                                                            <p>Units: {formatUnits(holding.units)}</p>
+                                                            <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
+                                                            <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                            <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+                <div className="rounded-xl border border-dashed border-muted/40 bg-background/50 p-3">
+                    <p className="text-[11px] font-semibold text-muted-foreground">
+                        Approximate values only. These dividend figures are estimates based on matched proposed dividend records and your holding history/current holdings, not confirmed actual payouts.
+                    </p>
+                </div>
+            </div>
         )
     }
 
@@ -2190,6 +2817,26 @@ export function PortfolioList() {
                                         </div>
                                     )}
                                     <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
+                                        {selectedOverviewNotification.category === "sip" && "planId" in selectedOverviewNotification && "symbol" in selectedOverviewNotification && (
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                onClick={() => {
+                                                    showConfirm(
+                                                        "Delete Invalid SIP Plan",
+                                                        `Are you sure you want to delete the invalid SIP plan for ${selectedOverviewNotification.symbol} in ${selectedOverviewNotification.portfolioName || 'the portfolio'}?`,
+                                                        () => handleDeleteSipPlan(selectedOverviewNotification.planId, selectedOverviewNotification.symbol),
+                                                        "Delete",
+                                                        true
+                                                    )
+                                                    closeOverviewNotificationDetails(false)
+                                                }}
+                                            >
+                                                <Trash2 className="mr-2 w-3.5 h-3.5" />
+                                                Delete SIP Plan
+                                            </Button>
+                                        )}
                                         {selectedOverviewNotification.documents[0] && (
                                             <Button
                                                 type="button"
@@ -2268,8 +2915,8 @@ export function PortfolioList() {
                     </div>
 
                     <div className="mt-8">
-                        {renderOverviewHeader()}
-                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0) && (
+                        {!isDividendSectionOpen && renderOverviewHeader()}
+                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
                             <div className="mb-6">
                                 <Button
                                     type="button"
@@ -2277,7 +2924,7 @@ export function PortfolioList() {
                                     className="w-full justify-between rounded-xl font-black text-xs uppercase tracking-widest border-primary/20 bg-card/60"
                                     onClick={() => setIsOverviewFeedOpen((prev) => !prev)}
                                 >
-                                    Market & Notifications
+                                    Market, Notifications & Dividends
                                     {isOverviewFeedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                 </Button>
                                 {isOverviewFeedOpen && (
@@ -2494,6 +3141,9 @@ export function PortfolioList() {
                                                         </div>
                                                     </div>
                                                 )}
+                                            </div>
+                                            <div className="mt-4 border-t border-primary/10 pt-4">
+                                                {renderDividendSection()}
                                             </div>
                                             {marketHistorySeries.length > 0 && (
                                                 <div className="mt-4 border-t border-primary/10 pt-4">
@@ -3891,6 +4541,10 @@ export function PortfolioList() {
                                         const isSold = lastExitInfo?.type === "sell"
                                         const isMerged = lastExitInfo?.type === "merger_out"
 
+                                        // SIP plan detection
+                                        const sipPlan = getSipPlanForPortfolioItem(item)
+                                        const isSipInvalid = sipPlan ? isSipPlanInvalid(sipPlan) : false
+
                                         return (
                                             <div
                                                 key={item.id}
@@ -3942,6 +4596,39 @@ export function PortfolioList() {
                                                                         {item.sector || "Others"}
                                                                     </Badge>
                                                                 ) : null}
+                                                                {sipPlan && (
+                                                                    <Badge 
+                                                                        variant="outline" 
+                                                                        className={cn(
+                                                                            "hidden sm:inline-flex text-[9px] h-4 px-1.5 font-bold uppercase tracking-widest border",
+                                                                            isSipInvalid 
+                                                                                ? "bg-red-500/10 text-red-600 border-red-500/30" 
+                                                                                : "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                                                        )}
+                                                                    >
+                                                                        <span className="flex items-center gap-1">
+                                                                            SIP {isSipInvalid ? "(Invalid)" : ""}
+                                                                            {isSipInvalid && (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation()
+                                                                                        showConfirm(
+                                                                                            "Delete Invalid SIP Plan",
+                                                                                            `Are you sure you want to delete the invalid SIP plan for ${item.symbol}?`,
+                                                                                            () => handleDeleteSipPlan(sipPlan.id, item.symbol),
+                                                                                            "Delete",
+                                                                                            true
+                                                                                        )
+                                                                                    }}
+                                                                                    className="ml-1 hover:text-red-800"
+                                                                                    title="Delete invalid SIP plan"
+                                                                                >
+                                                                                    <Trash2 className="w-2.5 h-2.5" />
+                                                                                </button>
+                                                                            )}
+                                                                        </span>
+                                                                    </Badge>
+                                                                )}
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">

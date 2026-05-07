@@ -3567,7 +3567,7 @@ export function useWalletStore() {
       return (
         upperDescription.includes("CA-REARRANGEMENT") ||
         upperDescription.includes("SIP") ||
-        (normalizedSymbol.length > 0 && upperDescription.includes(`BUY`) && upperDescription.includes(`UNITS OF ${normalizedSymbol}`))
+        (normalizedSymbol.length > 0 && upperDescription.includes("BUY") && upperDescription.includes(`UNITS OF ${normalizedSymbol}`))
       )
     }
 
@@ -3590,7 +3590,7 @@ export function useWalletStore() {
       return normalizeSipPlans(userProfile?.sipPlans)
         .filter((plan) =>
           plan.portfolioId === entry.portfolioId &&
-          normalizeStockSymbol(plan.symbol) === normalizedEntrySymbol
+          normalizeStockSymbol(plan.symbol) === normalizedEntrySymbol,
         )
         .sort((a, b) => {
           if (a.status !== b.status) return a.status === "active" ? -1 : 1
@@ -3610,7 +3610,9 @@ export function useWalletStore() {
     else if (isRecognizedSipLikeBuy(tx.description, tx.symbol)) normalizedType = "buy"
 
     const normalizedSymbol = normalizeStockSymbol(tx.symbol)
-    const matchingSipPlan = normalizedType === "buy" ? getMatchingSipPlanForTransaction({ ...tx, type: normalizedType, symbol: normalizedSymbol }) : null
+    const matchingSipPlan = normalizedType === "buy"
+      ? getMatchingSipPlanForTransaction({ ...tx, type: normalizedType, symbol: normalizedSymbol })
+      : null
     const normalizedPrice =
       normalizedType === "bonus" || normalizedType === "gift"
         ? 0
@@ -3629,6 +3631,7 @@ export function useWalletStore() {
     const sipGrossAmount = matchingSipPlan && Number.isFinite(sipNetAmount) && Number.isFinite(sipDpsCharge)
       ? Number(((sipNetAmount as number) + (sipDpsCharge as number)).toFixed(2))
       : tx.sipGrossAmount
+
     const currentTransactions = shareTransactionsRef.current
     const newTx: ShareTransaction = {
       ...tx,
@@ -3642,109 +3645,125 @@ export function useWalletStore() {
       sipNetAmount,
       sipDpsCharge,
       sipGrossAmount,
-      id: generateId('stx'),
+      id: generateId("stx"),
     }
+
     const updatedTransactions = [...currentTransactions, newTx]
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+
     const { newPortfolio: updatedPortfolio, zeroUnitHoldings } = await recomputePortfolio(updatedTransactions)
     return { newTx, updatedPortfolio, zeroUnitHoldings }
   }
 
   const completeSipInstallment = async (
     planId: string,
-    options?: {
-      dueDate?: string
-      price?: number
-      grossAmount?: number
-      notes?: string
-    },
+    options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string },
   ) => {
-    if (!userProfile) {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
       throw new Error("User profile is not available")
     }
 
-    const sipPlans = normalizeSipPlans(userProfile.sipPlans)
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
     const plan = sipPlans.find((entry) => entry.id === planId)
     if (!plan) {
       throw new Error("SIP plan not found")
     }
 
-    const schedule = getSipScheduleSummary(plan, shareTransactions, new Date())
+    const currentTransactions = shareTransactionsRef.current
+    const schedule = getSipScheduleSummary(plan, currentTransactions, new Date())
     const dueDate = options?.dueDate || schedule?.nextDate?.toISOString() || new Date().toISOString()
-    const existingInstallmentTx = getSipCompletedTransactionForDueDate(plan, shareTransactions, dueDate)
-    if (existingInstallmentTx) {
-      throw new Error("This SIP installment is already completed")
-    }
-
-    const fallbackPrice = Number.isFinite(plan.referencePrice) && (plan.referencePrice ?? 0) > 0
-      ? (plan.referencePrice ?? 0)
-      : 0
-    const executionPrice = Number.isFinite(options?.price) && (options?.price ?? 0) > 0
+    const currentPrice = Number.isFinite(options?.price) && (options?.price ?? 0) > 0
       ? Number(options?.price)
-      : fallbackPrice
-
-    if (!Number.isFinite(executionPrice) || executionPrice <= 0) {
-      throw new Error("A valid execution price is required")
-    }
+      : (Number.isFinite(plan.referencePrice) && (plan.referencePrice ?? 0) > 0 ? Number(plan.referencePrice) : 0)
 
     const grossAmount = Number.isFinite(options?.grossAmount) && (options?.grossAmount ?? 0) > 0
       ? Number(options?.grossAmount)
       : plan.installmentAmount
-    const dpsCharge = plan.dpsCharge ?? 5
-    const investedAmount = calculateSipNetInvestment(grossAmount, dpsCharge)
-    if (investedAmount <= 0) {
-      throw new Error("Installment amount must be greater than the DPS charge")
+
+    // Add previous remainder to current installment amount
+    const previousRemainder = Number.isFinite(plan.lastRemainder) ? Number(plan.lastRemainder) : 0
+    const totalAvailableAmount = grossAmount + previousRemainder
+    const dpsCharge = Number.isFinite(plan.dpsCharge) ? Number(plan.dpsCharge) : 5
+    const investedAmount = calculateSipNetInvestment(totalAvailableAmount, dpsCharge)
+
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      throw new Error("A valid SIP execution price is required")
     }
 
-    const quantity = Number((investedAmount / executionPrice).toFixed(8))
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new Error("Installment amount is too small for the selected price")
+    if (!Number.isFinite(totalAvailableAmount) || totalAvailableAmount <= 0) {
+      throw new Error("A valid SIP installment amount is required")
+    }
+
+    if (investedAmount < currentPrice) {
+      throw new Error("Net SIP amount after DPS is not enough to buy at least one unit at the current price")
+    }
+
+    const quantity = Math.floor(investedAmount / currentPrice)
+
+    if (quantity < 1) {
+      throw new Error("Installment amount is not enough to complete this SIP installment")
     }
 
     const completedAt = new Date().toISOString()
     const executionLabel = plan.sector === "Mutual Fund" ? "NAV" : "Price"
-    const shareDescription = `SIP installment${options?.notes ? `: ${options.notes}` : ""} (${executionLabel} ${executionPrice.toFixed(2)}, Gross ${grossAmount.toFixed(2)}, DPS ${dpsCharge.toFixed(2)})`
-    const { newTx, updatedPortfolio } = await addShareTransaction({
+    const shareDescription = `Auto SIP execution${options?.notes ? `: ${options.notes}` : ""} (${executionLabel} ${currentPrice.toFixed(2)}, Gross ${grossAmount.toFixed(2)}, DPS ${dpsCharge.toFixed(2)})`
+
+    const { newTx, updatedPortfolio, zeroUnitHoldings } = await addShareTransaction({
       portfolioId: plan.portfolioId,
       symbol: plan.symbol,
       assetType: "stock",
       type: "buy",
       quantity,
-      price: executionPrice,
+      price: currentPrice,
       date: completedAt,
       description: shareDescription,
       sipPlanId: plan.id,
       sipDueDate: dueDate,
-      sipGrossAmount: grossAmount,
+      sipGrossAmount: totalAvailableAmount,
       sipDpsCharge: dpsCharge,
       sipNetAmount: investedAmount,
     })
 
+    // Calculate remainder for next installment
+    const remainder = Number((investedAmount - (quantity * currentPrice)).toFixed(2))
+    
+    // Update plan with new reference price and store remainder for next installment
     const updatedPlans = sipPlans.map((entry) =>
       entry.id === planId
         ? {
-            ...entry,
-            referencePrice: executionPrice,
-            updatedAt: completedAt,
-          }
+              ...entry,
+              referencePrice: currentPrice,
+              updatedAt: completedAt,
+              // Store remainder in plan metadata for next installment
+              lastRemainder: remainder,
+              lastInstallmentDate: completedAt,
+            }
         : entry,
     )
 
     updateUserProfile({ sipPlans: updatedPlans })
+    
+    toast.success("SIP installment completed automatically", {
+      description: `Bought ${quantity} units at ${executionLabel} ${currentPrice.toFixed(2)}. Remainder: रु${remainder.toFixed(2)} for next installment.`,
+    })
+
     return {
-      installment: {
-        dueDate,
-        grossAmount,
-        dpsCharge,
-        investedAmount,
-        unitsBought: quantity,
-        price: executionPrice,
-        completedAt,
-      },
-      shareTransaction: newTx,
+      transaction: newTx,
       updatedPortfolio,
+      zeroUnitHoldings,
+        installment: {
+          dueDate,
+          grossAmount: totalAvailableAmount,
+          dpsCharge,
+          investedAmount,
+          quantity,
+        price: currentPrice,
+        completedAt,
+        remainder, // Include remainder in response
+      },
     }
   }
 
@@ -3857,14 +3876,16 @@ export function useWalletStore() {
 
       const executionPrice = Number.isFinite(transaction.price) ? (transaction.price ?? 0) : 0
       if (executionPrice <= 0) {
-        throw new Error("Selected transaction must have a valid price")
+         throw new Error(`Transaction ${transaction.id} has no valid price, skipping SIP enrollment for this transaction`)
+        return transaction // Return original transaction without SIP enrollment
       }
 
-      const netAmount = Number((executionPrice * (transaction.quantity || 0)).toFixed(2))
-      const dpsCharge = Number.isFinite(enrollment.dpsCharge) ? Number(enrollment.dpsCharge) : (plan.dpsCharge ?? 5)
+      // For SIP enrollment, use enrollment amounts, not original transaction data
       const grossAmount = Number.isFinite(enrollment.grossAmount) && (enrollment.grossAmount ?? 0) > 0
         ? Number(enrollment.grossAmount)
-        : Number((netAmount + dpsCharge).toFixed(2))
+        : Number((executionPrice * (transaction.quantity || 0)).toFixed(2))
+      const dpsCharge = Number.isFinite(enrollment.dpsCharge) ? Number(enrollment.dpsCharge) : (plan.dpsCharge ?? 5)
+      const netAmount = grossAmount - dpsCharge
 
       updatedCount += 1
       return {
@@ -3877,18 +3898,22 @@ export function useWalletStore() {
       }
     })
 
-    if (updatedCount !== enrollments.length) {
-      throw new Error("Could not update all selected SIP transactions")
+    if (updatedCount === 0) {
+      throw new Error("Could not update any SIP transactions - all selected transactions may have invalid prices")
+    }
+    
+    // If some transactions couldn't be enrolled due to missing prices, log it but don't fail
+    if (updatedCount < enrollments.length) {
+      console.warn(`Only ${updatedCount} out of ${enrollments.length} transactions were enrolled in SIP. Some transactions had no valid prices.`)
     }
 
     const updatedTransactionMap = new Map(updatedTransactions.map((transaction) => [transaction.id, transaction]))
-    const orderedUpdatedTransactions = enrollments.map((enrollment) => {
-      const transaction = updatedTransactionMap.get(enrollment.transactionId)
-      if (!transaction) {
-        throw new Error("Could not update SIP transaction")
-      }
-      return transaction
-    })
+    const orderedUpdatedTransactions = enrollments
+      .map((enrollment) => {
+        const transaction = updatedTransactionMap.get(enrollment.transactionId)
+        return transaction
+      })
+      .filter((transaction): transaction is ShareTransaction => Boolean(transaction))
 
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)

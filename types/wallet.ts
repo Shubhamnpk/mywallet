@@ -72,6 +72,8 @@ export interface SIPPlan {
   notes?: string
   createdAt: string
   updatedAt: string
+  lastRemainder?: number
+  lastInstallmentDate?: string
 }
 
 export interface MeroShareApplicationLog {

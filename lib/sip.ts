@@ -36,20 +36,26 @@ const parseDateOnly = (value?: string | null) => {
   return toStartOfDay(parsed)
 }
 
-const addMonths = (value: Date, months: number) => {
-  const next = new Date(value)
-  next.setMonth(next.getMonth() + months)
-  return toStartOfDay(next)
+const addMonths = (value: Date, months: number, anchorDay = value.getDate()) => {
+  const year = value.getFullYear()
+  const month = value.getMonth()
+
+  const targetMonthIndex = month + months
+  const targetYear = year + Math.floor(targetMonthIndex / 12)
+  const normalizedTargetMonth = ((targetMonthIndex % 12) + 12) % 12
+  const lastDayOfTargetMonth = new Date(targetYear, normalizedTargetMonth + 1, 0).getDate()
+
+  return toStartOfDay(new Date(targetYear, normalizedTargetMonth, Math.min(anchorDay, lastDayOfTargetMonth)))
 }
 
-const addFrequency = (value: Date, frequency: SIPPlan["frequency"]) => {
+const addFrequency = (value: Date, frequency: SIPPlan["frequency"], anchorDay = value.getDate()) => {
   if (frequency === "weekly") {
     return toStartOfDay(new Date(value.getTime() + (7 * DAY_MS)))
   }
   if (frequency === "quarterly") {
-    return addMonths(value, 3)
+    return addMonths(value, 3, anchorDay)
   }
-  return addMonths(value, 1)
+  return addMonths(value, 1, anchorDay)
 }
 
 export const formatSipDate = (value?: string | null, calendarSystem: CalendarSystem = "AD") => {
@@ -76,10 +82,11 @@ export const getSipNextInstallmentDate = (
   if (!start) return null
 
   const today = toStartOfDay(now)
+  const anchorDay = start.getDate()
   let next = start
   let safety = 0
   while (next <= today && safety < 500) {
-    next = addFrequency(next, plan.frequency)
+    next = addFrequency(next, plan.frequency, anchorDay)
     safety += 1
   }
   return next
@@ -92,10 +99,11 @@ export const getSipDueDateAtIndex = (
   const start = parseDateOnly(plan.startDate)
   if (!start || index < 0) return null
 
+  const anchorDay = start.getDate()
   let next = start
   let cursor = 0
   while (cursor < index) {
-    next = addFrequency(next, plan.frequency)
+    next = addFrequency(next, plan.frequency, anchorDay)
     cursor += 1
   }
   return next
@@ -118,6 +126,8 @@ export const normalizeSipPlans = (plans?: SIPPlan[] | null): SIPPlan[] => {
       estimatedUnits: Number.isFinite(plan.estimatedUnits) ? plan.estimatedUnits : undefined,
       referencePrice: Number.isFinite(plan.referencePrice) ? plan.referencePrice : undefined,
       notes: plan.notes?.trim() || undefined,
+      lastRemainder: Number.isFinite(plan.lastRemainder) ? plan.lastRemainder : 0,
+      lastInstallmentDate: plan.lastInstallmentDate || undefined,
     }))
 }
 
@@ -186,6 +196,7 @@ export const getSipScheduleSummary = (
   if (!start) return null
 
   const completedDueDates = getCompletedDueDateSet(plan, transactions)
+  const anchorDay = start.getDate()
 
   let cursor = start
   let latestPendingOnOrBeforeToday: Date | null = null
@@ -204,7 +215,7 @@ export const getSipScheduleSummary = (
       }
     }
 
-    cursor = addFrequency(cursor, plan.frequency)
+    cursor = addFrequency(cursor, plan.frequency, anchorDay)
     safety += 1
   }
 

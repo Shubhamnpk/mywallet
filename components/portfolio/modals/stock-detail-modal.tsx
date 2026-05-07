@@ -540,11 +540,30 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const totalSipUnits = useMemo(() =>
         sipTransactions.reduce((sum, tx) => sum + (tx.quantity || 0), 0),
     [sipTransactions])
+    const nextSipBaseAmount = useMemo(() => {
+        if (!existingSipPlan) return 0
+        return Number.isFinite(existingSipPlan.installmentAmount) ? existingSipPlan.installmentAmount : 0
+    }, [existingSipPlan])
+    const nextSipRemainder = useMemo(() => {
+        if (!existingSipPlan) return 0
+        return Number.isFinite(existingSipPlan.lastRemainder) ? (existingSipPlan.lastRemainder ?? 0) : 0
+    }, [existingSipPlan])
+    const nextSipGrossAmount = useMemo(() => {
+        return Number((nextSipBaseAmount + nextSipRemainder).toFixed(2))
+    }, [nextSipBaseAmount, nextSipRemainder])
+    const nextSipNetAmount = useMemo(() => {
+        if (!existingSipPlan) return 0
+        return calculateSipNetInvestment(nextSipGrossAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)
+    }, [existingSipPlan, nextSipGrossAmount])
+    const canAffordNextSipUnit = useMemo(() => {
+        return Number.isFinite(safeCurrent) && safeCurrent > 0 && nextSipNetAmount >= safeCurrent
+    }, [nextSipNetAmount, safeCurrent])
     const canCompleteSipNow = Boolean(
         existingSipPlan &&
         sipSchedule?.nextDate &&
         (sipSchedule.isDueToday || sipSchedule.isOverdue) &&
-        !currentSipInstallment
+        !currentSipInstallment &&
+        canAffordNextSipUnit
     )
 
     const holdingStartDate = useMemo(() => {
@@ -1355,11 +1374,21 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment split</p>
                                                     <p className="mt-1 text-sm font-black">
-                                                        {currencySymbol} {formatValue(existingSipPlan.installmentAmount)}
+                                                        {currencySymbol} {formatValue(nextSipBaseAmount)}
                                                     </p>
                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Invests {currencySymbol} {formatValue(calculateSipNetInvestment(existingSipPlan.installmentAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Base invests {currencySymbol} {formatValue(calculateSipNetInvestment(nextSipBaseAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
                                                     </p>
+                                                    {nextSipRemainder > 0 && (
+                                                        <p className="mt-1 text-[10px] text-green-600">
+                                                            + Carryover {currencySymbol} {formatValue(nextSipRemainder)} • Total this cycle invests {currencySymbol} {formatValue(nextSipNetAmount)}
+                                                        </p>
+                                                    )}
+                                                    {nextSipRemainder <= 0 && (
+                                                        <p className="mt-1 text-[10px] text-muted-foreground">
+                                                            Total this cycle invests {currencySymbol} {formatValue(nextSipNetAmount)}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1371,6 +1400,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Gross total</p>
                                                     <p className="mt-1 text-sm font-black">{currencySymbol} {formatValue(totalSipGross)}</p>
+                                                    {existingSipPlan?.lastRemainder && existingSipPlan.lastRemainder > 0 && (
+                                                        <p className="mt-1 text-[10px] text-green-600">
+                                                            + {currencySymbol} {formatValue(existingSipPlan.lastRemainder)} remainder
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Units from SIP</p>
@@ -1390,10 +1424,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 ? "This cycle is already completed."
                                                                 : canCompleteSipNow
                                                                     ? "Mark this cycle done to buy shares at the current price after the DPS charge."
-                                                                    : "The next SIP cycle is not due yet."}
+                                                                    : (sipSchedule?.isDueToday || sipSchedule?.isOverdue)
+                                                                        ? "This cycle is due, but the net SIP amount still cannot buy one full unit at the current price."
+                                                                        : "The next SIP cycle is not due yet."}
                                                         </p>
                                                         <p className="mt-1 text-[10px] text-muted-foreground">
-                                                            Current execution price: {currencySymbol} {formatValue(safeCurrent)} • Net buy amount: {currencySymbol} {formatValue(calculateSipNetInvestment(existingSipPlan.installmentAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                            Current execution price: {currencySymbol} {formatValue(safeCurrent)} • Net buy amount: {currencySymbol} {formatValue(nextSipNetAmount)}
                                                         </p>
                                                     </div>
                                                     <div className="flex flex-col gap-2">
