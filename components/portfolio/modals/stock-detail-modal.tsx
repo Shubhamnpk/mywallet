@@ -16,7 +16,7 @@ import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
 import { SIPSetupModal } from "./sip-setup-modal"
 import { EditTransactionModal } from "./edit-transaction-modal"
-import { SIP_DEFAULT_DPS_CHARGE, calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipDisplayTransactionsForPlan, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
+import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
 import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
@@ -449,24 +449,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         return getSipDisplayTransactionsForPlan(existingSipPlan, matchedTransactions)
     }, [existingSipPlan, matchedTransactions])
 
-    const getSipGrossAmount = useCallback((tx: ShareTransaction) => {
-        if (Number.isFinite(tx.sipGrossAmount)) return tx.sipGrossAmount ?? 0
-        if (tx.type === "buy") {
-            return Number((((tx.price ?? 0) * (tx.quantity ?? 0)) + (tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)).toFixed(2))
-        }
-        return 0
-    }, [])
+    const getSipGrossAmount = useCallback((tx: ShareTransaction) => getSipTransactionGrossAmount(tx), [])
 
-    const getSipNetAmount = useCallback((tx: ShareTransaction) => {
-        if (Number.isFinite(tx.sipNetAmount)) return tx.sipNetAmount ?? 0
-        return calculateSipNetInvestment(getSipGrossAmount(tx), tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)
-    }, [getSipGrossAmount])
+    const getSipNetAmount = useCallback((tx: ShareTransaction) => getSipTransactionNetAmount(tx), [])
 
-    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => {
-        const isBuyType = tx.type === "buy" || tx.type === "ipo" || tx.type === "merger_in"
-        const hasValidQuantity = Number.isFinite(tx.quantity) && (tx.quantity ?? 0) > 0
-        return isBuyType && !tx.sipPlanId && hasValidQuantity
-    }, [])
+    const isEligibleForSipEnrollment = useCallback((tx: ShareTransaction) => isSipEnrollmentCandidate(tx), [])
 
     const sipEnrollmentCandidates = useMemo(() =>
         matchedTransactions
@@ -540,24 +527,16 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const totalSipUnits = useMemo(() =>
         sipTransactions.reduce((sum, tx) => sum + (tx.quantity || 0), 0),
     [sipTransactions])
-    const nextSipBaseAmount = useMemo(() => {
-        if (!existingSipPlan) return 0
-        return Number.isFinite(existingSipPlan.installmentAmount) ? existingSipPlan.installmentAmount : 0
-    }, [existingSipPlan])
-    const nextSipRemainder = useMemo(() => {
-        if (!existingSipPlan) return 0
-        return Number.isFinite(existingSipPlan.lastRemainder) ? (existingSipPlan.lastRemainder ?? 0) : 0
-    }, [existingSipPlan])
-    const nextSipGrossAmount = useMemo(() => {
-        return Number((nextSipBaseAmount + nextSipRemainder).toFixed(2))
-    }, [nextSipBaseAmount, nextSipRemainder])
-    const nextSipNetAmount = useMemo(() => {
-        if (!existingSipPlan) return 0
-        return calculateSipNetInvestment(nextSipGrossAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)
-    }, [existingSipPlan, nextSipGrossAmount])
-    const canAffordNextSipUnit = useMemo(() => {
-        return Number.isFinite(safeCurrent) && safeCurrent > 0 && nextSipNetAmount >= safeCurrent
-    }, [nextSipNetAmount, safeCurrent])
+    const nextSipBaseAmount = useMemo(() => getSipBaseAmount(existingSipPlan), [existingSipPlan])
+    const nextSipRemainder = useMemo(() => getSipCarryRemainder(existingSipPlan), [existingSipPlan])
+    const nextSipAmounts = useMemo(() => getSipCycleAmounts(existingSipPlan), [existingSipPlan])
+    const nextSipBaseOnlyAmounts = useMemo(
+        () => getSipCycleAmounts(existingSipPlan, { includeCarryRemainder: false }),
+        [existingSipPlan],
+    )
+    const nextSipGrossAmount = nextSipAmounts.grossAmount
+    const nextSipNetAmount = nextSipAmounts.netAmount
+    const canAffordNextSipUnit = useMemo(() => canSipCycleBuyUnit(existingSipPlan, safeCurrent), [existingSipPlan, safeCurrent])
     const canCompleteSipNow = Boolean(
         existingSipPlan &&
         sipSchedule?.nextDate &&
@@ -1377,7 +1356,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         {currencySymbol} {formatValue(nextSipBaseAmount)}
                                                     </p>
                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Base invests {currencySymbol} {formatValue(calculateSipNetInvestment(nextSipBaseAmount, existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE))}
+                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Base invests {currencySymbol} {formatValue(nextSipBaseOnlyAmounts.netAmount)}
                                                     </p>
                                                     {nextSipRemainder > 0 && (
                                                         <p className="mt-1 text-[10px] text-green-600">

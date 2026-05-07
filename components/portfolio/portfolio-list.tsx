@@ -25,6 +25,7 @@ import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-cale
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
+import { buildDividendData, DividendHoldingSummary, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
@@ -77,36 +78,6 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
-const parsePositiveNumber = (value?: string) => {
-    if (!value) return 0
-    const parsed = Number.parseFloat(value.replace(/,/g, "").trim())
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-}
-
-const normalizeCompany = (value?: string) =>
-    (value || "")
-        .toLowerCase()
-        .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, "")
-        .replace(/[().,-]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-
-const getFiscalYearSortValue = (value?: string) => {
-    if (!value) return Number.NEGATIVE_INFINITY
-    const match = value.match(/\d{4}/)
-    return match ? Number(match[0]) : Number.NEGATIVE_INFINITY
-}
-
-const getDefaultDividendYear = (years: string[]) => {
-    if (years.length === 0) return ""
-    const currentYear = new Date().getFullYear()
-    const latestCompletedYear = years.find((year) => {
-        const sortValue = getFiscalYearSortValue(year)
-        return Number.isFinite(sortValue) && sortValue < currentYear
-    })
-    return latestCompletedYear || years[0]
-}
-
 type ImportQueueItem = {
     id: string
     symbol: string
@@ -118,15 +89,13 @@ type ImportQueueItem = {
     priceOptional?: boolean
 }
 
-type ProposedDividendRecord = {
-    id: number
-    symbol: string
-    company_name: string
-    cash_dividend?: string
-    bonus_share?: string
-    fiscal_year?: string
-    announcement_date?: string
-    scraped_at?: string
+type DividendPortfolioAllYearsRow = {
+    portfolioId: string
+    portfolioName: string
+    includeInTotals: boolean
+    totalEstimatedCash: number
+    totalEstimatedBonusUnits: number
+    years: DividendYearSummary[]
 }
 
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
@@ -199,7 +168,7 @@ export function PortfolioList() {
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
     const [selectedDividendYear, setSelectedDividendYear] = useState<string>("")
-    const [dividendViewMode, setDividendViewMode] = useState<"historical" | "current">("historical")
+    const [dividendViewMode, setDividendViewMode] = useState<DividendViewMode>("historical")
     const [isDividendSectionOpen, setIsDividendSectionOpen] = useState(false)
     const [expandedDividendPortfolios, setExpandedDividendPortfolios] = useState<Set<string>>(new Set())
     const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
@@ -285,52 +254,30 @@ export function PortfolioList() {
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
     const safeNumber = useCallback((value?: number) => (isFiniteNumber(value) ? value : 0), [])
-    const dividendEligibleHoldings = useMemo(
-        () => portfolio.filter((item) => (item.assetType || "stock") === "stock" && !item.cryptoId && item.units > 0),
-        [portfolio],
+    const includedPortfolioIds = useMemo(
+        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
+        [portfolios],
     )
+    const dividendData = useMemo(() => buildDividendData({
+        dividendHistory,
+        dividendViewMode,
+        selectedDividendYear,
+        portfolios,
+        portfolio,
+        shareTransactions,
+        scripNamesMap,
+        includedPortfolioIds,
+        getFaceValue,
+    }), [dividendHistory, dividendViewMode, getFaceValue, includedPortfolioIds, portfolio, portfolios, selectedDividendYear, scripNamesMap, shareTransactions])
+    const {
+        dividendEligibleHoldings,
+        availableDividendYears,
+        selectedYearDividendHistory,
+        dividendPortfolioRows,
+        dividendAllYearsRows,
+        dividendOverviewTotals,
+    } = dividendData
     const hasDividendEligibleHoldings = dividendEligibleHoldings.length > 0
-    const stockTransactionCatalog = useMemo(() => {
-        const map = new Map<string, {
-            portfolioId: string
-            symbol: string
-            assetName: string
-            sector?: string
-            currentUnits: number
-        }>()
-
-        portfolio
-            .filter((item) => (item.assetType || "stock") === "stock" && !item.cryptoId)
-            .forEach((item) => {
-                const normalizedSymbol = normalizeStockSymbol(item.symbol)
-                const key = `${item.portfolioId}|${normalizedSymbol}`
-                map.set(key, {
-                    portfolioId: item.portfolioId,
-                    symbol: normalizedSymbol || item.symbol,
-                    assetName: scripNamesMap[normalizedSymbol] || item.assetName || item.symbol,
-                    sector: item.sector,
-                    currentUnits: item.units || 0,
-                })
-            })
-
-        shareTransactions
-            .filter((tx) => (tx.assetType || "stock") === "stock" && !tx.cryptoId)
-            .forEach((tx) => {
-                const normalizedSymbol = normalizeStockSymbol(tx.symbol)
-                const key = `${tx.portfolioId}|${normalizedSymbol}`
-                if (!map.has(key)) {
-                    map.set(key, {
-                        portfolioId: tx.portfolioId,
-                        symbol: normalizedSymbol || tx.symbol,
-                        assetName: scripNamesMap[normalizedSymbol] || tx.symbol,
-                        sector: undefined,
-                        currentUnits: 0,
-                    })
-                }
-            })
-
-        return Array.from(map.values())
-    }, [portfolio, scripNamesMap, shareTransactions])
 
     const loadDividendHistory = useCallback(async () => {
         if (dividendHistory || isDividendHistoryLoading) return
@@ -1141,203 +1088,11 @@ export function PortfolioList() {
         return summaries
     }, [portfolios, shareTransactions])
 
-    const includedPortfolioIds = useMemo(
-        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
-        [portfolios],
-    )
-
-    const availableDividendYears = useMemo(() => {
-        const years = Array.from(
-            new Set(
-                (dividendHistory || [])
-                    .map((record) => (record.fiscal_year || "").trim())
-                    .filter(Boolean),
-            ),
-        )
-        return years.sort((a, b) => getFiscalYearSortValue(b) - getFiscalYearSortValue(a) || b.localeCompare(a))
-    }, [dividendHistory])
-
     useEffect(() => {
         if (availableDividendYears.length === 0) return
         if (selectedDividendYear && availableDividendYears.includes(selectedDividendYear)) return
         setSelectedDividendYear(getDefaultDividendYear(availableDividendYears))
     }, [availableDividendYears, selectedDividendYear])
-
-    const selectedYearDividendHistory = useMemo(() => {
-        if (!selectedDividendYear) return []
-        return (dividendHistory || [])
-            .filter((record) => (record.fiscal_year || "").trim() === selectedDividendYear)
-            .sort((a, b) => {
-                const left = parseDateToTimestamp(a.announcement_date) ?? Number.NEGATIVE_INFINITY
-                const right = parseDateToTimestamp(b.announcement_date) ?? Number.NEGATIVE_INFINITY
-                return right - left
-            })
-    }, [dividendHistory, selectedDividendYear])
-
-    const getUnitsHeldForDividendDate = useCallback((portfolioId: string, symbol: string, cutoffDate?: string) => {
-        if (!cutoffDate) return 0
-        const cutoffTs = parseDateToTimestamp(cutoffDate)
-        if (!Number.isFinite(cutoffTs)) return 0
-        const safeCutoffTs = cutoffTs as number
-
-        const units = shareTransactions
-            .filter((tx) =>
-                tx.portfolioId === portfolioId &&
-                (tx.assetType || "stock") === "stock" &&
-                !tx.cryptoId &&
-                normalizeStockSymbol(tx.symbol) === symbol,
-            )
-            .filter((tx) => {
-                const txTs = parseDateToTimestamp(tx.date)
-                return Number.isFinite(txTs) && (txTs ?? Number.POSITIVE_INFINITY) <= safeCutoffTs
-            })
-            .sort((a, b) => (parseDateToTimestamp(a.date) ?? 0) - (parseDateToTimestamp(b.date) ?? 0))
-            .reduce((sum, tx) => {
-                const quantity = safeNumber(tx.quantity)
-                if (tx.type === "buy" || tx.type === "ipo" || tx.type === "reinvestment" || tx.type === "bonus" || tx.type === "gift" || tx.type === "merger_in") {
-                    return sum + quantity
-                }
-                if (tx.type === "sell" || tx.type === "merger_out") {
-                    return sum - quantity
-                }
-                return sum
-            }, 0)
-
-        return Number(units.toFixed(4))
-    }, [safeNumber, shareTransactions])
-
-    const dividendSummaryByPortfolio = useMemo(() => {
-        const portfolioNameById = new Map(portfolios.map((entry) => [entry.id, entry.name]))
-
-        const sourceHoldings = dividendViewMode === "current"
-            ? dividendEligibleHoldings.map((item) => ({
-                portfolioId: item.portfolioId,
-                symbol: normalizeStockSymbol(item.symbol) || item.symbol,
-                assetName: scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol,
-                sector: item.sector,
-                units: item.units || 0,
-                matchedRecord: selectedYearDividendHistory.find((record) => {
-                    const normalizedSymbol = normalizeStockSymbol(item.symbol)
-                    const normalizedHoldingName = normalizeCompany(scripNamesMap[normalizedSymbol] || item.assetName || item.symbol)
-                    const recordSymbol = normalizeStockSymbol(record.symbol)
-                    if (normalizedSymbol && recordSymbol === normalizedSymbol) return true
-                    const recordName = normalizeCompany(record.company_name)
-                    return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
-                }),
-            }))
-            : stockTransactionCatalog.map((item) => {
-                const normalizedHoldingName = normalizeCompany(item.assetName || item.symbol)
-                const matchedRecord = selectedYearDividendHistory.find((record) => {
-                    const recordSymbol = normalizeStockSymbol(record.symbol)
-                    if (item.symbol && recordSymbol === item.symbol) return true
-                    const recordName = normalizeCompany(record.company_name)
-                    return Boolean(normalizedHoldingName && recordName && (recordName.includes(normalizedHoldingName) || normalizedHoldingName.includes(recordName)))
-                })
-                const units = matchedRecord
-                    ? getUnitsHeldForDividendDate(item.portfolioId, item.symbol, matchedRecord.announcement_date || matchedRecord.scraped_at)
-                    : 0
-                return {
-                    ...item,
-                    units,
-                    matchedRecord,
-                }
-            })
-
-        return sourceHoldings
-            .filter((item) => item.units > 0 || Boolean(item.matchedRecord))
-            .filter((item) => item.units > 0)
-            .reduce((acc, item) => {
-                const cashPercent = parsePositiveNumber(item.matchedRecord?.cash_dividend)
-                const bonusPercent = parsePositiveNumber(item.matchedRecord?.bonus_share)
-                const faceValue = item.sector === "Mutual Fund" ? 10 : getFaceValue(item.symbol)
-                const estimatedCash = Number(((item.units * faceValue * cashPercent) / 100).toFixed(2))
-                const estimatedBonusUnits = Number(((item.units * bonusPercent) / 100).toFixed(4))
-                const portfolioId = item.portfolioId
-                const existing = acc.get(portfolioId) || {
-                    portfolioId,
-                    portfolioName: portfolioNameById.get(portfolioId) || "Portfolio",
-                    includeInTotals: includedPortfolioIds.has(portfolioId),
-                    holdingsCount: 0,
-                    matchedCount: 0,
-                    estimatedCash: 0,
-                    estimatedBonusUnits: 0,
-                    holdings: [] as Array<{
-                        symbol: string
-                        assetName: string
-                        units: number
-                        cashPercent: number
-                        bonusPercent: number
-                        estimatedCash: number
-                        estimatedBonusUnits: number
-                        announcementDate?: string
-                    }>,
-                }
-
-                existing.holdingsCount += 1
-                if (item.matchedRecord) {
-                    existing.matchedCount += 1
-                }
-                existing.estimatedCash += estimatedCash
-                existing.estimatedBonusUnits += estimatedBonusUnits
-                existing.holdings.push({
-                    symbol: item.symbol,
-                    assetName: item.assetName,
-                    units: item.units,
-                    cashPercent,
-                    bonusPercent,
-                    estimatedCash,
-                    estimatedBonusUnits,
-                    announcementDate: item.matchedRecord?.announcement_date,
-                })
-
-                acc.set(portfolioId, existing)
-                return acc
-            }, new Map<string, {
-                portfolioId: string
-                portfolioName: string
-                includeInTotals: boolean
-                holdingsCount: number
-                matchedCount: number
-                estimatedCash: number
-                estimatedBonusUnits: number
-                holdings: Array<{
-                    symbol: string
-                    assetName: string
-                    units: number
-                    cashPercent: number
-                    bonusPercent: number
-                    estimatedCash: number
-                    estimatedBonusUnits: number
-                    announcementDate?: string
-                }>
-            }>())
-    }, [dividendEligibleHoldings, dividendViewMode, getFaceValue, getUnitsHeldForDividendDate, includedPortfolioIds, portfolios, scripNamesMap, selectedYearDividendHistory, stockTransactionCatalog])
-
-    const dividendPortfolioRows = useMemo(() =>
-        Array.from(dividendSummaryByPortfolio.values())
-            .sort((a, b) =>
-                Number(b.includeInTotals) - Number(a.includeInTotals) ||
-                b.estimatedCash - a.estimatedCash ||
-                a.portfolioName.localeCompare(b.portfolioName),
-            ),
-    [dividendSummaryByPortfolio])
-
-    const dividendOverviewTotals = useMemo(() => {
-        const includedRows = dividendPortfolioRows.filter((row) => row.includeInTotals)
-        return includedRows.reduce((sum, row) => ({
-            portfolios: sum.portfolios + 1,
-            holdings: sum.holdings + row.holdingsCount,
-            matched: sum.matched + row.matchedCount,
-            estimatedCash: sum.estimatedCash + row.estimatedCash,
-            estimatedBonusUnits: sum.estimatedBonusUnits + row.estimatedBonusUnits,
-        }), {
-            portfolios: 0,
-            holdings: 0,
-            matched: 0,
-            estimatedCash: 0,
-            estimatedBonusUnits: 0,
-        })
-    }, [dividendPortfolioRows])
 
     const getInvestmentBreakdown = useCallback((portfolioId?: string | null) => {
         const selectedItems = portfolio.filter((item) => !portfolioId || item.portfolioId === portfolioId)
@@ -2396,20 +2151,35 @@ export function PortfolioList() {
                             >
                                 Current
                             </Button>
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "all" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("all")}
+                            >
+                                All
+                            </Button>
                         </div>
                         <Badge variant="outline" className="h-6 rounded-md text-[9px] font-black uppercase">
-                            {dividendViewMode === "historical" ? "Uses units on dividend date" : "Uses current holdings"}
+                            {dividendViewMode === "historical"
+                                ? "Uses units on dividend date"
+                                : dividendViewMode === "current"
+                                    ? "Uses current holdings"
+                                    : "Rolls up all available years"}
                         </Badge>
-                        <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
-                            <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                <SelectValue placeholder="Select FY" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableDividendYears.map((year) => (
-                                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {dividendViewMode !== "all" && (
+                            <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
+                                <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                    <SelectValue placeholder="Select FY" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableDividendYears.map((year) => (
+                                        <SelectItem key={year} value={year}>{year}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
                     </div>
                 </div>
 
@@ -2428,7 +2198,11 @@ export function PortfolioList() {
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Matched Holdings</p>
                         <p className="mt-1 text-lg font-black">{dividendOverviewTotals.matched}/{dividendOverviewTotals.holdings}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">
-                            {dividendViewMode === "historical" ? "Historical matched holdings for the selected year." : "Current matched holdings for the selected year."}
+                            {dividendViewMode === "historical"
+                                ? "Historical matched holdings for the selected year."
+                                : dividendViewMode === "current"
+                                    ? "Current matched holdings for the selected year."
+                                    : "Matched yearly entries across all available years."}
                         </p>
                     </div>
                     <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
@@ -2444,16 +2218,24 @@ export function PortfolioList() {
                     </div>
                 )}
 
-                {selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
+                {dividendViewMode !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
                         <p className="text-xs font-semibold text-muted-foreground">
                             No proposed dividend records were found for {selectedDividendYear}.
                         </p>
                     </div>
+                ) : dividendViewMode === "all" && dividendAllYearsRows.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                            No historical dividend rollups are available yet.
+                        </p>
+                    </div>
                 ) : (
                     <div className="space-y-2">
-                        {dividendPortfolioRows.map((row) => {
+                        {(dividendViewMode === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
                             const isExpanded = expandedDividendPortfolios.has(row.portfolioId)
+                            const allYearsRow = dividendViewMode === "all" ? row as DividendPortfolioAllYearsRow : null
+                            const yearlyRow = dividendViewMode === "all" ? null : row as DividendPortfolioSummaryRow
                             return (
                                 <div key={row.portfolioId} className="rounded-xl border border-muted/30 bg-background/70">
                                     <button
@@ -2471,18 +2253,24 @@ export function PortfolioList() {
                                                 )}
                                             </div>
                                             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                {row.matchedCount}/{row.holdingsCount} holdings matched for {selectedDividendYear}
+                                                {dividendViewMode === "all"
+                                                    ? `${allYearsRow?.years.length || 0} years rolled up across matched history`
+                                                    : `${yearlyRow?.matchedCount || 0}/${yearlyRow?.holdingsCount || 0} holdings matched for ${selectedDividendYear}`}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-3 sm:min-w-[260px] sm:justify-end">
                                             <div className="grid flex-1 grid-cols-2 gap-3 text-left">
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
-                                                    <p className="mt-1 text-sm font-black font-mono">{currencySymbol}{row.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">
+                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </p>
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
-                                                    <p className="mt-1 text-sm font-black font-mono">{row.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">
+                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className={cn("shrink-0 rounded-full p-2 transition-transform duration-200", isExpanded && "rotate-180")}>
@@ -2492,27 +2280,49 @@ export function PortfolioList() {
                                     </button>
                                     {isExpanded && (
                                         <div className="border-t border-muted/20 px-3 pb-3 pt-3">
-                                            <div className="grid gap-2 md:grid-cols-2">
-                                                {row.holdings.map((holding) => (
-                                                    <div key={`${row.portfolioId}-${holding.symbol}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
-                                                        <div className="flex items-start justify-between gap-2">
-                                                            <div className="min-w-0">
-                                                                <p className="text-[11px] font-black uppercase">{holding.symbol}</p>
-                                                                <p className="truncate text-[10px] text-muted-foreground">{holding.assetName}</p>
+                                            {dividendViewMode === "all" ? (
+                                                <div className="grid gap-2 md:grid-cols-2">
+                                                    {(allYearsRow?.years || []).map((yearSummary: DividendYearSummary) => (
+                                                        <div key={`${row.portfolioId}-${yearSummary.year}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-[11px] font-black uppercase">{yearSummary.year}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">Yearly rolled-up estimate</p>
+                                                                </div>
+                                                                <Badge variant="secondary" className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                    {yearSummary.matchedCount}/{yearSummary.holdingsCount} matched
+                                                                </Badge>
                                                             </div>
-                                                            <Badge variant={holding.cashPercent > 0 || holding.bonusPercent > 0 ? "secondary" : "outline"} className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
-                                                                {holding.cashPercent > 0 || holding.bonusPercent > 0 ? "matched" : "no record"}
-                                                            </Badge>
+                                                            <div className="mt-2 text-[10px] text-muted-foreground">
+                                                                <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                                <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                            </div>
                                                         </div>
-                                                        <div className="mt-2 text-[10px] text-muted-foreground">
-                                                            <p>Units: {formatUnits(holding.units)}</p>
-                                                            <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
-                                                            <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-                                                            <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="grid gap-2 md:grid-cols-2">
+                                                    {(yearlyRow?.holdings || []).map((holding: DividendHoldingSummary) => (
+                                                        <div key={`${row.portfolioId}-${holding.symbol}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-[11px] font-black uppercase">{holding.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{holding.assetName}</p>
+                                                                </div>
+                                                                <Badge variant={holding.cashPercent > 0 || holding.bonusPercent > 0 ? "secondary" : "outline"} className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                    {holding.cashPercent > 0 || holding.bonusPercent > 0 ? "matched" : "no record"}
+                                                                </Badge>
+                                                            </div>
+                                                            <div className="mt-2 text-[10px] text-muted-foreground">
+                                                                <p>Units: {formatUnits(holding.units)}</p>
+                                                                <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
+                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                                <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

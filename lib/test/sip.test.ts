@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { getSipDueDateAtIndex, getSipScheduleSummary } from "./sip"
+import { getSipDueDateAtIndex, getSipScheduleSummary } from "../sip"
 
 const toLocalDateKey = (value: Date | null | undefined) =>
   value

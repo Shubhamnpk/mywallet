@@ -55,7 +55,7 @@ import {
   wasRecentlyDelivered,
   type NotificationHistorySource,
 } from "@/lib/notification-history"
-import { calculateSipNetInvestment, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
+import { buildSipExecutionPlan, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { getCalendarSystem } from "@/lib/app-calendar"
 import { toast } from "sonner"
@@ -3679,37 +3679,22 @@ export function useWalletStore() {
       ? Number(options?.price)
       : (Number.isFinite(plan.referencePrice) && (plan.referencePrice ?? 0) > 0 ? Number(plan.referencePrice) : 0)
 
-    const grossAmount = Number.isFinite(options?.grossAmount) && (options?.grossAmount ?? 0) > 0
+    const baseAmount = Number.isFinite(options?.grossAmount) && (options?.grossAmount ?? 0) > 0
       ? Number(options?.grossAmount)
       : plan.installmentAmount
 
-    // Add previous remainder to current installment amount
-    const previousRemainder = Number.isFinite(plan.lastRemainder) ? Number(plan.lastRemainder) : 0
-    const totalAvailableAmount = grossAmount + previousRemainder
-    const dpsCharge = Number.isFinite(plan.dpsCharge) ? Number(plan.dpsCharge) : 5
-    const investedAmount = calculateSipNetInvestment(totalAvailableAmount, dpsCharge)
-
-    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-      throw new Error("A valid SIP execution price is required")
-    }
-
-    if (!Number.isFinite(totalAvailableAmount) || totalAvailableAmount <= 0) {
-      throw new Error("A valid SIP installment amount is required")
-    }
-
-    if (investedAmount < currentPrice) {
-      throw new Error("Net SIP amount after DPS is not enough to buy at least one unit at the current price")
-    }
-
-    const quantity = Math.floor(investedAmount / currentPrice)
-
-    if (quantity < 1) {
-      throw new Error("Installment amount is not enough to complete this SIP installment")
-    }
+    const executionPlan = buildSipExecutionPlan(plan, currentPrice, { baseAmount })
+    const {
+      grossAmount: totalAvailableAmount,
+      dpsCharge,
+      netAmount: investedAmount,
+      quantity,
+      remainder,
+    } = executionPlan
 
     const completedAt = new Date().toISOString()
     const executionLabel = plan.sector === "Mutual Fund" ? "NAV" : "Price"
-    const shareDescription = `Auto SIP execution${options?.notes ? `: ${options.notes}` : ""} (${executionLabel} ${currentPrice.toFixed(2)}, Gross ${grossAmount.toFixed(2)}, DPS ${dpsCharge.toFixed(2)})`
+    const shareDescription = `${options?.notes ? `: ${options.notes}` : ""} (${executionLabel} ${currentPrice.toFixed(2)}, Gross ${baseAmount.toFixed(2)}, DPS ${dpsCharge.toFixed(2)})`
 
     const { newTx, updatedPortfolio, zeroUnitHoldings } = await addShareTransaction({
       portfolioId: plan.portfolioId,
@@ -3727,9 +3712,6 @@ export function useWalletStore() {
       sipNetAmount: investedAmount,
     })
 
-    // Calculate remainder for next installment
-    const remainder = Number((investedAmount - (quantity * currentPrice)).toFixed(2))
-    
     // Update plan with new reference price and store remainder for next installment
     const updatedPlans = sipPlans.map((entry) =>
       entry.id === planId
