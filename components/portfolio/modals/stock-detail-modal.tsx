@@ -3,11 +3,12 @@
 import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical} from "lucide-react"
+import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { isMarketSearchDetailItem } from "@/lib/market-stock-detail"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -70,6 +71,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [showCashInfo, setShowCashInfo] = useState(false)
     const [showBonusInfo, setShowBonusInfo] = useState(false)
     const [selectedDividendKey, setSelectedDividendKey] = useState<string | null>(null)
+    const [isWhatIfOpen, setIsWhatIfOpen] = useState(false)
+    const [whatIfQuery, setWhatIfQuery] = useState("")
+    const [whatIfUnits, setWhatIfUnits] = useState("")
+    const [isWhatIfSearchFocused, setIsWhatIfSearchFocused] = useState(false)
     const [pdfUrl, setPdfUrl] = useState<string | null>(null)
     const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
     const [isPdfOpen, setIsPdfOpen] = useState(false)
@@ -129,6 +134,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setShowCashInfo(false)
             setShowBonusInfo(false)
             setSelectedDividendKey(null)
+            setIsWhatIfOpen(false)
+            setWhatIfQuery("")
+            setWhatIfUnits("")
+            setIsWhatIfSearchFocused(false)
             setIsPdfOpen(false)
             setIsSipModalOpen(false)
             setActiveTab(mode === "sold" ? "sold" : "overview")
@@ -384,6 +393,75 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const cashPerUnit = (latestCashPercent / 100) * faceValue
     const estimatedCashAmount = cashPerUnit * heldUnits
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
+
+    const dividendSearchCatalog = useMemo(() => {
+        const map = new Map<string, { symbol: string; name: string }>()
+        ;(dividendHistory || []).forEach((record) => {
+            const recordSymbol = normalizeStockSymbol(record.symbol)
+            if (!recordSymbol) return
+            if (map.has(recordSymbol)) return
+            map.set(recordSymbol, {
+                symbol: recordSymbol,
+                name: (record.company_name || scripNamesMap[recordSymbol] || recordSymbol).trim(),
+            })
+        })
+        return Array.from(map.values()).sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }, [dividendHistory, scripNamesMap])
+
+    const normalizedWhatIfQuery = whatIfQuery.trim().toLowerCase()
+    const whatIfSuggestions = useMemo(() => {
+        if (!normalizedWhatIfQuery) return []
+        return dividendSearchCatalog
+            .filter((entry) =>
+                entry.symbol.toLowerCase().includes(normalizedWhatIfQuery) ||
+                entry.name.toLowerCase().includes(normalizedWhatIfQuery),
+            )
+            .slice(0, 6)
+    }, [dividendSearchCatalog, normalizedWhatIfQuery])
+
+    const whatIfSelectedSymbol = useMemo(() => {
+        const exactMatch = dividendSearchCatalog.find((entry) => entry.symbol.toLowerCase() === normalizedWhatIfQuery)
+        return exactMatch?.symbol || normalizeStockSymbol(whatIfQuery)
+    }, [dividendSearchCatalog, normalizedWhatIfQuery, whatIfQuery])
+
+    const whatIfSelectedCatalogEntry = useMemo(
+        () => dividendSearchCatalog.find((entry) => entry.symbol === whatIfSelectedSymbol),
+        [dividendSearchCatalog, whatIfSelectedSymbol],
+    )
+
+    const whatIfMatchedDividendHistory = useMemo(() => {
+        if (!whatIfSelectedSymbol) return []
+        const normalizedSearchName = normalizeCompany(whatIfSelectedCatalogEntry?.name || "")
+        return (dividendHistory || [])
+            .filter((record) => {
+                const recordSymbol = normalizeStockSymbol(record.symbol)
+                if (recordSymbol === whatIfSelectedSymbol) return true
+                const recordName = normalizeCompany(record.company_name)
+                return Boolean(normalizedSearchName && recordName && (recordName.includes(normalizedSearchName) || normalizedSearchName.includes(recordName)))
+            })
+            .sort((a, b) => getDividendRecordTime(b) - getDividendRecordTime(a))
+    }, [dividendHistory, whatIfSelectedCatalogEntry?.name, whatIfSelectedSymbol])
+
+    const whatIfLatestDividend = whatIfMatchedDividendHistory[0]
+    const parsedWhatIfUnits = Number.parseFloat(whatIfUnits)
+    const whatIfUnitsValue = Number.isFinite(parsedWhatIfUnits) && parsedWhatIfUnits >= 0 ? parsedWhatIfUnits : 0
+    const whatIfCashPercent = parsePositiveNumber(whatIfLatestDividend?.cash_dividend)
+    const whatIfBonusPercent = parsePositiveNumber(whatIfLatestDividend?.bonus_share)
+    const whatIfFaceValue = whatIfSelectedSymbol ? getFaceValue(whatIfSelectedSymbol) : 0
+    const whatIfCashPerUnit = (whatIfCashPercent / 100) * whatIfFaceValue
+    const whatIfEstimatedCash = whatIfCashPerUnit * whatIfUnitsValue
+    const whatIfEstimatedBonusUnits = (whatIfBonusPercent / 100) * whatIfUnitsValue
+    const whatIfReferenceHolding = useMemo(
+        () => portfolio.find((entry) => normalizeStockSymbol(entry.symbol) === whatIfSelectedSymbol && (entry.assetType || "stock") === "stock" && !entry.cryptoId),
+        [portfolio, whatIfSelectedSymbol],
+    )
+    const whatIfCurrentPrice = Number.isFinite(whatIfReferenceHolding?.currentPrice)
+        ? (whatIfReferenceHolding?.currentPrice ?? 0)
+        : Number.isFinite(whatIfReferenceHolding?.buyPrice)
+            ? (whatIfReferenceHolding?.buyPrice ?? 0)
+            : 0
+    const whatIfCurrentValue = whatIfCurrentPrice * whatIfUnitsValue
+    const showWhatIfSuggestions = isWhatIfSearchFocused && normalizedWhatIfQuery.length > 0
 
     const existingSipPlan = useMemo(() => {
         if (!item || isMarketLookupItem) return null
@@ -1268,6 +1346,137 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
 
                                     {!isCrypto && (
                                         <TabsContent value="dividend" className="m-0 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Dividend View</p>
+                                                    <p className="text-xs text-muted-foreground">Current holding estimates plus optional advanced what-if analysis.</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 rounded-lg border-primary/20 text-[10px] font-black uppercase tracking-widest"
+                                                    onClick={() => {
+                                                        setIsWhatIfOpen((prev) => !prev)
+                                                        if (!isWhatIfOpen) {
+                                                            setWhatIfQuery(item?.symbol || "")
+                                                            setWhatIfUnits(String(item?.units ?? 0))
+                                                        }
+                                                    }}
+                                                >
+                                                    <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                                                    {isWhatIfOpen ? "Hide What If" : "What If"}
+                                                </Button>
+                                            </div>
+
+                                            {isWhatIfOpen && (
+                                                <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <SlidersHorizontal className="h-4 w-4 text-primary" />
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-primary">What If Analysis</p>
+                                                    </div>
+                                                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+                                                        <div className="relative">
+                                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                                            <Input
+                                                                value={whatIfQuery}
+                                                                onChange={(event) => setWhatIfQuery(event.target.value)}
+                                                                onFocus={() => setIsWhatIfSearchFocused(true)}
+                                                                onBlur={() => {
+                                                                    window.setTimeout(() => setIsWhatIfSearchFocused(false), 120)
+                                                                }}
+                                                                placeholder="Search stock for dividend simulation"
+                                                                className="h-10 rounded-xl border-primary/20 bg-background/90 pl-9"
+                                                            />
+                                                            {showWhatIfSuggestions && (
+                                                                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-xl border border-primary/20 bg-card/95 p-2 shadow-xl backdrop-blur-xl">
+                                                                    <div className="space-y-2">
+                                                                        {whatIfSuggestions.map((entry) => (
+                                                                            <button
+                                                                                key={entry.symbol}
+                                                                                type="button"
+                                                                                className="flex w-full items-center justify-between rounded-xl border border-muted/30 bg-background/70 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
+                                                                                onMouseDown={(event) => event.preventDefault()}
+                                                                                onClick={() => {
+                                                                                    setWhatIfQuery(entry.symbol)
+                                                                                    setIsWhatIfSearchFocused(false)
+                                                                                }}
+                                                                            >
+                                                                                <div className="min-w-0">
+                                                                                    <p className="text-[11px] font-black uppercase">{entry.symbol}</p>
+                                                                                    <p className="truncate text-[10px] text-muted-foreground">{entry.name}</p>
+                                                                                </div>
+                                                                                <Badge variant="outline" className="h-5 rounded-md text-[8px] font-black uppercase">
+                                                                                    Dividend
+                                                                                </Badge>
+                                                                            </button>
+                                                                        ))}
+                                                                        {whatIfSuggestions.length === 0 && (
+                                                                            <p className="px-2 py-2 text-xs font-semibold text-muted-foreground">No dividend-matched stock found.</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={whatIfUnits}
+                                                            onChange={(event) => setWhatIfUnits(event.target.value)}
+                                                            placeholder="Units"
+                                                            className="h-10 rounded-xl border-primary/20 bg-background/90"
+                                                        />
+                                                    </div>
+
+                                                    {whatIfLatestDividend ? (
+                                                        <div className="space-y-3">
+                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                                <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Cash Estimate</p>
+                                                                    <p className="mt-1 text-sm font-black text-green-700">{formatProfitLossPercent(whatIfCashPercent)}</p>
+                                                                    <p className="mt-1 text-[10px] text-green-700/80">
+                                                                        Est. {currencySymbol} {formatValue(whatIfEstimatedCash)}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Bonus Estimate</p>
+                                                                    <p className="mt-1 text-sm font-black text-blue-700">{formatProfitLossPercent(whatIfBonusPercent)}</p>
+                                                                    <p className="mt-1 text-[10px] text-blue-700/80">
+                                                                        Est. {formatUnits(whatIfEstimatedBonusUnits)} units
+                                                                    </p>
+                                                                </div>
+                                                                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Current Value</p>
+                                                                    <p className="mt-1 text-sm font-black text-amber-700">
+                                                                        {currencySymbol} {formatValue(whatIfCurrentValue)}
+                                                                    </p>
+                                                                    <p className="mt-1 text-[10px] text-amber-700/80">
+                                                                        {whatIfCurrentPrice > 0
+                                                                            ? `${currencySymbol} ${formatValue(whatIfCurrentPrice)} per unit`
+                                                                            : "Current price not available"}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="rounded-xl border border-primary/20 bg-background/70 p-3">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Using</p>
+                                                                <p className="mt-1 text-sm font-black">{whatIfSelectedCatalogEntry?.symbol || whatIfSelectedSymbol}</p>
+                                                                <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                    {whatIfSelectedCatalogEntry?.name || "Matched company"} • {formatUnits(whatIfUnitsValue)} units
+                                                                </p>
+                                                                <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                    FY {whatIfLatestDividend.fiscal_year || "N/A"} • Face value {currencySymbol} {formatValue(whatIfFaceValue)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-xl border border-dashed border-muted/40 bg-background/40 px-3 py-3 text-xs font-semibold text-muted-foreground">
+                                                            Search a stock with dividend records to preview custom cash and bonus estimates.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
                                             {isDividendHistoryLoading ? (
                                                 <p className="text-xs text-muted-foreground">Loading company dividend history...</p>
                                             ) : dividendHistoryError ? (
