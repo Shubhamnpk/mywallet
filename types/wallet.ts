@@ -289,6 +289,7 @@ export interface PortfolioItem {
   assetType?: "stock" | "crypto"
   cryptoId?: string
   assetName?: string
+  detailContext?: "portfolio" | "market-search"
   units: number
   buyPrice: number
   currentPrice?: number

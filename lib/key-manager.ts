@@ -212,6 +212,13 @@ export class SecureKeyManager {
     }, this.SESSION_TIMEOUT)
   }
 
+  // Refresh the in-memory master key while the wallet session remains valid.
+  static cacheActiveMasterKey(key: CryptoKey): void {
+    if (!SessionManager.isSessionValid()) return
+    this.cacheKey(this.MASTER_KEY_ID, key)
+    this.updateKeyUsage(this.MASTER_KEY_ID)
+  }
+
 
   // Check if master key exists
   static hasMasterKey(): boolean {

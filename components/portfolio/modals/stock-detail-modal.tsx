@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { isMarketSearchDetailItem } from "@/lib/market-stock-detail"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -141,6 +142,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }, [open, mode, initialItem?.id])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
+    const isMarketLookupItem = Boolean(item && isMarketSearchDetailItem(item))
     const isSoldDetailMode = mode === "sold"
     const isBitcoin = Boolean(
         isCrypto &&
@@ -150,7 +152,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             (item.assetName || "").toLowerCase().includes("bitcoin"))
     )
     const currencySymbol = isCrypto ? "$" : "रु"
-    const isZeroHolding = (item?.units ?? 0) === 0 || item?.isKeptZeroHolding
+    const isZeroHolding = !isMarketLookupItem && ((item?.units ?? 0) === 0 || item?.isKeptZeroHolding)
     const safeBuyPrice = Number.isFinite(item?.buyPrice) ? (item?.buyPrice ?? 0) : 0
     const safeCurrent = Number.isFinite(item?.currentPrice) ? (item?.currentPrice ?? safeBuyPrice) : safeBuyPrice
     const current = safeCurrent
@@ -161,7 +163,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
     const lastExitInfo = useMemo(() => {
-        if (!isZeroHolding || !item) return null
+        if (!isZeroHolding || !item || isMarketLookupItem) return null
         const relevantTxs = shareTransactions.filter(
             (tx) =>
                 tx.portfolioId === item.portfolioId &&
@@ -173,7 +175,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             .filter((tx) => tx.type === "sell" || tx.type === "merger_out")
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         return exitTxs[0]
-    }, [isZeroHolding, item, shareTransactions])
+    }, [isMarketLookupItem, isZeroHolding, item, shareTransactions])
     const isSold = lastExitInfo?.type === "sell"
     const isMerged = lastExitInfo?.type === "merger_out"
     const safePreviousClose = Number.isFinite(item?.previousClose) ? (item?.previousClose ?? safeCurrent) : safeCurrent
@@ -384,13 +386,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const estimatedBonusUnits = (latestBonusPercent / 100) * heldUnits
 
     const existingSipPlan = useMemo(() => {
-        if (!item) return null
+        if (!item || isMarketLookupItem) return null
         return normalizeSipPlans(userProfile?.sipPlans).find((plan) =>
             plan.portfolioId === item.portfolioId &&
             normalizeStockSymbol(plan.symbol) === symbol &&
             plan.assetType === "stock"
         ) || null
-    }, [item, symbol, userProfile?.sipPlans])
+    }, [isMarketLookupItem, item, symbol, userProfile?.sipPlans])
 
     const sipSchedule = useMemo(() => {
         if (!existingSipPlan) return null
@@ -403,12 +405,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }, [existingSipPlan, shareTransactions, sipSchedule?.nextDate])
 
     const matchedTransactions = useMemo(() => {
-        if (!item || !shareTransactions) return []
+        if (!item || !shareTransactions || isMarketLookupItem) return []
         const portfolioId = item.portfolioId
         return shareTransactions
             .filter((tx) => tx.portfolioId === portfolioId && normalizeStockSymbol(tx.symbol) === symbol)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    }, [item, shareTransactions, symbol])
+    }, [isMarketLookupItem, item, shareTransactions, symbol])
 
     const soldTransactions = useMemo(
         () => matchedTransactions.filter((tx) => tx.type === "sell"),
@@ -598,7 +600,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
 
                         <div className="flex items-center justify-between mb-2 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
-                                {isSoldDetailMode ? "Sold Transaction Details" : isCrypto ? "Crypto Details" : "Stock Details"}
+                                {isSoldDetailMode ? "Sold Transaction Details" : isMarketLookupItem ? "Market Lookup" : isCrypto ? "Crypto Details" : "Stock Details"}
                             </Badge>
                             {item.lastUpdated && (
                                 <div className="flex items-center gap-1.5 grayscale opacity-60">
@@ -616,6 +618,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     {isSoldDetailMode ? (
                                         <Badge className="bg-amber-500/10 text-amber-600 text-[10px] font-black uppercase tracking-widest border-amber-500/30">
                                             SOLD LOTS
+                                        </Badge>
+                                    ) : isMarketLookupItem ? (
+                                        <Badge className="bg-sky-500/10 text-sky-600 text-[10px] font-black uppercase tracking-widest border-sky-500/30">
+                                            LIVE MARKET
                                         </Badge>
                                     ) : isZeroHolding ? (
                                         <Badge className="bg-amber-500/10 text-amber-600 text-[10px] font-black uppercase tracking-widest border-amber-500/30">
@@ -637,6 +643,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         <span className="text-amber-600/80">
                                             {formatUnits(soldDetailStats.soldUnits)} sold units across {soldTransactions.length} transaction{soldTransactions.length === 1 ? "" : "s"}
                                             {soldDetailStats.latestSellAt ? ` · last sold ${formatTimeSince(soldDetailStats.latestSellAt)}` : ""}
+                                        </span>
+                                    ) : isMarketLookupItem ? (
+                                        <span className="text-sky-700/80">
+                                            Live market details
                                         </span>
                                     ) : isZeroHolding ? (
                                         isSold && lastExitInfo ? (
@@ -692,9 +702,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         Sold Lots
                                     </TabsTrigger>
                                 )}
-                                <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
-                                    {isSoldDetailMode ? "All Tx" : "History"}
-                                </TabsTrigger>
+                                {!isMarketLookupItem && (
+                                    <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                        {isSoldDetailMode ? "All Tx" : "History"}
+                                    </TabsTrigger>
+                                )}
                                 {!isCrypto && (
                                     <TabsTrigger
                                         value="dividend"
@@ -858,7 +870,46 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     <TabsContent value="overview" className="m-0 space-y-6">
                                         {/* Performance Card */}
                                         <div className="grid grid-cols-2 gap-3">
-                                            {isZeroHolding ? (
+                                            {isMarketLookupItem ? (
+                                                <>
+                                                    <div className="p-4 rounded-2xl border flex flex-col gap-2 bg-sky-500/5 border-sky-500/10">
+                                                        <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                            Live Price
+                                                        </div>
+                                                        <div className="text-xl font-black font-mono text-sky-700">
+                                                            {currencySymbol} {formatValue(current)}
+                                                        </div>
+                                                        <div className="text-[10px] font-bold text-muted-foreground">
+                                                            Real-time market snapshot for {item.symbol}
+                                                        </div>
+                                                    </div>
+                                                    <div className={cn(
+                                                        "p-4 rounded-2xl border flex flex-col gap-2",
+                                                        isDailyNeutral
+                                                            ? "bg-muted/20 border-muted/50"
+                                                            : isDailyProfit
+                                                                ? "bg-green-500/5 border-green-500/10"
+                                                                : "bg-red-500/5 border-red-500/10"
+                                                    )}>
+                                                        <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                            Daily Move
+                                                        </div>
+                                                        <div className="text-xl font-black font-mono">
+                                                            {isDailyProfit ? "+" : ""}{formatValue(dailyChange)}
+                                                        </div>
+                                                        <div className={cn(
+                                                            "text-[10px] font-bold",
+                                                            isDailyNeutral
+                                                                ? "text-muted-foreground"
+                                                                : isDailyProfit
+                                                                    ? "text-green-600"
+                                                                    : "text-red-600"
+                                                        )}>
+                                                            {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}% vs previous close
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : isZeroHolding ? (
                                                 isSold ? (
                                                     <>
                                                         <div className="p-4 rounded-2xl border flex flex-col gap-2 bg-amber-500/5 border-amber-500/10">
@@ -1642,9 +1693,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     }}
                                 >
                                     <Wallet className="w-3.5 h-3.5 mr-2" />
-                                    Buy
+                                    {isMarketLookupItem ? "Add Buy" : "Buy"}
                                 </Button>
-                                {!isZeroHolding && (
+                                {!isZeroHolding && !isMarketLookupItem && (
                                     <Button
                                         variant="outline"
                                         className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10"

@@ -34,6 +34,8 @@ export type DividendPortfolioSummaryRow = {
     estimatedCash: number
     estimatedBonusUnits: number
     holdings: DividendHoldingSummary[]
+    topCashContributor: DividendTopContributor | null
+    topBonusContributor: DividendTopContributor | null
 }
 
 export type DividendYearSummary = {
@@ -44,6 +46,13 @@ export type DividendYearSummary = {
     matchedCount: number
 }
 
+export type DividendTopContributor = {
+    symbol: string
+    assetName: string
+    estimatedCash: number
+    estimatedBonusUnits: number
+}
+
 export type DividendPortfolioAllYearsRow = {
     portfolioId: string
     portfolioName: string
@@ -51,6 +60,8 @@ export type DividendPortfolioAllYearsRow = {
     totalEstimatedCash: number
     totalEstimatedBonusUnits: number
     years: DividendYearSummary[]
+    topCashContributor: DividendTopContributor | null
+    topBonusContributor: DividendTopContributor | null
 }
 
 export type DividendOverviewTotals = {
@@ -318,6 +329,8 @@ export const buildDividendData = ({
                     estimatedCash: 0,
                     estimatedBonusUnits: 0,
                     holdings: [] as DividendHoldingSummary[],
+                    topCashContributor: null,
+                    topBonusContributor: null,
                 }
 
                 existing.holdingsCount += 1
@@ -326,7 +339,7 @@ export const buildDividendData = ({
                 }
                 existing.estimatedCash += estimatedCash
                 existing.estimatedBonusUnits += estimatedBonusUnits
-                existing.holdings.push({
+                const holdingSummary = {
                     symbol: item.symbol,
                     assetName: item.assetName,
                     units: item.units,
@@ -335,7 +348,22 @@ export const buildDividendData = ({
                     estimatedCash,
                     estimatedBonusUnits,
                     announcementDate: item.matchedRecord?.announcement_date,
-                })
+                }
+                existing.holdings.push(holdingSummary)
+
+                const contributorSummary: DividendTopContributor = {
+                    symbol: holdingSummary.symbol,
+                    assetName: holdingSummary.assetName,
+                    estimatedCash: holdingSummary.estimatedCash,
+                    estimatedBonusUnits: holdingSummary.estimatedBonusUnits,
+                }
+
+                if (contributorSummary.estimatedCash > 0 && (!existing.topCashContributor || contributorSummary.estimatedCash > existing.topCashContributor.estimatedCash)) {
+                    existing.topCashContributor = contributorSummary
+                }
+                if (contributorSummary.estimatedBonusUnits > 0 && (!existing.topBonusContributor || contributorSummary.estimatedBonusUnits > existing.topBonusContributor.estimatedBonusUnits)) {
+                    existing.topBonusContributor = contributorSummary
+                }
 
                 acc.set(portfolioId, existing)
                 return acc
@@ -364,6 +392,8 @@ export const buildDividendData = ({
     const allYearsRowsMap = new Map<string, DividendPortfolioAllYearsRow>()
     stockTransactionCatalog.forEach((holding) => {
         const yearSummaries: DividendYearSummary[] = []
+        let holdingTotalCash = 0
+        let holdingTotalBonusUnits = 0
 
         availableDividendYears.forEach((year) => {
             const yearRecords = historyByYear.get(year) || []
@@ -391,6 +421,8 @@ export const buildDividendData = ({
                 holdingsCount: 1,
                 matchedCount: 1,
             })
+            holdingTotalCash += estimatedCash
+            holdingTotalBonusUnits += estimatedBonusUnits
         })
 
         if (yearSummaries.length === 0) return
@@ -403,6 +435,8 @@ export const buildDividendData = ({
             totalEstimatedCash: 0,
             totalEstimatedBonusUnits: 0,
             years: [],
+            topCashContributor: null,
+            topBonusContributor: null,
         }
 
         yearSummaries.forEach((summary) => {
@@ -418,6 +452,20 @@ export const buildDividendData = ({
             existing.totalEstimatedCash += summary.estimatedCash
             existing.totalEstimatedBonusUnits += summary.estimatedBonusUnits
         })
+
+        const contributorSummary: DividendTopContributor = {
+            symbol: holding.symbol,
+            assetName: holding.assetName,
+            estimatedCash: Number(holdingTotalCash.toFixed(2)),
+            estimatedBonusUnits: Number(holdingTotalBonusUnits.toFixed(4)),
+        }
+
+        if (contributorSummary.estimatedCash > 0 && (!existing.topCashContributor || contributorSummary.estimatedCash > existing.topCashContributor.estimatedCash)) {
+            existing.topCashContributor = contributorSummary
+        }
+        if (contributorSummary.estimatedBonusUnits > 0 && (!existing.topBonusContributor || contributorSummary.estimatedBonusUnits > existing.topBonusContributor.estimatedBonusUnits)) {
+            existing.topBonusContributor = contributorSummary
+        }
 
         existing.years.sort((a, b) => getFiscalYearSortValue(b.year) - getFiscalYearSortValue(a.year) || b.year.localeCompare(a.year))
         allYearsRowsMap.set(portfolioId, existing)

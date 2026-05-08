@@ -25,12 +25,13 @@ import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-cale
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
-import { buildDividendData, DividendHoldingSummary, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
+import { buildDividendData, DividendHoldingSummary, DividendPortfolioAllYearsRow, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
+import { OverviewStockSearch } from "./overview-stock-search"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { EditTransactionModal } from "./modals/edit-transaction-modal"
@@ -89,14 +90,6 @@ type ImportQueueItem = {
     priceOptional?: boolean
 }
 
-type DividendPortfolioAllYearsRow = {
-    portfolioId: string
-    portfolioName: string
-    includeInTotals: boolean
-    totalEstimatedCash: number
-    totalEstimatedBonusUnits: number
-    years: DividendYearSummary[]
-}
 
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
 const portfolioItemSyncSignature = (entry: PortfolioItem) =>
@@ -2281,27 +2274,90 @@ export function PortfolioList() {
                                     {isExpanded && (
                                         <div className="border-t border-muted/20 px-3 pb-3 pt-3">
                                             {dividendViewMode === "all" ? (
-                                                <div className="grid gap-2 md:grid-cols-2">
-                                                    {(allYearsRow?.years || []).map((yearSummary: DividendYearSummary) => (
-                                                        <div key={`${row.portfolioId}-${yearSummary.year}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="min-w-0">
-                                                                    <p className="text-[11px] font-black uppercase">{yearSummary.year}</p>
-                                                                    <p className="truncate text-[10px] text-muted-foreground">Yearly rolled-up estimate</p>
+                                                <div className="space-y-3">
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Cash Stock</p>
+                                                            {allYearsRow?.topCashContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{allYearsRow.topCashContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topCashContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                    </p>
                                                                 </div>
-                                                                <Badge variant="secondary" className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
-                                                                    {yearSummary.matchedCount}/{yearSummary.holdingsCount} matched
-                                                                </Badge>
-                                                            </div>
-                                                            <div className="mt-2 text-[10px] text-muted-foreground">
-                                                                <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                                                                <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
-                                                            </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
                                                         </div>
-                                                    ))}
+                                                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Bonus Stock</p>
+                                                            {allYearsRow?.topBonusContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{allYearsRow.topBonusContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topBonusContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        {(allYearsRow?.years || []).map((yearSummary: DividendYearSummary) => (
+                                                            <div key={`${row.portfolioId}-${yearSummary.year}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-black uppercase">{yearSummary.year}</p>
+                                                                        <p className="truncate text-[10px] text-muted-foreground">Yearly rolled-up estimate</p>
+                                                                    </div>
+                                                                    <Badge variant="secondary" className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                        {yearSummary.matchedCount}/{yearSummary.holdingsCount} matched
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="mt-2 text-[10px] text-muted-foreground">
+                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             ) : (
-                                                <div className="grid gap-2 md:grid-cols-2">
+                                                <div className="space-y-3">
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Cash Stock</p>
+                                                            {yearlyRow?.topCashContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{yearlyRow.topCashContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topCashContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Bonus Stock</p>
+                                                            {yearlyRow?.topBonusContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{yearlyRow.topBonusContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topBonusContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2 md:grid-cols-2">
                                                     {(yearlyRow?.holdings || []).map((holding: DividendHoldingSummary) => (
                                                         <div key={`${row.portfolioId}-${holding.symbol}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
                                                             <div className="flex items-start justify-between gap-2">
@@ -2321,6 +2377,7 @@ export function PortfolioList() {
                                                             </div>
                                                         </div>
                                                     ))}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -2740,6 +2797,12 @@ export function PortfolioList() {
                                 {isOverviewFeedOpen && (
                                     <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-transparent text-left">
                                         <CardContent className="p-4 sm:p-5">
+                                            <OverviewStockSearch
+                                                portfolio={portfolio}
+                                                activePortfolioId={activePortfolioId}
+                                                scripNamesMap={scripNamesMap}
+                                                onOpenStockDetail={handleViewStockDetail}
+                                            />
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null) && (
                                                     <div>

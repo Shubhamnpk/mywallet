@@ -1,8 +1,5 @@
 "use client"
 
-// Authentication hook for secure PIN-based wallet access
-// Provides React interface to SecurePinManager with state management
-
 import { useState, useEffect, useCallback } from "react"
 import { SecurePinManager, PinAttemptResult } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
@@ -66,7 +63,6 @@ export function useAuthentication(): AuthState & AuthActions {
           const sessionStatus = SessionManager.getSessionStatus()
 
           if (sessionStatus && sessionStatus.isValid && hasMasterKey) {
-            // We have a valid session and master key, authenticate automatically
             try {
               const masterKey = await SecureKeyManager.getMasterKey("")
               if (masterKey) {
@@ -80,8 +76,6 @@ export function useAuthentication(): AuthState & AuthActions {
             } catch {
             }
           }
-
-          // No valid session or auto-auth failed, stay unauthenticated
           setAuthState(prev => ({
             ...prev,
             isAuthenticated: false,
@@ -110,6 +104,22 @@ export function useAuthentication(): AuthState & AuthActions {
       window.removeEventListener('wallet-session-expired', handleSessionExpiry)
     }
   }, [])
+
+  useEffect(() => {
+    if (!authState.isAuthenticated || !authState.hasPin || !authState.masterKey) return
+
+    // Keep the in-memory encryption key aligned with the active wallet session.
+    SecureKeyManager.cacheActiveMasterKey(authState.masterKey)
+
+    const intervalId = window.setInterval(() => {
+      if (!SessionManager.isSessionValid()) return
+      SecureKeyManager.cacheActiveMasterKey(authState.masterKey!)
+    }, 60 * 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [authState.hasPin, authState.isAuthenticated, authState.masterKey])
 
   // Setup PIN for first time
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
@@ -281,8 +291,6 @@ export function useAuthentication(): AuthState & AuthActions {
     try {
       // Handle biometric authentication (empty PIN)
       if (pin === "") {
-        // For biometric auth, we don't validate PIN but create session directly
-        // This assumes biometric validation has already happened
 
         // Load master key for biometric authentication
         const masterKey = await SecureKeyManager.getMasterKey("")
@@ -493,7 +501,6 @@ export function useAuthentication(): AuthState & AuthActions {
     })
   }, [])
 
-  // Reset PIN (emergency/security reset)
 	  const resetPin = useCallback(() => {
 	    SecureKeyManager.clearAllKeys() // Clear all encryption keys
     SecurePinManager.clearAllSecurityData() // Comprehensive security data cleanup
