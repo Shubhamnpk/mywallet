@@ -124,7 +124,7 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/mywallet-app.git
+   git clone https://github.com/Shubhamnpk/mywallet.git
    cd mywallet-app
    ```
 
@@ -307,7 +307,7 @@ We welcome contributions! Please follow these steps:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [YoGuru Limited Contributor License](LICENSE.md).
 
 ## 🙏 Acknowledgments
 
@@ -324,6 +324,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you have any questions or need help, please:
 - Open an issue on GitHub
+- Follow the [Security Policy](SECURITY.md) for vulnerability reports
 - Check the documentation
 - Contact the maintainers
 

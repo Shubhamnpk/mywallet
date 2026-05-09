@@ -15,7 +15,7 @@ Thank you for your interest in contributing to MyWallet! We welcome contribution
 
 4. **Test Your Changes**: Run the existing tests and add new tests if necessary.
    ```
-   npm test
+   pnpm test
    ```
 
 5. **Commit Your Changes**: Write clear, concise commit messages.
@@ -42,12 +42,14 @@ If you find a bug or have a feature request, please open an issue on GitHub with
 - Actual behavior
 - Environment details (OS, browser, etc.)
 
+For security vulnerabilities, please do not open a public issue. Follow the guidance in [SECURITY.md](SECURITY.md).
+
 ## License
 
 By contributing to MyWallet, you agree to the terms outlined in the [YoGuru Limited Contributor License](LICENSE.md). This includes maintaining copyright ownership of your contributions while granting limited permissions for use in the project.
 
 ## Contact
 
-For questions or discussions, reach out to the maintainers at [contact information].
+For questions or discussions, please use GitHub issues or repository discussions if available.
 
 Thank you for contributing to MyWallet!

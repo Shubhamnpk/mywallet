@@ -40,6 +40,15 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/mywallet.png",
+      "sizes": "577x433",
+      "type": "image/png",
+      "label": "MyWallet dashboard and finance tracking interface",
+      "form_factor": "wide"
+    }
+  ],
   "categories": [
     "finance",
     "productivity",
