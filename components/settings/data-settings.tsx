@@ -238,7 +238,12 @@ export function DataSettings() {
     }
 
     const redirectUri = `${window.location.origin}/dropbox-callback`
-    const { authUrl } = await Dropbox.createDropboxAuthRequest(dropboxAppKey, redirectUri)
+    const { authUrl } = await Dropbox.createDropboxAuthRequest(dropboxAppKey, redirectUri, {
+      // Force Dropbox to show a fresh auth flow so disconnect/reconnect doesn't silently reuse
+      // the browser's currently signed-in account without giving the user a choice.
+      forceReapprove: true,
+      forceReauthentication: true,
+    })
     const authWindow = window.open(authUrl, "dropbox-auth", "width=480,height=640")
 
     if (!authWindow) {

@@ -42,6 +42,8 @@ export function buildDropboxAuthUrl(
     codeChallengeMethod?: "S256" | "plain"
     tokenAccessType?: "online" | "offline"
     scope?: string | readonly string[]
+    forceReapprove?: boolean
+    forceReauthentication?: boolean
   } = {},
 ): string {
   const params = new URLSearchParams({
@@ -58,6 +60,8 @@ export function buildDropboxAuthUrl(
     const scope = typeof options.scope === "string" ? options.scope : options.scope.join(" ")
     params.set("scope", scope)
   }
+  if (options.forceReapprove) params.set("force_reapprove", "true")
+  if (options.forceReauthentication) params.set("force_reauthentication", "true")
 
   return `https://www.dropbox.com/oauth2/authorize?${params.toString()}`
 }
@@ -219,6 +223,7 @@ async function createCodeChallenge(codeVerifier: string): Promise<string> {
 export async function createDropboxAuthRequest(
   appKey: string,
   redirectUri: string,
+  options: { forceReapprove?: boolean; forceReauthentication?: boolean } = {},
 ): Promise<{ authUrl: string; state: string }> {
   if (typeof window === "undefined") {
     throw new Error("Dropbox authorization is only available in the browser")
@@ -239,6 +244,8 @@ export async function createDropboxAuthRequest(
       codeChallengeMethod: "S256",
       tokenAccessType: "offline",
       scope: DROPBOX_REQUIRED_SCOPES,
+      forceReapprove: options.forceReapprove,
+      forceReauthentication: options.forceReauthentication,
     }),
     state,
   }
