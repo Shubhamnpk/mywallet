@@ -1,10 +1,23 @@
 {
-  "currentBuild": "2026.04.30",
+  "currentBuild": "2026.05.09",
   "releases": [
+    {
+      "version": "2.1.0",
+      "date": "2026-05-09",
+      "status": "current",
+      "category": "Feature",
+      "title": "Returning User Recovery, Portfolio Planning, and Calendar Refinements",
+      "highlights": [
+        "Returning users who land on the welcome page now see a clear welcome-back message and a direct path back to the dashboard.",
+        "Portfolio workflows gained richer sell previews, dividend what-if planning, and better price verification during imports.",
+        "Date-sensitive budgeting and dashboard flows now align more consistently with the app calendar system.",
+        "The About screen and support actions were refreshed, and wallet data hooks were reorganized for cleaner long-term maintenance."
+      ]
+    },
     {
       "version": "2.0.4",
       "date": "2026-04-30",
-      "status": "current",
+      "status": "stable",
       "category": "UX",
       "title": "Dropbox Cleanup, Notification Controls, and Floating Calculator",
       "highlights": [

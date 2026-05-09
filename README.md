@@ -6,6 +6,12 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 ## ✨ What's New
 
+### Version 2.1.0 (May 9, 2026)
+- **Welcome Back Flow**: Returning users now get a clearer recovery path from the welcome page straight back to the dashboard
+- **Portfolio Tools**: Added richer sell previews, dividend what-if planning, and stronger import price verification
+- **Calendar Refinements**: Better alignment between app dates, budgeting periods, and dashboard timelines
+- **Platform Consistency**: Web, Android, iOS, and public release metadata are now aligned on the same version number
+
 ### Version 2.0.1 (April 18, 2026)
 - **Bug Fix**: Improved decimal number formatting and precision for better financial calculations
 
