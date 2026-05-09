@@ -12,6 +12,7 @@ interface AppDateInputProps {
   calendarSystem?: CalendarSystem | string | null
   className?: string
   disabled?: boolean
+  showPreview?: boolean
 }
 
 export function AppDateInput({
@@ -21,6 +22,7 @@ export function AppDateInput({
   calendarSystem,
   className,
   disabled,
+  showPreview = true,
 }: AppDateInputProps) {
   const system = getCalendarSystem(calendarSystem)
   const [bsValue, setBsValue] = useState("")
@@ -51,9 +53,11 @@ export function AppDateInput({
             if (nextAd) onChange(nextAd)
           }}
         />
-        <p className="text-[10px] text-muted-foreground">
-          BS date. AD saved as {adValue || "valid YYYY-MM-DD"}
-        </p>
+        {showPreview && (
+          <p className="text-[10px] text-muted-foreground">
+            BS date. AD saved as {adValue || "valid YYYY-MM-DD"}
+          </p>
+        )}
       </div>
     )
   }
@@ -68,10 +72,11 @@ export function AppDateInput({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
-      <p className="text-[10px] text-muted-foreground">
-        {formatAppDate(value, "AD")}
-      </p>
+      {showPreview && (
+        <p className="text-[10px] text-muted-foreground">
+          {formatAppDate(value, "AD")}
+        </p>
+      )}
     </div>
   )
 }
-
