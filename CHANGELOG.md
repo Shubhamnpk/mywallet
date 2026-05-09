@@ -1,5 +1,42 @@
 # Changelog
 
+## [2.1.0](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.4...mywallet-v2.1.0) (2026-05-09)
+
+
+### Features
+
+* **portfolio:** add richer dividend planning, sell previews, and import price verification flows
+* **settings:** revamp the About experience with improved support and release navigation
+* **calendar:** align dashboard and budgeting flows with the app calendar system
+
+
+### Improvements
+
+* **onboarding:** improve welcome handling for returning users and add a direct dashboard recovery path
+* **hooks:** split wallet context into domain-focused hooks for cleaner state access and maintenance
+* **portfolio:** refine transaction drafting, SIP carryover calculations, and add-transaction previews
+
+
+### Bug Fixes
+
+* **dropbox:** improve reconnect error handling and PIN validation
+* **portfolio:** include IPO entries in import price verification
+* **welcome:** prevent existing users from being incorrectly bounced back to the welcome screen
+
+## [2.0.4](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.3...mywallet-v2.0.4) (2026-04-30)
+
+
+### Features
+
+* **calculator:** add movable floating calculator panels with keyboard input, live results, docking, multiple instances, and tabbed history
+* **notifications:** add compact notification controls for bill reminders, settings, mark-all-read, and clearing live notifications
+
+
+### Improvements
+
+* **dropbox:** revoke connected tokens on disconnect and clear all local Dropbox backup keys
+* **dropbox:** detect missing backup scopes and guide users to reconnect with the required permissions
+
 ## [2.0.3](https://github.com/Shubhamnpk/mywallet/compare/mywallet-v2.0.2...mywallet-v2.0.3) (2026-04-21)
 
 

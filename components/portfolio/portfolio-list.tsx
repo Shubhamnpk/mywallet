@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,24 +10,31 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { usePortfolioData } from "@/hooks/use-portfolio-data"
+import { useNepseData } from "@/hooks/use-nepse-data"
 import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
+import { buildDividendData, DividendHoldingSummary, DividendPortfolioAllYearsRow, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
+import { OverviewStockSearch } from "./overview-stock-search"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
+import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
@@ -72,6 +79,18 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
+type ImportQueueItem = {
+    id: string
+    symbol: string
+    defaultPrice: number
+    type: string
+    date?: string
+    quantity?: number
+    description?: string
+    priceOptional?: boolean
+}
+
+
 /** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
 const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     [
@@ -93,8 +112,13 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     ].join("|")
 
 export function PortfolioList() {
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap,toggleZeroHolding,} = useWalletData()
+    const portfolioData = usePortfolioData()
+    const nepseData = useNepseData()
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction} = portfolioData
+    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
+    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const currencySymbol = userProfile?.currency ? `${userProfile.currency} ` : "Rs. "
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
@@ -102,21 +126,23 @@ export function PortfolioList() {
     const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [isChartExpanded, setIsChartExpanded] = useState(false)
-    const [importQueue, setImportQueue] = useState<{ symbol: string, defaultPrice: number, type: string }[]>([])
+    const [importQueue, setImportQueue] = useState<ImportQueueItem[]>([])
     const [importPrices, setImportPrices] = useState<Record<string, string>>({})
+    const [importTransactionPrices, setImportTransactionPrices] = useState<Record<string, string>>({})
     const [pendingImport, setPendingImport] = useState<{ type: string, data: string } | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState("holdings")
+    const [holdingsView, setHoldingsView] = useState<"list" | "grid">("list")
     const [chartView, setChartView] = useState<"sector" | "scrip">("sector")
     const [chartMetric, setChartMetric] = useState<"value" | "units">("value")
     const [chartMode, setChartMode] = useState<"allocation" | "movers">("allocation")
     const [selectedTxs, setSelectedTxs] = useState<string[]>([])
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
+    const [selectedStockDetailMode, setSelectedStockDetailMode] = useState<"holding" | "sold">("holding")
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
-    // Confirmation modal state for replacing native confirm()
     const [confirmModal, setConfirmModal] = useState<{
         open: boolean
         title: string
@@ -131,7 +157,19 @@ export function PortfolioList() {
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
     const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
     const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
+    const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
+    const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
+    const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
+    const [selectedDividendYear, setSelectedDividendYear] = useState<string>("")
+    const [dividendViewMode, setDividendViewMode] = useState<DividendViewMode>("historical")
+    const [isDividendSectionOpen, setIsDividendSectionOpen] = useState(false)
+    const [expandedDividendPortfolios, setExpandedDividendPortfolios] = useState<Set<string>>(new Set())
     const [isMarketHistoryOpen, setIsMarketHistoryOpen] = useState(false)
+    const [investmentBreakdownModal, setInvestmentBreakdownModal] = useState<{
+        open: boolean
+        title: string
+        portfolioId?: string | null
+    }>({ open: false, title: "", portfolioId: null })
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
@@ -144,6 +182,8 @@ export function PortfolioList() {
         cryptoId?: string
         portfolioId: string
     }>({ open: false, symbol: "", portfolioId: "" })
+    const [editingTransaction, setEditingTransaction] = useState<ShareTransaction | null>(null)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [zeroHoldingsEnabled, setZeroHoldingsEnabled] = useState(() => {
         return userProfile?.settings?.zeroHoldingsEnabled !== false
     })
@@ -159,7 +199,7 @@ export function PortfolioList() {
         quantity: Number.NaN,
         price: Number.NaN,
         type: "buy" as ShareTransaction['type'],
-        date: new Date().toISOString().split('T')[0],
+        date: todayAdDateKey(),
         description: ""
     })
     const formatHoldingAmount = (amount: number, isCrypto: boolean) => {
@@ -181,14 +221,134 @@ export function PortfolioList() {
         }
         return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
     }
+    const formatTimeSince = (dateValue?: string | number) => {
+        if (!dateValue) return "Unknown date"
+        const timestamp = typeof dateValue === "number" ? dateValue : new Date(dateValue).getTime()
+        if (!Number.isFinite(timestamp)) return "Unknown date"
+        const diffMs = Date.now() - timestamp
+        const isFuture = diffMs < 0
+        const absMs = Math.abs(diffMs)
+        const minutes = Math.floor(absMs / 60000)
+        const hours = Math.floor(minutes / 60)
+        const days = Math.floor(hours / 24)
+        const months = Math.floor(days / 30)
+        const years = Math.floor(days / 365)
+        const value = years > 0
+            ? `${years}y`
+            : months > 0
+                ? `${months}mo`
+                : days > 0
+                    ? `${days}d`
+                    : hours > 0
+                        ? `${hours}h`
+                        : `${Math.max(minutes, 1)}m`
+        return isFuture ? `in ${value}` : `${value} ago`
+    }
     const isFiniteNumber = (value: unknown): value is number =>
         typeof value === "number" && Number.isFinite(value)
     const safeNumber = useCallback((value?: number) => (isFiniteNumber(value) ? value : 0), [])
+    const includedPortfolioIds = useMemo(
+        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
+        [portfolios],
+    )
+    const dividendData = useMemo(() => buildDividendData({
+        dividendHistory,
+        dividendViewMode,
+        selectedDividendYear,
+        portfolios,
+        portfolio,
+        shareTransactions,
+        scripNamesMap,
+        includedPortfolioIds,
+        getFaceValue,
+    }), [dividendHistory, dividendViewMode, getFaceValue, includedPortfolioIds, portfolio, portfolios, selectedDividendYear, scripNamesMap, shareTransactions])
+    const {
+        dividendEligibleHoldings,
+        availableDividendYears,
+        selectedYearDividendHistory,
+        dividendPortfolioRows,
+        dividendAllYearsRows,
+        dividendOverviewTotals,
+    } = dividendData
+    const hasDividendEligibleHoldings = dividendEligibleHoldings.length > 0
+
+    const loadDividendHistory = useCallback(async () => {
+        if (dividendHistory || isDividendHistoryLoading) return
+        setIsDividendHistoryLoading(true)
+        setDividendHistoryError(null)
+        try {
+            const response = await fetch("/api/nepse/proposed-dividend/history-all-years")
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error || "Failed to fetch dividend history")
+            }
+            if (!Array.isArray(data)) {
+                throw new Error("Dividend history response was invalid")
+            }
+            setDividendHistory(data as ProposedDividendRecord[])
+        } catch (error: any) {
+            setDividendHistoryError(error?.message || "Could not load dividend history right now.")
+        } finally {
+            setIsDividendHistoryLoading(false)
+        }
+    }, [dividendHistory, isDividendHistoryLoading])
+
+    useEffect(() => {
+        if (viewMode !== "overview" || !isOverviewFeedOpen || !isDividendSectionOpen || !hasDividendEligibleHoldings) return
+        void loadDividendHistory()
+    }, [hasDividendEligibleHoldings, isDividendSectionOpen, isOverviewFeedOpen, loadDividendHistory, viewMode])
 
     // Helper to show custom confirmation modal
     const showConfirm = useCallback((title: string, description: string, onConfirm: () => void, confirmText = "Confirm", destructive = false) => {
         setConfirmModal({ open: true, title, description, onConfirm, confirmText, destructive })
     }, [])
+
+    const toggleDividendPortfolioExpansion = useCallback((portfolioId: string) => {
+        setExpandedDividendPortfolios((prev) => {
+            const next = new Set(prev)
+            if (next.has(portfolioId)) {
+                next.delete(portfolioId)
+            } else {
+                next.add(portfolioId)
+            }
+            return next
+        })
+    }, [])
+
+    // SIP plan detection and management
+    const normalizedSipPlans = useMemo(() => {
+        return normalizeSipPlans(userProfile?.sipPlans)
+    }, [userProfile?.sipPlans])
+
+    const getSipPlanForPortfolioItem = useCallback((item: PortfolioItem) => {
+        return normalizedSipPlans.find((plan) =>
+            plan.portfolioId === item.portfolioId &&
+            normalizeStockSymbol(plan.symbol) === normalizeStockSymbol(item.symbol) &&
+            plan.assetType === "stock"
+        ) || null
+    }, [normalizedSipPlans])
+
+    const isSipPlanInvalid = useCallback((plan: any) => {
+        if (!plan) return false
+        // Check for invalid SIP plan conditions
+        const hasInvalidAmount = !Number.isFinite(plan.installmentAmount) || plan.installmentAmount <= 0
+        const hasInvalidDate = !plan.startDate || isNaN(new Date(plan.startDate).getTime())
+        const hasInvalidFrequency = !["weekly", "monthly", "quarterly"].includes(plan.frequency)
+        return hasInvalidAmount || hasInvalidDate || hasInvalidFrequency
+    }, [])
+
+    const handleDeleteSipPlan = useCallback(async (planId: string, symbol: string) => {
+        try {
+            await portfolioData.deleteSipPlan?.(planId)
+            toast.success("SIP plan deleted", {
+                description: `SIP plan for ${symbol} has been removed.`
+            })
+        } catch (error: any) {
+            toast.error("Failed to delete SIP plan", {
+                description: error?.message || "Please try again."
+            })
+        }
+    }, [portfolioData])
 
     useEffect(() => {
         if (!isShareFeaturesEnabled && viewMode !== "overview") {
@@ -235,7 +395,7 @@ export function PortfolioList() {
                 quantity: Number.NaN,
                 price: price || Number.NaN,
                 type: type || 'buy',
-                date: new Date().toISOString().split('T')[0],
+                date: todayAdDateKey(),
                 description: `${type || 'buy'} ${symbol}`
             })
             
@@ -310,6 +470,7 @@ export function PortfolioList() {
     }
 
     const handleViewStockDetail = (item: PortfolioItem) => {
+        setSelectedStockDetailMode(showSoldStocks ? "sold" : "holding")
         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
         if (isCrypto) {
             fetchPortfolioPrices([item], true)
@@ -365,15 +526,89 @@ export function PortfolioList() {
                 (item) =>
                     item.portfolioId === activePortfolioId &&
                     item.symbol.toLowerCase().includes(deferredSearchQuery.toLowerCase()) &&
-                    (showSoldStocks ? item.units <= 0 : item.units > 0),
+                    item.units > 0,
             ),
-        [portfolio, activePortfolioId, deferredSearchQuery, showSoldStocks],
+        [portfolio, activePortfolioId, deferredSearchQuery],
     )
 
     const portfolioTransactions = useMemo(
         () => shareTransactions.filter((t) => t.portfolioId === activePortfolioId),
         [shareTransactions, activePortfolioId],
     )
+
+    const soldPortfolioRows = useMemo(() => {
+        const itemLookup = new Map<string, PortfolioItem>()
+        portfolio
+            .filter((item) => item.portfolioId === activePortfolioId)
+            .forEach((item) => {
+                const key = [
+                    normalizeStockSymbol(item.symbol),
+                    item.assetType || "stock",
+                    (item.cryptoId || "").trim(),
+                ].join("|")
+                itemLookup.set(key, item)
+            })
+
+        const grouped = new Map<string, ShareTransaction[]>()
+        portfolioTransactions
+            .filter((tx) => tx.type === "sell")
+            .forEach((tx) => {
+                const key = [
+                    normalizeStockSymbol(tx.symbol),
+                    tx.assetType || "stock",
+                    (tx.cryptoId || "").trim(),
+                ].join("|")
+                grouped.set(key, [...(grouped.get(key) || []), tx])
+            })
+
+        return Array.from(grouped.entries())
+            .map(([key, sellTxs]) => {
+                const [symbol, assetType, cryptoId] = key.split("|")
+                const existingItem = itemLookup.get(key)
+                const sortedSellTxs = [...sellTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                const latestSell = sortedSellTxs[0]
+                const soldQuantity = sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity), 0)
+                const soldValue = sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity) * safeNumber(tx.price), 0)
+                const fallbackPrice = soldValue > 0 && soldQuantity > 0 ? soldValue / soldQuantity : 0
+                const item: PortfolioItem = existingItem || {
+                    id: `sold-${activePortfolioId}-${key}`,
+                    portfolioId: activePortfolioId || latestSell.portfolioId,
+                    symbol: symbol || latestSell.symbol,
+                    assetType: assetType === "crypto" ? "crypto" : "stock",
+                    cryptoId,
+                    assetName: scripNamesMap?.[symbol] || symbol || latestSell.symbol,
+                    units: 0,
+                    buyPrice: fallbackPrice,
+                    currentPrice: fallbackPrice,
+                    sector: assetType === "crypto" || cryptoId ? "Crypto" : "Others",
+                    isKeptZeroHolding: true,
+                }
+
+                return {
+                    item,
+                    sellTxs: sortedSellTxs,
+                    latestSell,
+                    soldQuantity,
+                    soldValue,
+                    latestSellAt: new Date(latestSell.date).getTime(),
+                }
+            })
+            .filter((row) => {
+                const query = deferredSearchQuery.toLowerCase()
+                if (!query) return true
+                return (
+                    row.item.symbol.toLowerCase().includes(query) ||
+                    (row.item.assetName || "").toLowerCase().includes(query)
+                )
+            })
+            .sort((a, b) => b.latestSellAt - a.latestSellAt)
+    }, [activePortfolioId, deferredSearchQuery, portfolio, portfolioTransactions, safeNumber, scripNamesMap])
+
+    const soldPortfolioRowsByItemId = useMemo(() => {
+        const rows = new Map<string, (typeof soldPortfolioRows)[number]>()
+        soldPortfolioRows.forEach((row) => rows.set(row.item.id, row))
+        return rows
+    }, [soldPortfolioRows])
 
     const sortedTransactions = useMemo(
         () =>
@@ -428,7 +663,9 @@ export function PortfolioList() {
             await recomputePortfolio()
             // Fetch latest prices for all items
             await fetchPortfolioPrices(undefined, true)
-            toast.success("Portfolio sync completed")
+            // Refresh market feeds used by overview and notifications as part of the same manual sync.
+            await refreshMarketData()
+            toast.success("Portfolio and market data synced")
         } catch (error: any) {
             toast.error(error.message || "Failed to sync portfolio")
         } finally {
@@ -488,7 +725,7 @@ export function PortfolioList() {
                 quantity: Number.NaN,
                 price: Number.NaN,
                 type: "buy",
-                date: new Date().toISOString().split('T')[0],
+                date: todayAdDateKey(),
                 description: ""
             })
             setIsAddDialogOpen(false)
@@ -527,6 +764,18 @@ export function PortfolioList() {
             }
         } catch (error) {
             toast.error("Failed to record transaction")
+        }
+    }
+
+    const handleUpdateTransaction = async (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => {
+        try {
+            await updateShareTransaction(id, updates)
+            toast.success("Transaction updated")
+        } catch (error: any) {
+            toast.error("Could not update transaction", {
+                description: error?.message || "Please try again.",
+            })
+            throw error
         }
     }
 
@@ -617,7 +866,8 @@ export function PortfolioList() {
                     type = 'history'
                 }
 
-                const symbolsToPrice = new Map<string, { symbol: string, defaultPrice: number, type: string }>()
+                const symbolsToPrice = new Map<string, ImportQueueItem>()
+                const transactionPriceQueue: ImportQueueItem[] = []
 
                 if (type === 'portfolio') {
                     rows.slice(1).forEach(row => {
@@ -625,35 +875,63 @@ export function PortfolioList() {
                         const symbol = row[1]
                         const ltp = parseFloat(row[5]) || parseFloat(row[3]) || 100
                         if (symbol) {
-                            symbolsToPrice.set(symbol, { symbol, defaultPrice: ltp, type: 'Holding' })
+                            symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: ltp, type: 'Holding' })
                         }
                     })
                 } else {
-                    rows.slice(1).forEach(row => {
+                    rows.slice(1).forEach((row, rowIndex) => {
                         if (row.length < 7) return
                         const symbol = row[1]
+                        const date = row[2]
                         const desc = row[6]
                         const credit = parseFloat(row[3]) || 0
-                        const isIpo = desc.includes('IPO') || desc.includes('INITIAL PUBLIC OFFERING')
-                        const isMerger = desc.includes('Merger') && credit > 0
-                        const isBuy = !isIpo && !isMerger && credit > 0 && !desc.includes('BONUS')
+                        const upperDesc = desc.toUpperCase()
+                        const isBonus = upperDesc.includes('CA-BONUS') || upperDesc.includes('BONUS') || upperDesc.includes('CA-RIGHTS')
+                        const isIpo = upperDesc.includes('IPO') || upperDesc.includes('INITIAL PUBLIC OFFERING')
+                        const isMerger = upperDesc.includes('MERGER') && credit > 0
+                        const isBuy = !isIpo && !isMerger && !isBonus && credit > 0
 
                         if (symbol && (isIpo || isBuy || isMerger)) {
                             const typeStr = isIpo ? 'IPO' : (isMerger ? 'Merger' : 'Buy')
                             const def = (isIpo || isMerger) ? getFaceValue(symbol) : 0
-                            symbolsToPrice.set(symbol, { symbol, defaultPrice: def, type: typeStr })
+                            if (isBuy) {
+                                symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
+                            } else if (isIpo && !symbolsToPrice.has(symbol)) {
+                                symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: def, type: typeStr })
+                            }
+                            if (isBuy) {
+                                transactionPriceQueue.push({
+                                    id: `${symbol}__row_${rowIndex + 1}`,
+                                    symbol,
+                                    defaultPrice: def,
+                                    type: typeStr,
+                                    date,
+                                    quantity: credit,
+                                    description: desc,
+                                    priceOptional: true,
+                                })
+                            }
                         }
                     })
                 }
 
                 if (symbolsToPrice.size > 0) {
                     const queue = Array.from(symbolsToPrice.values())
-                    setImportQueue(queue)
                     const initialPrices: Record<string, string> = {}
                     queue.forEach(item => {
                         initialPrices[item.symbol] = item.defaultPrice.toString()
                     })
+                    const initialTransactionPrices: Record<string, string> = {}
+                    transactionPriceQueue.forEach(item => {
+                        initialTransactionPrices[item.id] = item.defaultPrice > 0 ? item.defaultPrice.toString() : ""
+                    })
                     setImportPrices(initialPrices)
+                    setImportTransactionPrices(initialTransactionPrices)
+                    if (transactionPriceQueue.length > 0) {
+                        setImportQueue([...queue, ...transactionPriceQueue])
+                    } else {
+                        setImportQueue(queue)
+                    }
                     setPendingImport({ type, data: content })
                     setIsImportModalOpen(true)
                 } else {
@@ -677,10 +955,17 @@ export function PortfolioList() {
             Object.entries(importPrices).forEach(([sym, price]) => {
                 resolved[sym] = parseFloat(price) || 0
             })
+            Object.entries(importTransactionPrices).forEach(([id, price]) => {
+                const parsed = parseFloat(price)
+                if (Number.isFinite(parsed) && parsed > 0) {
+                    resolved[id] = parsed
+                }
+            })
 
             const updated = await importShareData(pendingImport.type as any, pendingImport.data, resolved)
             setIsImportModalOpen(false)
             setPendingImport(null)
+            setImportTransactionPrices({})
             toast.success("Data imported with cost prices")
             // Refresh with the newly imported data
             if (updated) fetchPortfolioPrices(updated)
@@ -768,6 +1053,252 @@ export function PortfolioList() {
         }
     }, [activePortfolioItems, safeNumber])
 
+    const capitalSummaryByPortfolioId = useMemo(() => {
+        const summaries = new Map<string, { freshInvestment: number; reinvestment: number }>()
+        portfolios.forEach((p) => summaries.set(p.id, { freshInvestment: 0, reinvestment: 0 }))
+
+        shareTransactions.forEach((tx) => {
+            const amount = Number.isFinite(tx.quantity) && Number.isFinite(tx.price) ? tx.quantity * tx.price : 0
+            if (amount <= 0) return
+
+            const prev = summaries.get(tx.portfolioId) || { freshInvestment: 0, reinvestment: 0 }
+            if (tx.type === "reinvestment") {
+                summaries.set(tx.portfolioId, {
+                    ...prev,
+                    reinvestment: prev.reinvestment + amount,
+                })
+                return
+            }
+
+            if (tx.type === "buy" || tx.type === "ipo" || tx.type === "merger_in") {
+                summaries.set(tx.portfolioId, {
+                    ...prev,
+                    freshInvestment: prev.freshInvestment + amount,
+                })
+            }
+        })
+
+        return summaries
+    }, [portfolios, shareTransactions])
+
+    useEffect(() => {
+        if (availableDividendYears.length === 0) return
+        if (selectedDividendYear && availableDividendYears.includes(selectedDividendYear)) return
+        setSelectedDividendYear(getDefaultDividendYear(availableDividendYears))
+    }, [availableDividendYears, selectedDividendYear])
+
+    const getInvestmentBreakdown = useCallback((portfolioId?: string | null) => {
+        const selectedItems = portfolio.filter((item) => !portfolioId || item.portfolioId === portfolioId)
+        const currentInvested = selectedItems
+            .filter((item) => item.units > 0)
+            .reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
+
+        if (portfolioId) {
+            const capitalSummary = capitalSummaryByPortfolioId.get(portfolioId) || { freshInvestment: 0, reinvestment: 0 }
+            return {
+                currentInvested,
+                freshInvestment: capitalSummary.freshInvestment,
+                reinvestment: capitalSummary.reinvestment,
+            }
+        }
+
+        return portfolios
+            .filter((p) => includedPortfolioIds.has(p.id))
+            .reduce(
+                (sum, p) => {
+                    const capitalSummary = capitalSummaryByPortfolioId.get(p.id) || { freshInvestment: 0, reinvestment: 0 }
+                    return {
+                        currentInvested,
+                        freshInvestment: sum.freshInvestment + capitalSummary.freshInvestment,
+                        reinvestment: sum.reinvestment + capitalSummary.reinvestment,
+                    }
+                },
+                { currentInvested, freshInvestment: 0, reinvestment: 0 },
+            )
+    }, [capitalSummaryByPortfolioId, includedPortfolioIds, portfolio, portfolios, safeNumber])
+
+    const openInvestmentBreakdown = useCallback((title: string, portfolioId?: string | null) => {
+        setInvestmentBreakdownModal({
+            open: true,
+            title,
+            portfolioId: portfolioId ?? null,
+        })
+    }, [])
+
+    const soldPortfolioStats = useMemo(() => {
+        const holdingLookup = new Map<string, PortfolioItem>()
+        activePortfolioItems.forEach((item) => {
+            const key = [
+                normalizeStockSymbol(item.symbol),
+                item.assetType || "stock",
+                (item.cryptoId || "").trim(),
+            ].join("|")
+            holdingLookup.set(key, item)
+        })
+
+        const sectorMap = new Map<string, { value: number; count: number; units: number; symbols: Set<string> }>()
+        const scripMap = new Map<string, { value: number; units: number; sector: string }>()
+        const comparisonMap = new Map<string, {
+            symbol: string
+            sector: string
+            units: number
+            soldValue: number
+            todayValue: number
+        }>()
+        const soldSymbols = new Set<string>()
+        let totalSoldValue = 0
+        let totalSoldTodayValue = 0
+        let totalSoldUnits = 0
+        let latestSoldAt = 0
+
+        portfolioTransactions.forEach((tx) => {
+            if (tx.type !== "sell") return
+            const quantity = safeNumber(tx.quantity)
+            const price = safeNumber(tx.price)
+            const value = quantity * price
+            if (quantity <= 0) return
+
+            const symbol = normalizeStockSymbol(tx.symbol)
+            const key = [symbol, tx.assetType || "stock", (tx.cryptoId || "").trim()].join("|")
+            const holding = holdingLookup.get(key)
+            const sector = holding?.sector || (tx.assetType === "crypto" || tx.cryptoId ? "Crypto" : "Others")
+            const displaySymbol = symbol || tx.symbol
+            const txDate = new Date(tx.date).getTime()
+            const currentPrice = isFiniteNumber(holding?.currentPrice)
+                ? holding.currentPrice
+                : (isFiniteNumber(holding?.buyPrice) ? holding.buyPrice : price)
+            const todayValue = quantity * currentPrice
+
+            totalSoldValue += value
+            totalSoldTodayValue += todayValue
+            totalSoldUnits += quantity
+            soldSymbols.add(displaySymbol)
+            if (Number.isFinite(txDate)) latestSoldAt = Math.max(latestSoldAt, txDate)
+
+            const currentSector = sectorMap.get(sector) || { value: 0, count: 0, units: 0, symbols: new Set<string>() }
+            currentSector.value += value
+            currentSector.units += quantity
+            currentSector.symbols.add(displaySymbol)
+            currentSector.count = currentSector.symbols.size
+            sectorMap.set(sector, currentSector)
+
+            const currentScrip = scripMap.get(displaySymbol) || { value: 0, units: 0, sector }
+            scripMap.set(displaySymbol, {
+                value: currentScrip.value + value,
+                units: currentScrip.units + quantity,
+                sector: currentScrip.sector || sector,
+            })
+
+            const currentComparison = comparisonMap.get(displaySymbol) || {
+                symbol: displaySymbol,
+                sector,
+                units: 0,
+                soldValue: 0,
+                todayValue: 0,
+            }
+            comparisonMap.set(displaySymbol, {
+                ...currentComparison,
+                units: currentComparison.units + quantity,
+                soldValue: currentComparison.soldValue + value,
+                todayValue: currentComparison.todayValue + todayValue,
+            })
+        })
+
+        const reinvestedAmount = portfolioTransactions.reduce((sum, tx) => {
+            if (tx.type !== "reinvestment") return sum
+            const amount = safeNumber(tx.quantity) * safeNumber(tx.price)
+            return amount > 0 ? sum + amount : sum
+        }, 0)
+
+        const totalBase = chartMetric === "units" ? totalSoldUnits : totalSoldValue
+        const sectorData = Array.from(sectorMap.entries())
+            .map(([name, data]) => ({
+                name,
+                value: data.value,
+                count: data.count,
+                units: data.units,
+                color: getSectorColor(name),
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
+            }))
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
+
+        const scripData = Array.from(scripMap.entries())
+            .map(([name, data]) => ({
+                name,
+                value: data.value,
+                units: data.units,
+                sector: data.sector,
+                color: getSectorVariantColor(data.sector, name),
+                percentage: totalBase > 0
+                    ? ((chartMetric === "units" ? data.units : data.value) / totalBase) * 100
+                    : 0,
+            }))
+            .sort((a, b) => (chartMetric === "units" ? b.units - a.units : b.value - a.value))
+
+        const comparisons = Array.from(comparisonMap.values())
+            .map((row) => {
+                const difference = row.todayValue - row.soldValue
+                return {
+                    ...row,
+                    difference,
+                    differencePercentage: row.soldValue > 0 ? (difference / row.soldValue) * 100 : 0,
+                }
+            })
+
+        const missedUpsideRows = comparisons.filter((row) => row.difference > 0)
+        const savedDownsideRows = comparisons.filter((row) => row.difference < 0)
+        const flatRows = comparisons.filter((row) => Math.abs(row.differencePercentage) < 0.0001)
+
+        const summarizeComparisonRows = (rows: typeof comparisons) => {
+            const units = rows.reduce((sum, row) => sum + row.units, 0)
+            const soldValue = rows.reduce((sum, row) => sum + row.soldValue, 0)
+            const todayValue = rows.reduce((sum, row) => sum + row.todayValue, 0)
+            const difference = todayValue - soldValue
+            return {
+                units,
+                soldValue,
+                todayValue,
+                difference,
+                differencePercentage: soldValue > 0 ? (difference / soldValue) * 100 : 0,
+            }
+        }
+
+        const missedUpside = missedUpsideRows
+            .sort((a, b) => b.differencePercentage - a.differencePercentage)
+            .slice(0, 5)
+
+        const savedDownside = savedDownsideRows
+            .sort((a, b) => a.differencePercentage - b.differencePercentage)
+            .slice(0, 5)
+
+        const flat = flatRows
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 5)
+
+        return {
+            totalSoldValue,
+            totalSoldTodayValue,
+            soldValueDifference: totalSoldTodayValue - totalSoldValue,
+            soldValueDifferencePercentage: totalSoldValue > 0 ? ((totalSoldTodayValue - totalSoldValue) / totalSoldValue) * 100 : 0,
+            totalSoldUnits,
+            soldScrips: soldSymbols.size,
+            soldSectors: sectorMap.size,
+            reinvestedAmount,
+            reinvestedPercentage: totalSoldValue > 0 ? (reinvestedAmount / totalSoldValue) * 100 : 0,
+            latestSoldAt,
+            sectorData,
+            scripData,
+            missedUpside,
+            savedDownside,
+            flat,
+            missedUpsideTotal: summarizeComparisonRows(missedUpsideRows),
+            savedDownsideTotal: summarizeComparisonRows(savedDownsideRows),
+            flatTotal: summarizeComparisonRows(flatRows),
+        }
+    }, [activePortfolioItems, chartMetric, portfolioTransactions, safeNumber])
+
     const { sectorData, scripData } = useMemo(() => {
         const sectorMap = new Map<string, { value: number; count: number; units: number }>()
         const scripMap = new Map<string, { value: number; units: number; sector: string }>()
@@ -829,7 +1360,9 @@ export function PortfolioList() {
         return { sectorData: memoSectorData, scripData: memoScripData }
     }, [activePortfolioItemsForCalculations, currentValue, chartMetric, safeNumber])
 
-    const activeChartData = chartView === "sector" ? sectorData : scripData
+    const activeChartData = showSoldStocks
+        ? (chartView === "sector" ? soldPortfolioStats.sectorData : soldPortfolioStats.scripData)
+        : (chartView === "sector" ? sectorData : scripData)
 
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItemsForCalculations
@@ -910,11 +1443,6 @@ export function PortfolioList() {
 
         return summaries
     }, [portfolio, portfolios])
-
-    const includedPortfolioIds = useMemo(
-        () => new Set(portfolios.filter((p) => p.includeInTotals !== false).map((p) => p.id)),
-        [portfolios],
-    )
 
     const handleTogglePortfolioIncluded = async (portfolioToToggle: Portfolio) => {
         try {
@@ -1047,7 +1575,7 @@ export function PortfolioList() {
         }
 
         const dailySeries = normalized.map((row) => ({
-            date: new Date(row.sortTs).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+            date: formatAppDate(new Date(row.sortTs), calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" }),
             turnoverCr: Number(((row.totalTurnover || 0) / 10000000).toFixed(2)),
             transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
         }))
@@ -1056,9 +1584,32 @@ export function PortfolioList() {
     }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
 
     const overviewNotifications = useMemo(() => {
+        // Add invalid SIP plan notifications
+        const invalidSipNotifications = normalizedSipPlans
+            .filter(plan => isSipPlanInvalid(plan))
+            .map(plan => {
+                // Find the portfolio name for better context
+                const portfolioName = portfolios.find(p => p.id === plan.portfolioId)?.name || 'Unknown Portfolio'
+                return {
+                    id: `sip-invalid-${plan.id}`,
+                    category: "sip" as const,
+                    title: "Invalid SIP Plan Detected",
+                    text: `SIP plan for ${plan.symbol} in "${portfolioName}" has invalid configuration`,
+                    details: `The SIP plan for ${plan.symbol} in portfolio "${portfolioName}" has invalid data that needs attention. Please review and fix plan configuration or delete it. Each portfolio's SIP is calculated separately.`,
+                    timestamp: plan.updatedAt,
+                    tone: "warning" as const,
+                    documents: [] as Array<{ label: string; url: string }>,
+                    planId: plan.id,
+                    symbol: plan.symbol,
+                    portfolioId: plan.portfolioId,
+                    portfolioName,
+                    actionLabel: "View Details"
+                }
+            })
+
         const toDocuments = (docs?: NepseDisclosure["applicationDocumentDetailsList"]) =>
             (docs || [])
-                .map((doc) => {
+                .map((doc: any) => {
                     const resolvedUrl = resolveNepseDocumentUrl(doc.fileUrl || doc.filePath || null)
                     if (!resolvedUrl) return null
                     const label = (doc.fileUrl || doc.filePath || "Document").split("/").pop() || "Document"
@@ -1075,6 +1626,7 @@ export function PortfolioList() {
             timestamp: parseDateToTimestamp((n as { addedDate?: string }).addedDate),
             details: n.noticeHeading || "No details available for this notice.",
             documents: [] as Array<{ label: string; url: string }>,
+            actionLabel: "Read Notice",
         }))
         const company = disclosures.slice(0, 6).map((d) => ({
             id: `disclosure-${d.id}`,
@@ -1085,6 +1637,7 @@ export function PortfolioList() {
             timestamp: parseDateToTimestamp(d.addedDate),
             details: stripHtml(d.newsBody) || d.newsHeadline || "No details available for this disclosure.",
             documents: toDocuments(d.applicationDocumentDetailsList),
+            actionLabel: d.applicationDocumentDetailsList?.length ? "Open Filing" : "Read Disclosure",
         }))
         const exchange = exchangeMessages.slice(0, 6).map((m) => ({
             id: `exchange-${m.id}`,
@@ -1098,12 +1651,25 @@ export function PortfolioList() {
                 const url = resolveNepseDocumentUrl(m.filePath || null)
                 return url ? [{ label: "Exchange Circular", url }] : []
             })(),
+            actionLabel: m.filePath ? "Open Circular" : "Read Message",
+        }))
+        const ipoItems = upcomingIPOs.slice(0, 6).map((ipo, index) => ({
+            id: `ipo-${ipo.company}-${ipo.status || "unknown"}-${ipo.openingDate || ipo.announcement_date || ipo.date_range || ipo.url || index}-${index}`,
+            title: ipo.status === "open" ? "IPO Open Now" : ipo.status === "upcoming" ? "IPO Opening Soon" : "IPO Update",
+            text: `${ipo.company}${ipo.status === "open" ? " is open for application." : ipo.status === "upcoming" ? " is coming soon." : " IPO details are available."}`,
+            tone: ipo.status === "open" ? "success" as const : ipo.status === "upcoming" ? "info" as const : "warning" as const,
+            category: "ipo" as const,
+            timestamp: parseDateToTimestamp(ipo.openingDate || ipo.announcement_date || ipo.scraped_at),
+            details: ipo.full_text || `${ipo.company} IPO timeline: ${ipo.date_range}.`,
+            documents: [] as Array<{ label: string; url: string }>,
+            actionLabel: ipo.status === "open" ? "Apply / View" : "View IPO",
+            ipo,
         }))
 
-        return [...general, ...company, ...exchange]
-            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        return [...invalidSipNotifications, ...ipoItems, ...general, ...company, ...exchange]
+            .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
             .slice(0, 14)
-    }, [noticesBundle, disclosures, exchangeMessages])
+    }, [noticesBundle, disclosures, exchangeMessages, upcomingIPOs, normalizedSipPlans, isSipPlanInvalid])
 
     const overviewNotificationsWithMeta = useMemo(() => {
         const formatter = new Intl.DateTimeFormat(undefined, {
@@ -1125,6 +1691,21 @@ export function PortfolioList() {
         [overviewNotificationsWithMeta, selectedOverviewNotificationId],
     )
 
+    const overviewNotificationStats = useMemo(() => ({
+        total: overviewNotificationsWithMeta.length,
+        ipo: overviewNotificationsWithMeta.filter((item) => item.category === "ipo").length,
+        filings: overviewNotificationsWithMeta.filter((item) => item.documents.length > 0).length,
+        sip: overviewNotificationsWithMeta.filter((item) => item.category === "sip").length,
+    }), [overviewNotificationsWithMeta])
+
+    const getOverviewNotificationIcon = (category: string) => {
+        if (category === "ipo") return <BellRing className="w-4 h-4" />
+        if (category === "disclosure") return <FileText className="w-4 h-4" />
+        if (category === "exchange") return <Activity className="w-4 h-4" />
+        if (category === "sip") return <Calendar className="w-4 h-4" />
+        return <Info className="w-4 h-4" />
+    }
+
     const ipoInsights = useMemo(() => {
         const normalizeIpoName = (value?: string) =>
             (value || "")
@@ -1144,6 +1725,13 @@ export function PortfolioList() {
                 ),
             )
 
+        const parseSortableIpoDate = (value?: string) => {
+            if (!value) return Number.POSITIVE_INFINITY
+            const parsed = new Date(value)
+            const timestamp = parsed.getTime()
+            return Number.isNaN(timestamp) ? Number.POSITIVE_INFINITY : timestamp
+        }
+
         const ipoStatusOrder: Record<string, number> = { open: 0, upcoming: 1, closed: 2 }
         const sortedIPOs = [...upcomingIPOs].sort((a, b) => {
             const aRank = ipoStatusOrder[a.status ?? ""] ?? 3
@@ -1151,10 +1739,21 @@ export function PortfolioList() {
             if (aRank !== bRank) return aRank - bRank
 
             if (a.status === "open" && b.status === "open") {
+                const closingDateDiff =
+                    parseSortableIpoDate(a.closingDate) - parseSortableIpoDate(b.closingDate)
+                if (closingDateDiff !== 0) return closingDateDiff
+
                 const aApplied = isIpoApplied(a)
                 const bApplied = isIpoApplied(b)
                 if (aApplied !== bApplied) return aApplied ? 1 : -1
             }
+
+            if (a.status === "upcoming" && b.status === "upcoming") {
+                const openingDateDiff =
+                    parseSortableIpoDate(a.openingDate) - parseSortableIpoDate(b.openingDate)
+                if (openingDateDiff !== 0) return openingDateDiff
+            }
+
             return 0
         })
 
@@ -1223,6 +1822,22 @@ export function PortfolioList() {
     }, [ipoFilter, showAllIPOs, upcomingIPOs, userProfile?.meroShare?.applicationLogs])
 
     const openOverviewNotificationDetails = (id: string) => {
+        const notification = overviewNotificationsWithMeta.find((item) => item.id === id)
+        if (notification?.category === "ipo" && "ipo" in notification && notification.ipo) {
+            handleViewIPODetail(notification.ipo)
+            return
+        }
+        if (notification?.category === "sip" && "planId" in notification && "symbol" in notification && "portfolioId" in notification) {
+            // Handle SIP notifications by opening the specific portfolio item
+            const portfolioItem = portfolio.find(item => 
+                item.portfolioId === notification.portfolioId &&
+                normalizeStockSymbol(item.symbol) === normalizeStockSymbol(notification.symbol)
+            )
+            if (portfolioItem) {
+                handleViewStockDetail(portfolioItem)
+                return
+            }
+        }
         setSelectedOverviewNotificationId(id)
         setSelectedOverviewNotificationDocUrl(null)
     }
@@ -1239,6 +1854,51 @@ export function PortfolioList() {
             : url
         setSelectedOverviewNotificationDocUrl(previewUrl)
     }
+
+    const investmentBreakdown = useMemo(
+        () => getInvestmentBreakdown(investmentBreakdownModal.portfolioId),
+        [getInvestmentBreakdown, investmentBreakdownModal.portfolioId],
+    )
+
+    const renderInvestmentBreakdownModal = () => (
+        <Dialog
+            open={investmentBreakdownModal.open}
+            onOpenChange={(open) => setInvestmentBreakdownModal((prev) => ({ ...prev, open }))}
+        >
+            <DialogContent className="max-w-md w-[94vw]">
+                <DialogHeader>
+                    <DialogTitle className="text-base sm:text-lg font-black">
+                        {investmentBreakdownModal.title || "Investment Breakdown"}
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 text-left">
+                    <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Current Invested</p>
+                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString()}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Cost basis of holdings that are currently active.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                            <p className="text-[10px] uppercase font-black tracking-widest text-primary">Fresh Capital</p>
+                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">New money added by the user.</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                            <p className="text-[10px] uppercase font-black tracking-widest text-cyan-700">Reinvestment</p>
+                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">Buys funded from previous sales.</p>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-amber-700">Note</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            Fresh capital and reinvestment are historical funding sources, so they may differ from current invested value after sells or position rotation.
+                        </p>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
 
     const renderOverviewHeader = () => {
         const includedPortfolios = portfolios.filter((p) => includedPortfolioIds.has(p.id))
@@ -1313,7 +1973,10 @@ export function PortfolioList() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card
+                    className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left cursor-pointer hover:border-primary/30 transition-colors"
+                    onClick={() => openInvestmentBreakdown("Total Investment Breakdown")}
+                >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
                         <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString()}</CardTitle>
@@ -1381,6 +2044,355 @@ export function PortfolioList() {
                 </Badge>
             </div>
             </>
+        )
+    }
+
+    const renderDividendSection = () => {
+        const canShowDividendSection = hasDividendEligibleHoldings
+
+        if (!canShowDividendSection) {
+            return (
+                <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                        Add active stock holdings to estimate portfolio dividends.
+                    </p>
+                </div>
+            )
+        }
+
+        if (!isDividendSectionOpen) {
+            return (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5">
+                    <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        onClick={() => setIsDividendSectionOpen(true)}
+                    >
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Gift className="w-4 h-4 text-amber-600" />
+                            <div>
+                                <p className="text-sm font-black uppercase tracking-widest">Dividend Outlook</p>
+                                <p className="text-[10px] font-semibold text-muted-foreground">
+                                    Closed by default. Open to view yearly dividend estimates.
+                                </p>
+                            </div>
+                        </div>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                </div>
+            )
+        }
+
+        if (!hasDividendEligibleHoldings) {
+            return (
+                <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                        Add active stock holdings to estimate portfolio dividends.
+                    </p>
+                </div>
+            )
+        }
+
+        if (!dividendHistory && !dividendHistoryError) {
+            return (
+                <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground">Loading dividend history...</p>
+                </div>
+            )
+        }
+
+        if (dividendHistoryError && !dividendHistory) {
+            return (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                    <p className="text-xs font-semibold text-destructive">{dividendHistoryError}</p>
+                </div>
+            )
+        }
+
+        return (
+            <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                        type="button"
+                        className="flex items-center gap-2 text-left"
+                        onClick={() => setIsDividendSectionOpen(false)}
+                    >
+                        <Gift className="w-4 h-4 text-amber-600" />
+                        <h4 className="text-sm font-black uppercase tracking-widest">Dividend Outlook</h4>
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                    <div className="text-[10px] font-semibold text-muted-foreground">
+                        Money summary is hidden while this section is open.
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1">
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "historical" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("historical")}
+                            >
+                                Historical
+                            </Button>
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "current" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("current")}
+                            >
+                                Current
+                            </Button>
+                            <Button
+                                type="button"
+                                variant={dividendViewMode === "all" ? "default" : "outline"}
+                                size="sm"
+                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                onClick={() => setDividendViewMode("all")}
+                            >
+                                All
+                            </Button>
+                        </div>
+                        <Badge variant="outline" className="h-6 rounded-md text-[9px] font-black uppercase">
+                            {dividendViewMode === "historical"
+                                ? "Uses units on dividend date"
+                                : dividendViewMode === "current"
+                                    ? "Uses current holdings"
+                                    : "Rolls up all available years"}
+                        </Badge>
+                        {dividendViewMode !== "all" && (
+                            <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
+                                <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                    <SelectValue placeholder="Select FY" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableDividendYears.map((year) => (
+                                        <SelectItem key={year} value={year}>{year}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    </div>
+                </div>
+
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Cash Dividend</p>
+                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Across included portfolios only.</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Bonus Units</p>
+                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Projected units from bonus shares.</p>
+                    </div>
+                    <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Matched Holdings</p>
+                        <p className="mt-1 text-lg font-black">{dividendOverviewTotals.matched}/{dividendOverviewTotals.holdings}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                            {dividendViewMode === "historical"
+                                ? "Historical matched holdings for the selected year."
+                                : dividendViewMode === "current"
+                                    ? "Current matched holdings for the selected year."
+                                    : "Matched yearly entries across all available years."}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Included Portfolios</p>
+                        <p className="mt-1 text-lg font-black">{dividendOverviewTotals.portfolios}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Excluded portfolios stay visible below.</p>
+                    </div>
+                </div>
+
+                {dividendHistoryError && dividendHistory && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{dividendHistoryError}</p>
+                    </div>
+                )}
+
+                {dividendViewMode !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                            No proposed dividend records were found for {selectedDividendYear}.
+                        </p>
+                    </div>
+                ) : dividendViewMode === "all" && dividendAllYearsRows.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                            No historical dividend rollups are available yet.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {(dividendViewMode === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
+                            const isExpanded = expandedDividendPortfolios.has(row.portfolioId)
+                            const allYearsRow = dividendViewMode === "all" ? row as DividendPortfolioAllYearsRow : null
+                            const yearlyRow = dividendViewMode === "all" ? null : row as DividendPortfolioSummaryRow
+                            return (
+                                <div key={row.portfolioId} className="rounded-xl border border-muted/30 bg-background/70">
+                                    <button
+                                        type="button"
+                                        className="flex w-full flex-col gap-3 p-3 text-left transition-colors hover:bg-primary/[0.03] sm:flex-row sm:items-start sm:justify-between"
+                                        onClick={() => toggleDividendPortfolioExpansion(row.portfolioId)}
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <p className="text-sm font-black">{row.portfolioName}</p>
+                                                {!row.includeInTotals && (
+                                                    <Badge variant="outline" className="h-5 rounded-md text-[9px] font-black uppercase border-amber-500/30 text-amber-700 dark:text-amber-300">
+                                                        Excluded from totals
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                {dividendViewMode === "all"
+                                                    ? `${allYearsRow?.years.length || 0} years rolled up across matched history`
+                                                    : `${yearlyRow?.matchedCount || 0}/${yearlyRow?.holdingsCount || 0} holdings matched for ${selectedDividendYear}`}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-3 sm:min-w-[260px] sm:justify-end">
+                                            <div className="grid flex-1 grid-cols-2 gap-3 text-left">
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">
+                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
+                                                    <p className="mt-1 text-sm font-black font-mono">
+                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className={cn("shrink-0 rounded-full p-2 transition-transform duration-200", isExpanded && "rotate-180")}>
+                                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                            </div>
+                                        </div>
+                                    </button>
+                                    {isExpanded && (
+                                        <div className="border-t border-muted/20 px-3 pb-3 pt-3">
+                                            {dividendViewMode === "all" ? (
+                                                <div className="space-y-3">
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Cash Stock</p>
+                                                            {allYearsRow?.topCashContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{allYearsRow.topCashContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topCashContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Bonus Stock</p>
+                                                            {allYearsRow?.topBonusContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{allYearsRow.topBonusContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topBonusContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        {(allYearsRow?.years || []).map((yearSummary: DividendYearSummary) => (
+                                                            <div key={`${row.portfolioId}-${yearSummary.year}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-black uppercase">{yearSummary.year}</p>
+                                                                        <p className="truncate text-[10px] text-muted-foreground">Yearly rolled-up estimate</p>
+                                                                    </div>
+                                                                    <Badge variant="secondary" className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                        {yearSummary.matchedCount}/{yearSummary.holdingsCount} matched
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="mt-2 text-[10px] text-muted-foreground">
+                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Cash Stock</p>
+                                                            {yearlyRow?.topCashContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{yearlyRow.topCashContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topCashContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Top Bonus Stock</p>
+                                                            {yearlyRow?.topBonusContributor ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-black uppercase">{yearlyRow.topBonusContributor.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topBonusContributor.assetName}</p>
+                                                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-2 text-[10px] text-muted-foreground">No stock available.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                    {(yearlyRow?.holdings || []).map((holding: DividendHoldingSummary) => (
+                                                        <div key={`${row.portfolioId}-${holding.symbol}`} className="rounded-lg border border-muted/20 bg-muted/5 px-3 py-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-[11px] font-black uppercase">{holding.symbol}</p>
+                                                                    <p className="truncate text-[10px] text-muted-foreground">{holding.assetName}</p>
+                                                                </div>
+                                                                <Badge variant={holding.cashPercent > 0 || holding.bonusPercent > 0 ? "secondary" : "outline"} className="h-5 rounded px-1.5 text-[8px] font-black uppercase">
+                                                                    {holding.cashPercent > 0 || holding.bonusPercent > 0 ? "matched" : "no record"}
+                                                                </Badge>
+                                                            </div>
+                                                            <div className="mt-2 text-[10px] text-muted-foreground">
+                                                                <p>Units: {formatUnits(holding.units)}</p>
+                                                                <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
+                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                                <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+                <div className="rounded-xl border border-dashed border-muted/40 bg-background/50 p-3">
+                    <p className="text-[11px] font-semibold text-muted-foreground">
+                        Approximate values only. These dividend figures are estimates based on matched proposed dividend records and your holding history/current holdings, not confirmed actual payouts.
+                    </p>
+                </div>
+            </div>
         )
     }
 
@@ -1565,6 +2577,7 @@ export function PortfolioList() {
                     item={selectedStock}
                     open={isStockDetailOpen}
                     onOpenChange={setIsStockDetailOpen}
+                    mode={selectedStockDetailMode}
                 />
                 <SellConfirmationModal
                     symbol={sellConfirmModal.symbol}
@@ -1599,20 +2612,33 @@ export function PortfolioList() {
                     confirmText={confirmModal.confirmText}
                     destructive={confirmModal.destructive}
                 />
+                {renderInvestmentBreakdownModal()}
                 <Dialog
                     open={Boolean(selectedOverviewNotification)}
                     onOpenChange={closeOverviewNotificationDetails}
                 >
                     <DialogContent className="max-w-3xl w-[95vw] max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
                         <DialogHeader className="border-b border-muted/30 px-5 py-4">
-                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
-                                {selectedOverviewNotification?.title || "Notification"}
-                            </DialogTitle>
-                            {selectedOverviewNotification ? (
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            <div className="flex items-start gap-3">
+                                <div className={cn(
+                                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                                    selectedOverviewNotification?.tone === "success" && "border-success/20 bg-success/10 text-success",
+                                    selectedOverviewNotification?.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
+                                    selectedOverviewNotification?.tone === "info" && "border-info/20 bg-info/10 text-info",
+                                )}>
+                                    {selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
+                                </div>
+                                <div className="min-w-0">
+                                    <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
+                                        {selectedOverviewNotification?.title || "Notification"}
+                                    </DialogTitle>
+                                    {selectedOverviewNotification ? (
+                                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                                     {selectedOverviewNotification.category} • {selectedOverviewNotification.dateLabel}
                                 </p>
-                            ) : null}
+                                    ) : null}
+                                </div>
+                            </div>
                         </DialogHeader>
                         {selectedOverviewNotification && (
                             <ScrollArea className="flex-1 px-5 py-4">
@@ -1657,6 +2683,46 @@ export function PortfolioList() {
                                             </div>
                                         </div>
                                     )}
+                                    <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
+                                        {selectedOverviewNotification.category === "sip" && "planId" in selectedOverviewNotification && "symbol" in selectedOverviewNotification && (
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                onClick={() => {
+                                                    showConfirm(
+                                                        "Delete Invalid SIP Plan",
+                                                        `Are you sure you want to delete the invalid SIP plan for ${selectedOverviewNotification.symbol} in ${selectedOverviewNotification.portfolioName || 'the portfolio'}?`,
+                                                        () => handleDeleteSipPlan(selectedOverviewNotification.planId, selectedOverviewNotification.symbol),
+                                                        "Delete",
+                                                        true
+                                                    )
+                                                    closeOverviewNotificationDetails(false)
+                                                }}
+                                            >
+                                                <Trash2 className="mr-2 w-3.5 h-3.5" />
+                                                Delete SIP Plan
+                                            </Button>
+                                        )}
+                                        {selectedOverviewNotification.documents[0] && (
+                                            <Button
+                                                type="button"
+                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                onClick={() => openOverviewNotificationDocument(selectedOverviewNotification.documents[0].url)}
+                                            >
+                                                <FileText className="mr-2 w-3.5 h-3.5" />
+                                                Open Filing
+                                            </Button>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                            onClick={() => closeOverviewNotificationDetails(false)}
+                                        >
+                                            Done
+                                        </Button>
+                                    </div>
                                     {selectedOverviewNotificationDocUrl && (
                                         <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
                                             <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
@@ -1716,8 +2782,8 @@ export function PortfolioList() {
                     </div>
 
                     <div className="mt-8">
-                        {renderOverviewHeader()}
-                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0) && (
+                        {!isDividendSectionOpen && renderOverviewHeader()}
+                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
                             <div className="mb-6">
                                 <Button
                                     type="button"
@@ -1725,12 +2791,18 @@ export function PortfolioList() {
                                     className="w-full justify-between rounded-xl font-black text-xs uppercase tracking-widest border-primary/20 bg-card/60"
                                     onClick={() => setIsOverviewFeedOpen((prev) => !prev)}
                                 >
-                                    Market & Notifications
+                                    Market, Notifications & Dividends
                                     {isOverviewFeedOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                 </Button>
                                 {isOverviewFeedOpen && (
                                     <Card className="mt-3 border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-transparent text-left">
                                         <CardContent className="p-4 sm:p-5">
+                                            <OverviewStockSearch
+                                                portfolio={portfolio}
+                                                activePortfolioId={activePortfolioId}
+                                                scripNamesMap={scripNamesMap}
+                                                onOpenStockDetail={handleViewStockDetail}
+                                            />
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null) && (
                                                     <div>
@@ -1840,10 +2912,25 @@ export function PortfolioList() {
                                                 )}
                                                 {overviewNotificationsWithMeta.length > 0 && (
                                                     <div>
-                                                        <div className="flex items-center gap-2 mb-2">
+                                                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                             <div className="flex items-center gap-2">
-                                                                <Activity className="w-4 h-4 text-primary" />
+                                                                <BellRing className="w-4 h-4 text-primary" />
                                                                 <h4 className="text-sm font-black uppercase tracking-widest">Notification Center</h4>
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                <Badge variant="secondary" className="h-5 rounded-md text-[9px] font-black uppercase">
+                                                                    {overviewNotificationStats.total} Alerts
+                                                                </Badge>
+                                                                {overviewNotificationStats.ipo > 0 && (
+                                                                    <Badge className="h-5 rounded-md bg-success/10 text-success border-success/20 text-[9px] font-black uppercase">
+                                                                        {overviewNotificationStats.ipo} IPO
+                                                                    </Badge>
+                                                                )}
+                                                                {overviewNotificationStats.filings > 0 && (
+                                                                    <Badge variant="outline" className="h-5 rounded-md text-[9px] font-black uppercase">
+                                                                        {overviewNotificationStats.filings} Filings
+                                                                    </Badge>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
@@ -1851,37 +2938,68 @@ export function PortfolioList() {
                                                                 <div
                                                                     key={item.id}
                                                                     className={cn(
-                                                                        "rounded-xl border px-3 py-2",
+                                                                        "group rounded-xl border px-3 py-3 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary/30",
                                                                         item.tone === "info" && "border-info/20 bg-info/5",
                                                                         item.tone === "warning" && "border-amber-500/20 bg-amber-500/5",
                                                                         item.tone === "success" && "border-success/20 bg-success/5",
                                                                     )}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    onClick={() => openOverviewNotificationDetails(item.id)}
+                                                                    onKeyDown={(event) => {
+                                                                        if (event.key === "Enter" || event.key === " ") {
+                                                                            event.preventDefault()
+                                                                            openOverviewNotificationDetails(item.id)
+                                                                        }
+                                                                    }}
                                                                 >
                                                                     <div className="flex items-start justify-between gap-2">
-                                                                        <div>
-                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                                                {item.title}
-                                                                            </p>
+                                                                        <div className="flex min-w-0 gap-3">
+                                                                            <div className={cn(
+                                                                                "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-transform group-hover:scale-105",
+                                                                                item.tone === "info" && "border-info/20 bg-info/10 text-info",
+                                                                                item.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
+                                                                                item.tone === "success" && "border-success/20 bg-success/10 text-success",
+                                                                            )}>
+                                                                                {getOverviewNotificationIcon(item.category)}
+                                                                            </div>
+                                                                            <div className="min-w-0">
+                                                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                                        {item.title}
+                                                                                    </p>
+                                                                                    {item.documents.length > 0 && (
+                                                                                        <Badge variant="outline" className="h-4 rounded px-1 text-[8px] font-black uppercase">
+                                                                                            {item.documents.length} Doc
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
                                                                             <p className="text-xs font-semibold text-foreground/90 line-clamp-3">
                                                                                 {item.text}
                                                                             </p>
-                                                                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                                                {item.dateLabel}
-                                                                            </p>
+                                                                                <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                                                    <Calendar className="w-3 h-3" />
+                                                                                    {item.dateLabel}
+                                                                                </p>
+                                                                            </div>
                                                                         </div>
                                                                         <Badge variant="secondary" className="h-5 text-[9px] font-black uppercase">
                                                                             {item.category}
                                                                         </Badge>
                                                                     </div>
-                                                                    <div className="mt-2 flex items-center gap-1.5">
+                                                                    <div className="mt-2 flex items-center justify-end gap-2 border-t border-current/10 pt-2">
                                                                         <Button
                                                                             type="button"
                                                                             size="sm"
                                                                             variant="outline"
                                                                             className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-wider"
-                                                                            onClick={() => openOverviewNotificationDetails(item.id)}
+                                                                            onClick={(event) => {
+                                                                                event.stopPropagation()
+                                                                                openOverviewNotificationDetails(item.id)
+                                                                            }}
                                                                         >
-                                                                            View Details
+                                                                            {item.actionLabel}
+                                                                            <ArrowUpRight className="ml-1.5 w-3 h-3" />
                                                                         </Button>
                                                                     </div>
                                                                 </div>
@@ -1896,6 +3014,9 @@ export function PortfolioList() {
                                                         </div>
                                                     </div>
                                                 )}
+                                            </div>
+                                            <div className="mt-4 border-t border-primary/10 pt-4">
+                                                {renderDividendSection()}
                                             </div>
                                             {marketHistorySeries.length > 0 && (
                                                 <div className="mt-4 border-t border-primary/10 pt-4">
@@ -2413,9 +3534,12 @@ export function PortfolioList() {
                             stockOptions={stockOptions}
                             portfolioStockOptions={portfolioStockOptions}
                             portfolioCryptoOptions={portfolioCryptoOptions}
+                            portfolioItems={portfolio}
+                            activePortfolioId={activePortfolioId ?? undefined}
+                            currencySymbol={currencySymbol}
+                            calendarSystem={calendarSystem}
                         />
                     </div>
-
                 </div>
             </div>
 
@@ -2424,6 +3548,7 @@ export function PortfolioList() {
                 item={selectedStock}
                 open={isStockDetailOpen}
                 onOpenChange={setIsStockDetailOpen}
+                mode={selectedStockDetailMode}
             />
 
             {/* Sell Confirmation Modal */}
@@ -2457,6 +3582,7 @@ export function PortfolioList() {
                 confirmText={confirmModal.confirmText}
                 destructive={confirmModal.destructive}
             />
+            {renderInvestmentBreakdownModal()}
 
             {/* Import Price Modal */}
             <ImportVerificationModal
@@ -2465,6 +3591,8 @@ export function PortfolioList() {
                 importQueue={importQueue}
                 importPrices={importPrices}
                 setImportPrices={setImportPrices}
+                importTransactionPrices={importTransactionPrices}
+                setImportTransactionPrices={setImportTransactionPrices}
                 onConfirm={handleConfirmImport}
             />
 
@@ -2475,37 +3603,66 @@ export function PortfolioList() {
                     <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-md overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[110px] sm:min-w-[120px] flex-1 lg:min-w-0 lg:p-2">
                         <CardHeader className="pb-1 px-2 sm:px-4 pt-2 sm:pt-4">
                             <div className="flex items-center justify-between mb-0.5">
-                                <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">Net Worth</CardDescription>
+                                <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">
+                                    {showSoldStocks ? "Total Sold" : "Net Worth"}
+                                </CardDescription>
                                 <div className="p-0.5 bg-primary/10 rounded-lg text-primary">
-                                    <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                    {showSoldStocks ? <ArrowUpRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
                                 </div>
                             </div>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
-                                रु {currentValue.toLocaleString()}
+                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
-                            <div className={cn(
-                                "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
-                                totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
-                            )}>
-                                {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
-                            </div>
+                            {showSoldStocks ? (
+                                <div className="flex flex-wrap gap-1">
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                        {formatUnits(soldPortfolioStats.totalSoldUnits)} Units Sold
+                                    </div>
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-success/10 text-success border border-success/20">
+                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} Reinvested
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={cn(
+                                    "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
+                                    totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                                )}>
+                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
                     <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
                         <CardHeader className="pb-1 space-y-0 text-left px-2 sm:px-4 pt-2 sm:pt-4">
-                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Today's Move</CardDescription>
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
+                                {showSoldStocks ? "Today Value" : "Today's Move"}
+                            </CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
-                                <span className={todayChange >= 0 ? "text-success" : "text-error"}>
-                                    {todayChange >= 0 ? "+" : ""}{todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
+                                    {showSoldStocks
+                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                 </span>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
                             <div className="flex items-center gap-1">
-                                {todayChange >= 0 ? (
+                                {showSoldStocks ? (
+                                    <div className={cn(
+                                        "text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border",
+                                        soldPortfolioStats.soldValueDifference >= 0
+                                            ? "text-error bg-error/10 border-error/20"
+                                            : "text-success bg-success/10 border-success/20"
+                                    )}>
+                                        {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
+                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
+                                        {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
+                                    </div>
+                                ) : todayChange >= 0 ? (
                                     <div className="text-[8px] sm:text-[9px] font-black text-success bg-success/10 px-1 py-0.5 rounded border border-success/20">
                                         +{todayChangePercentage.toFixed(1)}%
                                     </div>
@@ -2518,17 +3675,35 @@ export function PortfolioList() {
                         </CardContent>
                     </Card>
 
-                    <Card className="border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2">
+                    <Card
+                        className={cn(
+                            "border-muted/50 bg-card/40 backdrop-blur-sm shadow-sm border hover:border-primary/10 transition-colors min-w-[100px] sm:min-w-[110px] flex-1 lg:min-w-0 lg:p-2",
+                            !showSoldStocks && "cursor-pointer"
+                        )}
+                        onClick={() => {
+                            if (!showSoldStocks) openInvestmentBreakdown("Portfolio Investment Breakdown", activePortfolioId)
+                        }}
+                    >
                         <CardHeader className="pb-1 text-left px-2 sm:px-4 pt-2 sm:pt-4">
-                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">Total Stake</CardDescription>
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
+                                {showSoldStocks ? "Sold Spread" : "Total Stake"}
+                            </CardDescription>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
-                                रु {totalInvestment.toLocaleString()}
+                                {showSoldStocks
+                                    ? `${soldPortfolioStats.soldScrips} Scrips`
+                                    : `${currencySymbol}${totalInvestment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
-                            <Badge variant="secondary" className="bg-primary/5 text-primary text-[8px] sm:text-[9px] rounded border-primary/20 font-black px-1 uppercase tracking-wide">
-                                {portfolio.length} Scrips
-                            </Badge>
+                            {showSoldStocks ? (
+                                <Badge variant="outline" className="text-[8px] sm:text-[9px] rounded font-black px-1 uppercase tracking-wide">
+                                    {soldPortfolioStats.soldSectors} Sectors
+                                </Badge>
+                            ) : (
+                                <Badge variant="secondary" className="bg-primary/5 text-primary text-[8px] sm:text-[9px] rounded border-primary/20 font-black px-1 uppercase tracking-wide">
+                                    {portfolio.length} Scrips
+                                </Badge>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -2548,13 +3723,22 @@ export function PortfolioList() {
                                         <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                                     )}
                                     <span className="truncate">
-                                        {chartMode === "allocation"
+                                        {showSoldStocks
+                                            ? (chartMode === "allocation"
+                                                ? (chartView === "sector" ? "Sold by Sector" : "Sold by Stock")
+                                                : "Sold Comparison")
+                                            : chartMode === "allocation"
                                             ? (chartView === "sector" ? "Sector Allocation" : "Stock Allocation")
                                             : "Top Movers"}
                                     </span>
                                 </CardTitle>
                                 <CardDescription className="text-xs font-medium hidden sm:block">
-                                    {chartMode === "allocation"
+                                    {showSoldStocks
+                                        ? (chartMode === "allocation" ? (chartView === "sector"
+                                            ? "Sold value grouped by industry sector"
+                                            : "Sold value grouped by individual scrip")
+                                            : "Current value compared with your sold value")
+                                        : chartMode === "allocation"
                                         ? (chartView === "sector"
                                             ? "Portfolio distribution by industry sector"
                                             : "Portfolio weighting by individual scrip")
@@ -2587,7 +3771,7 @@ export function PortfolioList() {
                                         className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "movers" && "bg-background shadow-sm")}
                                         onClick={() => setChartMode("movers")}
                                     >
-                                        Movers
+                                        {showSoldStocks ? "Compare" : "Movers"}
                                     </Button>
                                 </div>
                                 {chartMode === "allocation" && (
@@ -2641,10 +3825,10 @@ export function PortfolioList() {
                                 <TrendingUp className="w-8 h-8 text-primary/40 mb-2" />
                             )}
                             <span className="text-xs font-bold text-muted-foreground">
-                                Tap to view {chartMode === "allocation" ? "chart" : "movers"}
+                                Tap to view {chartMode === "allocation" ? "chart" : showSoldStocks ? "comparison" : "movers"}
                             </span>
                         </div>
-                        {activePortfolioItems.length > 0 ? (
+                        {(chartMode === "allocation" ? activeChartData.length > 0 : (showSoldStocks ? soldPortfolioStats.missedUpside.length > 0 || soldPortfolioStats.savedDownside.length > 0 || soldPortfolioStats.flat.length > 0 : activePortfolioItems.length > 0)) ? (
                             chartMode === "allocation" ? (
                                 <div className="flex h-full items-center justify-center relative">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -2736,6 +3920,135 @@ export function PortfolioList() {
                                             />
                                         </PieChart>
                                     </ResponsiveContainer>
+                                </div>
+                            ) : showSoldStocks ? (
+                                <div className={cn(
+                                    "h-full w-full p-4 sm:p-6 grid gap-4 min-h-0",
+                                    soldPortfolioStats.flat.length > 0 ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-2",
+                                )}>
+                                    {soldPortfolioStats.missedUpside.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-error">Missed Upside</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
+                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <TrendingUp className="w-3.5 h-3.5 text-error" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.missedUpsideTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.missedUpside.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-error">
+                                                                +{row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {soldPortfolioStats.savedDownside.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-success">Saved Downside</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
+                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <TrendingDown className="w-3.5 h-3.5 text-success" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.savedDownsideTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.savedDownside.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-success">
+                                                                {row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {soldPortfolioStats.flat.length > 0 && (
+                                        <div className="flex flex-col gap-2 min-h-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Flat Since Sold</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-black text-muted-foreground bg-muted/40 border border-muted px-1.5 py-0.5 rounded-md">
+                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </span>
+                                                    <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
+                                                <span>{formatUnits(soldPortfolioStats.flatTotal.units)} units</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                            </div>
+                                            <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
+                                                {soldPortfolioStats.flat.map((row) => (
+                                                    <div
+                                                        key={row.symbol}
+                                                        className="w-full text-left flex items-center justify-between rounded-xl border border-muted/30 bg-muted/5 px-3 py-2"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[11px] font-black uppercase">{row.symbol}</p>
+                                                                <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-bold">
+                                                                    {formatUnits(row.units)} sold
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="text-[9px] text-muted-foreground truncate">{row.sector}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-black text-muted-foreground">
+                                                                {row.differencePercentage.toFixed(2)}%
+                                                            </p>
+                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : hasMoverData || hasNoMoverData ? (
                                 <div className={cn(
@@ -2862,7 +4175,9 @@ export function PortfolioList() {
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
                                 <PieChartIcon className="w-12 h-12 mb-4 opacity-10" />
-                                <p className="text-xs font-bold uppercase tracking-widest opacity-40">Add holdings to see distribution data</p>
+                                <p className="text-xs font-bold uppercase tracking-widest opacity-40">
+                                    {showSoldStocks ? "Sell transactions will appear here by sector" : "Add holdings to see distribution data"}
+                                </p>
                             </div>
                         )}
                     </CardContent>
@@ -2915,8 +4230,15 @@ export function PortfolioList() {
                             <span className="hidden sm:inline">Sold Stocks</span>
                         </Button>
                         <div className="hidden sm:flex items-center bg-background/50 border border-muted/50 rounded-xl px-2 h-10 gap-1 shadow-inner">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary bg-primary/10 shadow-sm border border-primary/10">
-                                <LayoutGrid className="w-4 h-4" />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-primary bg-primary/10 shadow-sm border border-primary/10"
+                                onClick={() => setHoldingsView((view) => view === "list" ? "grid" : "list")}
+                                title={holdingsView === "list" ? "Switch to grid view" : "Switch to list view"}
+                                aria-label={holdingsView === "list" ? "Switch to grid view" : "Switch to list view"}
+                            >
+                                {holdingsView === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
                             </Button>
                         </div>
                     </div>
@@ -2927,16 +4249,41 @@ export function PortfolioList() {
                         <div className="flex items-center justify-between px-2">
                             <div className="flex flex-col gap-1">
                                 <h3 className="font-bold text-lg flex items-center gap-2">
-                                    My Holdings
-                                    <Badge variant="secondary" className="rounded-full font-black">{activePortfolioItemsForCalculations.length}</Badge>
-                                    <div className="flex gap-1 ml-1">
+                                    {showSoldStocks ? "Sold Holdings" : "My Holdings"}
+                                    <Badge variant="secondary" className="rounded-full font-black">
+                                        {showSoldStocks ? soldPortfolioRows.length : activePortfolioItemsForCalculations.length}
+                                    </Badge>
+                                    {showSoldStocks && (
+                                        <TooltipProvider>
+                                            <UITooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-primary"
+                                                        aria-label="How to read sold holdings"
+                                                    >
+                                                        <Info className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right" className="max-w-xs text-xs">
+                                                    <div className="space-y-1">
+                                                        <p><strong>Sold Holdings</strong> are grouped from sell transactions, not active units.</p>
+                                                        <p><strong>Missed Upside</strong>: sold units are worth more today.</p>
+                                                        <p><strong>Saved Downside</strong>: sold units are worth less today.</p>
+                                                        <p><strong>Trading value</strong>: sold units multiplied by current price.</p>
+                                                    </div>
+                                                </TooltipContent>
+                                            </UITooltip>
+                                        </TooltipProvider>
+                                    )}
+                                    {!showSoldStocks && <div className="flex gap-1 ml-1">
                                         <Badge className="bg-success/10 text-success border-success/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) > p.buyPrice).length}↑
                                         </Badge>
                                         <Badge className="bg-error/10 text-error border-error/20 text-[9px] font-black py-0 px-1.5 h-4">
                                             {activePortfolioItemsForCalculations.filter(p => (p.currentPrice || p.buyPrice) < p.buyPrice).length}↓
                                         </Badge>
-                                    </div>
+                                    </div>}
                                 </h3>
                                 {activePortfolioItemsForCalculations.length > 0 && activePortfolioItemsForCalculations[0]?.lastUpdated && (
                                     <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5 ml-1">
@@ -2963,8 +4310,15 @@ export function PortfolioList() {
                         </div>
 
                         <ScrollArea className="h-[500px] rounded-2xl border bg-card/50 backdrop-blur-sm shadow-inner">
-                            <div className="p-4 space-y-3 text-left">
-                                {portfolio.length === 0 && activePortfolioId ? (
+                            <div
+                                className={cn(
+                                    "p-4 text-left",
+                                    holdingsView === "grid"
+                                        ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
+                                        : "space-y-3"
+                                )}
+                            >
+                                {!showSoldStocks && portfolio.length === 0 && activePortfolioId ? (
                                     // Loading skeleton state
                                     <div className="space-y-3">
                                         {[1, 2, 3, 4, 5].map((i) => (
@@ -2981,14 +4335,18 @@ export function PortfolioList() {
                                             </div>
                                         ))}
                                     </div>
-                                ) : filteredPortfolio.length === 0 ? (
+                                ) : (showSoldStocks ? soldPortfolioRows.length === 0 : filteredPortfolio.length === 0) ? (
                                     <div className="flex flex-col items-center justify-center py-20 text-center">
                                         <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mb-4 ring-8 ring-muted/20">
                                             <TrendingUp className="w-10 h-10 text-muted-foreground/50" />
                                         </div>
-                                        <h3 className="text-xl font-bold">No active holdings</h3>
+                                        <h3 className="text-xl font-bold">
+                                            {showSoldStocks ? "No sold stocks" : "No active holdings"}
+                                        </h3>
                                         <p className="text-sm text-muted-foreground max-w-[300px] mt-2">
-                                            Start by adding transactions or upload your Mero Share CSV to see your portfolio in action.
+                                            {showSoldStocks
+                                                ? "Sell transactions will appear here after you record or import them."
+                                                : "Start by adding transactions or upload your Mero Share CSV to see your portfolio in action."}
                                         </p>
                                         <div className="flex flex-col sm:flex-row gap-3 mt-6">
                                             <Button
@@ -3010,7 +4368,7 @@ export function PortfolioList() {
                                         </div>
                                     </div>
                                 ) : (
-                                    filteredPortfolio.map((item) => {
+                                    (showSoldStocks ? soldPortfolioRows.map((row) => row.item) : filteredPortfolio).map((item) => {
                                         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
                                         const safeBuyPrice = Number.isFinite(item.buyPrice) ? item.buyPrice : 0
                                         const current = Number.isFinite(item.currentPrice) ? item.currentPrice! : safeBuyPrice
@@ -3031,16 +4389,25 @@ export function PortfolioList() {
                                         const showDailyChange = !isZeroHolding && hasFreshMoveToday && (previousClose !== null || isFiniteNumber(item.change) || isFiniteNumber(item.percentChange))
                                         const isDailyNeutral = dailyChange === 0 && dailyChangePerc === 0
                                         const isDailyProfit = dailyChange > 0
+                                        const isSoldViewRow = showSoldStocks
 
-                                        // For zero holdings, get last exit info (sell or merger_out)
-                                        const lastExitInfo = isZeroHolding ? (() => {
-                                            const relevantTxs = shareTransactions.filter(
-                                                (tx) =>
-                                                    tx.portfolioId === item.portfolioId &&
-                                                    normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
-                                                    tx.assetType === (item.assetType || "stock") &&
-                                                    (tx.cryptoId || "") === (item.cryptoId || "")
-                                            )
+                                        const soldRow = showSoldStocks ? soldPortfolioRowsByItemId.get(item.id) : undefined
+                                        const relevantTxs = shareTransactions.filter(
+                                            (tx) =>
+                                                tx.portfolioId === item.portfolioId &&
+                                                normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
+                                                tx.assetType === (item.assetType || "stock") &&
+                                                (tx.cryptoId || "") === (item.cryptoId || "")
+                                        )
+                                        const sellTxs = soldRow?.sellTxs || relevantTxs.filter((tx) => tx.type === "sell")
+                                        const soldQuantity = soldRow?.soldQuantity ?? sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity), 0)
+                                        const soldValue = soldRow?.soldValue ?? sellTxs.reduce((sum, tx) => sum + safeNumber(tx.quantity) * safeNumber(tx.price), 0)
+                                        const soldTodayValue = soldQuantity * current
+                                        const soldDifference = soldTodayValue - soldValue
+                                        const averageSoldPrice = soldQuantity > 0 ? soldValue / soldQuantity : 0
+                                        const hasSoldPrice = averageSoldPrice > 0
+                                        const latestSellInfo = soldRow?.latestSell || [...sellTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                                        const lastExitInfo = (isZeroHolding || showSoldStocks) ? (() => {
                                             const exitTxs = relevantTxs
                                                 .filter((tx) => tx.type === "sell" || tx.type === "merger_out")
                                                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -3048,6 +4415,10 @@ export function PortfolioList() {
                                         })() : null
                                         const isSold = lastExitInfo?.type === "sell"
                                         const isMerged = lastExitInfo?.type === "merger_out"
+
+                                        // SIP plan detection
+                                        const sipPlan = getSipPlanForPortfolioItem(item)
+                                        const isSipInvalid = sipPlan ? isSipPlanInvalid(sipPlan) : false
 
                                         return (
                                             <div
@@ -3061,7 +4432,9 @@ export function PortfolioList() {
                                                     <div className="flex gap-3 sm:gap-4 items-center min-w-0 flex-1">
                                                         <div className={cn(
                                                             "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-lg shadow-sm border shrink-0 transition-transform group-hover:scale-105",
-                                                            isZeroHolding
+                                                            isSoldViewRow
+                                                                ? "bg-amber-500/5 text-amber-600 border-amber-500/20"
+                                                                : isZeroHolding
                                                                 ? "bg-muted/30 text-muted-foreground border-muted/40"
                                                                 : isDailyNeutral
                                                                     ? "bg-muted/40 text-muted-foreground border-muted/30"
@@ -3074,7 +4447,12 @@ export function PortfolioList() {
                                                         <div className="flex flex-col min-w-0">
                                                             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                                                                 <h4 className="font-extrabold text-sm sm:text-base tracking-tight">{item.symbol}</h4>
-                                                                {isZeroHolding ? (
+                                                                {showSoldStocks && latestSellInfo ? (
+                                                                    <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/40 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground">
+                                                                        {formatTimeSince(latestSellInfo.date)}
+                                                                    </Badge>
+                                                                ) : null}
+                                                                {!showSoldStocks && isZeroHolding ? (
                                                                     isSold ? (
                                                                         <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-amber-500/10 font-bold border-amber-500/30 uppercase tracking-widest text-amber-600">
                                                                             SOLD
@@ -3088,15 +4466,68 @@ export function PortfolioList() {
                                                                             {item.sector || "Others"}
                                                                         </Badge>
                                                                     )
-                                                                ) : (
+                                                                ) : !showSoldStocks ? (
                                                                     <Badge variant="outline" className="hidden sm:inline-flex text-[9px] h-4 px-1.5 bg-muted/50 font-bold border-muted-foreground/20 uppercase tracking-widest text-muted-foreground/80">
                                                                         {item.sector || "Others"}
+                                                                    </Badge>
+                                                                ) : null}
+                                                                {sipPlan && (
+                                                                    <Badge 
+                                                                        variant="outline" 
+                                                                        className={cn(
+                                                                            "hidden sm:inline-flex text-[9px] h-4 px-1.5 font-bold uppercase tracking-widest border",
+                                                                            isSipInvalid 
+                                                                                ? "bg-red-500/10 text-red-600 border-red-500/30" 
+                                                                                : "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                                                        )}
+                                                                    >
+                                                                        <span className="flex items-center gap-1">
+                                                                            SIP {isSipInvalid ? "(Invalid)" : ""}
+                                                                            {isSipInvalid && (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation()
+                                                                                        showConfirm(
+                                                                                            "Delete Invalid SIP Plan",
+                                                                                            `Are you sure you want to delete the invalid SIP plan for ${item.symbol}?`,
+                                                                                            () => handleDeleteSipPlan(sipPlan.id, item.symbol),
+                                                                                            "Delete",
+                                                                                            true
+                                                                                        )
+                                                                                    }}
+                                                                                    className="ml-1 hover:text-red-800"
+                                                                                    title="Delete invalid SIP plan"
+                                                                                >
+                                                                                    <Trash2 className="w-2.5 h-2.5" />
+                                                                                </button>
+                                                                            )}
+                                                                        </span>
                                                                     </Badge>
                                                                 )}
                                                                 <Info className="hidden sm:block w-3 h-3 text-primary opacity-30 group-hover:opacity-100 transition-opacity" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 flex-wrap">
-                                                                {isZeroHolding ? (
+                                                                {showSoldStocks && latestSellInfo ? (
+                                                                    <>
+                                                                        <span className="text-[10px] font-black uppercase tracking-tighter text-amber-600/80">
+                                                                            Sold {formatUnits(soldQuantity)} units
+                                                                        </span>                                                                        {hasSoldPrice ? (
+                                                                            <>
+                                                                                <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                                <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
+                                                                                    Avg {isCrypto ? "$" : "रु"} {formatHoldingAmount(averageSoldPrice, isCrypto)}
+                                                                                </span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <span className="hidden sm:inline text-[10px] opacity-20">•</span>
+                                                                                <span className="text-[10px] font-bold text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded-md border border-muted">
+                                                                                    Sell price not recorded
+                                                                                </span>
+                                                                            </>
+                                                                        )}
+                                                                    </>
+                                                                ) : isZeroHolding ? (
                                                                     <span className={cn(
                                                                         "text-[10px] font-black uppercase tracking-tighter",
                                                                         isSold ? "text-amber-600/80" : isMerged ? "text-purple-600/80" : "text-muted-foreground"
@@ -3138,7 +4569,29 @@ export function PortfolioList() {
 
                                                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                                                         <div className="text-right flex flex-col items-end">
-                                                            {isZeroHolding ? (
+                                                            {showSoldStocks && latestSellInfo ? (
+                                                                <>
+                                                                    <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
+                                                                        {formatUnits(soldQuantity)} Units
+                                                                    </div>
+                                                                    <div className={cn(
+                                                                        "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
+                                                                        hasSoldPrice
+                                                                            ? (soldDifference > 0 ? "text-error" : soldDifference < 0 ? "text-success" : "text-muted-foreground")
+                                                                            : "text-primary"
+                                                                    )}>
+                                                                        <span className="hidden sm:inline">
+                                                                            Trading value
+                                                                        </span>
+                                                                        <span>{isCrypto ? "$" : "रु"}{formatHoldingAmount(soldTodayValue, isCrypto)}</span>
+                                                                    </div>
+                                                                    {hasSoldPrice && (
+                                                                        <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60">
+                                                                            Sold value {isCrypto ? "$" : "रु"}{formatHoldingAmount(soldValue, isCrypto)}
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            ) : isZeroHolding ? (
                                                                 <>
                                                                     <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight text-muted-foreground">
                                                                         {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
@@ -3168,7 +4621,7 @@ export function PortfolioList() {
                                                             )}
                                                         </div>
 
-                                                        {!isZeroHolding && (
+                                                        {!isZeroHolding && !showSoldStocks && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
@@ -3281,7 +4734,7 @@ export function PortfolioList() {
                                     </div>
                                 ) : (
                                     sortedTransactions.map((tx) => {
-                                        const isCredit = ['buy', 'ipo', 'bonus', 'gift', 'merger_in'].includes(tx.type)
+                                        const isCredit = ['buy', 'ipo', 'reinvestment', 'bonus', 'gift', 'merger_in'].includes(tx.type)
                                         return (
                                             <div
                                                 key={tx.id}
@@ -3301,12 +4754,14 @@ export function PortfolioList() {
                                                     <div className={cn(
                                                         "w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border shadow-sm shrink-0",
                                                         tx.type === 'buy' ? "bg-blue-500/10 text-blue-600 border-blue-500/10" :
+                                                            tx.type === 'reinvestment' ? "bg-cyan-500/10 text-cyan-600 border-cyan-500/10" :
                                                             tx.type === 'sell' ? "bg-orange-500/10 text-orange-600 border-orange-500/10" :
                                                                 tx.type === 'bonus' || tx.type === 'gift' ? "bg-purple-500/10 text-purple-600 border-purple-500/10" :
                                                                     tx.type === 'ipo' ? "bg-green-500/10 text-green-600 border-green-500/10" :
                                                                         "bg-muted text-foreground border-muted-foreground/20"
                                                     )}>
                                                         {tx.type === 'buy' && <ArrowDownLeft className="w-4 h-4 sm:w-6 sm:h-6" />}
+                                                        {tx.type === 'reinvestment' && <RefreshCcw className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'sell' && <ArrowUpRight className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {(tx.type === 'bonus' || tx.type === 'gift') && <Gift className="w-4 h-4 sm:w-6 sm:h-6" />}
                                                         {tx.type === 'ipo' && <FileText className="w-4 h-4 sm:w-6 sm:h-6" />}
@@ -3323,7 +4778,7 @@ export function PortfolioList() {
                                                             {tx.description}
                                                         </p>
                                                         <span className="text-[9px] sm:text-[10px] text-muted-foreground opacity-70">
-                                                            {new Date(tx.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                            {formatAppDate(tx.date, calendarSystem)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -3338,27 +4793,52 @@ export function PortfolioList() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                                        onClick={() => {
-                                                            showConfirm(
-                                                                "Delete Transaction",
-                                                                `Are you sure you want to delete this transaction for ${tx.symbol}?`,
-                                                                () => {
-                                                                    deleteShareTransaction(tx.id).then((updated) => {
-                                                                        toast.success("Transaction deleted")
-                                                                        fetchPortfolioPrices(updated)
-                                                                    })
-                                                                },
-                                                                "Delete",
-                                                                true
-                                                            )
-                                                        }}
-                                                    >
-                                                        <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-primary opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <MoreVertical className="w-4 h-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-40 bg-popover border-border shadow-lg">
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setEditingTransaction(tx)
+                                                                    setIsEditModalOpen(true)
+                                                                }}
+                                                                className="cursor-pointer text-foreground hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:text-primary rounded-sm"
+                                                            >
+                                                                <Edit3 className="w-4 h-4 mr-2 text-primary" />
+                                                                Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    showConfirm(
+                                                                        "Delete Transaction",
+                                                                        `Are you sure you want to delete this transaction for ${tx.symbol}?`,
+                                                                        () => {
+                                                                            deleteShareTransaction(tx.id).then((updated) => {
+                                                                                toast.success("Transaction deleted")
+                                                                                fetchPortfolioPrices(updated)
+                                                                            })
+                                                                        },
+                                                                        "Delete",
+                                                                        true
+                                                                    )
+                                                                }}
+                                                                className="cursor-pointer text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive rounded-sm"
+                                                            >
+                                                                <Trash2 className="w-4 h-4 mr-2 text-destructive" />
+                                                                Delete
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             </div>
                                         )
@@ -3369,6 +4849,23 @@ export function PortfolioList() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            <EditTransactionModal
+                open={isEditModalOpen}
+                onOpenChange={(next) => {
+                    setIsEditModalOpen(next)
+                    if (!next) {
+                        setEditingTransaction(null)
+                    }
+                }}
+                transaction={editingTransaction}
+                onUpdate={handleUpdateTransaction}
+                stockOptions={stockOptions}
+                portfolioStockOptions={portfolioStockOptions}
+                portfolioCryptoOptions={portfolioCryptoOptions}
+                currencySymbol={currencySymbol}
+                calendarSystem={calendarSystem}
+            />
 
             {portfolio.length > 0 && (
                 <div className="flex items-center justify-center gap-2 bg-muted/20 py-2 rounded-full border border-muted/50 mx-auto max-w-fit px-6">

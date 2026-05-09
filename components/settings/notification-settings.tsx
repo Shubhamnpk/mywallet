@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useNotificationsData } from "@/hooks/use-notifications-data"
 import {
   getDefaultNotificationSettings,
   isBrowserNotificationSupported,
@@ -20,7 +20,7 @@ import type { NotificationSettings } from "@/types/wallet"
 import { WebPushSettings } from "@/components/settings/web-push-settings"
 
 export function NotificationSettings() {
-  const { userProfile, updateUserProfile } = useWalletData()
+  const { userProfile, updateUserProfile } = useNotificationsData()
 
   const settings = useMemo(
     () => normalizeNotificationSettings(userProfile?.notificationSettings),

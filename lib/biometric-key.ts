@@ -1,14 +1,5 @@
 "use client"
 
-import {
-  AndroidBiometryStrength,
-  BiometricAuth,
-} from "@aparajita/capacitor-biometric-auth"
-import {
-  KeychainAccess,
-  SecureStorage,
-} from "@aparajita/capacitor-secure-storage"
-import { getNativePlatform, isNativeMobilePlatform } from "./native-mobile"
 import { SecureWallet } from "./security"
 
 const BIOMETRIC_CREDENTIAL_ID_KEY = "wallet_biometric_credential_id"
@@ -16,8 +7,7 @@ const BIOMETRIC_ENABLED_KEY = "wallet_biometric_enabled"
 const BIOMETRIC_USER_ID_KEY = "wallet_biometric_user_id"
 const BIOMETRIC_PIN_WRAPPED_KEY = "wallet_biometric_pin_wrapped"
 const BIOMETRIC_PRF_SALT_KEY = "wallet_biometric_prf_salt"
-const NATIVE_BIOMETRIC_PIN_KEY = "wallet_biometric_native_pin"
-const NATIVE_BIOMETRIC_CREDENTIAL_ID = "native-biometric-secure-store"
+const LEGACY_NATIVE_BIOMETRIC_CREDENTIAL_ID = "native-biometric-secure-store"
 
 export interface BiometricSupportState {
   isSupported: boolean
@@ -47,8 +37,20 @@ const decodeBase64 = (value: string) =>
 const encodeBase64 = (value: Uint8Array) =>
   btoa(String.fromCharCode(...value))
 
+function clearLegacyNativeBiometricData(): void {
+  localStorage.removeItem(BIOMETRIC_CREDENTIAL_ID_KEY)
+  localStorage.removeItem(BIOMETRIC_ENABLED_KEY)
+  localStorage.removeItem(BIOMETRIC_PIN_WRAPPED_KEY)
+  localStorage.removeItem(BIOMETRIC_PRF_SALT_KEY)
+}
+
 export function getBiometricCredentialId(): string | null {
-  return localStorage.getItem(BIOMETRIC_CREDENTIAL_ID_KEY)
+  const credentialId = localStorage.getItem(BIOMETRIC_CREDENTIAL_ID_KEY)
+  if (credentialId === LEGACY_NATIVE_BIOMETRIC_CREDENTIAL_ID) {
+    clearLegacyNativeBiometricData()
+    return null
+  }
+  return credentialId
 }
 
 export function isBiometricEnabled(): boolean {
@@ -70,35 +72,6 @@ export function isBiometricKeyConfigured(): boolean {
   )
 }
 
-async function configureNativeSecureStorage(): Promise<void> {
-  await SecureStorage.setKeyPrefix("mywallet_")
-
-  if (getNativePlatform() === "ios") {
-    await SecureStorage.setDefaultKeychainAccess(
-      KeychainAccess.whenPasscodeSetThisDeviceOnly,
-    )
-  }
-}
-
-async function getNativeStoredPin(): Promise<string | null> {
-  await configureNativeSecureStorage()
-  const stored = await SecureStorage.getItem(NATIVE_BIOMETRIC_PIN_KEY)
-  return typeof stored === "string" && stored.length > 0 ? stored : null
-}
-
-async function authenticateNativeBiometric(reason: string): Promise<void> {
-  await BiometricAuth.authenticate({
-    reason,
-    cancelTitle: "Cancel",
-    iosFallbackTitle: "Use Passcode",
-    allowDeviceCredential: true,
-    androidTitle: "Unlock MyWallet",
-    androidSubtitle: "Confirm your identity to continue",
-    androidConfirmationRequired: false,
-    androidBiometryStrength: AndroidBiometryStrength.strong,
-  })
-}
-
 export async function getBiometricSupportState(): Promise<BiometricSupportState> {
   if (typeof window === "undefined") {
     return {
@@ -107,32 +80,6 @@ export async function getBiometricSupportState(): Promise<BiometricSupportState>
       deviceIsSecure: false,
       supportsSecureStorage: false,
       platform: "web",
-    }
-  }
-
-  if (isNativeMobilePlatform()) {
-    try {
-      const info = await BiometricAuth.checkBiometry()
-      return {
-        isSupported: info.isAvailable,
-        isEnrolled: info.isAvailable,
-        deviceIsSecure: info.deviceIsSecure,
-        supportsSecureStorage: true,
-        platform: getNativePlatform(),
-        reason: info.reason || undefined,
-      }
-    } catch (error) {
-      return {
-        isSupported: false,
-        isEnrolled: false,
-        deviceIsSecure: false,
-        supportsSecureStorage: false,
-        platform: getNativePlatform(),
-        reason:
-          error instanceof Error
-            ? error.message
-            : "Unable to check biometric support.",
-      }
     }
   }
 
@@ -189,18 +136,10 @@ export async function getBiometricSupportState(): Promise<BiometricSupportState>
 }
 
 export async function hasWrappedBiometricPinAsync(): Promise<boolean> {
-  if (isNativeMobilePlatform()) {
-    return Boolean(await getNativeStoredPin())
-  }
-
   return hasWrappedBiometricPin()
 }
 
 export async function isBiometricKeyConfiguredAsync(): Promise<boolean> {
-  if (isNativeMobilePlatform()) {
-    return isBiometricEnabled() && Boolean(await getNativeStoredPin())
-  }
-
   return isBiometricKeyConfigured()
 }
 
@@ -229,11 +168,6 @@ export async function clearBiometricKeyData(): Promise<void> {
   localStorage.removeItem(BIOMETRIC_USER_ID_KEY)
   localStorage.removeItem(BIOMETRIC_PIN_WRAPPED_KEY)
   localStorage.removeItem(BIOMETRIC_PRF_SALT_KEY)
-
-  if (isNativeMobilePlatform()) {
-    await configureNativeSecureStorage()
-    await SecureStorage.removeItem(NATIVE_BIOMETRIC_PIN_KEY)
-  }
 }
 
 function extractSecretFromExtensions(
@@ -314,20 +248,6 @@ async function importBiometricAesKey(secret: Uint8Array): Promise<CryptoKey> {
 }
 
 export async function wrapPinWithBiometric(pin: string): Promise<boolean> {
-  if (isNativeMobilePlatform()) {
-    await authenticateNativeBiometric(
-      "Enable biometric unlock for your wallet PIN.",
-    )
-    await configureNativeSecureStorage()
-    await SecureStorage.setItem(NATIVE_BIOMETRIC_PIN_KEY, pin)
-    localStorage.setItem(
-      BIOMETRIC_CREDENTIAL_ID_KEY,
-      NATIVE_BIOMETRIC_CREDENTIAL_ID,
-    )
-    setBiometricEnabled(true)
-    return true
-  }
-
   const credentialId = getBiometricCredentialId()
   if (!credentialId) return false
 
@@ -344,13 +264,6 @@ export async function wrapPinWithBiometric(pin: string): Promise<boolean> {
 }
 
 export async function unwrapPinWithBiometric(): Promise<string | null> {
-  if (isNativeMobilePlatform()) {
-    await authenticateNativeBiometric(
-      "Authenticate to unlock your wallet.",
-    )
-    return await getNativeStoredPin()
-  }
-
   const credentialId = getBiometricCredentialId()
   const wrappedPin = localStorage.getItem(BIOMETRIC_PIN_WRAPPED_KEY)
   const salt = getBiometricPrfSalt()

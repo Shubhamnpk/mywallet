@@ -1,34 +1,64 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Bell, Share } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, PiggyBank, ReceiptText, Settings, Share, Target, Trash2, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
-import type { UserProfile } from "@/types/wallet"
+import type { UpcomingIPO, UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BillReminderSystem } from "@/components/productivity/bill-reminder-system"
+import { IPODetailModal } from "@/components/portfolio/modals/ipo-detail-modal"
 import { loadFromLocalStorage } from "@/lib/storage"
 import {
+  clearLiveNotificationHistory,
   clearNotificationHistory,
   NOTIFICATION_HISTORY_EVENT,
   readNotificationHistory,
   type NotificationHistoryItem,
 } from "@/lib/notification-history"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
+const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
 const LIVE_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000
+
+const normalizeIPOText = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+
+const getNotificationIPOQuery = (item: NotificationHistoryItem) =>
+  normalizeIPOText(`${item.dedupeKey} ${item.title} ${item.body}`)
+    .replace(/\bipo\b/g, " ")
+    .replace(/\bcompany\b/g, " ")
+    .replace(/\bopen(?:ing)?\b/g, " ")
+    .replace(/\bclosing\b/g, " ")
+    .replace(/\bsoon\b/g, " ")
+    .replace(/\btoday\b/g, " ")
+    .replace(/\btomorrow\b/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
 
 type HeaderNotification = {
   id: string
   title: string
   description: string
   type: "warning" | "info" | "success"
+  category: "budget" | "goal" | "bill" | "ipo" | "delivered"
+  actionLabel: string
+  targetTab?: string
+  opensBillDialog?: boolean
+  ipo?: UpcomingIPO
+  settingsUrl?: string
   sourceLabel?: string
   deliveredAt?: number
 }
@@ -48,6 +78,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {}
@@ -60,10 +91,23 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
       return {}
     }
   })
+  const [dismissedMap, setDismissedMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {}
+    try {
+      const raw = localStorage.getItem(HEADER_NOTIFICATIONS_DISMISSED_KEY)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === "object" ? parsed : {}
+    } catch {
+      return {}
+    }
+  })
   const { budgets, goals, upcomingIPOs } = useWalletData()
   const isAutoIpoEnabled = Boolean(userProfile.meroShare?.isAutomatedEnabled)
   const [billRows, setBillRows] = useState<HeaderBillRow[]>([])
   const [billDialogOpen, setBillDialogOpen] = useState(false)
+  const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
+  const [ipoDialogOpen, setIpoDialogOpen] = useState(false)
   const [history, setHistory] = useState<NotificationHistoryItem[]>(() =>
     typeof window !== "undefined" ? readNotificationHistory() : [],
   )
@@ -105,6 +149,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `${b.name || b.category} over budget`,
             description: `You spent ${usage.toFixed(0)}% of your limit.`,
             type: "warning",
+            category: "budget",
+            actionLabel: "Review Budget",
+            targetTab: "budgets",
           })
         } else if (usage >= 80) {
           items.push({
@@ -112,6 +159,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `${b.name || b.category} near limit`,
             description: `${usage.toFixed(0)}% used.`,
             type: "info",
+            category: "budget",
+            actionLabel: "Review Budget",
+            targetTab: "budgets",
           })
         }
       })
@@ -128,6 +178,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `${g.title || g.name || "Goal"} deadline`,
             description: daysLeft < 0 ? "Target date passed." : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left.`,
             type: daysLeft <= 3 ? "warning" : "info",
+            category: "goal",
+            actionLabel: "Open Goals",
+            targetTab: "goals",
           })
         }
       })
@@ -146,6 +199,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `Bill overdue: ${name}`,
             description: "Past due date — mark paid or reschedule.",
             type: "warning",
+            category: "bill",
+            actionLabel: "Manage Bill",
+            opensBillDialog: true,
           })
         } else if (daysUntilDue === 0) {
           items.push({
@@ -153,6 +209,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `Bill due today: ${name}`,
             description: "Due today.",
             type: "warning",
+            category: "bill",
+            actionLabel: "Manage Bill",
+            opensBillDialog: true,
           })
         } else if (daysUntilDue > 0 && daysUntilDue <= lead) {
           items.push({
@@ -160,13 +219,16 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `Bill due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}: ${name}`,
             description: `Within your ${lead}-day reminder window.`,
             type: "info",
+            category: "bill",
+            actionLabel: "Manage Bill",
+            opensBillDialog: true,
           })
         }
       })
 
     if (isAutoIpoEnabled) {
-      upcomingIPOs.forEach((ipo) => {
-        const ipoId = ipo.company || ipo.url || ipo.date_range || `ipo-${upcomingIPOs.indexOf(ipo)}`
+      upcomingIPOs.forEach((ipo, index) => {
+        const ipoId = `${ipo.company || ipo.url || ipo.date_range || "ipo"}-${ipo.status || "unknown"}-${ipo.openingDate || ipo.announcement_date || ipo.date_range || index}-${index}`
         if (ipo.status === "open") {
           const isClosingSoon = typeof ipo.daysRemaining === "number" && ipo.daysRemaining <= 1
           items.push({
@@ -176,6 +238,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
               ? `Closing ${ipo.daysRemaining === 0 ? "today" : "tomorrow"}.`
               : "IPO is currently open for application.",
             type: isClosingSoon ? "warning" : "success",
+            category: "ipo",
+            actionLabel: "View IPO",
+            ipo,
           })
         } else if (ipo.status === "upcoming" && typeof ipo.daysRemaining === "number" && ipo.daysRemaining <= 1) {
           items.push({
@@ -183,6 +248,9 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
             title: `${ipo.company} opening soon`,
             description: `Starts ${ipo.daysRemaining === 0 ? "today" : "tomorrow"}.`,
             type: "info",
+            category: "ipo",
+            actionLabel: "View IPO",
+            ipo,
           })
         }
       })
@@ -206,25 +274,66 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     }
   }, [history])
 
+  const findIPOForNotification = useCallback((item: NotificationHistoryItem) => {
+    if (item.source !== "ipo" && !/\bipo\b/i.test(`${item.title} ${item.body} ${item.dedupeKey}`)) {
+      return null
+    }
+
+    const query = getNotificationIPOQuery(item)
+    if (!query) return null
+
+    return upcomingIPOs.find((ipo) => {
+      const company = normalizeIPOText(ipo.company || "")
+      const url = normalizeIPOText(ipo.url || "")
+      const queryParts = query.split(" ").filter((part) => part.length > 2)
+
+      return Boolean(
+        (company &&
+          (query.includes(company) ||
+            company.includes(query) ||
+            queryParts.some((part) => company.includes(part)))) ||
+          (url && query.includes(url)),
+      )
+    }) || null
+  }, [upcomingIPOs])
+
   const deliveredLiveItems = useMemo<HeaderNotification[]>(() => {
-    return liveDeliveredNotifications.map((item) => ({
+    return liveDeliveredNotifications.map((item) => {
+      const ipo = findIPOForNotification(item)
+      const isIPO = item.source === "ipo" || Boolean(ipo)
+
+      return ({
       id: `delivered-${item.id}`,
       title: item.title,
       description: item.body,
       type:
         item.source === "budget" || item.source === "bill"
           ? "warning"
-          : item.source === "ipo"
+          : isIPO
             ? "success"
             : "info",
       sourceLabel: `${item.source} · ${item.channel}`,
       deliveredAt: item.at,
-    }))
-  }, [liveDeliveredNotifications])
+      category: "delivered",
+      actionLabel:
+        item.source === "bill"
+          ? "Manage Bill"
+          : item.source === "budget"
+            ? "Review Budget"
+            : isIPO
+              ? "View IPO"
+              : "Open Settings",
+      opensBillDialog: item.source === "bill",
+      ipo: ipo || undefined,
+      targetTab: item.source === "budget" ? "budgets" : isIPO ? "portfolio" : undefined,
+      settingsUrl: item.source !== "bill" && item.source !== "budget" && !isIPO ? "/settings?tab=notifications" : undefined,
+      })
+    })
+  }, [findIPOForNotification, liveDeliveredNotifications])
 
   const liveNotifications = useMemo<HeaderNotification[]>(
-    () => [...deliveredLiveItems, ...notifications].slice(0, 40),
-    [deliveredLiveItems, notifications],
+    () => [...deliveredLiveItems, ...notifications].filter((item) => !dismissedMap[item.id]).slice(0, 40),
+    [deliveredLiveItems, notifications, dismissedMap],
   )
 
   const unreadCount = liveNotifications.filter((n) => !readMap[n.id]).length
@@ -251,6 +360,78 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     })
     persistReadMap(next)
   }
+
+  const persistDismissedMap = (next: Record<string, boolean>) => {
+    setDismissedMap(next)
+    if (typeof window === "undefined") return
+    try {
+      localStorage.setItem(HEADER_NOTIFICATIONS_DISMISSED_KEY, JSON.stringify(next))
+    } catch {
+    }
+  }
+
+  const clearLiveNotifications = () => {
+    if (liveNotifications.length === 0) return
+    const nextDismissed = { ...dismissedMap }
+    const nextRead = { ...readMap }
+
+    liveNotifications.forEach((notification) => {
+      nextDismissed[notification.id] = true
+      nextRead[notification.id] = true
+    })
+
+    clearLiveNotificationHistory(Date.now() - LIVE_NOTIFICATION_WINDOW_MS)
+    persistDismissedMap(nextDismissed)
+    persistReadMap(nextRead)
+    setHistory(readNotificationHistory())
+  }
+
+  const navigateToTab = (tab: string) => {
+    if (typeof window !== "undefined") {
+      window.history.pushState(null, "", `/?tab=${tab}`)
+      window.dispatchEvent(new CustomEvent("mywallet:navigate-tab", { detail: tab }))
+    } else {
+      router.push(`/?tab=${tab}`)
+    }
+  }
+
+  const handleNotificationAction = (notification: HeaderNotification) => {
+    markAsRead(notification.id)
+    if (notification.opensBillDialog) {
+      setBillDialogOpen(true)
+      return
+    }
+    if (notification.ipo) {
+      navigateToTab("portfolio")
+      setSelectedIPO(notification.ipo)
+      setIpoDialogOpen(true)
+      return
+    }
+    if (notification.targetTab) {
+      navigateToTab(notification.targetTab)
+      return
+    }
+    if (notification.settingsUrl) {
+      router.push(notification.settingsUrl)
+    }
+  }
+
+  const getNotificationIcon = (notification: HeaderNotification) => {
+    if (notification.category === "budget") return <PiggyBank className="w-4 h-4" />
+    if (notification.category === "goal") return <Target className="w-4 h-4" />
+    if (notification.category === "bill") return <ReceiptText className="w-4 h-4" />
+    if (notification.category === "ipo") return <TrendingUp className="w-4 h-4" />
+    if (notification.type === "warning") return <AlertTriangle className="w-4 h-4" />
+    if (notification.type === "success") return <CheckCircle2 className="w-4 h-4" />
+    return <Bell className="w-4 h-4" />
+  }
+
+  const getNotificationToneClass = (type: HeaderNotification["type"]) =>
+    type === "warning"
+      ? "border-amber-500/20 bg-amber-500/10 text-amber-600"
+      : type === "success"
+        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600"
+        : "border-blue-500/20 bg-blue-500/10 text-blue-600"
 
   const getInitials = () => {
     return userProfile.name
@@ -292,12 +473,62 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                 )}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[340px] p-0">
-              <div className="px-3 py-2 flex items-center justify-between border-b">
-                <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={markAllAsRead}>
-                  Mark all read
-                </Button>
+            <DropdownMenuContent align="end" className="w-[380px] p-0 overflow-hidden">
+              <div className="px-3 py-3 flex items-center justify-between border-b bg-muted/20">
+                <div>
+                  <DropdownMenuLabel className="p-0 text-sm font-black">Notifications</DropdownMenuLabel>
+                  <p className="text-[11px] text-muted-foreground">
+                    {unreadCount > 0 ? `${unreadCount} unread alert${unreadCount === 1 ? "" : "s"}` : "All caught up"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setBillDialogOpen(true)}
+                    aria-label="Open bill reminders"
+                    title="Bill reminders"
+                  >
+                    <ReceiptText className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => router.push("/settings?tab=notifications")}
+                    aria-label="Open notification settings"
+                    title="Notification settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={markAllAsRead}
+                    disabled={liveNotifications.length === 0}
+                    aria-label="Mark all notifications as read"
+                    title="Mark all read"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={clearLiveNotifications}
+                    disabled={liveNotifications.length === 0}
+                    aria-label="Clear live notifications"
+                    title="Clear live notifications"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <Tabs defaultValue="live" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 rounded-none border-b h-9">
@@ -308,36 +539,43 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                     History
                   </TabsTrigger>
                 </TabsList>
-                <TabsContent value="live" className="mt-0 max-h-[320px] overflow-y-auto py-1">
+                <TabsContent value="live" className="mt-0 max-h-[340px] overflow-y-auto p-1.5">
                   {liveNotifications.length > 0 ? (
                     liveNotifications.map((n) => (
                       <DropdownMenuItem
                         key={n.id}
-                        className="items-start gap-2 py-2"
-                        onSelect={() => markAsRead(n.id)}
+                        className={`group mb-1.5 cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-foreground focus:text-foreground dark:focus:text-white ${readMap[n.id] ? "bg-card/70 focus:bg-muted/50" : "border-primary/25 bg-primary/5 focus:bg-primary/10"}`}
+                        onSelect={() => handleNotificationAction(n)}
                       >
-                        <span
-                          className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-                            n.type === "warning" ? "bg-amber-500" : n.type === "success" ? "bg-emerald-500" : "bg-blue-500"
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium truncate">{n.title}</p>
+                        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${getNotificationToneClass(n.type)}`}>
+                          {getNotificationIcon(n)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-xs font-black leading-snug text-foreground group-focus:text-foreground dark:group-focus:text-white">{n.title}</p>
                             {!readMap[n.id] && <Badge variant="secondary" className="text-[10px] h-4 px-1">New</Badge>}
                           </div>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2 group-focus:text-muted-foreground">{n.description}</p>
                           {(n.sourceLabel || n.deliveredAt) && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                            <p className="text-[9px] text-muted-foreground mt-1 inline-flex items-center gap-1 group-focus:text-muted-foreground">
+                              <Clock className="h-3 w-3" />
                               {n.sourceLabel ? `${n.sourceLabel}${n.deliveredAt ? " · " : ""}` : ""}
-                              {n.deliveredAt ? new Date(n.deliveredAt).toLocaleString() : ""}
+                              {n.deliveredAt ? formatAppDateTime(new Date(n.deliveredAt), calendarSystem) : ""}
                             </p>
                           )}
+                          <div className="mt-1 inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary group-focus:text-primary">
+                            {n.actionLabel}
+                            <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                          </div>
                         </div>
                       </DropdownMenuItem>
                     ))
                   ) : (
-                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">No alerts right now.</div>
+                    <div className="px-3 py-8 text-center">
+                      <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
+                      <p className="text-sm font-semibold">No alerts right now.</p>
+                      <p className="text-xs text-muted-foreground">New reminders and IPO alerts will appear here.</p>
+                    </div>
                   )}
                 </TabsContent>
                 <TabsContent value="history" className="mt-0 max-h-[320px] overflow-y-auto py-1 px-2 pb-2">
@@ -348,7 +586,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium truncate">{h.title}</span>
                             <span className="text-[10px] text-muted-foreground shrink-0">
-                              {new Date(h.at).toLocaleString()}
+                              {formatAppDateTime(new Date(h.at), calendarSystem)}
                             </span>
                           </div>
                           <p className="text-muted-foreground line-clamp-2">{h.body}</p>
@@ -366,29 +604,15 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
                     variant="ghost"
                     size="sm"
                     className="w-full mt-2 h-8 text-xs"
-                    onClick={() => clearNotificationHistory()}
+                    onClick={() => {
+                      clearNotificationHistory()
+                      setHistory(readNotificationHistory())
+                    }}
                   >
                     Clear history
                   </Button>
                 </TabsContent>
               </Tabs>
-              <DropdownMenuSeparator />
-              <div className="p-2 space-y-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setBillDialogOpen(true)
-                  }}
-                >
-                  Bill reminders
-                </Button>
-                <Button variant="outline" size="sm" className="w-full" onClick={() => router.push("/settings?tab=notifications")}>
-                  Notification settings
-                </Button>
-              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -469,6 +693,14 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           <BillReminderSystem userProfile={userProfile} />
         </DialogContent>
       </Dialog>
+      <IPODetailModal
+        ipo={selectedIPO}
+        open={ipoDialogOpen}
+        onOpenChange={(open) => {
+          setIpoDialogOpen(open)
+          if (!open) setSelectedIPO(null)
+        }}
+      />
     </header>
   )
 }

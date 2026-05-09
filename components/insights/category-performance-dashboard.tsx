@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
+import { getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
 
 interface CategoryPerformanceDashboardProps {
   transactions: Transaction[]
@@ -48,9 +49,9 @@ function OverviewCard({ title, value, subtitle, bgColor, titleColor, valueColor 
 export function CategoryPerformanceDashboard({ transactions, userProfile }: CategoryPerformanceDashboardProps) {
   const categoryData = useMemo(() => {
     const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1)
-    const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const currentMonth = getCalendarMonthRange(now, calendarSystem).key
+    const lastMonthKey = getCalendarMonthRange(now, calendarSystem, -1).key
 
     const categoryStats: Record<string, {
       currentMonth: number
@@ -63,8 +64,7 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
     transactions.forEach((transaction) => {
       if (transaction.type !== 'expense') return
 
-      const date = new Date(transaction.date)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthKey = getCalendarMonthKey(transaction.date, calendarSystem)
 
       if (!categoryStats[transaction.category]) {
         categoryStats[transaction.category] = {

@@ -6,6 +6,12 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 ## ✨ What's New
 
+### Version 2.1.0 (May 9, 2026)
+- **Welcome Back Flow**: Returning users now get a clearer recovery path from the welcome page straight back to the dashboard
+- **Portfolio Tools**: Added richer sell previews, dividend what-if planning, and stronger import price verification
+- **Calendar Refinements**: Better alignment between app dates, budgeting periods, and dashboard timelines
+- **Platform Consistency**: Web, Android, iOS, and public release metadata are now aligned on the same version number
+
 ### Version 2.0.1 (April 18, 2026)
 - **Bug Fix**: Improved decimal number formatting and precision for better financial calculations
 
@@ -118,7 +124,7 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/mywallet-app.git
+   git clone https://github.com/Shubhamnpk/mywallet.git
    cd mywallet-app
    ```
 
@@ -301,7 +307,7 @@ We welcome contributions! Please follow these steps:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [YoGuru Limited Contributor License](LICENSE.md).
 
 ## 🙏 Acknowledgments
 
@@ -318,6 +324,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you have any questions or need help, please:
 - Open an issue on GitHub
+- Follow the [Security Policy](SECURITY.md) for vulnerability reports
 - Check the documentation
 - Contact the maintainers
 

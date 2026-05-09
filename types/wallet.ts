@@ -3,6 +3,7 @@ export interface UserProfile {
   name: string
   monthlyEarning: number
   currency: string
+  calendarSystem?: "AD" | "BS"
   workingHoursPerDay: number
   workingDaysPerMonth: number
   pin?: string
@@ -71,6 +72,8 @@ export interface SIPPlan {
   notes?: string
   createdAt: string
   updatedAt: string
+  lastRemainder?: number
+  lastInstallmentDate?: string
 }
 
 export interface MeroShareApplicationLog {
@@ -286,6 +289,7 @@ export interface PortfolioItem {
   assetType?: "stock" | "crypto"
   cryptoId?: string
   assetName?: string
+  detailContext?: "portfolio" | "market-search"
   units: number
   buyPrice: number
   currentPrice?: number
@@ -306,7 +310,7 @@ export interface ShareTransaction {
   symbol: string
   assetType?: "stock" | "crypto"
   cryptoId?: string
-  type: "buy" | "sell" | "bonus" | "gift" | "ipo" | "merger_in" | "merger_out"
+  type: "buy" | "sell" | "bonus" | "gift" | "ipo" | "reinvestment" | "merger_in" | "merger_out"
   quantity: number
   price: number
   date: string

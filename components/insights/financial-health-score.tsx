@@ -8,6 +8,7 @@ import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, Sparkle
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { Button } from "../ui/button"
+import { getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
 
 interface HealthMetric {
   id: string
@@ -34,20 +35,21 @@ export function useFinancialHealthScore(
   const healthMetrics = useMemo(() => {
     // Basic Aggregates
     const now = new Date()
-    const last30Days = transactions.filter(t => {
-      const d = new Date(t.date)
-      return (now.getTime() - d.getTime()) <= (30 * 24 * 60 * 60 * 1000)
+    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const currentMonthRange = getCalendarMonthRange(now, calendarSystem)
+    const activeMonthTransactions = transactions.filter(t => {
+      return isWithinDateRange(t.date, currentMonthRange.start, currentMonthRange.end)
     })
 
-    const monthlyIncome = last30Days.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0) || userProfile.monthlyEarning || 1
-    const monthlyExpenses = last30Days.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
+    const monthlyIncome = activeMonthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0) || userProfile.monthlyEarning || 1
+    const monthlyExpenses = activeMonthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
 
     // 50/30/20 Classification
     const needsCategories = ["Housing", "Bills & Utilities", "Transportation", "Healthcare", "Groceries", "Education", "Insurance"]
     const wantsCategories = ["Food & Dining", "Shopping", "Entertainment", "Travel", "Other"]
 
-    const needsSpending = last30Days.filter(t => t.type === 'expense' && needsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
-    const wantsSpending = last30Days.filter(t => t.type === 'expense' && wantsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
+    const needsSpending = activeMonthTransactions.filter(t => t.type === 'expense' && needsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
+    const wantsSpending = activeMonthTransactions.filter(t => t.type === 'expense' && wantsCategories.includes(t.category)).reduce((sum, t) => sum + t.amount, 0)
     const savingsAndDebt = Math.max(0, monthlyIncome - monthlyExpenses)
 
     const needsRatio = (needsSpending / monthlyIncome) * 100
@@ -76,7 +78,7 @@ export function useFinancialHealthScore(
 
     // 2. Metric: 50/30/20 Hygiene
     // Add logic to penalize if there are very few transactions (lack of data)
-    const categorizedTransactions = last30Days.filter(t => t.category && t.category !== 'Other').length
+    const categorizedTransactions = activeMonthTransactions.filter(t => t.category && t.category !== 'Other').length
     const dataDensityScore = Math.min(100, (categorizedTransactions / 15) * 100) // Target 15+ categorized tx/month
 
     const needsScore = needsRatio <= 50 ? 100 : Math.max(0, 100 - (needsRatio - 50) * 4)
@@ -119,7 +121,7 @@ export function useFinancialHealthScore(
     const recentlyFundedGoalsCount = goals.filter(g => {
       const gTitle = (g.title || g.name || "").toLowerCase()
       return transactions.some(t => {
-        const isRecent = (now.getTime() - new Date(t.date).getTime()) <= (30 * 24 * 60 * 60 * 1000)
+        const isRecent = isWithinDateRange(t.date, currentMonthRange.start, currentMonthRange.end)
         const isForGoal = t.allocationType === 'goal' && t.allocationTarget === g.id
         const matchesName = t.description.toLowerCase().includes(gTitle) && gTitle.length > 3
         return isRecent && (isForGoal || matchesName)

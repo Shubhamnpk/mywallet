@@ -8,6 +8,8 @@ import { Archive, Trash2, Package, EyeOff } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { ShareTransaction } from "@/types/wallet"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 interface SellConfirmationModalProps {
   symbol: string
@@ -36,6 +38,8 @@ export function SellConfirmationModal({
   shareTransactions,
   zeroHoldingsEnabled = true,
 }: SellConfirmationModalProps) {
+  const { userProfile } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const normalizedSymbol = normalizeStockSymbol(symbol)
 
@@ -57,11 +61,11 @@ export function SellConfirmationModal({
     if (!lastSell) return null
 
     return {
-      date: new Date(lastSell.date).toLocaleDateString(),
+      date: formatAppDate(lastSell.date, calendarSystem),
       price: lastSell.price,
       quantity: lastSell.quantity,
     }
-  }, [shareTransactions, portfolioId, normalizedSymbol, assetType, cryptoId])
+  }, [shareTransactions, portfolioId, normalizedSymbol, assetType, cryptoId, calendarSystem])
 
   const isCrypto = assetType === "crypto" || Boolean(cryptoId)
   const currencySymbol = isCrypto ? "$" : "रु"

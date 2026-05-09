@@ -12,6 +12,8 @@ import {Popover,PopoverContent,PopoverTrigger,} from "@/components/ui/popover"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 interface CurrencyConverterDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
@@ -42,6 +44,8 @@ const CURRENCIES = [
 ]
 
 export function CurrencyConverterDialog({ isOpen, onOpenChange }: CurrencyConverterDialogProps) {
+  const { userProfile } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const [fromCurrency, setFromCurrency] = useState("USD")
   const [toCurrency, setToCurrency] = useState("NPR")
   const [convertAmount, setConvertAmount] = useState("1")
@@ -260,7 +264,7 @@ export function CurrencyConverterDialog({ isOpen, onOpenChange }: CurrencyConver
               {conversionDate && !isConverting && (
                 <div className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-muted-foreground/50 animate-in fade-in duration-500">
                   <History className="h-3 w-3" />
-                  Rate updated on {new Date(conversionDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Rate updated on {formatAppDate(conversionDate, calendarSystem, { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               )}
 

@@ -66,6 +66,8 @@ const DESKTOP_TOOLS_GROUP = [
   "shift-tracker",
 ] as const
 
+const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "tools"])
+
 // Custom hook for delayed tooltip
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -108,8 +110,31 @@ export function MainTabs({
   onAddTransaction,
   debtAccounts = [],
 }: MainTabsProps) {
-  const [activeTab, setActiveTab] = useState("transactions")
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "transactions"
+    const requestedTab = new URLSearchParams(window.location.search).get("tab")
+    return requestedTab && KNOWN_TAB_VALUES.has(requestedTab) ? requestedTab : "transactions"
+  })
   const toolsContentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const requestedTab = new URLSearchParams(window.location.search).get("tab")
+      if (requestedTab && KNOWN_TAB_VALUES.has(requestedTab)) {
+        setActiveTab(requestedTab)
+      }
+    }
+    const syncFromEvent = (event: Event) => {
+      const tab = (event as CustomEvent<string>).detail
+      if (tab && KNOWN_TAB_VALUES.has(tab)) setActiveTab(tab)
+    }
+    window.addEventListener("popstate", syncFromLocation)
+    window.addEventListener("mywallet:navigate-tab", syncFromEvent)
+    return () => {
+      window.removeEventListener("popstate", syncFromLocation)
+      window.removeEventListener("mywallet:navigate-tab", syncFromEvent)
+    }
+  }, [])
 
   // Scroll to tools content when Tools tab is active (for mobile)
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -58,6 +59,8 @@ export function DataSettings() {
   const [showDropboxLocalPinPrompt, setShowDropboxLocalPinPrompt] = useState(false)
   const [dropboxBackupPin, setDropboxBackupPin] = useState("")
   const [dropboxLocalPin, setDropboxLocalPin] = useState("")
+  const [dropboxBackupPinError, setDropboxBackupPinError] = useState<string | null>(null)
+  const [dropboxLocalPinError, setDropboxLocalPinError] = useState<string | null>(null)
   const [backupSizeMode, setBackupSizeMode] = useState<"essential" | "full">("essential")
   const [pendingDropboxContent, setPendingDropboxContent] = useState<string | null>(null)
   const [pendingDecryptedBackup, setPendingDecryptedBackup] = useState<any | null>(null)
@@ -144,6 +147,20 @@ export function DataSettings() {
     )
   }
 
+  const getDropboxReconnectMessage = (error: unknown, action: "upload" | "download") => {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.toLowerCase().includes("missing_scope")) {
+      return `Dropbox needs file ${action === "upload" ? "write" : "read"} permission. Enable the Dropbox app permission, then reconnect Dropbox.`
+    }
+    return `Dropbox access is no longer valid. Reconnect to ${action} backups.`
+  }
+
+  const describeDropboxOperationError = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) return error.message
+    if (typeof error === "string" && error.trim()) return error
+    return fallback
+  }
+
   const handleCreateBackup = (destination: "download" | "dropbox") => {
     if (destination === "dropbox" && !hasDropboxConfig) {
       toast({
@@ -163,23 +180,45 @@ export function DataSettings() {
     }
 
     const existingSession = getDropboxSession()
+    let canRefreshExistingSession = Boolean(existingSession?.refreshToken)
     if (existingSession && !Dropbox.isDropboxAccessTokenExpired(existingSession, 60_000)) {
-      setHasDropboxToken(true)
-      setDropboxNeedsReconnect(false)
-      setDropboxError(null)
-      return existingSession.accessToken
+      const missingScopes = Dropbox.getMissingDropboxScopes(existingSession.scope)
+      if (missingScopes.length > 0) {
+        canRefreshExistingSession = false
+        markDropboxReconnectRequired(
+          `Dropbox needs these permissions: ${missingScopes.join(", ")}. Reconnect Dropbox to continue.`,
+        )
+        if (!interactive) {
+          throw new Error(`Dropbox is missing required permissions: ${missingScopes.join(", ")}`)
+        }
+      } else {
+        setHasDropboxToken(true)
+        setDropboxNeedsReconnect(false)
+        setDropboxError(null)
+        return existingSession.accessToken
+      }
     }
 
-    if (existingSession?.refreshToken) {
+    if (existingSession?.refreshToken && canRefreshExistingSession) {
       try {
         const refreshed = await Dropbox.refreshDropboxAccessToken(existingSession.refreshToken)
         const nextSession = Dropbox.storeDropboxAuthSession(refreshed, {
           refreshToken: existingSession.refreshToken,
         })
-        setHasDropboxToken(true)
-        setDropboxNeedsReconnect(false)
-        setDropboxError(null)
-        return nextSession.accessToken
+        const missingScopes = Dropbox.getMissingDropboxScopes(nextSession.scope)
+        if (missingScopes.length > 0) {
+          markDropboxReconnectRequired(
+            `Dropbox needs these permissions: ${missingScopes.join(", ")}. Reconnect Dropbox to continue.`,
+          )
+          if (!interactive) {
+            throw new Error(`Dropbox is missing required permissions: ${missingScopes.join(", ")}`)
+          }
+        } else {
+          setHasDropboxToken(true)
+          setDropboxNeedsReconnect(false)
+          setDropboxError(null)
+          return nextSession.accessToken
+        }
       } catch (error) {
         markDropboxReconnectRequired("Dropbox session expired. Reconnect to continue backups.")
 
@@ -321,15 +360,39 @@ export function DataSettings() {
     }
   }
 
-  const handleDropboxDisconnect = () => {
+  const handleDropboxDisconnect = async () => {
+    const session = getDropboxSession()
+    if (session?.accessToken) {
+      try {
+        await Dropbox.revokeDropboxToken(session.accessToken)
+      } catch (error) {
+        console.warn("Dropbox token revoke failed:", error)
+      }
+    }
+
     Dropbox.clearDropboxToken()
     setDropboxAccount(null)
     setDropboxError(null)
     setHasDropboxToken(false)
     setDropboxNeedsReconnect(false)
+    setIsDropboxConnecting(false)
+    setIsDropboxPushing(false)
+    setIsDropboxPulling(false)
+    setIsDropboxRefreshing(false)
+    setShowDropboxBackupPinPrompt(false)
+    setShowDropboxLocalPinPrompt(false)
+    setDropboxBackupPin("")
+    setDropboxLocalPin("")
+    setDropboxBackupPinError(null)
+    setDropboxLocalPinError(null)
+    setBackupSizeMode("essential")
+    setPendingDropboxContent(null)
+    setPendingDecryptedBackup(null)
+    setDropboxBackupPinAction("pull")
+    setDropboxLocalPinAction("import")
     toast({
       title: "Dropbox Disconnected",
-      description: "Dropbox access has been removed from this device.",
+      description: "Dropbox access, keys, and backup preferences have been removed from this device.",
     })
   }
 
@@ -613,8 +676,21 @@ export function DataSettings() {
       if (requiresUnlock && !localPin) {
         setPendingDecryptedBackup(decrypted)
         setDropboxLocalPinAction("import")
+        setDropboxLocalPinError(null)
         setShowDropboxLocalPinPrompt(true)
         return
+      }
+      if (requiresUnlock && localPin) {
+        const validation = await SecurePinManager.validatePin(localPin)
+        if (!validation.success) {
+          setPendingDecryptedBackup(decrypted)
+          setDropboxLocalPinAction("import")
+          setDropboxLocalPin("")
+          setDropboxLocalPinError("That PIN decrypted the backup, but it is not this wallet's current PIN. Enter your current wallet PIN to finish importing.")
+          setShowDropboxLocalPinPrompt(true)
+          return
+        }
+        SecureKeyManager.cacheSessionPin(localPin)
       }
 
       const merged = await mergeDropboxData(decrypted)
@@ -674,10 +750,11 @@ export function DataSettings() {
         })
       }
     } catch (error) {
+      const message = describeDropboxOperationError(error, "Failed to create encrypted backup. Please try again.")
       console.error("Backup creation failed:", error)
       toast({
         title: "Backup Failed",
-        description: "Failed to create encrypted backup. Please try again.",
+        description: message,
         variant: "destructive",
       })
       throw error
@@ -686,6 +763,7 @@ export function DataSettings() {
 
   const handleDropboxPush = async (overridePin?: string) => {
     if (!hasDropboxConfig) {
+      setDropboxError("Dropbox push failed: NEXT_PUBLIC_DROPBOX_APP_KEY is not configured.")
       toast({
         title: "Dropbox Not Configured",
         description: "Set NEXT_PUBLIC_DROPBOX_APP_KEY to enable Dropbox backups.",
@@ -698,12 +776,14 @@ export function DataSettings() {
     const pinToUse = overridePin || cachedPin || (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
+      setDropboxLocalPinError(null)
       setShowDropboxLocalPinPrompt(true)
       return
     }
 
     try {
       setIsDropboxPushing(true)
+      setDropboxError(null)
       const { createEncryptedBackup } = await import("@/lib/backup")
       const data = await buildBackupData(backupSizeMode)
       const backupJson = await createEncryptedBackup(data, pinToUse)
@@ -716,12 +796,15 @@ export function DataSettings() {
         description: "Your encrypted backup has been saved to your Dropbox.",
       })
     } catch (error) {
+      const message = describeDropboxOperationError(error, "Failed to upload backup to Dropbox.")
       if (isDropboxAuthorizationError(error)) {
-        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to upload backups.")
+        markDropboxReconnectRequired(getDropboxReconnectMessage(error, "upload"))
+      } else {
+        setDropboxError(`Push failed: ${message}`)
       }
       toast({
         title: "Dropbox Backup Failed",
-        description: error instanceof Error ? error.message : "Failed to upload backup to Dropbox.",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -760,6 +843,7 @@ export function DataSettings() {
           if (message.toLowerCase().includes("decryption failed")) {
             setPendingDropboxContent(content)
             setDropboxBackupPinAction("pull")
+            setDropboxBackupPinError(null)
             setIsDropboxPulling(false)
             setShowDropboxBackupPinPrompt(true)
             return
@@ -777,6 +861,7 @@ export function DataSettings() {
         if (message.toLowerCase().includes("decryption failed")) {
           setPendingDropboxContent(content)
           setDropboxBackupPinAction("pull")
+          setDropboxBackupPinError(null)
           setIsDropboxPulling(false)
           setShowDropboxBackupPinPrompt(true)
           return
@@ -788,7 +873,7 @@ export function DataSettings() {
       await runDropboxImport(decrypted, pinToUse)
     } catch (error) {
       if (isDropboxAuthorizationError(error)) {
-        markDropboxReconnectRequired("Dropbox access is no longer valid. Reconnect to download backups.")
+        markDropboxReconnectRequired(getDropboxReconnectMessage(error, "download"))
       }
       toast({
         title: "Dropbox Restore Failed",
@@ -875,9 +960,6 @@ export function DataSettings() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-primary/10 p-2">
-                  <Download className="h-5 w-5 text-primary" />
-                </div>
                 <div>
                   <h3 className="font-semibold">Export Data</h3>
                   <p className="text-sm text-muted-foreground">Create encrypted backup</p>
@@ -891,9 +973,6 @@ export function DataSettings() {
 
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-green-500/10 p-2">
-                  <Upload className="h-5 w-5 text-green-600" />
-                </div>
                 <div>
                   <h3 className="font-semibold">Import Data</h3>
                   <p className="text-sm text-muted-foreground">Restore from backup</p>
@@ -1009,9 +1088,10 @@ export function DataSettings() {
                   : "Connect your Dropbox account to enable manual backup uploads and downloads."}
               </p>
               {dropboxError && (
-                <p className="text-xs text-destructive">
-                  {dropboxError}
-                </p>
+                <Alert variant="destructive">
+                  <AlertTitle>Dropbox error</AlertTitle>
+                  <AlertDescription className="break-words text-xs">{dropboxError}</AlertDescription>
+                </Alert>
               )}
               <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting}>
                 <Cloud className="mr-2 h-4 w-4" />
@@ -1028,9 +1108,10 @@ export function DataSettings() {
                 <Badge variant="secondary">Connected</Badge>
               </div>
               {dropboxError && (
-                <p className="text-xs text-destructive">
-                  {dropboxError}
-                </p>
+                <Alert variant="destructive">
+                  <AlertTitle>Dropbox error</AlertTitle>
+                  <AlertDescription className="break-words text-xs">{dropboxError}</AlertDescription>
+                </Alert>
               )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button onClick={() => void handleDropboxPush()} variant="outline" disabled={isDropboxPushing || isDropboxPulling}>
@@ -1055,7 +1136,7 @@ export function DataSettings() {
                   <p className="text-xs text-muted-foreground">
                     Push overwrites <span className="font-mono">mywallet-backup.json</span>. Pull downloads it for Import.
                   </p>
-                  <Button onClick={handleDropboxDisconnect} variant="ghost" size="sm" className="w-full">
+                  <Button onClick={() => void handleDropboxDisconnect()} variant="ghost" size="sm" className="w-full">
                     Disconnect Dropbox
                   </Button>
                 </div>
@@ -1068,17 +1149,23 @@ export function DataSettings() {
       <Dialog open={showDropboxBackupPinPrompt} onOpenChange={(open) => setShowDropboxBackupPinPrompt(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enter Backup PIN</DialogTitle>
+            <DialogTitle>Unlock Dropbox Backup</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="dropbox-backup-pin">Backup PIN</Label>
+              <p className="text-xs text-muted-foreground">
+                Usually this is your wallet PIN from the device that created the backup.
+              </p>
               <div className="flex justify-center py-1">
                 <InputOTP
                   id="dropbox-backup-pin"
                   maxLength={6}
                   value={dropboxBackupPin}
-                  onChange={setDropboxBackupPin}
+                  onChange={(value) => {
+                    setDropboxBackupPin(value)
+                    setDropboxBackupPinError(null)
+                  }}
                 >
                   <InputOTPGroup>
                     <InputOTPSlot index={0} />
@@ -1090,12 +1177,19 @@ export function DataSettings() {
                   </InputOTPGroup>
                 </InputOTP>
               </div>
+              {dropboxBackupPinError && (
+                <Alert variant="destructive">
+                  <AlertTitle>PIN did not work</AlertTitle>
+                  <AlertDescription className="break-words text-xs">{dropboxBackupPinError}</AlertDescription>
+                </Alert>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
                 onClick={() => {
                   setShowDropboxBackupPinPrompt(false)
                   setDropboxBackupPin("")
+                  setDropboxBackupPinError(null)
                 }}
                 variant="outline"
                 className="flex-1"
@@ -1106,6 +1200,7 @@ export function DataSettings() {
                 onClick={() => {
                   const pin = dropboxBackupPin.trim()
                   if (!pin) {
+                    setDropboxBackupPinError("Please enter the backup PIN.")
                     toast({
                       title: "PIN Required",
                       description: "Please enter the backup PIN.",
@@ -1114,6 +1209,7 @@ export function DataSettings() {
                     return
                   }
                   if (pin.length !== 6) {
+                    setDropboxBackupPinError("PIN must be 6 digits.")
                     toast({
                       title: "Invalid PIN",
                       description: "PIN must be 6 digits.",
@@ -1121,10 +1217,11 @@ export function DataSettings() {
                     })
                     return
                   }
-                  setShowDropboxBackupPinPrompt(false)
-                  setDropboxBackupPin("")
                   const content = pendingDropboxContent
                   if (!content) {
+                    setShowDropboxBackupPinPrompt(false)
+                    setDropboxBackupPin("")
+                    setDropboxBackupPinError(null)
                     toast({
                       title: "Backup Missing",
                       description: "Please try pulling again.",
@@ -1132,19 +1229,25 @@ export function DataSettings() {
                     })
                     return
                   }
-                  setPendingDropboxContent(null)
                   void (async () => {
                     setIsDropboxPulling(true)
                     try {
                       const { restoreEncryptedBackup } = await import("@/lib/backup")
                       const decrypted = await restoreEncryptedBackup(content, pin)
+                      setPendingDropboxContent(null)
+                      setShowDropboxBackupPinPrompt(false)
+                      setDropboxBackupPin("")
+                      setDropboxBackupPinError(null)
                       setIsDropboxPulling(false)
-                      await runDropboxImport(decrypted)
+                      await runDropboxImport(decrypted, pin)
                     } catch (error) {
                       setIsDropboxPulling(false)
+                      const message = error instanceof Error ? error.message : "Failed to decrypt backup."
+                      setDropboxBackupPin("")
+                      setDropboxBackupPinError(`${message} Please re-enter the backup PIN.`)
                       toast({
                         title: "Invalid Backup PIN",
-                        description: error instanceof Error ? error.message : "Failed to decrypt backup.",
+                        description: message,
                         variant: "destructive",
                       })
                     }
@@ -1163,18 +1266,26 @@ export function DataSettings() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dropboxLocalPinAction === "push" ? "Unlock Wallet to Push" : "Unlock Wallet to Import"}
+              {dropboxLocalPinAction === "push" ? "Unlock Wallet to Push" : "Confirm Wallet PIN"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="dropbox-local-pin">Wallet PIN</Label>
+              <p className="text-xs text-muted-foreground">
+                {dropboxLocalPinAction === "push"
+                  ? "This encrypts the backup before uploading it to Dropbox."
+                  : "Needed only if the backup PIN is different from this wallet's current PIN."}
+              </p>
               <div className="flex justify-center py-1">
                 <InputOTP
                   id="dropbox-local-pin"
                   maxLength={6}
                   value={dropboxLocalPin}
-                  onChange={setDropboxLocalPin}
+                  onChange={(value) => {
+                    setDropboxLocalPin(value)
+                    setDropboxLocalPinError(null)
+                  }}
                 >
                   <InputOTPGroup>
                     <InputOTPSlot index={0} />
@@ -1186,12 +1297,19 @@ export function DataSettings() {
                   </InputOTPGroup>
                 </InputOTP>
               </div>
+              {dropboxLocalPinError && (
+                <Alert variant="destructive">
+                  <AlertTitle>PIN did not work</AlertTitle>
+                  <AlertDescription className="break-words text-xs">{dropboxLocalPinError}</AlertDescription>
+                </Alert>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
                 onClick={() => {
                   setShowDropboxLocalPinPrompt(false)
                   setDropboxLocalPin("")
+                  setDropboxLocalPinError(null)
                 }}
                 variant="outline"
                 className="flex-1"
@@ -1202,6 +1320,7 @@ export function DataSettings() {
                 onClick={() => {
                   const pin = dropboxLocalPin.trim()
                   if (!pin) {
+                    setDropboxLocalPinError("Please enter your wallet PIN.")
                     toast({
                       title: "PIN Required",
                       description: "Please enter your wallet PIN.",
@@ -1210,6 +1329,7 @@ export function DataSettings() {
                     return
                   }
                   if (pin.length !== 6) {
+                    setDropboxLocalPinError("Wallet PIN must be 6 digits.")
                     toast({
                       title: "Invalid Wallet PIN",
                       description: "Wallet PIN must be 6 digits.",
@@ -1222,6 +1342,8 @@ export function DataSettings() {
                     void (async () => {
                       const validation = await SecurePinManager.validatePin(pin)
                       if (!validation.success) {
+                        setDropboxLocalPin("")
+                        setDropboxLocalPinError("That PIN is not correct. Please re-enter your current wallet PIN.")
                         toast({
                           title: "Invalid Wallet PIN",
                           description: "Please enter the correct PIN to continue.",
@@ -1232,6 +1354,7 @@ export function DataSettings() {
                       SecureKeyManager.cacheSessionPin(pin)
                       setShowDropboxLocalPinPrompt(false)
                       setDropboxLocalPin("")
+                      setDropboxLocalPinError(null)
                       void handleDropboxPush(pin)
                     })()
                     return
@@ -1246,6 +1369,7 @@ export function DataSettings() {
                   }
                   setShowDropboxLocalPinPrompt(false)
                   setDropboxLocalPin("")
+                  setDropboxLocalPinError(null)
                   setPendingDecryptedBackup(null)
                   void runDropboxImport(decrypted, pin)
                 }}

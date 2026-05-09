@@ -16,6 +16,7 @@ import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { Transaction } from "@/types/wallet"
+import { formatAppMonthKey, getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
 
 export function CombinedBalanceCard() {
   const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange, portfolio } =
@@ -25,12 +26,12 @@ export function CombinedBalanceCard() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [incomeExpenseRange, setIncomeExpenseRange] = useState<"monthly" | "all-time">("monthly")
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+  const activeMonthLabel = formatAppMonthKey(getCalendarMonthRange(new Date(), calendarSystem).key, calendarSystem)
 
   // Optimize calculations with useMemo and better logic
   const { monthlyIncome, monthlyExpenses, allTimeIncome, allTimeExpenses } = useMemo(() => {
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
+    const currentMonthRange = getCalendarMonthRange(new Date(), calendarSystem)
 
     const initialAcc = { monthlyIncome: 0, monthlyExpenses: 0, allTimeIncome: 0, allTimeExpenses: 0 }
     const txResult = (transactions || []).reduce(
@@ -50,12 +51,12 @@ export function CombinedBalanceCard() {
 
         if (transaction.type === "income") {
           acc.allTimeIncome += fullAmount
-          if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+          if (isWithinDateRange(txDate, currentMonthRange.start, currentMonthRange.end)) {
             acc.monthlyIncome += fullAmount
           }
         } else if (isTrueExpense) {
           acc.allTimeExpenses += fullAmount
-          if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+          if (isWithinDateRange(txDate, currentMonthRange.start, currentMonthRange.end)) {
             acc.monthlyExpenses += fullAmount
           }
         }
@@ -65,7 +66,7 @@ export function CombinedBalanceCard() {
       { ...initialAcc },
     )
     return txResult
-  }, [transactions])
+  }, [transactions, calendarSystem])
 
   const totalIncome = incomeExpenseRange === "monthly" ? monthlyIncome : allTimeIncome
   const totalExpenses = incomeExpenseRange === "monthly" ? monthlyExpenses : allTimeExpenses
@@ -342,7 +343,7 @@ export function CombinedBalanceCard() {
       {/* Income & Expenses Row */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs sm:text-sm text-muted-foreground font-medium">
-          {incomeExpenseRange === "monthly" ? "This Month" : "All Time"} Summary
+          {incomeExpenseRange === "monthly" ? `${activeMonthLabel} Summary` : "All Time Summary"}
         </p>
         <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1">
           <Button
@@ -378,7 +379,7 @@ export function CombinedBalanceCard() {
                   </p>
                 </TimeTooltip>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  {incomeExpenseRange === "monthly" ? "This month" : "All time"}
+                  {incomeExpenseRange === "monthly" ? activeMonthLabel : "All time"}
                 </p>
               </div>
             </div>
@@ -399,7 +400,7 @@ export function CombinedBalanceCard() {
                   </p>
                 </TimeTooltip>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  {incomeExpenseRange === "monthly" ? "This month" : "All time"}
+                  {incomeExpenseRange === "monthly" ? activeMonthLabel : "All time"}
                 </p>
               </div>
             </div>

@@ -19,6 +19,7 @@ import {
 import type { Goal, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
 interface GoalProgressVisualizationProps {
   goals: Goal[]
@@ -45,6 +46,7 @@ interface Milestone {
 }
 
 export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVisualizationProps) {
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
   const goalProjections = useMemo(() => {
     return goals.map((goal): GoalProjection => {
       const challengeSummary = getGoalChallengeSummary(goal)
@@ -254,7 +256,7 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                             {projection.status.replace('-', ' ')}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
-                            <Calendar className="w-2.5 h-2.5" /> {new Date(projection.goal.targetDate).toLocaleDateString()}
+                            <Calendar className="w-2.5 h-2.5" /> {formatAppDate(projection.goal.targetDate, calendarSystem)}
                           </span>
                         </div>
                       </div>
@@ -338,7 +340,7 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                       <div className="p-3 bg-background/50 rounded-xl border border-primary/5">
                         <p className="text-[9px] font-bold text-muted-foreground uppercase opacity-60 mb-1">Est. Completion</p>
                         <p className="text-sm font-bold font-mono text-primary">
-                          {projection.projectedCompletion.toLocaleDateString()}
+                          {formatAppDate(projection.projectedCompletion, calendarSystem)}
                           <span className="text-[10px] font-normal opacity-60 ml-2">({formatTime(projection.timeToComplete)})</span>
                         </p>
                         <p className="text-[8px] text-muted-foreground italic mt-1 font-medium">

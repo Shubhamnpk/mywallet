@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { RefreshCw, ExternalLink, Github, User, Heart, Star, Building, Info } from "lucide-react"
+import { RefreshCw, ExternalLink, Github, User, Heart, Building, Info, BookOpen, LifeBuoy, Code2, ShieldCheck, Trash2 } from "lucide-react"
 import { useState, useRef } from "react"
 import { toast } from 'sonner'
 import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
@@ -71,12 +71,9 @@ export function AboutSettings() {
   const handleGithubLink = () => openExternal('https://github.com/Shubhamnpk/mywallet')
   const handleFeaturesGuide = () => openExternal('https://github.com/Shubhamnpk/mywallet#readme')
   const handleHelpSupport = () => openExternal('https://github.com/Shubhamnpk/mywallet/issues')
-  const handlePrivacyPolicy = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/PRIVACY.md')
-  const handleTermsOfService = () => openExternal('https://github.com/Shubhamnpk/mywallet/blob/main/TERMS.md')
 
   const handleOSSCard = () => openExternal('https://github.com/Shubhamnpk/mywallet')
-  const handleBitNepalCard = () => openExternal('https://bit-nepal.com')
-  const handleYoguruCard = () => openExternal('https://yoguru.odoo.com')
+  const handleBitNepalCard = () => openExternal('https://bitnepal.net')
 
 
   // Helper to clear caches and unregister service workers
@@ -147,6 +144,10 @@ export function AboutSettings() {
             <span className="text-sm font-medium">Platform</span>
             <span className="text-sm text-muted-foreground">Web Application</span>
           </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Storage</span>
+            <span className="text-sm text-muted-foreground">On-device by default</span>
+          </div>
         </CardContent>
       </Card>
 
@@ -181,30 +182,49 @@ export function AboutSettings() {
               </div>
             </div>
             <Separator />
-            <div className="space-y-2">
-              <Button
-                variant="outline"
-                onClick={handleCheckUpdate}
-                disabled={checkingUpdate}
-                className="w-full"
-              >
-                {checkingUpdate ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Checking for updates...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Check for Updates
-                  </>
-                )}
-              </Button>
-              <div className="mt-2">
-              <Button onClick={handleClearCaches} variant="ghost" className="w-full" disabled={clearingCache}>
-                {clearingCache ? 'Clearing caches...' : 'Clear caches'}
-              </Button>
-            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <Button
+                  variant="outline"
+                  onClick={handleCheckUpdate}
+                  disabled={checkingUpdate}
+                  className="h-auto justify-start p-4 text-left"
+                >
+                  {checkingUpdate ? (
+                    <RefreshCw className="mr-3 h-4 w-4 shrink-0 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-3 h-4 w-4 shrink-0" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block font-medium">
+                      {checkingUpdate ? "Checking..." : "Check for Updates"}
+                    </span>
+                    <span className="block whitespace-normal text-xs font-normal text-muted-foreground">
+                      Look for a newer app version.
+                    </span>
+                  </span>
+                </Button>
+                <Button
+                  onClick={handleClearCaches}
+                  variant="outline"
+                  className="h-auto justify-start p-4 text-left"
+                  disabled={clearingCache}
+                >
+                  {clearingCache ? (
+                    <RefreshCw className="mr-3 h-4 w-4 shrink-0 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-3 h-4 w-4 shrink-0" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block font-medium">
+                      {clearingCache ? "Clearing..." : "Clear Cache"}
+                    </span>
+                    <span className="block whitespace-normal text-xs font-normal text-muted-foreground">
+                      Refresh app assets without deleting wallet data.
+                    </span>
+                  </span>
+                </Button>
+              </div>
               <Button variant="secondary" className="w-full" asChild>
                 <Link href="/releases">
                   View Release Notes
@@ -230,14 +250,15 @@ export function AboutSettings() {
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ExternalLink className="w-5 h-5" />
-            More Information
+            Resources
           </CardTitle>
-          <CardDescription>Learn more about features and support</CardDescription>
+          <CardDescription>Useful project pages and support channels</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Button variant="outline" className="justify-start h-auto p-4" asChild>
               <Link href="/releases">
+                <BookOpen className="w-4 h-4 mr-3 shrink-0" />
                 <div className="text-left">
                   <div className="font-medium">Release Notes</div>
                   <div className="text-sm text-muted-foreground">See shipped versions and changes</div>
@@ -246,6 +267,7 @@ export function AboutSettings() {
               </Link>
             </Button>
             <Button variant="outline" className="justify-start h-auto p-4" onClick={handleFeaturesGuide}>
+              <BookOpen className="w-4 h-4 mr-3 shrink-0" />
               <div className="text-left">
                 <div className="font-medium">Features Guide</div>
                 <div className="text-sm text-muted-foreground">Explore all app features</div>
@@ -253,23 +275,18 @@ export function AboutSettings() {
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
             <Button variant="outline" className="justify-start h-auto p-4" onClick={handleHelpSupport}>
+              <LifeBuoy className="w-4 h-4 mr-3 shrink-0" />
               <div className="text-left">
                 <div className="font-medium">Help & Support</div>
-                <div className="text-sm text-muted-foreground">Get help and support</div>
+                <div className="text-sm text-muted-foreground">Report issues or request improvements</div>
               </div>
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4" onClick={handlePrivacyPolicy}>
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleGithubLink}>
+              <Github className="w-4 h-4 mr-3 shrink-0" />
               <div className="text-left">
-                <div className="font-medium">Privacy Policy</div>
-                <div className="text-sm text-muted-foreground">How we protect your data</div>
-              </div>
-              <ExternalLink className="w-4 h-4 ml-auto" />
-            </Button>
-            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleTermsOfService}>
-              <div className="text-left">
-                <div className="font-medium">Terms of Service</div>
-                <div className="text-sm text-muted-foreground">Our terms and conditions</div>
+                <div className="font-medium">Source Code</div>
+                <div className="text-sm text-muted-foreground">View the public repository</div>
               </div>
               <ExternalLink className="w-4 h-4 ml-auto" />
             </Button>
@@ -284,7 +301,7 @@ export function AboutSettings() {
             <User className="w-5 h-5" />
             Developer
           </CardTitle>
-          <CardDescription>Meet the creator behind My Wallet App</CardDescription>
+          <CardDescription>Built and maintained by Shubham Niraual</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
@@ -293,11 +310,11 @@ export function AboutSettings() {
             </div>
             <div>
               <p className="font-medium">Shubham Niraual</p>
-              <p className="text-sm text-muted-foreground">Full Stack Developer</p>
+              <p className="text-sm text-muted-foreground">Full-stack developer from Nepal</p>
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Passionate about creating intuitive and secure financial tools to help people manage their money better.
+            Focused on practical, private, and approachable tools for everyday money management.
           </p>
           <div className="flex gap-2">
             <Badge variant="secondary" className="text-xs">
@@ -305,7 +322,7 @@ export function AboutSettings() {
               Open Source
             </Badge>
             <Badge variant="secondary" className="text-xs">
-              <Star className="w-3 h-3 mr-1" />
+              <Code2 className="w-3 h-3 mr-1" />
               React & Next.js
             </Badge>
           </div>
@@ -319,35 +336,36 @@ export function AboutSettings() {
             <Building className="w-5 h-5" />
             Branding & Partners
           </CardTitle>
-          <CardDescription>Organizations and communities behind this app</CardDescription>
+          <CardDescription>Project homes and related communities</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
-              <div
-                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                className="rounded-md border p-4 text-left transition-colors hover:bg-muted/50"
                 onClick={handleOSSCard}
               >
-                <div className="font-medium text-sm">OSS</div>
-                <div className="text-xs text-muted-foreground mt-1">Open Source Software</div>
-              </div>
-              <div
-                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                <div className="flex items-center gap-2 font-medium text-sm">
+                  <Github className="h-4 w-4" />
+                  Open Source
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">Repository, issues, and contributions</div>
+              </button>
+              <button
+                type="button"
+                className="rounded-md border p-4 text-left transition-colors hover:bg-muted/50"
                 onClick={handleBitNepalCard}
               >
-                <div className="font-medium text-sm">BitNepal</div>
-                <div className="text-xs text-muted-foreground mt-1">Technology Partner</div>
-              </div>
-              <div
-                className="text-center p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={handleYoguruCard}
-              >
-                <div className="font-medium text-sm">Yoguru</div>
-                <div className="text-xs text-muted-foreground mt-1">Community Partner</div>
-              </div>
+                <div className="flex items-center gap-2 font-medium text-sm">
+                  <Building className="h-4 w-4" />
+                  BitNepal
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">Technology partner at bitnepal.net</div>
+              </button>
             </div>
-            <p className="text-sm text-muted-foreground text-center">
-              Proudly built with contributions from the open source community and our partners.
+            <p className="text-sm text-muted-foreground">
+              Built with open-source tools and maintained as a practical finance app for Nepali and global users.
             </p>
           </div>
         </CardContent>

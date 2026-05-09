@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import ReceiptScannerModal from "./scanner-modal"
+import { todayAdDateKey } from "@/lib/app-calendar"
 interface ReceiptScannerProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
@@ -188,7 +189,7 @@ const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
     return {
       amount: amount || '',
       merchant: merchant || 'Unknown Merchant',
-      date: date || new Date().toLocaleDateString(),
+      date: date || todayAdDateKey(),
       items: items.slice(0, 5), // Limit to 5 items
       total: total || amount
     }

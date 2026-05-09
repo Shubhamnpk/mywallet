@@ -1,17 +1,30 @@
 {
-  "currentBuild": "2026.04.25",
+  "currentBuild": "2026.05.09",
   "releases": [
     {
-      "version": "2.0.4",
-      "date": "2026-04-26",
+      "version": "2.1.0",
+      "date": "2026-05-09",
       "status": "current",
-      "category": "Improvement",
-      "title": "Mobile UX, Achievements, and Native Security Improvements",
+      "category": "Feature",
+      "title": "Returning User Recovery, Portfolio Planning, and Calendar Refinements",
       "highlights": [
-        "Improved the mobile tools tab flow and dashboard layout for a smoother small-screen experience.",
-        "Added achievement search, sorting, and progressive reveal to make milestones easier to browse.",
-        "Expanded native mobile shell updates across Android and iOS project assets and configuration.",
-        "Refined biometric and session security support for the mobile app experience."
+        "Returning users who land on the welcome page now see a clear welcome-back message and a direct path back to the dashboard.",
+        "Portfolio workflows gained richer sell previews, dividend what-if planning, and better price verification during imports.",
+        "Date-sensitive budgeting and dashboard flows now align more consistently with the app calendar system.",
+        "The About screen and support actions were refreshed, and wallet data hooks were reorganized for cleaner long-term maintenance."
+      ]
+    },
+    {
+      "version": "2.0.4",
+      "date": "2026-04-30",
+      "status": "stable",
+      "category": "UX",
+      "title": "Dropbox Cleanup, Notification Controls, and Floating Calculator",
+      "highlights": [
+        "Disconnecting Dropbox now revokes the active token when possible and clears all local Dropbox backup keys.",
+        "Added missing Dropbox scope detection so users are guided to reconnect when backup permissions are incomplete.",
+        "Added compact notification actions for bill reminders, notification settings, mark-all-read, and clearing live notifications.",
+        "Upgraded the floating calculator with keyboard input, live results, movable desktop windows, docking, multiple instances, and a tabbed history view."
       ]
     },
     {

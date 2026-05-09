@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import QRCodeScanner from "./qr-code-scanner"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { MobileNativeModal } from "@/components/dashboard/mobile-native-modal"
+import { useWalletData } from "@/contexts/wallet-data-context"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 
 interface TransactionData {
@@ -123,6 +125,8 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
   qrVideoRef
 }) => {
   const isMobile = useIsMobile()
+  const { userProfile } = useWalletData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const [activeTab, setActiveTab] = useState("receipt")
   const [videoElementReady, setVideoElementReady] = useState(false)
   const [qrScanning, setQrScanning] = useState(false)
@@ -880,7 +884,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                                   {item.scanType === 'receipt' ? 'Receipt' : 'QR Code'}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
-                                  {new Date(item.timestamp).toLocaleString()}
+                                  {formatAppDateTime(new Date(item.timestamp), calendarSystem)}
                                 </span>
                               </div>
                               <div className="space-y-1">

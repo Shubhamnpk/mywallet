@@ -10,12 +10,12 @@ import { useRouter } from "next/navigation"
 export function MyWalletPageClient() {
   const router = useRouter()
   const walletData = useWalletData()
-  const { userProfile, updateUserProfile } = walletData
+  const { userProfile, showOnboarding, updateUserProfile } = walletData
   useEffect(() => {
-    if (!userProfile) {
+    if (!userProfile && showOnboarding) {
       router.replace("/welcome")
     }
-  }, [userProfile, router])
+  }, [userProfile, showOnboarding, router])
 
   if (!userProfile) {
     return (

@@ -108,3 +108,18 @@ export function clearNotificationHistory(): void {
   }
   dispatchUpdated()
 }
+
+export function clearLiveNotificationHistory(cutoffAt: number): void {
+  if (typeof window === "undefined") return
+  const list = safeRead()
+  const archived = list.filter((item) => item.at < cutoffAt)
+  try {
+    if (archived.length > 0) {
+      localStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(archived))
+    } else {
+      localStorage.removeItem(NOTIFICATION_HISTORY_KEY)
+    }
+  } catch {
+  }
+  dispatchUpdated()
+}

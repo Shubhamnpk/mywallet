@@ -9,6 +9,7 @@ import { formatCurrency } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import type { Category, UserProfile } from "@/types/wallet"
 import { cn } from "@/lib/utils"
+import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 interface CategoryProgressCardProps {
   category: Category & {
     totalSpent: number
@@ -46,6 +47,7 @@ export function CategoryProgressCard({
   onToggleVisibility
 }: CategoryProgressCardProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
 
   // Calculate time equivalent
   const timeBreakdown = getTimeEquivalentBreakdown(category.totalSpent, userProfile)
@@ -210,7 +212,7 @@ export function CategoryProgressCard({
                 </div>
                 <div className="font-black text-sm sm:text-base">
                   {category.lastTransactionDate
-                    ? new Date(category.lastTransactionDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    ? formatAppDate(category.lastTransactionDate, calendarSystem, { month: 'short', day: 'numeric', year: 'numeric' })
                     : "Never"
                   }
                 </div>

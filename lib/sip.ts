@@ -1,4 +1,6 @@
 import type { ShareTransaction, SIPPlan } from "@/types/wallet"
+import type { CalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 export const SIP_DEFAULT_DPS_CHARGE = 5
@@ -34,26 +36,32 @@ const parseDateOnly = (value?: string | null) => {
   return toStartOfDay(parsed)
 }
 
-const addMonths = (value: Date, months: number) => {
-  const next = new Date(value)
-  next.setMonth(next.getMonth() + months)
-  return toStartOfDay(next)
+const addMonths = (value: Date, months: number, anchorDay = value.getDate()) => {
+  const year = value.getFullYear()
+  const month = value.getMonth()
+
+  const targetMonthIndex = month + months
+  const targetYear = year + Math.floor(targetMonthIndex / 12)
+  const normalizedTargetMonth = ((targetMonthIndex % 12) + 12) % 12
+  const lastDayOfTargetMonth = new Date(targetYear, normalizedTargetMonth + 1, 0).getDate()
+
+  return toStartOfDay(new Date(targetYear, normalizedTargetMonth, Math.min(anchorDay, lastDayOfTargetMonth)))
 }
 
-const addFrequency = (value: Date, frequency: SIPPlan["frequency"]) => {
+const addFrequency = (value: Date, frequency: SIPPlan["frequency"], anchorDay = value.getDate()) => {
   if (frequency === "weekly") {
     return toStartOfDay(new Date(value.getTime() + (7 * DAY_MS)))
   }
   if (frequency === "quarterly") {
-    return addMonths(value, 3)
+    return addMonths(value, 3, anchorDay)
   }
-  return addMonths(value, 1)
+  return addMonths(value, 1, anchorDay)
 }
 
-export const formatSipDate = (value?: string | null) => {
+export const formatSipDate = (value?: string | null, calendarSystem: CalendarSystem = "AD") => {
   const parsed = parseDateOnly(value)
   if (!parsed) return "Not set"
-  return parsed.toLocaleDateString(undefined, {
+  return formatAppDate(parsed, calendarSystem, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -66,6 +74,114 @@ export const calculateSipNetInvestment = (grossAmount: number, dpsCharge = SIP_D
   return Math.max(0, normalizedGross - normalizedCharge)
 }
 
+export type SipCycleAmounts = {
+  baseAmount: number
+  carryRemainder: number
+  grossAmount: number
+  dpsCharge: number
+  netAmount: number
+}
+
+export type SipExecutionPlan = SipCycleAmounts & {
+  currentPrice: number
+  quantity: number
+  remainder: number
+}
+
+export const getSipCharge = (plan?: Pick<SIPPlan, "dpsCharge"> | null) =>
+  Number.isFinite(plan?.dpsCharge) ? Math.max(0, Number(plan?.dpsCharge)) : SIP_DEFAULT_DPS_CHARGE
+
+export const getSipBaseAmount = (plan?: Pick<SIPPlan, "installmentAmount"> | null) =>
+  Number.isFinite(plan?.installmentAmount) ? Number(plan?.installmentAmount) : 0
+
+export const getSipCarryRemainder = (plan?: Pick<SIPPlan, "lastRemainder"> | null) =>
+  Number.isFinite(plan?.lastRemainder) ? Number(plan?.lastRemainder) : 0
+
+export const getSipCycleAmounts = (
+  plan?: Pick<SIPPlan, "installmentAmount" | "dpsCharge" | "lastRemainder"> | null,
+  overrides?: { baseAmount?: number; includeCarryRemainder?: boolean },
+): SipCycleAmounts => {
+  const baseAmount = Number.isFinite(overrides?.baseAmount) && (overrides?.baseAmount ?? 0) > 0
+    ? Number(overrides?.baseAmount)
+    : getSipBaseAmount(plan)
+  const carryRemainder = overrides?.includeCarryRemainder === false ? 0 : getSipCarryRemainder(plan)
+  const grossAmount = Number((baseAmount + carryRemainder).toFixed(2))
+  const dpsCharge = getSipCharge(plan)
+  const netAmount = Number(calculateSipNetInvestment(grossAmount, dpsCharge).toFixed(2))
+
+  return {
+    baseAmount,
+    carryRemainder,
+    grossAmount,
+    dpsCharge,
+    netAmount,
+  }
+}
+
+export const getSipTransactionGrossAmount = (tx: Pick<ShareTransaction, "type" | "price" | "quantity" | "sipGrossAmount" | "sipDpsCharge">) => {
+  if (Number.isFinite(tx.sipGrossAmount)) return Number(tx.sipGrossAmount)
+  if (tx.type === "buy") {
+    const price = Number.isFinite(tx.price) ? Number(tx.price) : 0
+    const quantity = Number.isFinite(tx.quantity) ? Number(tx.quantity) : 0
+    return Number(((price * quantity) + (Number.isFinite(tx.sipDpsCharge) ? Number(tx.sipDpsCharge) : SIP_DEFAULT_DPS_CHARGE)).toFixed(2))
+  }
+  return 0
+}
+
+export const getSipTransactionNetAmount = (tx: Pick<ShareTransaction, "sipNetAmount" | "sipDpsCharge" | "sipGrossAmount" | "type" | "price" | "quantity">) => {
+  if (Number.isFinite(tx.sipNetAmount)) return Number(tx.sipNetAmount)
+  return Number(calculateSipNetInvestment(getSipTransactionGrossAmount(tx), Number.isFinite(tx.sipDpsCharge) ? Number(tx.sipDpsCharge) : SIP_DEFAULT_DPS_CHARGE).toFixed(2))
+}
+
+export const isSipEnrollmentCandidate = (tx: Pick<ShareTransaction, "type" | "quantity" | "sipPlanId">) => {
+  const isBuyType = tx.type === "buy" || tx.type === "ipo" || tx.type === "merger_in"
+  const hasValidQuantity = Number.isFinite(tx.quantity) && (tx.quantity ?? 0) > 0
+  return isBuyType && !tx.sipPlanId && hasValidQuantity
+}
+
+export const canSipCycleBuyUnit = (
+  plan: Pick<SIPPlan, "installmentAmount" | "dpsCharge" | "lastRemainder"> | null | undefined,
+  currentPrice: number,
+  overrides?: { baseAmount?: number },
+) => {
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return false
+  const amounts = getSipCycleAmounts(plan, overrides)
+  return amounts.netAmount >= currentPrice
+}
+
+export const buildSipExecutionPlan = (
+  plan: Pick<SIPPlan, "installmentAmount" | "dpsCharge" | "lastRemainder">,
+  currentPrice: number,
+  overrides?: { baseAmount?: number },
+): SipExecutionPlan => {
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    throw new Error("A valid SIP execution price is required")
+  }
+
+  const amounts = getSipCycleAmounts(plan, overrides)
+  if (!Number.isFinite(amounts.grossAmount) || amounts.grossAmount <= 0) {
+    throw new Error("A valid SIP installment amount is required")
+  }
+
+  if (amounts.netAmount < currentPrice) {
+    throw new Error("Net SIP amount after DPS is not enough to buy at least one unit at the current price")
+  }
+
+  const quantity = Math.floor(amounts.netAmount / currentPrice)
+  if (quantity < 1) {
+    throw new Error("Installment amount is not enough to complete this SIP installment")
+  }
+
+  const remainder = Number((amounts.netAmount - (quantity * currentPrice)).toFixed(2))
+
+  return {
+    ...amounts,
+    currentPrice: Number(currentPrice),
+    quantity,
+    remainder,
+  }
+}
+
 export const getSipNextInstallmentDate = (
   plan: Pick<SIPPlan, "startDate" | "frequency">,
   now = new Date(),
@@ -74,10 +190,11 @@ export const getSipNextInstallmentDate = (
   if (!start) return null
 
   const today = toStartOfDay(now)
+  const anchorDay = start.getDate()
   let next = start
   let safety = 0
   while (next <= today && safety < 500) {
-    next = addFrequency(next, plan.frequency)
+    next = addFrequency(next, plan.frequency, anchorDay)
     safety += 1
   }
   return next
@@ -90,10 +207,11 @@ export const getSipDueDateAtIndex = (
   const start = parseDateOnly(plan.startDate)
   if (!start || index < 0) return null
 
+  const anchorDay = start.getDate()
   let next = start
   let cursor = 0
   while (cursor < index) {
-    next = addFrequency(next, plan.frequency)
+    next = addFrequency(next, plan.frequency, anchorDay)
     cursor += 1
   }
   return next
@@ -116,6 +234,8 @@ export const normalizeSipPlans = (plans?: SIPPlan[] | null): SIPPlan[] => {
       estimatedUnits: Number.isFinite(plan.estimatedUnits) ? plan.estimatedUnits : undefined,
       referencePrice: Number.isFinite(plan.referencePrice) ? plan.referencePrice : undefined,
       notes: plan.notes?.trim() || undefined,
+      lastRemainder: Number.isFinite(plan.lastRemainder) ? plan.lastRemainder : 0,
+      lastInstallmentDate: plan.lastInstallmentDate || undefined,
     }))
 }
 
@@ -184,6 +304,7 @@ export const getSipScheduleSummary = (
   if (!start) return null
 
   const completedDueDates = getCompletedDueDateSet(plan, transactions)
+  const anchorDay = start.getDate()
 
   let cursor = start
   let latestPendingOnOrBeforeToday: Date | null = null
@@ -202,7 +323,7 @@ export const getSipScheduleSummary = (
       }
     }
 
-    cursor = addFrequency(cursor, plan.frequency)
+    cursor = addFrequency(cursor, plan.frequency, anchorDay)
     safety += 1
   }
 

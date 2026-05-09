@@ -1,9 +1,9 @@
 "use client"
 
 import { createContext, useContext, type ReactNode } from "react"
-import { useWalletData as useWalletDataHook } from "@/hooks/use-wallet-data"
+import { useWalletStore } from "@/hooks/use-wallet-store"
 import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, } from "@/types/wallet"
-type WalletDataContextType = {
+export type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
   budgets: Budget[]
@@ -98,6 +98,7 @@ type WalletDataContextType = {
   updatePortfolio: (id: string, updates: Partial<Portfolio>) => Promise<void>
   clearPortfolioHistory: () => Promise<void>
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
+  refreshMarketData: () => Promise<void>
   syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
   applyMeroShareIPO: (
     credentials: any,
@@ -109,6 +110,7 @@ type WalletDataContextType = {
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
+  updateShareTransaction: (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>
   deleteMultipleShareTransactions: (ids: string[]) => Promise<PortfolioItem[] | undefined>
   recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<{ newPortfolio: PortfolioItem[]; zeroUnitHoldings: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
@@ -132,7 +134,7 @@ interface WalletDataProviderProps {
 }
 
 export function WalletDataProvider({ children }: WalletDataProviderProps) {
-  const walletData = useWalletDataHook()
+  const walletData = useWalletStore()
 
   if (!walletData.isLoaded) {
     return (

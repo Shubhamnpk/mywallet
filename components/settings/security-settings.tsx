@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useSecurityData } from "@/hooks/use-security-data"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecureWallet } from "@/lib/security"
 import { SecureKeyManager } from "@/lib/key-manager"
@@ -20,13 +20,15 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
+import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 
 interface SecuritySettingsProps {
   onLock?: () => void
 }
 
 export function SecuritySettings({ onLock }: SecuritySettingsProps) {
-  const { userProfile, updateUserProfile } = useWalletData()
+  const { userProfile, updateUserProfile } = useSecurityData()
+  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
   const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
   const [pinEnabled, setPinEnabled] = useState(!!userProfile?.securityEnabled && !!userProfile?.pin)
@@ -354,7 +356,7 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
                   <p>• AES-256-GCM encryption active</p>
                   <p>• PBKDF2 key derivation (100,000 iterations)</p>
                   <p>• Master key cached: {securityStatus.cacheValid ? "Yes" : "No"}</p>
-                  {securityStatus.lastUsed && <p>• Last used: {new Date(securityStatus.lastUsed).toLocaleString()}</p>}
+                  {securityStatus.lastUsed && <p>• Last used: {formatAppDateTime(securityStatus.lastUsed, calendarSystem)}</p>}
                 </div>
               </CardContent>
             </Card>
@@ -661,7 +663,7 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
                 <div key={i} className="flex items-center justify-between text-xs p-2 bg-muted/30 rounded border border-muted">
                   <div className="flex flex-col">
                     <span className="font-medium capitalize">{log.type.replace(/_/g, " ")}</span>
-                    <span className="text-[10px] text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</span>
+                    <span className="text-[10px] text-muted-foreground">{formatAppDateTime(log.timestamp, calendarSystem)}</span>
                   </div>
                   {log.details && (
                     <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded">{log.details}</span>
