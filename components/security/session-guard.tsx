@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { SessionManager } from "@/lib/session-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
@@ -489,10 +490,16 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 }
 
 export function SessionGuard({ children }: SessionGuardProps) {
+  const pathname = usePathname()
   const { isAuthenticated, hasPin, validatePin, validateEmergencyPin } = useAuthentication()
   const [sessionInvalidated, setSessionInvalidated] = useState(false)
   const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
   const [showNewPinSetup, setShowNewPinSetup] = useState(false)
+  const isPublicRoute =
+    pathname === "/welcome" ||
+    pathname === "/releases" ||
+    pathname === "/dropbox-callback" ||
+    pathname === "/onboarding"
 
   useEffect(() => {
     // Listen for session expiry events
@@ -517,6 +524,11 @@ export function SessionGuard({ children }: SessionGuardProps) {
   }, [hasPin])
 
   const showPinScreen = hasPin && (!isAuthenticated || (sessionInvalidated && !SessionManager.isSessionValid()))
+
+  // Public pages shouldn't require wallet unlock because they don't need access to private wallet data.
+  if (isPublicRoute) {
+    return <>{children}</>
+  }
 
   // If no PIN is required or user is authenticated with valid session, show children
   if (!hasPin || (isAuthenticated && !showPinScreen && !showNewPinSetup)) {
