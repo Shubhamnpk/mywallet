@@ -8,6 +8,7 @@ import { WalletDataProvider } from "@/contexts/wallet-data-context"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
 import { SessionGuard } from "@/components/security/session-guard"
 import { DeveloperMenu } from "@/components/security/developer-menu"
+import { MyWalletExtensionBridge } from "@/components/extensions/mywallet-extension-bridge"
 import RegisterSW from '@/components/pwa/register-sw'
 import UpdateNotification from '@/components/pwa/update-notification'
 import UpdateSuccess from '@/components/pwa/update-success'
@@ -157,6 +158,7 @@ export default function RootLayout({
           <PrivacyModeProvider>
             <SessionGuard>
               <WalletDataProvider>
+                <MyWalletExtensionBridge />
                 {children}
               </WalletDataProvider>
             </SessionGuard>

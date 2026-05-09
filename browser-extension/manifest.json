@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "MyWallet Companion",
+  "version": "0.1.0",
+  "description": "Quick MyWallet summaries and transaction capture for Chromium browsers.",
+  "permissions": ["tabs", "storage"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://mywalletnp.vercel.app/*",
+    "https://meroshare.cdsc.com.np/*",
+    "https://iporesult.cdsc.com.np/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "MyWallet Companion",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://mywalletnp.vercel.app/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

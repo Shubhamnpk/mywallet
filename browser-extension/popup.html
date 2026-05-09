@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyWallet Companion</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero shell">
+        <div class="hero-orb hero-orb-left"></div>
+        <div class="hero-orb hero-orb-right"></div>
+        <div class="hero-copy">
+          <p class="eyebrow">MyWallet Companion</p>
+          <h1>Browser command center for your money</h1>
+          <p class="subtle" id="connection-status">Looking for an open MyWallet tab...</p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-button" class="ghost compact">Refresh</button>
+          <button id="open-app-button" class="compact">Open App</button>
+        </div>
+      </section>
+
+      <section class="shell status-strip">
+        <div class="status-strip-copy">
+          <strong id="status-strip-title">Connection</strong>
+          <span id="status-strip-text">Ready when your wallet tab is open</span>
+        </div>
+        <button id="toggle-connection-button" class="ghost compact">Manage</button>
+      </section>
+
+      <section id="onboarding-panel" class="panel shell hidden">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow small">Getting Started</p>
+            <h2>Set up MyWallet first</h2>
+          </div>
+        </div>
+        <div class="empty-state">
+          <strong>No wallet profile detected yet</strong>
+          <p class="subtle">
+            Open MyWallet and complete onboarding first. Once your wallet is ready, this extension will show summaries,
+            quick actions, and transaction tools here.
+          </p>
+          <div class="actions">
+            <button id="start-onboarding-button">Open Welcome</button>
+            <button id="open-app-empty-button" class="ghost">Open App Home</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="connection-panel" class="panel shell connection-panel hidden">
+        <label class="field">
+          <span>Preferred app URL</span>
+          <input id="app-url" type="url" placeholder="http://localhost:3000" />
+        </label>
+        <div class="actions">
+          <button id="save-url-button" class="ghost">Save URL</button>
+          <button id="open-settings-button">Open Settings</button>
+        </div>
+      </section>
+
+      <section id="snapshot-panel" class="hidden">
+        <div class="tabs shell">
+          <button class="tab-button active" data-tab="overview">Overview</button>
+          <button class="tab-button" data-tab="activity">Activity</button>
+          <button class="tab-button" data-tab="actions">Actions</button>
+          <button class="tab-button" data-tab="automation">Automation</button>
+        </div>
+
+        <section class="tab-panel" data-panel="overview">
+          <section class="panel shell">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow small">Overview</p>
+                <h2>Live snapshot</h2>
+              </div>
+              <span id="connected-user" class="chip hidden"></span>
+            </div>
+
+            <div class="summary-grid summary-grid-main">
+              <article class="metric metric-balance">
+                <span>Balance</span>
+                <strong id="balance-value">-</strong>
+              </article>
+              <article class="metric metric-expense">
+                <span>Month Spend</span>
+                <strong id="expense-value">-</strong>
+              </article>
+              <article class="metric metric-net">
+                <span>Month Net</span>
+                <strong id="net-value">-</strong>
+              </article>
+              <article class="metric metric-portfolio">
+                <span>Portfolio Value</span>
+                <strong id="portfolio-value">-</strong>
+              </article>
+            </div>
+
+            <div class="summary-grid summary-grid-secondary">
+              <article class="metric compact-metric">
+                <span>Transactions</span>
+                <strong id="transactions-value">-</strong>
+              </article>
+              <article class="metric compact-metric">
+                <span>Budgets</span>
+                <strong id="budgets-value">-</strong>
+              </article>
+              <article class="metric compact-metric">
+                <span>Goals</span>
+                <strong id="goals-value">-</strong>
+              </article>
+              <article class="metric compact-metric">
+                <span>Open IPOs</span>
+                <strong id="ipos-value">-</strong>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="tab-panel hidden" data-panel="activity">
+          <section class="panel shell">
+            <div class="two-column">
+              <div class="list-block">
+                <div class="list-header">
+                  <h2>Budget Pulse</h2>
+                </div>
+                <ul id="budget-pulse" class="health-list"></ul>
+              </div>
+
+              <div class="list-block">
+                <div class="list-header">
+                  <h2>Goal Momentum</h2>
+                </div>
+                <ul id="goal-progress" class="health-list"></ul>
+              </div>
+            </div>
+
+            <div class="list-block transaction-block">
+              <div class="list-header">
+                <h2>Recent Transactions</h2>
+              </div>
+              <ul id="recent-transactions" class="transaction-list"></ul>
+            </div>
+          </section>
+        </section>
+
+        <section class="tab-panel hidden" data-panel="actions">
+          <section class="panel shell action-surface">
+            <div class="list-header">
+              <h2>Quick Actions</h2>
+              <span class="subtle">Jump to important areas in MyWallet.</span>
+            </div>
+            <div class="action-grid">
+              <button id="open-dashboard-button" class="ghost action-button">Dashboard</button>
+              <button id="open-portfolio-button" class="ghost action-button">Portfolio</button>
+              <button id="open-meroshare-settings-button" class="ghost action-button">MeroShare</button>
+              <button id="open-security-button" class="ghost action-button">Security</button>
+            </div>
+          </section>
+
+          <section class="panel shell quick-add-surface">
+            <div class="list-header">
+              <h2>Quick Add</h2>
+              <span class="subtle">Writes directly into your open MyWallet app.</span>
+            </div>
+            <form id="quick-add-form" class="form">
+              <div class="row">
+                <label class="field">
+                  <span>Type</span>
+                  <select id="tx-type">
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Amount</span>
+                  <input id="tx-amount" type="number" min="0" step="0.01" required />
+                </label>
+              </div>
+              <label class="field">
+                <span>Category</span>
+                <input id="tx-category" list="category-list" placeholder="Food, Salary, Travel..." required />
+                <datalist id="category-list"></datalist>
+              </label>
+              <label class="field">
+                <span>Description</span>
+                <input id="tx-description" type="text" placeholder="What was this for?" />
+              </label>
+              <label class="field">
+                <span>Date</span>
+                <input id="tx-date" type="date" />
+              </label>
+              <button id="submit-button" type="submit">Add Transaction</button>
+            </form>
+            <p id="form-message" class="subtle"></p>
+          </section>
+        </section>
+
+        <section class="tab-panel hidden" data-panel="automation">
+          <section class="panel shell automation-surface">
+            <div class="list-header">
+              <h2>Automation Launchpad</h2>
+              <span class="subtle">Foundation for future guided Playwright-style flows.</span>
+            </div>
+            <div class="automation-card">
+              <p id="automation-status" class="subtle">
+                Extension automation foundation is ready. App capabilities will appear here as we expand the bridge.
+              </p>
+              <div class="action-grid">
+                <button id="open-meroshare-button" class="action-button">Open MeroShare</button>
+                <button id="open-ipo-result-button" class="ghost action-button">Open IPO Result</button>
+              </div>
+              <ul id="automation-targets" class="automation-list"></ul>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <footer class="extension-footer">
+        <span>Local-first wallet companion</span>
+        <span>Built for speed, sync, and future automation</span>
+      </footer>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+  </html>
