@@ -1,10 +1,10 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, startTransition } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, Wallet, TrendingUp, Target, Shield, Smartphone, Brain, Check, Sparkles, Clock, DollarSign, Monitor, Tablet, Download } from 'lucide-react';
+import { ArrowRight, Wallet, TrendingUp, Target, Shield, Smartphone, Brain, Check, Sparkles, Clock, DollarSign, Monitor, Tablet, Download, Home, UserCheck } from 'lucide-react';
 import OnboardingFlow from '@/components/onboarding/onboarding-flow';
 import { useWalletData } from '@/contexts/wallet-data-context';
 
@@ -25,12 +25,22 @@ export function WelcomePageClient() {
   const { userProfile, handleOnboardingComplete, setShowOnboarding } = useWalletData();
   const [scrollY, setScrollY] = useState(0);
   const [activeFeature, setActiveFeature] = useState(0);
+  const [hasExistingAccount, setHasExistingAccount] = useState(false);
 
   useEffect(() => {
     if (isStartMode) {
       setShowOnboarding(true);
     }
   }, [isStartMode, setShowOnboarding]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storedUserProfile = window.localStorage.getItem('userProfile');
+    startTransition(() => {
+      setHasExistingAccount(Boolean(userProfile) || Boolean(storedUserProfile));
+    });
+  }, [userProfile]);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
@@ -86,6 +96,11 @@ export function WelcomePageClient() {
     "24/7 customer support"
   ];
 
+  const returningUserName = userProfile?.name?.trim();
+  const showReturningUserCard = hasExistingAccount && !isStartMode;
+  const headerCtaHref = showReturningUserCard ? '/' : '/welcome?start=1';
+  const headerCtaLabel = showReturningUserCard ? 'Dashboard' : 'Start';
+
   if (isStartMode && !userProfile) {
     return (
       <OnboardingFlow
@@ -129,10 +144,10 @@ export function WelcomePageClient() {
               </nav>
 
               <Link
-                href="/welcome?start=1"
+                href={headerCtaHref}
                 className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                Start
+                {headerCtaLabel}
               </Link>
             </div>
           </div>
@@ -141,6 +156,37 @@ export function WelcomePageClient() {
         {/* Hero Section */}
         <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-12 pb-32">
           <div className="max-w-7xl mx-auto">
+            {showReturningUserCard && (
+              <div className="mb-8 rounded-2xl border border-primary/20 bg-card/80 p-5 shadow-lg backdrop-blur-xl">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                      <UserCheck className="h-4 w-4" />
+                      Returning account detected
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-card-foreground">
+                        {returningUserName ? `Hello ${returningUserName}, welcome back.` : 'Welcome back to MyWallet.'}
+                      </h2>
+                      <p className="text-muted-foreground">
+                        You already have an account in this app. Tap below to jump back into your dashboard.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Link
+                      href="/"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      <Home className="h-4 w-4" />
+                      Go to Dashboard
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="text-center lg:text-left">
                 {/* Badge */}
@@ -175,16 +221,25 @@ export function WelcomePageClient() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-start items-center mb-16">
-                  <Link href="/welcome?start=1" className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
-                    Get Started Free
+                  <Link href={showReturningUserCard ? '/' : '/welcome?start=1'} className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
+                    {showReturningUserCard ? 'Back to Dashboard' : 'Get Started Free'}
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
-                  <button
-                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
-                  >
-                    Watch Demo
-                  </button>
+                  {showReturningUserCard ? (
+                    <Link
+                      href="/welcome?start=1"
+                      className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                    >
+                      Start onboarding
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
+                    >
+                      Watch Demo
+                    </button>
+                  )}
                 </div>
 
                 {/* Social Proof */}
