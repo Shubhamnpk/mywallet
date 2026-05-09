@@ -61,6 +61,8 @@ export function DataSettings() {
   const [dropboxLocalPin, setDropboxLocalPin] = useState("")
   const [dropboxBackupPinError, setDropboxBackupPinError] = useState<string | null>(null)
   const [dropboxLocalPinError, setDropboxLocalPinError] = useState<string | null>(null)
+  const [rememberedDropboxBackupPin, setRememberedDropboxBackupPin] = useState<string | null>(null)
+  const [rememberedWalletPin, setRememberedWalletPin] = useState<string | null>(null)
   const [backupSizeMode, setBackupSizeMode] = useState<"essential" | "full">("essential")
   const [pendingDropboxContent, setPendingDropboxContent] = useState<string | null>(null)
   const [pendingDecryptedBackup, setPendingDecryptedBackup] = useState<any | null>(null)
@@ -390,6 +392,8 @@ export function DataSettings() {
     setDropboxLocalPin("")
     setDropboxBackupPinError(null)
     setDropboxLocalPinError(null)
+    setRememberedDropboxBackupPin(null)
+    setRememberedWalletPin(null)
     setBackupSizeMode("essential")
     setPendingDropboxContent(null)
     setPendingDecryptedBackup(null)
@@ -676,8 +680,7 @@ export function DataSettings() {
     setIsDropboxPulling(true)
     try {
       const requiresUnlock = SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid()
-      const cachedPin = SecureKeyManager.getCachedSessionPin() ?? undefined
-      const localPin = localPinOverride ?? cachedPin
+      const localPin = localPinOverride ?? rememberedWalletPin ?? undefined
       if (requiresUnlock && !localPin) {
         setPendingDecryptedBackup(decrypted)
         setDropboxLocalPinAction("import")
@@ -696,6 +699,7 @@ export function DataSettings() {
           return
         }
         SecureKeyManager.cacheSessionPin(localPin)
+        setRememberedWalletPin(localPin)
       }
 
       const merged = await mergeDropboxData(decrypted)
@@ -777,8 +781,7 @@ export function DataSettings() {
       return
     }
 
-    const cachedPin = SecureKeyManager.getCachedSessionPin()
-    const pinToUse = overridePin || cachedPin || (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
+    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
       setDropboxLocalPinError(null)
@@ -796,6 +799,10 @@ export function DataSettings() {
 
       const token = await ensureDropboxToken()
       await Dropbox.uploadToDropbox(backupJson, filename, token, { overwrite: true })
+      if (SecurePinManager.hasPin() && pinToUse !== DEFAULT_BACKUP_PIN) {
+        setRememberedWalletPin(pinToUse)
+        setRememberedDropboxBackupPin(pinToUse)
+      }
       toast({
         title: "Backup Uploaded to Dropbox (Beta)",
         description: "Your encrypted backup has been saved to your Dropbox.",
@@ -834,13 +841,13 @@ export function DataSettings() {
       }
 
       const content = await Dropbox.downloadDropboxFile(latest.path_lower, token)
-      const cachedPin = SecureKeyManager.getCachedSessionPin()
-      const pinToUse = overridePin || cachedPin
+      const pinToUse = overridePin || rememberedDropboxBackupPin || rememberedWalletPin
       if (!pinToUse) {
         try {
           const { restoreEncryptedBackup } = await import("@/lib/backup")
           const decrypted = await restoreEncryptedBackup(content, DEFAULT_BACKUP_PIN)
           setIsDropboxPulling(false)
+          setRememberedDropboxBackupPin(DEFAULT_BACKUP_PIN)
           await runDropboxImport(decrypted, DEFAULT_BACKUP_PIN)
           return
         } catch (error) {
@@ -861,6 +868,7 @@ export function DataSettings() {
       let decrypted: any
       try {
         decrypted = await restoreEncryptedBackup(content, pinToUse)
+        setRememberedDropboxBackupPin(pinToUse)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (message.toLowerCase().includes("decryption failed")) {
@@ -1243,6 +1251,7 @@ export function DataSettings() {
                       setShowDropboxBackupPinPrompt(false)
                       setDropboxBackupPin("")
                       setDropboxBackupPinError(null)
+                      setRememberedDropboxBackupPin(pin)
                       setIsDropboxPulling(false)
                       await runDropboxImport(decrypted, pin)
                     } catch (error) {
@@ -1357,6 +1366,7 @@ export function DataSettings() {
                         return
                       }
                       SecureKeyManager.cacheSessionPin(pin)
+                      setRememberedWalletPin(pin)
                       setShowDropboxLocalPinPrompt(false)
                       setDropboxLocalPin("")
                       setDropboxLocalPinError(null)
