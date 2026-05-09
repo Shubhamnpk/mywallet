@@ -3534,6 +3534,8 @@ export function PortfolioList() {
                             stockOptions={stockOptions}
                             portfolioStockOptions={portfolioStockOptions}
                             portfolioCryptoOptions={portfolioCryptoOptions}
+                            portfolioItems={portfolio}
+                            activePortfolioId={activePortfolioId ?? undefined}
                             currencySymbol={currencySymbol}
                             calendarSystem={calendarSystem}
                         />
