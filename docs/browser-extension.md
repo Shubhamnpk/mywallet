@@ -19,6 +19,9 @@ This repo now includes a local-first Chromium extension scaffold in [browser-ext
   - recent transactions
 - Adds a quick income/expense transaction directly into the open MyWallet app tab
 - Includes an automation launchpad foundation for future MeroShare/CDSC workflows
+- Can trigger MeroShare IPO apply and allotment-result checks from the extension by driving the user's own MeroShare browser tab
+- Uses safe DOM rendering in the popup instead of injecting wallet text as HTML
+- Lets you save a preferred MyWallet app URL for local development or production shortcuts
 
 ## How it works
 
@@ -61,16 +64,21 @@ Today these are launchpad actions only. The goal is to evolve this into:
    - `http://localhost:3000`
 3. Open the extension popup
 4. Click `Refresh` if it does not auto-connect
+5. If you run MyWallet on a custom local URL, open `Manage`, set the preferred app URL, then click `Save URL`
 
 ## Current limitations
 
 - The extension expects an open MyWallet tab.
+- The extension can only connect to origins declared in `manifest.json` host permissions.
 - It currently supports:
   - `ping`
   - `getSnapshot`
   - `addTransaction`
+  - `applyMeroShareIPO`
+  - `checkIPOAllotment`
+  - `getMeroShareAutomationContext`
 - It also includes a background action layer for future automation entry points.
-- It does not yet manage MeroShare automation.
+- MeroShare credentials still come from the open MyWallet app after an explicit user action, but IPO apply/check automation runs in the user's browser tab through the extension. This avoids production serverless/Puppeteer browser limits.
 - It does not yet support side panel mode or deep dashboard editing.
 
 ## Good next steps
@@ -79,3 +87,13 @@ Today these are launchpad actions only. The goal is to evolve this into:
 - add quick budget and goal summaries
 - add route shortcuts into specific app sections
 - add MeroShare action hooks behind explicit user approval
+
+## Optional Browserless backend
+
+The MeroShare API routes can use Browserless for hosted Puppeteer/Chromium by setting one of:
+
+- `BROWSERLESS_TOKEN`: builds `wss://production-sfo.browserless.io?token=...`
+- `BROWSERLESS_REGION`: optional, for example `production-lon` or `production-ams`
+- `BROWSERLESS_WS_ENDPOINT`: optional full WebSocket endpoint; overrides token/region
+
+Keep these values server-side only. Never expose the Browserless token in the browser extension or client code.

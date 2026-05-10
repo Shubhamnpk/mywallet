@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useCallback, useEffect } from "react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 
 type BridgeRequest =
@@ -22,6 +22,30 @@ type BridgeRequest =
         category?: string
         date?: string
         subcategory?: string
+      }
+    }
+  | {
+      requestId: string
+      action: "applyMeroShareIPO"
+      payload?: {
+        ipoName?: string
+        kitta?: number
+        showBrowser?: boolean
+      }
+    }
+  | {
+      requestId: string
+      action: "checkIPOAllotment"
+      payload?: {
+        ipoName?: string
+      }
+    }
+  | {
+      requestId: string
+      action: "getMeroShareAutomationContext"
+      payload?: {
+        ipoName?: string
+        kitta?: number
       }
     }
 
@@ -53,9 +77,21 @@ export function MyWalletExtensionBridge() {
     upcomingIPOs,
     categories,
     addTransaction,
+    applyMeroShareIPO,
+    checkIPOAllotment,
   } = useWalletData()
 
-  const buildSnapshot = () => {
+  const hasMeroShareCredentials = Boolean(
+    userProfile?.meroShare?.shareFeaturesEnabled &&
+    userProfile?.meroShare?.isAutomatedEnabled &&
+    userProfile?.meroShare?.dpId &&
+    userProfile?.meroShare?.username &&
+    userProfile?.meroShare?.password &&
+    userProfile?.meroShare?.crn &&
+    userProfile?.meroShare?.pin
+  )
+
+  const buildSnapshot = useCallback(() => {
     const monthStart = getMonthStart()
     const monthlyExpenseTotal = transactions.reduce((sum, tx) => {
       if (tx.type !== "expense") return sum
@@ -146,6 +182,16 @@ export function MyWalletExtensionBridge() {
       budgetHealth,
       goalProgress,
       ipoSummary,
+      ipoAutomationTargets: upcomingIPOs
+        .filter((ipo) => ipo.status === "open" || ipo.status === "closed")
+        .slice(0, 12)
+        .map((ipo) => ({
+          company: ipo.company,
+          status: ipo.status,
+          daysRemaining: ipo.daysRemaining,
+          openingDay: ipo.openingDay,
+          closingDay: ipo.closingDay,
+        })),
       recentTransactions: transactions
         .slice()
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -170,15 +216,21 @@ export function MyWalletExtensionBridge() {
           "CDSC IPO result checks",
           "Guided browser automation from extension actions",
         ],
-        meroshareConfigured: Boolean(
-          userProfile?.meroShare?.shareFeaturesEnabled &&
-          userProfile?.meroShare?.isAutomatedEnabled &&
-          userProfile?.meroShare?.dpId &&
-          userProfile?.meroShare?.username
-        ),
+        meroshareConfigured: hasMeroShareCredentials,
       },
     }
-  }
+  }, [
+    balance,
+    budgets,
+    categories,
+    goals,
+    hasMeroShareCredentials,
+    isLoaded,
+    portfolio,
+    transactions,
+    upcomingIPOs,
+    userProfile,
+  ])
 
   useEffect(() => {
     const respond = (response: Omit<BridgeResponse, "source" | "type">) => {
@@ -235,6 +287,103 @@ export function MyWalletExtensionBridge() {
           return
         }
 
+        if (request.action === "applyMeroShareIPO") {
+          const ipoName = request.payload?.ipoName?.trim()
+          const kitta = Number(request.payload?.kitta || 10)
+          const credentials = userProfile?.meroShare
+
+          if (!hasMeroShareCredentials || !credentials) {
+            throw new Error("Complete and enable MeroShare automation in MyWallet settings first.")
+          }
+
+          if (!ipoName) {
+            throw new Error("Choose an IPO to apply for.")
+          }
+
+          if (!Number.isFinite(kitta) || kitta <= 0) {
+            throw new Error("Enter a valid kitta quantity.")
+          }
+
+          const result = await applyMeroShareIPO(
+            credentials,
+            ipoName,
+            kitta,
+            "live-apply",
+            { showBrowser: Boolean(request.payload?.showBrowser) }
+          )
+
+          respond({
+            requestId: request.requestId,
+            ok: true,
+            data: {
+              result,
+              snapshot: buildSnapshot(),
+            },
+          })
+          return
+        }
+
+        if (request.action === "getMeroShareAutomationContext") {
+          const ipoName = request.payload?.ipoName?.trim()
+          const kitta = Number(request.payload?.kitta || 10)
+          const credentials = userProfile?.meroShare
+
+          if (!hasMeroShareCredentials || !credentials) {
+            throw new Error("Complete and enable MeroShare automation in MyWallet settings first.")
+          }
+
+          if (!ipoName) {
+            throw new Error("Choose an IPO first.")
+          }
+
+          if (!Number.isFinite(kitta) || kitta <= 0) {
+            throw new Error("Enter a valid kitta quantity.")
+          }
+
+          respond({
+            requestId: request.requestId,
+            ok: true,
+            data: {
+              credentials: {
+                dpId: credentials.dpId,
+                username: credentials.username,
+                password: credentials.password,
+                crn: credentials.crn,
+                pin: credentials.pin,
+              },
+              ipoName,
+              kitta,
+              snapshot: buildSnapshot(),
+            },
+          })
+          return
+        }
+
+        if (request.action === "checkIPOAllotment") {
+          const ipoName = request.payload?.ipoName?.trim()
+          const credentials = userProfile?.meroShare
+
+          if (!hasMeroShareCredentials || !credentials) {
+            throw new Error("Complete and enable MeroShare automation in MyWallet settings first.")
+          }
+
+          if (!ipoName) {
+            throw new Error("Choose an IPO to check.")
+          }
+
+          const result = await checkIPOAllotment(credentials, ipoName, "live-check")
+
+          respond({
+            requestId: request.requestId,
+            ok: true,
+            data: {
+              result,
+              snapshot: buildSnapshot(),
+            },
+          })
+          return
+        }
+
         throw new Error("Unsupported action.")
       } catch (error) {
         respond({
@@ -255,7 +404,14 @@ export function MyWalletExtensionBridge() {
 
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [addTransaction, balance, budgets, categories, goals, isLoaded, portfolio, transactions, userProfile])
+  }, [
+    addTransaction,
+    applyMeroShareIPO,
+    buildSnapshot,
+    checkIPOAllotment,
+    hasMeroShareCredentials,
+    userProfile,
+  ])
 
   return null
 }

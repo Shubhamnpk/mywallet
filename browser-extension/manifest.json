@@ -3,7 +3,7 @@
   "name": "MyWallet Companion",
   "version": "0.1.0",
   "description": "Quick MyWallet summaries and transaction capture for Chromium browsers.",
-  "permissions": ["tabs", "storage"],
+  "permissions": ["tabs", "storage", "scripting", "debugger"],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",

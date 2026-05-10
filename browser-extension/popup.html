@@ -8,7 +8,21 @@
   </head>
   <body>
     <main class="app">
-      <section class="hero shell">
+      <header id="connected-header" class="connected-header hidden">
+        <div>
+          <p class="eyebrow small">MyWallet Companion</p>
+          <strong id="connected-header-status">Connected</strong>
+          <span id="connected-header-user" class="connected-header-user"></span>
+        </div>
+        <button id="refresh-button" class="icon-button" type="button" aria-label="Refresh MyWallet snapshot" title="Refresh">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </header>
+
+      <section id="hero-panel" class="hero shell">
         <div class="hero-orb hero-orb-left"></div>
         <div class="hero-orb hero-orb-right"></div>
         <div class="hero-copy">
@@ -17,12 +31,12 @@
           <p class="subtle" id="connection-status">Looking for an open MyWallet tab...</p>
         </div>
         <div class="hero-actions">
-          <button id="refresh-button" class="ghost compact">Refresh</button>
+          <button id="refresh-hero-button" class="ghost compact">Refresh</button>
           <button id="open-app-button" class="compact">Open App</button>
         </div>
       </section>
 
-      <section class="shell status-strip">
+      <section id="status-strip" class="shell status-strip">
         <div class="status-strip-copy">
           <strong id="status-strip-title">Connection</strong>
           <span id="status-strip-text">Ready when your wallet tab is open</span>
@@ -199,21 +213,66 @@
         </section>
 
         <section class="tab-panel hidden" data-panel="automation">
-          <section class="panel shell automation-surface">
+          <section class="panel shell quick-add-surface">
             <div class="list-header">
-              <h2>Automation Launchpad</h2>
-              <span class="subtle">Foundation for future guided Playwright-style flows.</span>
+              <h2>MeroShare IPO</h2>
+              <span class="subtle">Runs directly in your browser. MyWallet app is not required.</span>
             </div>
-            <div class="automation-card">
-              <p id="automation-status" class="subtle">
-                Extension automation foundation is ready. App capabilities will appear here as we expand the bridge.
-              </p>
-              <div class="action-grid">
-                <button id="open-meroshare-button" class="action-button">Open MeroShare</button>
-                <button id="open-ipo-result-button" class="ghost action-button">Open IPO Result</button>
+            <form id="ipo-automation-form" class="form">
+              <label class="field">
+                <span>IPO</span>
+                <select id="ipo-select"></select>
+              </label>
+              <label class="field">
+                <span>IPO name if not listed</span>
+                <input id="ipo-name" type="text" placeholder="Company name exactly as shown in MeroShare" />
+              </label>
+              <label class="field">
+                <span>Kitta</span>
+                <input id="ipo-kitta" type="number" min="1" step="1" value="10" />
+              </label>
+              <div class="actions">
+                <button id="apply-ipo-button" type="submit">Apply IPO</button>
+                <button id="check-ipo-button" type="button" class="ghost">Check Result</button>
               </div>
-              <ul id="automation-targets" class="automation-list"></ul>
+            </form>
+            <p id="ipo-message" class="subtle"></p>
+          </section>
+
+          <section class="panel shell connection-panel">
+            <div class="list-header">
+              <h2>MeroShare Login</h2>
+              <span class="subtle">Saved only in this browser extension.</span>
             </div>
+            <form id="meroshare-credentials-form" class="form">
+              <label class="field">
+                <span>DP code</span>
+                <input id="mero-dp-id" type="text" placeholder="Example: 13700" autocomplete="off" required />
+              </label>
+              <label class="field">
+                <span>Username</span>
+                <input id="mero-username" type="text" autocomplete="username" required />
+              </label>
+              <label class="field">
+                <span>Password</span>
+                <input id="mero-password" type="password" autocomplete="current-password" required />
+              </label>
+              <div class="row">
+                <label class="field">
+                  <span>CRN</span>
+                  <input id="mero-crn" type="text" autocomplete="off" required />
+                </label>
+                <label class="field">
+                  <span>PIN</span>
+                  <input id="mero-pin" type="password" inputmode="numeric" autocomplete="off" required />
+                </label>
+              </div>
+              <div class="actions">
+                <button id="save-mero-credentials-button" type="submit">Save Login</button>
+                <button id="clear-mero-credentials-button" type="button" class="ghost">Clear</button>
+              </div>
+            </form>
+            <p id="mero-credentials-message" class="subtle"></p>
           </section>
         </section>
       </section>

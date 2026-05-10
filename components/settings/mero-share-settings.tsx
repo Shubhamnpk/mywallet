@@ -78,6 +78,7 @@ export function MeroShareSettings() {
     const isCredentialComplete = missingRequiredFields.length === 0
     const isAutomationReady = formData.isAutomatedEnabled && isCredentialComplete
     const savedMeroShare = userProfile?.meroShare
+    const selectedDp = dps.find((dp) => dp.id === formData.dpId || dp.code === formData.dpId)
     const hasUnsavedChanges = JSON.stringify({
         dpId: formData.dpId,
         username: formData.username,
@@ -123,9 +124,9 @@ export function MeroShareSettings() {
                         { id: "11600", name: "Global IME Bank Limited", code: "GBIME" },
                     ])
                 }
-            } catch (error) {
-                setDps([
-                    { id: "13100", name: "NIC ASIA Bank Limited", code: "NIC" },
+                } catch {
+                    setDps([
+                        { id: "13100", name: "NIC ASIA Bank Limited", code: "NIC" },
                     { id: "10200", name: "Nabil Bank Limited", code: "NABIL" },
                     { id: "11600", name: "Global IME Bank Limited", code: "GBIME" },
                 ])
@@ -419,8 +420,10 @@ export function MeroShareSettings() {
                                         className="w-full h-11 justify-between bg-background/50 font-normal border-input"
                                     >
                                         <span className="truncate">
-                                            {formData.dpId
-                                                ? dps.find((dp) => dp.id === formData.dpId)?.name
+                                            {selectedDp
+                                                ? `${selectedDp.name} (${selectedDp.id})`
+                                                : formData.dpId
+                                                ? `Selected DP: ${formData.dpId}`
                                                 : "Select your DP..."}
                                         </span>
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -435,7 +438,7 @@ export function MeroShareSettings() {
                                                 {dps.map((dp) => (
                                                     <CommandItem
                                                         key={dp.id}
-                                                        value={`${dp.name} ${dp.id}`}
+                                                        value={`${dp.name} ${dp.id} ${dp.code}`}
                                                         onSelect={() => {
                                                             updateField("dpId", dp.id)
                                                             setOpen(false)
@@ -444,7 +447,10 @@ export function MeroShareSettings() {
                                                     >
                                                         <div className="flex flex-col">
                                                             <span className="font-medium">{dp.name}</span>
-                                                            <span className="text-xs text-muted-foreground">{dp.id}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                MeroShare code: {dp.id}
+                                                                {dp.code && dp.code !== dp.id ? ` · Ref: ${dp.code}` : ""}
+                                                            </span>
                                                         </div>
                                                         <Check
                                                             className={cn(
@@ -459,6 +465,9 @@ export function MeroShareSettings() {
                                     </Command>
                                 </PopoverContent>
                             </Popover>
+                            <p className="text-[11px] text-muted-foreground">
+                                {isLoadingDps ? "Loading DPS list..." : `${dps.length} DPS entries available from bundled data.`}
+                            </p>
                         </div>
 
                         <div className="space-y-2">

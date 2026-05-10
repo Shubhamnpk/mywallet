@@ -1,41 +1,5 @@
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
-
-// Define extraction logic outside the handler for clarity
-async function getBrowser(showBrowser = false) {
-    const isVisibleDebug = process.env.MEROSHARE_VISIBLE_BROWSER === '1' || showBrowser;
-    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
-        return await puppeteer.launch({
-            args: chromium.args,
-            defaultViewport: (chromium as any).defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: (chromium as any).headless,
-        });
-    } else {
-        // Common paths for Chrome/Edge on Windows
-        const executablePaths = [
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-            process.env.CHROME_PATH
-        ].filter(Boolean) as string[];
-
-        let executablePath = '';
-        for (const path of executablePaths) {
-            if (require('fs').existsSync(path)) {
-                executablePath = path;
-                break;
-            }
-        }
-
-        return await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            headless: !isVisibleDebug,
-            executablePath: executablePath || undefined,
-        });
-    }
-}
+import { getMeroShareBrowser } from "../_lib/browser";
 
 export async function POST(req: Request) {
     let browser: any = null;
@@ -48,7 +12,7 @@ export async function POST(req: Request) {
         }
 
         try {
-            browser = await getBrowser(showBrowser);
+            browser = await getMeroShareBrowser({ showBrowser });
             const page = await browser.newPage();
 
             // 1. Login

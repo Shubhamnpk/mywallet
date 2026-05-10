@@ -1,15 +1,31 @@
 const EXTENSION_SOURCE = "mywallet-extension";
 const APP_SOURCE = "mywallet-app";
 
+if (!window.__MYWALLET_EXTENSION_BRIDGE_INSTALLED__) {
+  window.__MYWALLET_EXTENSION_BRIDGE_INSTALLED__ = true;
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.type !== "MYWALLET_EXTENSION_REQUEST") {
     return false;
   }
 
+  if (!message.requestId || typeof message.action !== "string") {
+    sendResponse({ ok: false, error: "Invalid MyWallet extension request." });
+    return false;
+  }
+
+  let didRespond = false;
+  const respondOnce = (payload) => {
+    if (didRespond) return;
+    didRespond = true;
+    sendResponse(payload);
+  };
+
+  const timeoutMs = Number.isFinite(message.timeoutMs) ? message.timeoutMs : 5000;
   const timeout = window.setTimeout(() => {
     window.removeEventListener("message", onMessage);
-    sendResponse({ ok: false, error: "MyWallet app did not respond in time." });
-  }, 5000);
+    respondOnce({ ok: false, error: "MyWallet app did not respond in time." });
+  }, timeoutMs);
 
   const onMessage = (event) => {
     if (event.source !== window) return;
@@ -19,7 +35,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     window.clearTimeout(timeout);
     window.removeEventListener("message", onMessage);
-    sendResponse(payload);
+    respondOnce(payload);
   };
 
   window.addEventListener("message", onMessage);
@@ -36,3 +52,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return true;
 });
+}
