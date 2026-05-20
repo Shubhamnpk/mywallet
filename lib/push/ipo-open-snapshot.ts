@@ -5,7 +5,7 @@ import { sendPushToMany } from "./web-push-server"
 
 const SNAPSHOT_KEY = "mywallet:ipo:open_snapshot"
 
-const UPCOMING_URL = "https://shubhamnpk.github.io/yonepse/data/upcoming_ipo.json"
+const UPCOMING_URL = "https://shubhamnpk.github.io/yonepse/data/ipo/upcoming.json"
 
 export async function fetchUpcomingIpos(): Promise<UpcomingIPO[] | null> {
   try {

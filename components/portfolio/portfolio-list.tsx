@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { cn, getCurrencySymbol } from "@/lib/utils"
 import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
@@ -36,6 +36,7 @@ import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
+import { PortfolioValuationMeta, PortfolioValuationPoint, ValuationTimelineModal } from "./modals/valuation-timeline-modal"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
     left.getFullYear() === right.getFullYear() &&
@@ -118,7 +119,11 @@ export function PortfolioList() {
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
-    const currencySymbol = userProfile?.currency ? `${userProfile.currency} ` : "Rs. "
+    const currencySymbol = useMemo(() => {
+        if (userProfile?.currency === "NPR") return "Rs. "
+        const symbol = getCurrencySymbol(userProfile?.currency || "NPR", userProfile?.customCurrency)
+        return `${symbol}${symbol.endsWith(" ") ? "" : " "}`
+    }, [userProfile?.currency, userProfile?.customCurrency])
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
@@ -170,6 +175,19 @@ export function PortfolioList() {
         title: string
         portfolioId?: string | null
     }>({ open: false, title: "", portfolioId: null })
+    const [valuationTimelineModal, setValuationTimelineModal] = useState<{
+        open: boolean
+        title: string
+        portfolioId?: string | null
+    }>({ open: false, title: "", portfolioId: null })
+    const [valuationTimeline, setValuationTimeline] = useState<PortfolioValuationPoint[]>([])
+    const [valuationTimelineMeta, setValuationTimelineMeta] = useState<PortfolioValuationMeta | null>(null)
+    const [isValuationTimelineLoading, setIsValuationTimelineLoading] = useState(false)
+    const [valuationTimelineError, setValuationTimelineError] = useState<string | null>(null)
+    const [valuationTimelineMode, setValuationTimelineMode] = useState<"transactions" | "current">("transactions")
+    const [valuationTimelineRange, setValuationTimelineRange] = useState<"1m" | "3m" | "6m" | "1y" | "all">("all")
+    const [valuationPortfolioIds, setValuationPortfolioIds] = useState<string[]>([])
+    const valuationHistoryCacheRef = useRef<Map<string, Array<{ date: string; ltp: number }>>>(new Map())
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
@@ -1125,6 +1143,197 @@ export function PortfolioList() {
         })
     }, [])
 
+    const loadValuationTimeline = useCallback(async (
+        title: string,
+        portfolioId?: string | null,
+        selectedPortfolioIds?: string[],
+        mode: "transactions" | "current" = valuationTimelineMode,
+    ) => {
+        const portfolioIds = portfolioId
+            ? [portfolioId]
+            : selectedPortfolioIds !== undefined
+                ? selectedPortfolioIds
+                : portfolios.filter((p) => includedPortfolioIds.has(p.id)).map((p) => p.id)
+
+        setValuationTimelineModal({
+            open: true,
+            title,
+            portfolioId: portfolioId ?? null,
+        })
+        setValuationPortfolioIds(portfolioIds)
+        setValuationTimelineMode(mode)
+        setIsValuationTimelineLoading(true)
+        setValuationTimelineError(null)
+
+        try {
+            const selectedItems = portfolio.filter((item) => {
+                if (item.units <= 0) return false
+                if (item.assetType === "crypto" || item.cryptoId) return false
+                return portfolioIds.includes(item.portfolioId)
+            })
+
+            if (selectedItems.length === 0) {
+                setValuationTimeline([])
+                setValuationTimelineMeta({
+                    symbolCount: 0,
+                    holdingCount: 0,
+                    missingSymbols: [],
+                    investedValue: 0,
+                    liveValue: 0,
+                    mode,
+                    selectedPortfolioIds: portfolioIds,
+                })
+                setValuationTimelineError("No active share holdings are available for LTP valuation history.")
+                return
+            }
+
+            const currentUnitsBySymbol = new Map<string, number>()
+            selectedItems.forEach((item) => {
+                const symbol = normalizeStockSymbol(item.symbol)
+                if (!symbol) return
+                currentUnitsBySymbol.set(symbol, (currentUnitsBySymbol.get(symbol) || 0) + item.units)
+            })
+
+            const transactionRows = shareTransactions
+                .filter((tx) =>
+                    portfolioIds.includes(tx.portfolioId) &&
+                    (tx.assetType || "stock") === "stock" &&
+                    !tx.cryptoId &&
+                    Number.isFinite(tx.quantity) &&
+                    tx.quantity > 0,
+                )
+                .map((tx) => {
+                    const symbol = normalizeStockSymbol(tx.symbol)
+                    const direction = tx.type === "sell" || tx.type === "merger_out" ? -1 : 1
+                    return {
+                        symbol,
+                        date: tx.date,
+                        quantityDelta: direction * tx.quantity,
+                    }
+                })
+                .filter((tx) => tx.symbol && /^\d{4}-\d{2}-\d{2}$/.test(tx.date))
+                .sort((a, b) => a.date.localeCompare(b.date))
+
+            const symbols = Array.from(new Set([
+                ...Array.from(currentUnitsBySymbol.keys()),
+                ...transactionRows.map((tx) => tx.symbol),
+            ])).sort()
+            const historyResults = await Promise.allSettled(
+                symbols.map(async (symbol) => {
+                    const cached = valuationHistoryCacheRef.current.get(symbol)
+                    if (cached) return [symbol, cached] as const
+
+                    const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=36`)
+                    const data = await response.json()
+                    if (!response.ok) {
+                        throw new Error(data?.error?.message || data?.message || `Could not load ${symbol}`)
+                    }
+                    const points = (Array.isArray(data?.points) ? data.points : [])
+                        .map((point: unknown) => {
+                            const row = point as { date?: unknown; ltp?: unknown }
+                            return {
+                                date: String(row.date || ""),
+                                ltp: Number(row.ltp),
+                            }
+                        })
+                        .filter((point: { date: string; ltp: number }) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.ltp) && point.ltp > 0)
+                        .sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date))
+
+                    valuationHistoryCacheRef.current.set(symbol, points)
+                    return [symbol, points] as const
+                }),
+            )
+
+            const historyBySymbol = new Map<string, Array<{ date: string; ltp: number }>>()
+            const missingSymbols: string[] = []
+            historyResults.forEach((result, index) => {
+                const symbol = symbols[index]
+                if (result.status !== "fulfilled" || result.value[1].length === 0) {
+                    missingSymbols.push(symbol)
+                    return
+                }
+                historyBySymbol.set(result.value[0], result.value[1])
+            })
+
+            const dateKeys = Array.from(
+                new Set(Array.from(historyBySymbol.values()).flatMap((points) => points.map((point) => point.date))),
+            ).sort()
+
+            const priceIndices = new Map<string, number>()
+            const transactionIndices = new Map<string, number>()
+            const transactionUnitsBySymbol = new Map<string, number>()
+            const series = dateKeys
+                .map((date) => {
+                    let value = 0
+                    let coveredSymbols = 0
+
+                    if (mode === "transactions") {
+                        symbols.forEach((symbol) => {
+                            const symbolTransactions = transactionRows.filter((tx) => tx.symbol === symbol)
+                            let index = transactionIndices.get(symbol) || 0
+                            let units = transactionUnitsBySymbol.get(symbol) || 0
+                            while (index < symbolTransactions.length && symbolTransactions[index].date <= date) {
+                                units += symbolTransactions[index].quantityDelta
+                                index += 1
+                            }
+                            transactionIndices.set(symbol, index)
+                            transactionUnitsBySymbol.set(symbol, Math.max(units, 0))
+                        })
+                    }
+
+                    historyBySymbol.forEach((points, symbol) => {
+                        let index = priceIndices.get(symbol) || 0
+                        while (index + 1 < points.length && points[index + 1].date <= date) {
+                            index += 1
+                        }
+                        priceIndices.set(symbol, index)
+
+                        const point = points[index]
+                        const units = mode === "current"
+                            ? (currentUnitsBySymbol.get(symbol) || 0)
+                            : (transactionUnitsBySymbol.get(symbol) || 0)
+                        if (point && point.date <= date && units > 0) {
+                            value += units * point.ltp
+                            coveredSymbols += 1
+                        }
+                    })
+
+                    return {
+                        date,
+                        value: Number(value.toFixed(2)),
+                        coveredSymbols,
+                    }
+                })
+                .filter((point) => point.value > 0 && point.coveredSymbols > 0)
+
+            const investedValue = selectedItems.reduce((sum, item) => sum + item.units * safeNumber(item.buyPrice), 0)
+            const liveValue = selectedItems.reduce((sum, item) => {
+                const price = isFiniteNumber(item.currentPrice) ? item.currentPrice : safeNumber(item.buyPrice)
+                return sum + item.units * price
+            }, 0)
+
+            setValuationTimeline(series)
+            setValuationTimelineMeta({
+                symbolCount: symbols.length,
+                holdingCount: selectedItems.length,
+                missingSymbols,
+                investedValue,
+                liveValue,
+                mode,
+                selectedPortfolioIds: portfolioIds,
+            })
+            if (series.length === 0) {
+                setValuationTimelineError("No LTP history points were found for these holdings yet.")
+            }
+        } catch (error: unknown) {
+            setValuationTimeline([])
+            setValuationTimelineMeta(null)
+            setValuationTimelineError(error instanceof Error ? error.message : "Could not load valuation timeline right now.")
+        } finally {
+            setIsValuationTimelineLoading(false)
+        }
+    }, [includedPortfolioIds, portfolio, portfolios, safeNumber, shareTransactions, valuationTimelineMode])
+
     const soldPortfolioStats = useMemo(() => {
         const holdingLookup = new Map<string, PortfolioItem>()
         activePortfolioItems.forEach((item) => {
@@ -1860,6 +2069,23 @@ export function PortfolioList() {
         [getInvestmentBreakdown, investmentBreakdownModal.portfolioId],
     )
 
+    const valuationPortfolioOptions = useMemo(
+        () => valuationTimelineModal.portfolioId
+            ? portfolios.filter((p) => p.id === valuationTimelineModal.portfolioId)
+            : portfolios,
+        [portfolios, valuationTimelineModal.portfolioId],
+    )
+
+    const reloadValuationTimeline = useCallback((nextPortfolioIds = valuationPortfolioIds, nextMode = valuationTimelineMode) => {
+        if (!valuationTimelineModal.open) return
+        void loadValuationTimeline(
+            valuationTimelineModal.title || "Valuation Timeline",
+            valuationTimelineModal.portfolioId,
+            nextPortfolioIds,
+            nextMode,
+        )
+    }, [loadValuationTimeline, valuationPortfolioIds, valuationTimelineMode, valuationTimelineModal.open, valuationTimelineModal.portfolioId, valuationTimelineModal.title])
+
     const renderInvestmentBreakdownModal = () => (
         <Dialog
             open={investmentBreakdownModal.open}
@@ -1919,7 +2145,18 @@ export function PortfolioList() {
         return (
             <>
             <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-4">
-                <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1">
+                <Card
+                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => loadValuationTimeline("Total Valuation Timeline")}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            loadValuationTimeline("Total Valuation Timeline")
+                        }
+                    }}
+                >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <div className="flex items-center justify-between mb-1">
                             <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Total Valuation</CardDescription>
@@ -1936,6 +2173,7 @@ export function PortfolioList() {
                         )}>
                             {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString()} ({totalPlPerc.toFixed(2)}%)
                         </div>
+                        <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-primary/70">Open timeline</p>
                     </CardContent>
                 </Card>
 
@@ -2613,6 +2851,29 @@ export function PortfolioList() {
                     destructive={confirmModal.destructive}
                 />
                 {renderInvestmentBreakdownModal()}
+                <ValuationTimelineModal
+                    calendarSystem={calendarSystem}
+                    currencySymbol={currencySymbol}
+                    error={valuationTimelineError}
+                    formatAmount={formatHoldingAmount}
+                    isLoading={isValuationTimelineLoading}
+                    meta={valuationTimelineMeta}
+                    mode={valuationTimelineMode}
+                    modal={valuationTimelineModal}
+                    portfolioIds={valuationPortfolioIds}
+                    portfolioOptions={valuationPortfolioOptions}
+                    range={valuationTimelineRange}
+                    timeline={valuationTimeline}
+                    onClose={() => setValuationTimelineModal((prev) => ({ ...prev, open: false }))}
+                    onModeChange={(nextMode) => reloadValuationTimeline(valuationPortfolioIds, nextMode)}
+                    onPortfolioIdsChange={(nextIds) => reloadValuationTimeline(nextIds, valuationTimelineMode)}
+                    onRangeChange={setValuationTimelineRange}
+                    onViewPortfolio={(portfolioId) => {
+                        switchPortfolio(portfolioId)
+                        setViewMode("detail")
+                        setValuationTimelineModal((prev) => ({ ...prev, open: false }))
+                    }}
+                />
                 <Dialog
                     open={Boolean(selectedOverviewNotification)}
                     onOpenChange={closeOverviewNotificationDetails}
@@ -3583,6 +3844,29 @@ export function PortfolioList() {
                 destructive={confirmModal.destructive}
             />
             {renderInvestmentBreakdownModal()}
+            <ValuationTimelineModal
+                calendarSystem={calendarSystem}
+                currencySymbol={currencySymbol}
+                error={valuationTimelineError}
+                formatAmount={formatHoldingAmount}
+                isLoading={isValuationTimelineLoading}
+                meta={valuationTimelineMeta}
+                mode={valuationTimelineMode}
+                modal={valuationTimelineModal}
+                portfolioIds={valuationPortfolioIds}
+                portfolioOptions={valuationPortfolioOptions}
+                range={valuationTimelineRange}
+                timeline={valuationTimeline}
+                onClose={() => setValuationTimelineModal((prev) => ({ ...prev, open: false }))}
+                onModeChange={(nextMode) => reloadValuationTimeline(valuationPortfolioIds, nextMode)}
+                onPortfolioIdsChange={(nextIds) => reloadValuationTimeline(nextIds, valuationTimelineMode)}
+                onRangeChange={setValuationTimelineRange}
+                onViewPortfolio={(portfolioId) => {
+                    switchPortfolio(portfolioId)
+                    setViewMode("detail")
+                    setValuationTimelineModal((prev) => ({ ...prev, open: false }))
+                }}
+            />
 
             {/* Import Price Modal */}
             <ImportVerificationModal
@@ -3600,7 +3884,24 @@ export function PortfolioList() {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Summary Cards Column */}
                 <div className="lg:col-span-1 flex flex-row lg:flex-col gap-2 sm:gap-3 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0">
-                    <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-md overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[110px] sm:min-w-[120px] flex-1 lg:min-w-0 lg:p-2">
+                    <Card
+                        className={cn(
+                            "bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-md overflow-hidden relative group transition-all duration-300 hover:shadow-primary/10 min-w-[110px] sm:min-w-[120px] flex-1 lg:min-w-0 lg:p-2",
+                            !showSoldStocks && "cursor-pointer hover:-translate-y-0.5",
+                        )}
+                        role={!showSoldStocks ? "button" : undefined}
+                        tabIndex={!showSoldStocks ? 0 : undefined}
+                        onClick={() => {
+                            if (!showSoldStocks) loadValuationTimeline("Portfolio Valuation Timeline", activePortfolioId)
+                        }}
+                        onKeyDown={(event) => {
+                            if (showSoldStocks) return
+                            if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault()
+                                loadValuationTimeline("Portfolio Valuation Timeline", activePortfolioId)
+                            }
+                        }}
+                    >
                         <CardHeader className="pb-1 px-2 sm:px-4 pt-2 sm:pt-4">
                             <div className="flex items-center justify-between mb-0.5">
                                 <CardDescription className="text-foreground/60 font-bold text-[8px] sm:text-[9px] uppercase tracking-widest">
@@ -3631,6 +3932,9 @@ export function PortfolioList() {
                                 )}>
                                     {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
                                 </div>
+                            )}
+                            {!showSoldStocks && (
+                                <p className="mt-1 text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-primary/70">Timeline</p>
                             )}
                         </CardContent>
                     </Card>

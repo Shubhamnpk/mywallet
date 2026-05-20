@@ -3,7 +3,7 @@ import { errorResponse } from "@/lib/api-error"
 
 export async function GET() {
   const APIS = [
-    "https://shubhamnpk.github.io/yonepse/data/upcoming_ipo.json"
+    "https://shubhamnpk.github.io/yonepse/data/ipo/upcoming.json"
   ]
 
   let lastError = "Data sources returned empty or invalid data"

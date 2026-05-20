@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
 export async function GET() {
-  const URL = "https://shubhamnpk.github.io/yonepse/data/nepse_sector_wise_codes.json"
+  const URL = "https://shubhamnpk.github.io/yonepse/data/other/sector_codes.json"
 
   try {
     const response = await fetch(URL, {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
-const URL = "https://shubhamnpk.github.io/yonepse/data/top_stocks.json"
+const URL = "https://shubhamnpk.github.io/yonepse/data/market/top_stocks.json"
 
 export async function GET() {
   try {

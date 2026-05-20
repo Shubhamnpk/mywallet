@@ -21,6 +21,7 @@ import { EditTransactionModal } from "./edit-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
 import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
     id: number
@@ -41,6 +42,14 @@ type BtcNewsItem = {
     summary?: string
     author?: string
     categories?: string[]
+}
+
+type LtpHistoryPoint = {
+    date: string
+    ltp: number
+    volume?: number
+    turnover?: number
+    trades?: number
 }
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
@@ -88,6 +97,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
+    const [priceHistory, setPriceHistory] = useState<LtpHistoryPoint[]>([])
+    const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false)
+    const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
     const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
@@ -143,11 +155,15 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setActiveTab(mode === "sold" ? "sold" : "overview")
             setPdfUrl(null)
             setPdfSourceUrl(null)
+            setPriceHistory([])
+            setPriceHistoryError(null)
         }
     }, [open, mode])
 
     useEffect(() => {
         if (open) setActiveTab(mode === "sold" ? "sold" : "overview")
+        setPriceHistory([])
+        setPriceHistoryError(null)
     }, [open, mode, initialItem?.id])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
@@ -232,6 +248,39 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 10 })
         return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     }
+
+    const priceHistoryStats = useMemo(() => {
+        if (priceHistory.length === 0) return null
+        const first = priceHistory[0]
+        const latest = priceHistory[priceHistory.length - 1]
+        const bestEntry = priceHistory.reduce((best, point) => point.ltp < best.ltp ? point : best, first)
+        const bestExit = priceHistory.reduce((best, point) => point.ltp > best.ltp ? point : best, first)
+        const average = priceHistory.reduce((sum, point) => sum + point.ltp, 0) / priceHistory.length
+        const high = bestExit.ltp
+        const low = bestEntry.ltp
+        const range = high - low
+        const rangePosition = range > 0 ? ((latest.ltp - low) / range) * 100 : 50
+        const change = latest.ltp - first.ltp
+        const changePercent = first.ltp > 0 ? (change / first.ltp) * 100 : 0
+        const totalVolume = priceHistory.reduce((sum, point) => sum + (Number.isFinite(point.volume) ? point.volume || 0 : 0), 0)
+        const fromBestEntry = bestEntry.ltp > 0 ? ((latest.ltp - bestEntry.ltp) / bestEntry.ltp) * 100 : 0
+        const fromBestExit = bestExit.ltp > 0 ? ((latest.ltp - bestExit.ltp) / bestExit.ltp) * 100 : 0
+        return {
+            first,
+            latest,
+            bestEntry,
+            bestExit,
+            average,
+            high,
+            low,
+            rangePosition,
+            change,
+            changePercent,
+            totalVolume,
+            fromBestEntry,
+            fromBestExit,
+        }
+    }, [priceHistory])
 
     const formatProfitLossPercent = (percent: number) => {
         if (!Number.isFinite(percent)) return "N/A"
@@ -326,6 +375,31 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (!open || !isBitcoin) return
         loadBtcNews()
     }, [open, isBitcoin, loadBtcNews])
+
+    const loadPriceHistory = useCallback(async (force = false) => {
+        if (!item || isCrypto || isPriceHistoryLoading || (!force && priceHistory.length > 0)) return
+        setIsPriceHistoryLoading(true)
+        setPriceHistoryError(null)
+        try {
+            const symbol = normalizeStockSymbol(item.symbol)
+            const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=36`)
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error?.message || data?.message || "Failed to fetch price history")
+            }
+            const points = Array.isArray(data?.points) ? data.points : []
+            setPriceHistory(points as LtpHistoryPoint[])
+        } catch (error: any) {
+            setPriceHistoryError(error?.message || "Could not load price history right now.")
+        } finally {
+            setIsPriceHistoryLoading(false)
+        }
+    }, [isCrypto, isPriceHistoryLoading, item, priceHistory.length])
+
+    useEffect(() => {
+        if (!open || activeTab !== "price" || isCrypto) return
+        loadPriceHistory()
+    }, [activeTab, isCrypto, loadPriceHistory, open])
 
     const loadDividendHistory = async () => {
         if (dividendHistory || isDividendHistoryLoading) return
@@ -769,9 +843,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                         </div>
                     </DialogHeader>
 
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col gap-0 overflow-hidden">
                         <div className="px-6 py-1 border-b border-muted/20 bg-muted/5">
-                            <TabsList className="bg-transparent h-9 w-full justify-start gap-4 p-0">
+                            <TabsList className="h-9 w-full justify-start gap-2 overflow-x-auto rounded-none border-0 bg-transparent p-0 shadow-none">
                                 <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                     Overview
                                 </TabsTrigger>
@@ -1182,14 +1256,27 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         </div>
                                         {!isCrypto && (
-                                            <Button
-                                                variant="outline"
-                                                className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
-                                                onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
-                                            >
-                                                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                                View Analysis on MeroLagani
-                                            </Button>
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                                    onClick={() => {
+                                                        setActiveTab("price")
+                                                        loadPriceHistory()
+                                                    }}
+                                                >
+                                                    <BarChart3 className="w-3.5 h-3.5 mr-2" />
+                                                    Price Analysis
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                                    onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
+                                                >
+                                                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                                    MeroLagani
+                                                </Button>
+                                            </div>
                                         )}
                                         {/* Investment Details */}
                                         {!isCrypto && (
@@ -1264,6 +1351,185 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         )}
                                     </TabsContent>
+
+                                    {!isCrypto && (
+                                        <TabsContent value="price" className="m-0 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">LTP History</p>
+                                                    <p className="text-xs text-muted-foreground">Daily closing points from the NEPSE LTP archive.</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 rounded-lg border-primary/20 text-[10px] font-black uppercase tracking-widest"
+                                                    onClick={() => {
+                                                        loadPriceHistory(true)
+                                                    }}
+                                                    disabled={isPriceHistoryLoading}
+                                                >
+                                                    <RefreshCcw className={cn("mr-2 h-3.5 w-3.5", isPriceHistoryLoading && "animate-spin")} />
+                                                    Refresh
+                                                </Button>
+                                            </div>
+
+                                            {isPriceHistoryLoading ? (
+                                                <div className="h-[220px] rounded-xl border border-muted/30 bg-muted/10 flex items-center justify-center">
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                                                        <Activity className="h-4 w-4 animate-spin" />
+                                                        Loading price history...
+                                                    </div>
+                                                </div>
+                                            ) : priceHistoryError ? (
+                                                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                                                    <p className="text-xs font-bold text-destructive">{priceHistoryError}</p>
+                                                </div>
+                                            ) : priceHistory.length === 0 ? (
+                                                <div className="h-[220px] rounded-xl border border-dashed border-muted/40 bg-muted/10 flex items-center justify-center px-6 text-center">
+                                                    <p className="text-xs font-bold text-muted-foreground">No LTP history found for {item?.symbol}.</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {priceHistoryStats && (
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Latest</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.latest.ltp)}</p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Range Move</p>
+                                                                <p className={cn("mt-1 text-sm font-black font-mono", priceHistoryStats.change >= 0 ? "text-green-600" : "text-red-600")}>
+                                                                    {priceHistoryStats.change >= 0 ? "+" : ""}{priceHistoryStats.changePercent.toFixed(2)}%
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">High</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.high)}</p>
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Low</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.low)}</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="h-[230px] rounded-xl border border-primary/10 bg-background/60 p-2">
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <LineChart data={priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                                                <XAxis
+                                                                    dataKey="date"
+                                                                    tick={{ fontSize: 10 }}
+                                                                    minTickGap={24}
+                                                                    tickFormatter={(value) => {
+                                                                        const parsed = new Date(`${value}T00:00:00Z`)
+                                                                        return Number.isNaN(parsed.getTime())
+                                                                            ? String(value)
+                                                                            : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
+                                                                    }}
+                                                                />
+                                                                <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={48} />
+                                                                <Tooltip
+                                                                    content={({ active, payload, label }) => {
+                                                                        if (!active || !payload || payload.length === 0) return null
+                                                                        const row = payload[0]?.payload as LtpHistoryPoint | undefined
+                                                                        return (
+                                                                            <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-lg px-3 py-2">
+                                                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                                                                    {formatAppDate(String(label), calendarSystem)}
+                                                                                </p>
+                                                                                <p className="text-xs font-bold text-primary">
+                                                                                    LTP: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}
+                                                                                </p>
+                                                                                {row?.volume !== undefined && (
+                                                                                    <p className="text-[10px] font-bold text-muted-foreground">
+                                                                                        Volume: {formatValue(row.volume)}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        )
+                                                                    }}
+                                                                />
+                                                                <Line
+                                                                    type="monotone"
+                                                                    dataKey="ltp"
+                                                                    name="LTP"
+                                                                    stroke="#f97316"
+                                                                    strokeWidth={3}
+                                                                    dot={priceHistory.length <= 30}
+                                                                    activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
+                                                                />
+                                                            </LineChart>
+                                                        </ResponsiveContainer>
+                                                    </div>
+
+                                                    {priceHistoryStats && (
+                                                        <>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                <div className="rounded-xl border border-green-500/15 bg-green-500/5 p-3">
+                                                                    <div className="flex items-center justify-between gap-3">
+                                                                        <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-300">Best Entry</p>
+                                                                        <Badge variant="outline" className="border-green-500/25 bg-green-500/10 text-[8px] font-black uppercase text-green-700 dark:text-green-300">
+                                                                            Lowest LTP
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className="mt-2 flex items-end justify-between gap-3">
+                                                                        <p className="text-lg font-black font-mono text-green-700 dark:text-green-300">{currencySymbol} {formatValue(priceHistoryStats.bestEntry.ltp)}</p>
+                                                                        <p className="text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestEntry.date, calendarSystem)}</p>
+                                                                    </div>
+                                                                    <p className="mt-2 text-[10px] font-bold text-muted-foreground">
+                                                                        Latest is {priceHistoryStats.fromBestEntry >= 0 ? "+" : ""}{priceHistoryStats.fromBestEntry.toFixed(2)}% from this point.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="rounded-xl border border-red-500/15 bg-red-500/5 p-3">
+                                                                    <div className="flex items-center justify-between gap-3">
+                                                                        <p className="text-[9px] font-black uppercase tracking-widest text-red-700 dark:text-red-300">Best Exit</p>
+                                                                        <Badge variant="outline" className="border-red-500/25 bg-red-500/10 text-[8px] font-black uppercase text-red-700 dark:text-red-300">
+                                                                            Highest LTP
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className="mt-2 flex items-end justify-between gap-3">
+                                                                        <p className="text-lg font-black font-mono text-red-700 dark:text-red-300">{currencySymbol} {formatValue(priceHistoryStats.bestExit.ltp)}</p>
+                                                                        <p className="text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestExit.date, calendarSystem)}</p>
+                                                                    </div>
+                                                                    <p className="mt-2 text-[10px] font-bold text-muted-foreground">
+                                                                        Latest is {priceHistoryStats.fromBestExit >= 0 ? "+" : ""}{priceHistoryStats.fromBestExit.toFixed(2)}% from this point.
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <div>
+                                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Range Position</p>
+                                                                        <p className="mt-1 text-xs font-bold text-muted-foreground">
+                                                                            Average LTP {currencySymbol} {formatValue(priceHistoryStats.average)}
+                                                                        </p>
+                                                                    </div>
+                                                                    <p className="text-sm font-black font-mono">{priceHistoryStats.rangePosition.toFixed(0)}%</p>
+                                                                </div>
+                                                                <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                                                                    <div
+                                                                        className="h-full rounded-full bg-primary"
+                                                                        style={{ width: `${Math.min(Math.max(priceHistoryStats.rangePosition, 0), 100)}%` }}
+                                                                    />
+                                                                </div>
+                                                                <div className="mt-2 flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                    <span>{currencySymbol} {formatValue(priceHistoryStats.low)}</span>
+                                                                    <span>{currencySymbol} {formatValue(priceHistoryStats.high)}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-[10px] font-bold text-muted-foreground">
+                                                                Showing {priceHistory.length} point{priceHistory.length === 1 ? "" : "s"} from {formatAppDate(priceHistoryStats.first.date, calendarSystem)} to {formatAppDate(priceHistoryStats.latest.date, calendarSystem)}.
+                                                            </p>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </TabsContent>
+                                    )}
 
                                     <TabsContent value="history" className="m-0 space-y-3">
                                         {matchedTransactions.length > 0 ? (
@@ -1942,7 +2208,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                     setActiveTab(action === "deleted" ? "overview" : "sip")
                 }}
                 open={isSipModalOpen}
-                onOpenChange={(next) => {
+                onOpenChange={(next: boolean) => {
                     setIsSipModalOpen(next)
                     if (!next) {
                         setInitialEnrollmentTransactionId(null)
@@ -1951,7 +2217,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             />
             <EditTransactionModal
                 open={isEditModalOpen}
-                onOpenChange={(next) => {
+                onOpenChange={(next: boolean) => {
                     setIsEditModalOpen(next)
                     if (!next) {
                         setEditingTransaction(null)
