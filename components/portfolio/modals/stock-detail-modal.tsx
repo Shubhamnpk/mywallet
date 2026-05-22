@@ -1,6 +1,6 @@
 "use client"
 
-import type { PortfolioItem, ShareTransaction, NepseDisclosure } from "@/types/wallet"
+import type { PortfolioItem, ShareTransaction, NepseDisclosure, NepseExchangeMessage } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal} from "lucide-react"
@@ -44,15 +44,100 @@ type BtcNewsItem = {
     categories?: string[]
 }
 
+type StockNewsItem = (NepseDisclosure | NepseExchangeMessage) & {
+    sourceType?: "company" | "disclosure" | "exchange"
+}
+
 type LtpHistoryPoint = {
     date: string
     ltp: number
     volume?: number
     turnover?: number
     trades?: number
+    points?: number
 }
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
+
+type PriceHistoryRange = "1M" | "1Y" | "5Y" | "ALL"
+
+const PRICE_HISTORY_RANGES: Array<{ value: PriceHistoryRange; label: string; months: number; grouping: "daily" | "weekly" | "monthly" }> = [
+    { value: "1M", label: "1M", months: 1, grouping: "daily" },
+    { value: "1Y", label: "1Y", months: 12, grouping: "weekly" },
+    { value: "5Y", label: "5Y", months: 60, grouping: "monthly" },
+    { value: "ALL", label: "All", months: 120, grouping: "monthly" },
+]
+
+const getPriceHistoryRangeConfig = (range: PriceHistoryRange) =>
+    PRICE_HISTORY_RANGES.find((option) => option.value === range) || PRICE_HISTORY_RANGES[0]
+
+const getWeekKey = (date: Date) => {
+    const firstDayOfYear = Date.UTC(date.getUTCFullYear(), 0, 1)
+    const dayOfYear = Math.floor((date.getTime() - firstDayOfYear) / 86400000)
+    return `${date.getUTCFullYear()}-W${Math.floor(dayOfYear / 7) + 1}`
+}
+
+const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: "daily" | "weekly" | "monthly") => {
+    if (grouping === "daily") return points
+
+    const buckets = new Map<string, {
+        date: string
+        ltpTotal: number
+        volumeTotal: number
+        turnoverTotal: number
+        tradesTotal: number
+        hasVolume: boolean
+        hasTurnover: boolean
+        hasTrades: boolean
+        points: number
+    }>()
+
+    points.forEach((point) => {
+        const parsed = new Date(`${point.date}T00:00:00Z`)
+        if (Number.isNaN(parsed.getTime())) return
+        const key = grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+        const existing = buckets.get(key) || {
+            date: point.date,
+            ltpTotal: 0,
+            volumeTotal: 0,
+            turnoverTotal: 0,
+            tradesTotal: 0,
+            hasVolume: false,
+            hasTurnover: false,
+            hasTrades: false,
+            points: 0,
+        }
+
+        existing.date = point.date
+        existing.ltpTotal += point.ltp
+        existing.points += 1
+        if (Number.isFinite(point.volume)) {
+            existing.volumeTotal += point.volume || 0
+            existing.hasVolume = true
+        }
+        if (Number.isFinite(point.turnover)) {
+            existing.turnoverTotal += point.turnover || 0
+            existing.hasTurnover = true
+        }
+        if (Number.isFinite(point.trades)) {
+            existing.tradesTotal += point.trades || 0
+            existing.hasTrades = true
+        }
+        buckets.set(key, existing)
+    })
+
+    return Array.from(buckets.values())
+        .map((bucket) => ({
+            date: bucket.date,
+            ltp: bucket.points > 0 ? bucket.ltpTotal / bucket.points : 0,
+            volume: bucket.hasVolume ? bucket.volumeTotal : undefined,
+            turnover: bucket.hasTurnover ? bucket.turnoverTotal : undefined,
+            trades: bucket.hasTrades ? bucket.tradesTotal : undefined,
+            points: bucket.points,
+        }))
+        .filter((point) => point.ltp > 0)
+        .sort((a, b) => a.date.localeCompare(b.date))
+}
 
 const formatOrdinalInstallment = (value: number) => {
     const remainder10 = value % 10
@@ -72,7 +157,7 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
-    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction } = useWalletData()
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -98,6 +183,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
     const [priceHistory, setPriceHistory] = useState<LtpHistoryPoint[]>([])
+    const [priceHistoryRange, setPriceHistoryRange] = useState<PriceHistoryRange>("1M")
+    const [priceHistoryCache, setPriceHistoryCache] = useState<Partial<Record<PriceHistoryRange, LtpHistoryPoint[]>>>({})
     const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false)
     const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
@@ -129,15 +216,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     useEffect(() => {
         if (!open || typeof document === "undefined") return
         const originalOverflow = document.body.style.overflow
-        const originalPaddingRight = document.body.style.paddingRight
-        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
         document.body.style.overflow = "hidden"
-        if (scrollbarWidth > 0) {
-            document.body.style.paddingRight = `${scrollbarWidth}px`
-        }
         return () => {
             document.body.style.overflow = originalOverflow
-            document.body.style.paddingRight = originalPaddingRight
         }
     }, [open])
 
@@ -156,6 +237,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setPdfUrl(null)
             setPdfSourceUrl(null)
             setPriceHistory([])
+            setPriceHistoryRange("1M")
+            setPriceHistoryCache({})
             setPriceHistoryError(null)
         }
     }, [open, mode])
@@ -163,6 +246,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     useEffect(() => {
         if (open) setActiveTab(mode === "sold" ? "sold" : "overview")
         setPriceHistory([])
+        setPriceHistoryRange("1M")
+        setPriceHistoryCache({})
         setPriceHistoryError(null)
     }, [open, mode, initialItem?.id])
 
@@ -248,6 +333,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 10 })
         return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     }
+    const formatSignedCurrency = (amount: number) => {
+        const sign = amount > 0 ? "+" : amount < 0 ? "-" : ""
+        return `${currencySymbol} ${sign}${formatValue(Math.abs(amount))}`
+    }
 
     const priceHistoryStats = useMemo(() => {
         if (priceHistory.length === 0) return null
@@ -313,25 +402,61 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             .trim()
     }
 
-    const getNoticeDocuments = (notice?: NepseDisclosure) => {
-        if (!notice?.applicationDocumentDetailsList?.length) return []
-        return notice.applicationDocumentDetailsList
+    const formatDocumentLabel = (value?: string | null) => {
+        const rawLabel = (value || "Document").split("/").pop() || "Document"
+        try {
+            return decodeURIComponent(rawLabel)
+                .replace(/[_-]\d{10,}(?=\.pdf$)/i, "")
+                .replace(/\.[a-z0-9]+$/i, "")
+                .replace(/[_-]+/g, " ")
+                .replace(/\s+/g, " ")
+                .trim() || "Document"
+        } catch {
+            return rawLabel.replace(/%20/g, " ").replace(/\.[a-z0-9]+$/i, "")
+        }
+    }
+
+    const getNoticeTitle = (notice: StockNewsItem) =>
+        notice.title || ("newsHeadline" in notice ? notice.newsHeadline : undefined) || ("messageTitle" in notice ? notice.messageTitle : undefined) || "Market notice"
+
+    const getNoticeBody = (notice: StockNewsItem) =>
+        notice.body || ("newsBody" in notice ? notice.newsBody : undefined) || ("messageBody" in notice ? notice.messageBody : undefined) || ""
+
+    const getNoticeDate = (notice: StockNewsItem) =>
+        notice.publishedAt || ("addedDate" in notice ? notice.addedDate : undefined) || ("expiresAt" in notice ? notice.expiresAt : undefined) || ("expiryDate" in notice ? notice.expiryDate : undefined) || ""
+
+    const getNoticeDocuments = (notice?: StockNewsItem) => {
+        const nestedDocuments = notice && "documents" in notice
+            ? notice.documents
+            : undefined
+        const legacyDocuments = notice && "applicationDocumentDetailsList" in notice
+            ? notice.applicationDocumentDetailsList
+            : undefined
+        const directFileUrl = notice && "fileUrl" in notice ? notice.fileUrl : undefined
+        const directFilePath = notice && "filePath" in notice ? notice.filePath : undefined
+        const documents = [
+            ...(nestedDocuments || []),
+            ...(legacyDocuments || []),
+            ...(directFileUrl || directFilePath ? [{ fileUrl: directFileUrl || undefined, filePath: directFilePath || undefined }] : []),
+        ]
+        if (!documents.length) return []
+        return documents
             .map((doc) => {
                 const directUrl = (doc.fileUrl || "").trim()
                 if (directUrl) {
                     return {
-                        label: directUrl.split("/").pop() || "Document",
+                        label: formatDocumentLabel(directUrl),
                         url: directUrl,
                     }
                 }
                 const rawPath = (doc.filePath || "").trim()
                 if (!rawPath) return null
                 if (/^https?:\/\//i.test(rawPath)) {
-                    return { label: rawPath.split("/").pop() || "Document", url: rawPath }
+                    return { label: formatDocumentLabel(rawPath), url: rawPath }
                 }
                 const normalized = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath
                 return {
-                    label: rawPath.split("/").pop() || "Document",
+                    label: formatDocumentLabel(rawPath),
                     url: `https://www.nepalstock.com.np/api/nots/security/fetchFiles?fileLocation=${encodeURI(normalized)}`,
                 }
             })
@@ -376,30 +501,43 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         loadBtcNews()
     }, [open, isBitcoin, loadBtcNews])
 
-    const loadPriceHistory = useCallback(async (force = false) => {
-        if (!item || isCrypto || isPriceHistoryLoading || (!force && priceHistory.length > 0)) return
+    const loadPriceHistory = useCallback(async (range: PriceHistoryRange = priceHistoryRange, force = false) => {
+        if (!item || isCrypto || isPriceHistoryLoading) return
+        const cachedPoints = priceHistoryCache[range]
+        if (!force && cachedPoints) {
+            setPriceHistory(cachedPoints)
+            setPriceHistoryError(null)
+            return
+        }
+
         setIsPriceHistoryLoading(true)
         setPriceHistoryError(null)
         try {
             const symbol = normalizeStockSymbol(item.symbol)
-            const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=36`)
+            const rangeConfig = getPriceHistoryRangeConfig(range)
+            const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=${rangeConfig.months}`)
             const data = await response.json()
             if (!response.ok) {
                 throw new Error(data?.error?.message || data?.message || "Failed to fetch price history")
             }
             const points = Array.isArray(data?.points) ? data.points : []
-            setPriceHistory(points as LtpHistoryPoint[])
+            const aggregatedPoints = aggregatePriceHistory(points as LtpHistoryPoint[], rangeConfig.grouping)
+            setPriceHistory(aggregatedPoints)
+            setPriceHistoryCache((current) => ({
+                ...current,
+                [range]: aggregatedPoints,
+            }))
         } catch (error: any) {
             setPriceHistoryError(error?.message || "Could not load price history right now.")
         } finally {
             setIsPriceHistoryLoading(false)
         }
-    }, [isCrypto, isPriceHistoryLoading, item, priceHistory.length])
+    }, [isCrypto, isPriceHistoryLoading, item, priceHistoryCache, priceHistoryRange])
 
     useEffect(() => {
         if (!open || activeTab !== "price" || isCrypto) return
-        loadPriceHistory()
-    }, [activeTab, isCrypto, loadPriceHistory, open])
+        loadPriceHistory(priceHistoryRange)
+    }, [activeTab, isCrypto, loadPriceHistory, open, priceHistoryRange])
 
     const loadDividendHistory = async () => {
         if (dividendHistory || isDividendHistoryLoading) return
@@ -728,12 +866,25 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
 
     const matchedNotices = useMemo(() => {
         if (!item) return []
-        const combined = [...(noticesBundle?.company || []), ...(disclosures || [])]
-        return combined.filter(d => {
-            const headline = (d.newsHeadline || "").toUpperCase()
-            return headline.includes(symbol) || (companyName && headline.includes(companyName.toUpperCase()))
-        }).sort((a, b) => new Date(b.addedDate || "").getTime() - new Date(a.addedDate || "").getTime())
-    }, [item, noticesBundle, disclosures, symbol, companyName])
+        const normalizedSymbol = normalizeStockSymbol(symbol)
+        const normalizedCompanyName = companyName.toUpperCase()
+        const combined: StockNewsItem[] = [
+            ...(noticesBundle?.company || []).map((notice) => ({ ...notice, sourceType: "company" as const })),
+            ...(disclosures || []).map((notice) => ({ ...notice, sourceType: "disclosure" as const })),
+            ...(exchangeMessages || []).map((notice) => ({ ...notice, sourceType: "exchange" as const })),
+        ]
+        return combined.filter((notice) => {
+            const noticeSymbol = normalizeStockSymbol(notice.symbol || "")
+            if (noticeSymbol && noticeSymbol === normalizedSymbol) return true
+
+            const searchable = [
+                getNoticeTitle(notice),
+                getNoticeBody(notice),
+                "source" in notice ? notice.source : "",
+            ].join(" ").toUpperCase()
+            return searchable.includes(normalizedSymbol) || (normalizedCompanyName && searchable.includes(normalizedCompanyName))
+        }).sort((a, b) => new Date(getNoticeDate(b)).getTime() - new Date(getNoticeDate(a)).getTime())
+    }, [item, noticesBundle, disclosures, exchangeMessages, symbol, companyName])
 
     return (
         <>
@@ -1184,7 +1335,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             "text-[10px] font-bold",
                                                             isProfit ? "text-green-600" : "text-red-600"
                                                         )}>
-                                                            {isProfit ? "+" : ""}{currencySymbol} {formatValue(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
+                                                            {formatSignedCurrency(profitLoss)} ({hasCostBasis ? `${isProfit ? "+" : ""}${formatProfitLossPercent(profitLossPerc)}` : "N/A"})
                                                         </div>
                                                     </div>
                                                     <div className={cn(
@@ -1217,11 +1368,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         ? "text-green-600"
                                                                         : "text-red-600"
                                                             )}>
-                                                                {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange * (item.units ?? 0))}
+                                                                {formatSignedCurrency(dailyChange * (item.units ?? 0))}
                                                             </div>
                                                         </div>
                                                         <div className="text-[10px] font-bold text-muted-foreground">
-                                                            Per Unit: {isDailyProfit ? "+" : ""}{currencySymbol} {formatValue(dailyChange)} ({isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}%)
+                                                            Per Unit: {formatSignedCurrency(dailyChange)}
                                                         </div>
                                                     </div>
                                                 </>
@@ -1256,13 +1407,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         </div>
                                         {!isCrypto && (
-                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
                                                 <Button
                                                     variant="outline"
                                                     className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
                                                     onClick={() => {
                                                         setActiveTab("price")
-                                                        loadPriceHistory()
+                                                        loadPriceHistory("1M")
                                                     }}
                                                 >
                                                     <BarChart3 className="w-3.5 h-3.5 mr-2" />
@@ -1354,24 +1505,51 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
 
                                     {!isCrypto && (
                                         <TabsContent value="price" className="m-0 space-y-4">
-                                            <div className="flex items-center justify-between gap-3">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">LTP History</p>
-                                                    <p className="text-xs text-muted-foreground">Daily closing points from the NEPSE LTP archive.</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily"
+                                                            ? "Daily closes · 1M"
+                                                            : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly"
+                                                                ? "Weekly avg · daily closes"
+                                                                : "Monthly avg · daily closes"}
+                                                    </p>
                                                 </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8 rounded-lg border-primary/20 text-[10px] font-black uppercase tracking-widest"
-                                                    onClick={() => {
-                                                        loadPriceHistory(true)
-                                                    }}
-                                                    disabled={isPriceHistoryLoading}
-                                                >
-                                                    <RefreshCcw className={cn("mr-2 h-3.5 w-3.5", isPriceHistoryLoading && "animate-spin")} />
-                                                    Refresh
-                                                </Button>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="flex rounded-lg border border-muted/40 bg-muted/10 p-1">
+                                                        {PRICE_HISTORY_RANGES.map((rangeOption) => (
+                                                            <Button
+                                                                key={rangeOption.value}
+                                                                type="button"
+                                                                variant={priceHistoryRange === rangeOption.value ? "default" : "ghost"}
+                                                                size="sm"
+                                                                className="h-7 rounded-md px-2.5 text-[10px] font-black uppercase tracking-widest"
+                                                                onClick={() => {
+                                                                    setPriceHistoryRange(rangeOption.value)
+                                                                    loadPriceHistory(rangeOption.value)
+                                                                }}
+                                                                disabled={isPriceHistoryLoading && priceHistoryRange === rangeOption.value}
+                                                            >
+                                                                {rangeOption.label}
+                                                            </Button>
+                                                        ))}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-8 w-8 rounded-lg border-primary/20"
+                                                        onClick={() => {
+                                                            loadPriceHistory(priceHistoryRange, true)
+                                                        }}
+                                                        disabled={isPriceHistoryLoading}
+                                                        aria-label="Refresh price history"
+                                                        title="Refresh price history"
+                                                    >
+                                                        <RefreshCcw className={cn("h-3.5 w-3.5", isPriceHistoryLoading && "animate-spin")} />
+                                                    </Button>
+                                                </div>
                                             </div>
 
                                             {isPriceHistoryLoading ? (
@@ -1414,7 +1592,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         </div>
                                                     )}
 
-                                                    <div className="h-[230px] rounded-xl border border-primary/10 bg-background/60 p-2">
+                                                    <div className="h-[clamp(220px,32vh,300px)] shrink-0 rounded-xl border border-primary/10 bg-background/60 p-2">
                                                         <ResponsiveContainer width="100%" height="100%">
                                                             <LineChart data={priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                                                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -1426,7 +1604,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         const parsed = new Date(`${value}T00:00:00Z`)
                                                                         return Number.isNaN(parsed.getTime())
                                                                             ? String(value)
-                                                                            : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
+                                                                            : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "monthly"
+                                                                                ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
+                                                                                : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
                                                                     }}
                                                                 />
                                                                 <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={48} />
@@ -1440,8 +1620,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                                     {formatAppDate(String(label), calendarSystem)}
                                                                                 </p>
                                                                                 <p className="text-xs font-bold text-primary">
-                                                                                    LTP: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}
+                                                                                    {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" ? "LTP" : "Avg LTP"}: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}
                                                                                 </p>
+                                                                                {row?.points && row.points > 1 && (
+                                                                                    <p className="text-[10px] font-bold text-muted-foreground">
+                                                                                        Averaged from {row.points} daily close{row.points === 1 ? "" : "s"}
+                                                                                    </p>
+                                                                                )}
                                                                                 {row?.volume !== undefined && (
                                                                                     <p className="text-[10px] font-bold text-muted-foreground">
                                                                                         Volume: {formatValue(row.volume)}
@@ -1457,7 +1642,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     name="LTP"
                                                                     stroke="#f97316"
                                                                     strokeWidth={3}
-                                                                    dot={priceHistory.length <= 30}
+                                                                    dot={getPriceHistoryRangeConfig(priceHistoryRange).grouping !== "daily" || priceHistory.length <= 30}
                                                                     activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
                                                                 />
                                                             </LineChart>
@@ -1522,7 +1707,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             </div>
 
                                                             <p className="text-[10px] font-bold text-muted-foreground">
-                                                                Showing {priceHistory.length} point{priceHistory.length === 1 ? "" : "s"} from {formatAppDate(priceHistoryStats.first.date, calendarSystem)} to {formatAppDate(priceHistoryStats.latest.date, calendarSystem)}.
+                                                                Showing {priceHistory.length} {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" ? "daily" : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly" ? "weekly average" : "monthly average"} point{priceHistory.length === 1 ? "" : "s"} from {formatAppDate(priceHistoryStats.first.date, calendarSystem)} to {formatAppDate(priceHistoryStats.latest.date, calendarSystem)}.
                                                             </p>
                                                         </>
                                                     )}
@@ -1615,7 +1800,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Dividend View</p>
-                                                    <p className="text-xs text-muted-foreground">Current holding estimates plus optional advanced what-if analysis.</p>
                                                 </div>
                                                 <Button
                                                     type="button"
@@ -2084,15 +2268,20 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             )
                                         ) : matchedNotices.length > 0 ? (
                                             matchedNotices.map((notice) => (
-                                                <div key={notice.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
+                                                <div key={`${notice.sourceType || "notice"}-${notice.id}`} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
                                                     <div className="flex justify-between items-start gap-2">
                                                         <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
-                                                            {notice.newsHeadline}
+                                                            {getNoticeTitle(notice)}
                                                         </h4>
                                                         <span className="text-[9px] font-bold text-muted-foreground whitespace-nowrap">
-                                                            {notice.addedDate ? formatAppDate(notice.addedDate, calendarSystem) : "Recent"}
+                                                            {getNoticeDate(notice) ? formatAppDate(getNoticeDate(notice), calendarSystem) : "Recent"}
                                                         </span>
                                                     </div>
+                                                    {notice.sourceType && (
+                                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest">
+                                                            {notice.sourceType}
+                                                        </Badge>
+                                                    )}
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -2103,9 +2292,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     </Button>
                                                     {expandedNoticeId === notice.id && (
                                                         <div className="rounded-lg border border-muted/30 bg-muted/10 p-3 space-y-3">
-                                                            {notice.newsBody ? (
+                                                            {getNoticeBody(notice) ? (
                                                                 <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                                                    {stripHtml(notice.newsBody)}
+                                                                    {stripHtml(getNoticeBody(notice))}
                                                                 </p>
                                                             ) : (
                                                                 <p className="text-xs text-muted-foreground">No detailed summary available for this notice.</p>

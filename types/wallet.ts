@@ -384,18 +384,30 @@ export interface NepseNoticeGeneral {
 
 export interface NepseDisclosure {
   id: number
-  newsHeadline: string
+  symbol?: string
+  title?: string
+  body?: string
+  source?: string
+  publishedAt?: string
+  newsHeadline?: string
   newsBody?: string
   addedDate?: string
+  documents?: Array<{ id?: number; submittedDate?: string; fileUrl?: string; filePath?: string; encryptedId?: string }>
   applicationDocumentDetailsList?: Array<{ filePath?: string; encryptedId?: string; fileUrl?: string }>
 }
 
 export interface NepseExchangeMessage {
   id: number
-  messageTitle: string
+  symbol?: string
+  title?: string
+  body?: string
+  publishedAt?: string
+  expiresAt?: string
+  messageTitle?: string
   messageBody?: string
   expiryDate?: string
   filePath?: string | null
+  fileUrl?: string | null
 }
 
 export interface NepseNoticesBundle {

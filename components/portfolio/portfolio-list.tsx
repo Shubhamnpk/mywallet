@@ -36,7 +36,7 @@ import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
-import { PortfolioValuationMeta, PortfolioValuationPoint, ValuationTimelineModal } from "./modals/valuation-timeline-modal"
+import { PortfolioValuationMeta, PortfolioValuationPoint, ValuationTimelineModal, ValuationTimelineRange } from "./modals/valuation-timeline-modal"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
     left.getFullYear() === right.getFullYear() &&
@@ -185,7 +185,7 @@ export function PortfolioList() {
     const [isValuationTimelineLoading, setIsValuationTimelineLoading] = useState(false)
     const [valuationTimelineError, setValuationTimelineError] = useState<string | null>(null)
     const [valuationTimelineMode, setValuationTimelineMode] = useState<"transactions" | "current">("transactions")
-    const [valuationTimelineRange, setValuationTimelineRange] = useState<"1m" | "3m" | "6m" | "1y" | "all">("all")
+    const [valuationTimelineRange, setValuationTimelineRange] = useState<ValuationTimelineRange>("1m")
     const [valuationPortfolioIds, setValuationPortfolioIds] = useState<string[]>([])
     const valuationHistoryCacheRef = useRef<Map<string, Array<{ date: string; ltp: number }>>>(new Map())
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
@@ -1143,11 +1143,19 @@ export function PortfolioList() {
         })
     }, [])
 
+    const getValuationTimelineMonths = useCallback((range: ValuationTimelineRange) => {
+        if (range === "1m") return 1
+        if (range === "1y") return 12
+        if (range === "5y") return 60
+        return 120
+    }, [])
+
     const loadValuationTimeline = useCallback(async (
         title: string,
         portfolioId?: string | null,
         selectedPortfolioIds?: string[],
         mode: "transactions" | "current" = valuationTimelineMode,
+        range: ValuationTimelineRange = "1m",
     ) => {
         const portfolioIds = portfolioId
             ? [portfolioId]
@@ -1162,6 +1170,7 @@ export function PortfolioList() {
         })
         setValuationPortfolioIds(portfolioIds)
         setValuationTimelineMode(mode)
+        setValuationTimelineRange(range)
         setIsValuationTimelineLoading(true)
         setValuationTimelineError(null)
 
@@ -1218,12 +1227,14 @@ export function PortfolioList() {
                 ...Array.from(currentUnitsBySymbol.keys()),
                 ...transactionRows.map((tx) => tx.symbol),
             ])).sort()
+            const historyMonths = getValuationTimelineMonths(range)
             const historyResults = await Promise.allSettled(
                 symbols.map(async (symbol) => {
-                    const cached = valuationHistoryCacheRef.current.get(symbol)
+                    const cacheKey = `${symbol}:${historyMonths}`
+                    const cached = valuationHistoryCacheRef.current.get(cacheKey)
                     if (cached) return [symbol, cached] as const
 
-                    const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=36`)
+                    const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=${historyMonths}`)
                     const data = await response.json()
                     if (!response.ok) {
                         throw new Error(data?.error?.message || data?.message || `Could not load ${symbol}`)
@@ -1239,7 +1250,7 @@ export function PortfolioList() {
                         .filter((point: { date: string; ltp: number }) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.ltp) && point.ltp > 0)
                         .sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date))
 
-                    valuationHistoryCacheRef.current.set(symbol, points)
+                    valuationHistoryCacheRef.current.set(cacheKey, points)
                     return [symbol, points] as const
                 }),
             )
@@ -1266,6 +1277,7 @@ export function PortfolioList() {
                 .map((date) => {
                     let value = 0
                     let coveredSymbols = 0
+                    const snapshot: NonNullable<PortfolioValuationPoint["snapshot"]> = []
 
                     if (mode === "transactions") {
                         symbols.forEach((symbol) => {
@@ -1293,8 +1305,15 @@ export function PortfolioList() {
                             ? (currentUnitsBySymbol.get(symbol) || 0)
                             : (transactionUnitsBySymbol.get(symbol) || 0)
                         if (point && point.date <= date && units > 0) {
-                            value += units * point.ltp
+                            const symbolValue = units * point.ltp
+                            value += symbolValue
                             coveredSymbols += 1
+                            snapshot.push({
+                                symbol,
+                                units,
+                                ltp: point.ltp,
+                                value: Number(symbolValue.toFixed(2)),
+                            })
                         }
                     })
 
@@ -1302,6 +1321,7 @@ export function PortfolioList() {
                         date,
                         value: Number(value.toFixed(2)),
                         coveredSymbols,
+                        snapshot: snapshot.sort((a, b) => b.value - a.value),
                     }
                 })
                 .filter((point) => point.value > 0 && point.coveredSymbols > 0)
@@ -1332,7 +1352,7 @@ export function PortfolioList() {
         } finally {
             setIsValuationTimelineLoading(false)
         }
-    }, [includedPortfolioIds, portfolio, portfolios, safeNumber, shareTransactions, valuationTimelineMode])
+    }, [getValuationTimelineMonths, includedPortfolioIds, portfolio, portfolios, safeNumber, shareTransactions, valuationTimelineMode])
 
     const soldPortfolioStats = useMemo(() => {
         const holdingLookup = new Map<string, PortfolioItem>()
@@ -1816,12 +1836,26 @@ export function PortfolioList() {
                 }
             })
 
-        const toDocuments = (docs?: NepseDisclosure["applicationDocumentDetailsList"]) =>
+        const formatDocumentLabel = (value?: string | null) => {
+            const rawLabel = (value || "Document").split("/").pop() || "Document"
+            try {
+                return decodeURIComponent(rawLabel)
+                    .replace(/[_-]\d{10,}(?=\.pdf$)/i, "")
+                    .replace(/\.[a-z0-9]+$/i, "")
+                    .replace(/[_-]+/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim() || "Document"
+            } catch {
+                return rawLabel.replace(/%20/g, " ").replace(/\.[a-z0-9]+$/i, "")
+            }
+        }
+
+        const toDocuments = (docs?: NepseDisclosure["applicationDocumentDetailsList"] | NepseDisclosure["documents"]) =>
             (docs || [])
-                .map((doc: any) => {
+                .map((doc) => {
                     const resolvedUrl = resolveNepseDocumentUrl(doc.fileUrl || doc.filePath || null)
                     if (!resolvedUrl) return null
-                    const label = (doc.fileUrl || doc.filePath || "Document").split("/").pop() || "Document"
+                    const label = formatDocumentLabel(doc.fileUrl || doc.filePath)
                     return { label, url: resolvedUrl }
                 })
                 .filter((doc): doc is { label: string; url: string } => Boolean(doc))
@@ -1840,27 +1874,27 @@ export function PortfolioList() {
         const company = disclosures.slice(0, 6).map((d) => ({
             id: `disclosure-${d.id}`,
             title: "Company Disclosure",
-            text: d.newsHeadline || "A company disclosure was published.",
+            text: d.title || d.newsHeadline || "A company disclosure was published.",
             tone: "warning" as const,
             category: "disclosure" as const,
-            timestamp: parseDateToTimestamp(d.addedDate),
-            details: stripHtml(d.newsBody) || d.newsHeadline || "No details available for this disclosure.",
-            documents: toDocuments(d.applicationDocumentDetailsList),
-            actionLabel: d.applicationDocumentDetailsList?.length ? "Open Filing" : "Read Disclosure",
+            timestamp: parseDateToTimestamp(d.publishedAt || d.addedDate),
+            details: stripHtml(d.body || d.newsBody) || d.title || d.newsHeadline || "No details available for this disclosure.",
+            documents: toDocuments(d.documents || d.applicationDocumentDetailsList),
+            actionLabel: d.documents?.length || d.applicationDocumentDetailsList?.length ? "Open Filing" : "Read Disclosure",
         }))
         const exchange = exchangeMessages.slice(0, 6).map((m) => ({
             id: `exchange-${m.id}`,
             title: "Exchange Message",
-            text: m.messageTitle || "A new exchange message is available.",
+            text: m.title || m.messageTitle || "A new exchange message is available.",
             tone: "success" as const,
             category: "exchange" as const,
-            timestamp: parseDateToTimestamp(m.expiryDate),
-            details: stripHtml(m.messageBody) || m.messageTitle || "No details available for this exchange message.",
+            timestamp: parseDateToTimestamp(m.publishedAt || m.expiresAt || m.expiryDate),
+            details: stripHtml(m.body || m.messageBody) || m.title || m.messageTitle || "No details available for this exchange message.",
             documents: (() => {
-                const url = resolveNepseDocumentUrl(m.filePath || null)
-                return url ? [{ label: "Exchange Circular", url }] : []
+                const url = resolveNepseDocumentUrl(m.fileUrl || m.filePath || null)
+                return url ? [{ label: formatDocumentLabel(m.fileUrl || m.filePath || "Exchange Circular"), url }] : []
             })(),
-            actionLabel: m.filePath ? "Open Circular" : "Read Message",
+            actionLabel: m.fileUrl || m.filePath ? "Open Circular" : "Read Message",
         }))
         const ipoItems = upcomingIPOs.slice(0, 6).map((ipo, index) => ({
             id: `ipo-${ipo.company}-${ipo.status || "unknown"}-${ipo.openingDate || ipo.announcement_date || ipo.date_range || ipo.url || index}-${index}`,
@@ -1899,6 +1933,7 @@ export function PortfolioList() {
         () => overviewNotificationsWithMeta.find((item) => item.id === selectedOverviewNotificationId) || null,
         [overviewNotificationsWithMeta, selectedOverviewNotificationId],
     )
+    const isOverviewNotificationDocPreviewOpen = Boolean(selectedOverviewNotificationDocUrl)
 
     const overviewNotificationStats = useMemo(() => ({
         total: overviewNotificationsWithMeta.length,
@@ -2076,15 +2111,16 @@ export function PortfolioList() {
         [portfolios, valuationTimelineModal.portfolioId],
     )
 
-    const reloadValuationTimeline = useCallback((nextPortfolioIds = valuationPortfolioIds, nextMode = valuationTimelineMode) => {
+    const reloadValuationTimeline = useCallback((nextPortfolioIds = valuationPortfolioIds, nextMode = valuationTimelineMode, nextRange = valuationTimelineRange) => {
         if (!valuationTimelineModal.open) return
         void loadValuationTimeline(
             valuationTimelineModal.title || "Valuation Timeline",
             valuationTimelineModal.portfolioId,
             nextPortfolioIds,
             nextMode,
+            nextRange,
         )
-    }, [loadValuationTimeline, valuationPortfolioIds, valuationTimelineMode, valuationTimelineModal.open, valuationTimelineModal.portfolioId, valuationTimelineModal.title])
+    }, [loadValuationTimeline, valuationPortfolioIds, valuationTimelineMode, valuationTimelineRange, valuationTimelineModal.open, valuationTimelineModal.portfolioId, valuationTimelineModal.title])
 
     const renderInvestmentBreakdownModal = () => (
         <Dialog
@@ -2173,7 +2209,6 @@ export function PortfolioList() {
                         )}>
                             {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString()} ({totalPlPerc.toFixed(2)}%)
                         </div>
-                        <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-primary/70">Open timeline</p>
                     </CardContent>
                 </Card>
 
@@ -2867,7 +2902,7 @@ export function PortfolioList() {
                     onClose={() => setValuationTimelineModal((prev) => ({ ...prev, open: false }))}
                     onModeChange={(nextMode) => reloadValuationTimeline(valuationPortfolioIds, nextMode)}
                     onPortfolioIdsChange={(nextIds) => reloadValuationTimeline(nextIds, valuationTimelineMode)}
-                    onRangeChange={setValuationTimelineRange}
+                    onRangeChange={(nextRange) => reloadValuationTimeline(valuationPortfolioIds, valuationTimelineMode, nextRange)}
                     onViewPortfolio={(portfolioId) => {
                         switchPortfolio(portfolioId)
                         setViewMode("detail")
@@ -2887,13 +2922,13 @@ export function PortfolioList() {
                                     selectedOverviewNotification?.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
                                     selectedOverviewNotification?.tone === "info" && "border-info/20 bg-info/10 text-info",
                                 )}>
-                                    {selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
+                                    {isOverviewNotificationDocPreviewOpen ? <FileText className="w-4 h-4" /> : selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
                                 </div>
                                 <div className="min-w-0">
                                     <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
-                                        {selectedOverviewNotification?.title || "Notification"}
+                                        {isOverviewNotificationDocPreviewOpen ? "Filing Preview" : selectedOverviewNotification?.title || "Notification"}
                                     </DialogTitle>
-                                    {selectedOverviewNotification ? (
+                                    {selectedOverviewNotification && !isOverviewNotificationDocPreviewOpen ? (
                                         <p className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                                     {selectedOverviewNotification.category} • {selectedOverviewNotification.dateLabel}
                                 </p>
@@ -2903,7 +2938,30 @@ export function PortfolioList() {
                         </DialogHeader>
                         {selectedOverviewNotification && (
                             <ScrollArea className="flex-1 px-5 py-4">
-                                <div className="space-y-4">
+                                {selectedOverviewNotificationDocUrl && (
+                                    <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
+                                        <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                Document
+                                            </p>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 text-[10px] font-black uppercase tracking-wider"
+                                                onClick={() => setSelectedOverviewNotificationDocUrl(null)}
+                                            >
+                                                Close Preview
+                                            </Button>
+                                        </div>
+                                        <iframe
+                                            src={selectedOverviewNotificationDocUrl}
+                                            title="Filing Preview"
+                                            className="w-full h-[68vh] bg-background"
+                                        />
+                                    </div>
+                                )}
+                                <div className={cn("space-y-4", selectedOverviewNotificationDocUrl && "hidden")}>
                                     <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
                                         <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">
                                             Headline
@@ -2944,6 +3002,7 @@ export function PortfolioList() {
                                             </div>
                                         </div>
                                     )}
+                                    {selectedOverviewNotification.category === "sip" && (
                                     <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
                                         {selectedOverviewNotification.category === "sip" && "planId" in selectedOverviewNotification && "symbol" in selectedOverviewNotification && (
                                             <Button
@@ -2965,25 +3024,8 @@ export function PortfolioList() {
                                                 Delete SIP Plan
                                             </Button>
                                         )}
-                                        {selectedOverviewNotification.documents[0] && (
-                                            <Button
-                                                type="button"
-                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                                onClick={() => openOverviewNotificationDocument(selectedOverviewNotification.documents[0].url)}
-                                            >
-                                                <FileText className="mr-2 w-3.5 h-3.5" />
-                                                Open Filing
-                                            </Button>
-                                        )}
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                            onClick={() => closeOverviewNotificationDetails(false)}
-                                        >
-                                            Done
-                                        </Button>
                                     </div>
+                                    )}
                                     {selectedOverviewNotificationDocUrl && (
                                         <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
                                             <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
@@ -3860,7 +3902,7 @@ export function PortfolioList() {
                 onClose={() => setValuationTimelineModal((prev) => ({ ...prev, open: false }))}
                 onModeChange={(nextMode) => reloadValuationTimeline(valuationPortfolioIds, nextMode)}
                 onPortfolioIdsChange={(nextIds) => reloadValuationTimeline(nextIds, valuationTimelineMode)}
-                onRangeChange={setValuationTimelineRange}
+                onRangeChange={(nextRange) => reloadValuationTimeline(valuationPortfolioIds, valuationTimelineMode, nextRange)}
                 onViewPortfolio={(portfolioId) => {
                     switchPortfolio(portfolioId)
                     setViewMode("detail")
@@ -3932,9 +3974,6 @@ export function PortfolioList() {
                                 )}>
                                     {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
                                 </div>
-                            )}
-                            {!showSoldStocks && (
-                                <p className="mt-1 text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-primary/70">Timeline</p>
                             )}
                         </CardContent>
                     </Card>

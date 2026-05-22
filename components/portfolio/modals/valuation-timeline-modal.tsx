@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Activity, Eye, X } from "lucide-react"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,13 @@ export type PortfolioValuationPoint = {
     date: string
     value: number
     coveredSymbols: number
+    points?: number
+    snapshot?: Array<{
+        symbol: string
+        units: number
+        ltp: number
+        value: number
+    }>
 }
 
 export type PortfolioValuationMeta = {
@@ -32,7 +39,7 @@ type ValuationTimelineModalState = {
     portfolioId?: string | null
 }
 
-type ValuationTimelineRange = "1m" | "3m" | "6m" | "1y" | "all"
+export type ValuationTimelineRange = "1m" | "1y" | "5y" | "all"
 
 type ValuationTimelineModalProps = {
     calendarSystem: CalendarSystem
@@ -56,6 +63,16 @@ type ValuationTimelineModalProps = {
 
 const getRangeLabel = (range: ValuationTimelineRange) => range === "all" ? "All Time" : range.toUpperCase()
 
+const VALUATION_TIMELINE_RANGES: Array<{ value: ValuationTimelineRange; label: string; grouping: "daily" | "weekly" | "monthly" }> = [
+    { value: "1m", label: "1M", grouping: "daily" },
+    { value: "1y", label: "1Y", grouping: "weekly" },
+    { value: "5y", label: "5Y", grouping: "monthly" },
+    { value: "all", label: "All", grouping: "monthly" },
+]
+
+const getRangeConfig = (range: ValuationTimelineRange) =>
+    VALUATION_TIMELINE_RANGES.find((option) => option.value === range) || VALUATION_TIMELINE_RANGES[0]
+
 const getDateTime = (date: string) => {
     const parsed = Date.parse(`${date}T00:00:00Z`)
     return Number.isFinite(parsed) ? parsed : null
@@ -68,10 +85,58 @@ const getRangeCutoffTime = (latestDate: string, range: ValuationTimelineRange) =
 
     const cutoffDate = new Date(latestTime)
     if (range === "1m") cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 1)
-    if (range === "3m") cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 3)
-    if (range === "6m") cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 6)
     if (range === "1y") cutoffDate.setUTCFullYear(cutoffDate.getUTCFullYear() - 1)
+    if (range === "5y") cutoffDate.setUTCFullYear(cutoffDate.getUTCFullYear() - 5)
     return cutoffDate.getTime()
+}
+
+const getWeekKey = (date: Date) => {
+    const firstDayOfYear = Date.UTC(date.getUTCFullYear(), 0, 1)
+    const dayOfYear = Math.floor((date.getTime() - firstDayOfYear) / 86400000)
+    return `${date.getUTCFullYear()}-W${Math.floor(dayOfYear / 7) + 1}`
+}
+
+const aggregateTimelinePoints = (points: PortfolioValuationPoint[], grouping: "daily" | "weekly" | "monthly") => {
+    if (grouping === "daily") return points
+
+    const buckets = new Map<string, {
+        date: string
+        valueTotal: number
+        coveredSymbolsTotal: number
+        points: number
+        snapshot?: PortfolioValuationPoint["snapshot"]
+    }>()
+
+    points.forEach((point) => {
+        const parsed = new Date(`${point.date}T00:00:00Z`)
+        if (Number.isNaN(parsed.getTime())) return
+        const key = grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+        const existing = buckets.get(key) || {
+            date: point.date,
+            valueTotal: 0,
+            coveredSymbolsTotal: 0,
+            points: 0,
+            snapshot: undefined,
+        }
+
+        existing.date = point.date
+        existing.valueTotal += point.value
+        existing.coveredSymbolsTotal += point.coveredSymbols
+        existing.points += 1
+        existing.snapshot = point.snapshot
+        buckets.set(key, existing)
+    })
+
+    return Array.from(buckets.values())
+        .map((bucket) => ({
+            date: bucket.date,
+            value: bucket.points > 0 ? Number((bucket.valueTotal / bucket.points).toFixed(2)) : 0,
+            coveredSymbols: bucket.points > 0 ? Math.round(bucket.coveredSymbolsTotal / bucket.points) : 0,
+            points: bucket.points,
+            snapshot: bucket.snapshot,
+        }))
+        .filter((point) => point.value > 0 && point.coveredSymbols > 0)
+        .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export function ValuationTimelineModal({
@@ -93,6 +158,8 @@ export function ValuationTimelineModal({
     onRangeChange,
     onViewPortfolio,
 }: ValuationTimelineModalProps) {
+    const [selectedSnapshotDate, setSelectedSnapshotDate] = useState<string | null>(null)
+
     const rangeStats = useMemo(() => {
         const orderedTimeline = [...timeline].sort((a, b) => a.date.localeCompare(b.date))
         const latestPoint = orderedTimeline[orderedTimeline.length - 1]
@@ -105,7 +172,8 @@ export function ValuationTimelineModal({
                 const pointTime = getDateTime(point.date)
                 return pointTime !== null && pointTime >= cutoffTime
             })
-        const points = rangedPoints.length > 0 ? rangedPoints : [latestPoint]
+        const filteredPoints = rangedPoints.length > 0 ? rangedPoints : [latestPoint]
+        const points = aggregateTimelinePoints(filteredPoints, getRangeConfig(range).grouping)
 
         const first = points[0]
         const latest = points[points.length - 1]
@@ -115,7 +183,7 @@ export function ValuationTimelineModal({
         const changePercent = first.value > 0 ? (change / first.value) * 100 : 0
         const drawdownFromHigh = high.value > 0 ? ((latest.value - high.value) / high.value) * 100 : 0
         const averageValue = points.reduce((sum, point) => sum + point.value, 0) / points.length
-        const dailyMoves = points.slice(1).map((point, index) => {
+        const periodMoves = points.slice(1).map((point, index) => {
             const previous = points[index]
             const valueChange = point.value - previous.value
             return {
@@ -125,8 +193,8 @@ export function ValuationTimelineModal({
             }
         })
         const fallbackMove = { date: latest.date, valueChange: 0, percentChange: 0 }
-        const bestDay = dailyMoves.reduce((best, move) => move.valueChange > best.valueChange ? move : best, dailyMoves[0] || fallbackMove)
-        const worstDay = dailyMoves.reduce((worst, move) => move.valueChange < worst.valueChange ? move : worst, dailyMoves[0] || fallbackMove)
+        const bestMove = periodMoves.reduce((best, move) => move.valueChange > best.valueChange ? move : best, periodMoves[0] || fallbackMove)
+        const worstMove = periodMoves.reduce((worst, move) => move.valueChange < worst.valueChange ? move : worst, periodMoves[0] || fallbackMove)
 
         return {
             first,
@@ -137,12 +205,20 @@ export function ValuationTimelineModal({
             changePercent,
             drawdownFromHigh,
             averageValue,
-            bestDay,
-            worstDay,
+            bestMove,
+            worstMove,
             points,
-            chartKey: `${range}-${first.date}-${latest.date}-${points.length}`,
+            chartKey: `${range}-${first.date}-${latest.date}-${points.length}-${getRangeConfig(range).grouping}`,
         }
     }, [range, timeline])
+
+    const selectedSnapshot = useMemo(() => {
+        if (!rangeStats) return null
+        const selectedPoint = selectedSnapshotDate
+            ? rangeStats.points.find((point) => point.date === selectedSnapshotDate)
+            : null
+        return selectedPoint || null
+    }, [rangeStats, selectedSnapshotDate])
 
     const allTimeStats = useMemo(() => {
         if (timeline.length === 0) return null
@@ -176,6 +252,16 @@ export function ValuationTimelineModal({
     if (!modal.open) return null
 
     const money = (amount: number) => `${currencySymbol.trim() || "Rs."} ${formatAmount(amount, false)}`
+    const signedMoney = (amount: number) => {
+        const sign = amount > 0 ? "+" : amount < 0 ? "-" : ""
+        return `${currencySymbol.trim() || "Rs."}${sign}${formatAmount(Math.abs(amount), false)}`
+    }
+    const handleChartClick = (chartState: unknown) => {
+        const payload = (chartState as { activePayload?: Array<{ payload?: PortfolioValuationPoint }> })?.activePayload?.[0]?.payload
+        if (payload?.date) {
+            setSelectedSnapshotDate(payload.date)
+        }
+    }
 
     return (
         <div
@@ -214,9 +300,9 @@ export function ValuationTimelineModal({
                             </Button>
                         </div>
                         <div className="flex rounded-lg border border-muted/30 bg-muted/10 p-1">
-                            {(["1m", "3m", "6m", "1y", "all"] as const).map((nextRange) => (
-                                <Button key={nextRange} type="button" size="sm" variant={range === nextRange ? "default" : "ghost"} className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-widest" onClick={() => onRangeChange(nextRange)}>
-                                    {nextRange === "all" ? "All" : nextRange.toUpperCase()}
+                            {VALUATION_TIMELINE_RANGES.map((rangeOption) => (
+                                <Button key={rangeOption.value} type="button" size="sm" variant={range === rangeOption.value ? "default" : "ghost"} className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-widest" onClick={() => onRangeChange(rangeOption.value)}>
+                                    {rangeOption.label}
                                 </Button>
                             ))}
                         </div>
@@ -297,13 +383,13 @@ export function ValuationTimelineModal({
                             <div className="overflow-x-auto pb-1">
                                 <div className="grid min-w-[1120px] grid-cols-8 gap-2">
                                     <StatusMetric label="Latest" value={money(rangeStats.latest.value)} detail={formatAppDate(rangeStats.latest.date, calendarSystem)} tone="primary" />
-                                    <StatusMetric label="Move" value={`${rangeStats.change >= 0 ? "+" : ""}${money(rangeStats.change)}`} detail={`${rangeStats.change >= 0 ? "+" : ""}${rangeStats.changePercent.toFixed(2)}%`} tone={rangeStats.change >= 0 ? "success" : "error"} />
+                                    <StatusMetric label="Move" value={signedMoney(rangeStats.change)} detail={`${rangeStats.change >= 0 ? "+" : ""}${rangeStats.changePercent.toFixed(2)}%`} tone={rangeStats.change >= 0 ? "success" : "error"} />
                                     <StatusMetric label="Average" value={money(rangeStats.averageValue)} detail={`${rangeStats.points.length} point${rangeStats.points.length === 1 ? "" : "s"}`} />
                                     <StatusMetric label="Range High" value={money(rangeStats.high.value)} detail={formatAppDate(rangeStats.high.date, calendarSystem)} tone="success" />
                                     <StatusMetric label="Range Low" value={money(rangeStats.low.value)} detail={formatAppDate(rangeStats.low.date, calendarSystem)} tone="error" />
                                     <StatusMetric label="Drawdown" value={`${rangeStats.drawdownFromHigh.toFixed(2)}%`} detail="From range high" tone="warning" />
-                                    <StatusMetric label="Best Day" value={`+${money(Math.max(rangeStats.bestDay.valueChange, 0))}`} detail={rangeStats.bestDay.percentChange.toFixed(2) + "%"} tone="success" />
-                                    <StatusMetric label="Worst Day" value={money(rangeStats.worstDay.valueChange)} detail={rangeStats.worstDay.percentChange.toFixed(2) + "%"} tone="error" />
+                                    <StatusMetric label={`Best ${getRangeConfig(range).grouping === "daily" ? "Day" : "Move"}`} value={signedMoney(Math.max(rangeStats.bestMove.valueChange, 0))} detail={rangeStats.bestMove.percentChange.toFixed(2) + "%"} tone="success" />
+                                    <StatusMetric label={`Worst ${getRangeConfig(range).grouping === "daily" ? "Day" : "Move"}`} value={signedMoney(rangeStats.worstMove.valueChange)} detail={rangeStats.worstMove.percentChange.toFixed(2) + "%"} tone="error" />
                                 </div>
                             </div>
 
@@ -330,7 +416,7 @@ export function ValuationTimelineModal({
 
                             <div className="h-[52vh] min-h-[360px] rounded-xl border border-primary/10 bg-background/60 p-2">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart key={rangeStats.chartKey} data={rangeStats.points} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                                    <LineChart key={rangeStats.chartKey} data={rangeStats.points} margin={{ top: 12, right: 12, left: 0, bottom: 0 }} onClick={handleChartClick}>
                                         <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                         <XAxis
                                             dataKey="date"
@@ -338,7 +424,11 @@ export function ValuationTimelineModal({
                                             minTickGap={28}
                                             tickFormatter={(value) => {
                                                 const parsed = new Date(`${value}T00:00:00Z`)
-                                                return Number.isNaN(parsed.getTime()) ? String(value) : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
+                                                return Number.isNaN(parsed.getTime())
+                                                    ? String(value)
+                                                    : getRangeConfig(range).grouping === "monthly"
+                                                        ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
+                                                        : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
                                             }}
                                         />
                                         <YAxis tick={{ fontSize: 10 }} width={64} domain={["auto", "auto"]} tickFormatter={(value) => `${Number(value) >= 100000 ? `${(Number(value) / 100000).toFixed(1)}L` : Number(value).toFixed(0)}`} />
@@ -350,16 +440,49 @@ export function ValuationTimelineModal({
                                                 return (
                                                     <div className="rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-lg">
                                                         <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">{formatAppDate(String(label), calendarSystem)}</p>
-                                                        <p className="text-xs font-bold text-primary">Value: {money(value)}</p>
+                                                        <p className="text-xs font-bold text-primary">{getRangeConfig(range).grouping === "daily" ? "Value" : "Avg Value"}: {money(value)}</p>
+                                                        {row?.points && row.points > 1 && <p className="text-[10px] font-bold text-muted-foreground">Averaged from {row.points} daily valuation{row.points === 1 ? "" : "s"}</p>}
                                                         {row && <p className="text-[10px] font-bold text-muted-foreground">{row.coveredSymbols} symbol{row.coveredSymbols === 1 ? "" : "s"} priced</p>}
                                                     </div>
                                                 )
                                             }}
                                         />
-                                        <Line type="monotone" dataKey="value" name="Valuation" stroke="#f97316" strokeWidth={3} dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }} />
+                                        <Line type="monotone" dataKey="value" name="Valuation" stroke="#f97316" strokeWidth={3} dot={getRangeConfig(range).grouping !== "daily"} activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
+
+                            {selectedSnapshot?.snapshot?.length ? (
+                                <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-4">
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-primary">Time Snapshot</p>
+                                            <p className="mt-1 text-sm font-black">
+                                                {formatAppDate(selectedSnapshot.date, calendarSystem)} • {money(selectedSnapshot.value)}
+                                            </p>
+                                        </div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                            {selectedSnapshot.snapshot.length} priced symbol{selectedSnapshot.snapshot.length === 1 ? "" : "s"}
+                                        </p>
+                                    </div>
+                                    <div className="mt-3 overflow-x-auto">
+                                        <div className="min-w-[560px] divide-y divide-muted/20 rounded-lg border border-muted/30 bg-background/70">
+                                            {selectedSnapshot.snapshot.map((entry) => (
+                                                <div key={entry.symbol} className="grid grid-cols-[1fr_1fr_1fr_1.2fr] items-center gap-3 px-3 py-2 text-xs">
+                                                    <p className="font-black uppercase tracking-wider text-foreground">{entry.symbol}</p>
+                                                    <p className="font-mono font-bold text-muted-foreground">{entry.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                    <p className="font-mono font-bold text-muted-foreground">LTP {money(entry.ltp)}</p>
+                                                    <p className="text-right font-mono font-black text-primary">{money(entry.value)}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : selectedSnapshot ? (
+                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-4">
+                                    <p className="text-xs font-bold text-muted-foreground">No symbol-level price snapshot is available for this point.</p>
+                                </div>
+                            ) : null}
 
                             {meta && (
                                 <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-3">
