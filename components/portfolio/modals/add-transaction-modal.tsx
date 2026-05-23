@@ -5,12 +5,15 @@ import { ChevronDown, ChevronUp, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,DialogTrigger} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue,} from "@/components/ui/select"
 import { AppDateInput } from "@/components/ui/app-date-input"
+import { formatAppDate } from "@/lib/app-calendar"
 import type { CalendarSystem } from "@/lib/app-calendar"
 import { createNepseTradePreview } from "@/lib/nepse-trade-preview"
 import type { PortfolioItem } from "@/types/wallet"
+import { cn } from "@/lib/utils"
 
 type StockTransactionType = "buy" | "sell" | "ipo" | "reinvestment" | "bonus" | "gift" | "merger_in" | "merger_out"
 
@@ -38,6 +41,10 @@ interface AddTransactionModalProps {
     activePortfolioId?: string
     currencySymbol?: string
     calendarSystem?: CalendarSystem
+    embedded?: boolean
+    onCancel?: () => void
+    hideFooter?: boolean
+    isSubmitting?: boolean
 }
 
 type CryptoCoinOption = {
@@ -70,12 +77,19 @@ export function AddTransactionModal({
     portfolioItems = [],
     activePortfolioId,
     currencySymbol = "Rs. ",
-    calendarSystem = "AD"
+    calendarSystem = "AD",
+    embedded = false,
+    onCancel,
+    hideFooter = false,
+    isSubmitting = false,
 }: AddTransactionModalProps) {
     const [popularCoins, setPopularCoins] = useState<CryptoCoinOption[]>([])
     const [isLoadingCoins, setIsLoadingCoins] = useState(false)
     const [showSuggestions, setShowSuggestions] = useState(false)
     const [isPreviewDetailsOpen, setIsPreviewDetailsOpen] = useState(false)
+    const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
+    const [isNoteOpen, setIsNoteOpen] = useState(false)
+    const [isDateOpen, setIsDateOpen] = useState(false)
 
     useEffect(() => {
         if (!open || newTx.assetType !== "crypto") return
@@ -143,29 +157,40 @@ export function AddTransactionModal({
     }, [newTx.quantity, newTx.price])
 
     const sellReferenceHolding = useMemo(() => {
-        if (newTx.assetType !== "stock" || newTx.type !== "sell") return null
+        if (newTx.type !== "sell") return null
         const normalizedSymbol = (newTx.symbol || "").trim().toUpperCase()
         if (!normalizedSymbol) return null
 
         return portfolioItems.find((item) => (
             item.portfolioId === activePortfolioId &&
-            (item.assetType || "stock") === "stock" &&
-            item.symbol.trim().toUpperCase() === normalizedSymbol
+            (newTx.assetType === "crypto" || newTx.cryptoId
+                ? ((item.assetType === "crypto" || Boolean(item.cryptoId)) &&
+                    ((newTx.cryptoId && item.cryptoId === newTx.cryptoId) || item.symbol.trim().toUpperCase() === normalizedSymbol))
+                : ((item.assetType || "stock") === "stock" && item.symbol.trim().toUpperCase() === normalizedSymbol))
         )) || null
-    }, [activePortfolioId, newTx.assetType, newTx.symbol, newTx.type, portfolioItems])
+    }, [activePortfolioId, newTx.assetType, newTx.cryptoId, newTx.symbol, newTx.type, portfolioItems])
+    const requestedSellQuantity = Number(newTx.quantity)
+    const sellAvailableUnits = sellReferenceHolding?.units ?? 0
+    const hasSellQuantity = Number.isFinite(requestedSellQuantity) && requestedSellQuantity > 0
+    const sellRemainingUnits = sellReferenceHolding
+        ? Math.max(0, sellAvailableUnits - (hasSellQuantity ? requestedSellQuantity : 0))
+        : 0
+    const sellQuantityError = isSellType && hasSellQuantity && (!sellReferenceHolding || requestedSellQuantity > sellAvailableUnits)
 
-    const isStockTradePreview = newTx.assetType === "stock" && (newTx.type === "buy" || newTx.type === "sell")
+    const previewTradeType = newTx.type === "sell" ? "sell" : "buy"
+    const isBuySidePreview = newTx.type === "buy" || newTx.type === "reinvestment"
+    const isStockTradePreview = newTx.assetType === "stock" && (isBuySidePreview || newTx.type === "sell")
 
     const tradePreview = useMemo(
         () => isStockTradePreview
             ? createNepseTradePreview(
                 Number(newTx.quantity) || 0,
                 Number(newTx.price) || 0,
-                newTx.type as "buy" | "sell",
+                previewTradeType,
                 newTx.type === "sell" ? (sellReferenceHolding?.buyPrice ?? 0) : 0,
             )
             : null,
-        [isStockTradePreview, newTx.price, newTx.quantity, newTx.type, sellReferenceHolding?.buyPrice],
+        [isStockTradePreview, newTx.price, newTx.quantity, newTx.type, previewTradeType, sellReferenceHolding?.buyPrice],
     )
 
     const resolvedCurrencySymbol = currencySymbol.trim().toUpperCase() === "NPR" ? "रु " : currencySymbol
@@ -179,30 +204,39 @@ export function AddTransactionModal({
     const formatPercent = (value: number) =>
         `${(value * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
 
-    return (
-        <Dialog
-            open={open}
-            onOpenChange={(nextOpen) => {
-                if (!nextOpen) {
-                    setIsPreviewDetailsOpen(false)
-                }
-                onOpenChange(nextOpen)
-            }}
-        >
-            <DialogTrigger asChild>
-                <Button size="sm" className="h-10 rounded-xl px-4 font-bold shadow-lg shadow-primary/20">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Transaction
-                </Button>
-            </DialogTrigger>
-            <DialogContent
-                className="sm:max-w-[425px] rounded-xl sm:rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
-                overlayClassName="bg-black/45 backdrop-blur-none"
-            >
+    const handleQuantityChange = (value: string) => {
+        if (value === "") {
+            setNewTx({ ...newTx, quantity: Number.NaN })
+            return
+        }
+
+        const nextQuantity = Number(value)
+        if (isSellType && sellReferenceHolding && Number.isFinite(nextQuantity) && nextQuantity > sellAvailableUnits) {
+            setNewTx({ ...newTx, quantity: sellAvailableUnits })
+            return
+        }
+
+        setNewTx({ ...newTx, quantity: nextQuantity })
+    }
+
+    const autoDescription = useMemo(() => {
+        const symbol = (newTx.symbol || "").trim().toUpperCase()
+        const quantity = Number(newTx.quantity)
+        const quantityText = Number.isFinite(quantity) && quantity > 0
+            ? `${quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} units`
+            : "units"
+        return `${newTx.type.toUpperCase()} ${quantityText}${symbol ? ` of ${symbol}` : ""}`
+    }, [newTx.quantity, newTx.symbol, newTx.type])
+    const hasCustomNote = newTx.description.trim().length > 0
+
+    const content = (
+        <>
+            {!embedded && (
                 <DialogHeader className="pb-3 border-b border-primary/10">
                     <DialogTitle className="text-2xl font-black text-primary">Record Transaction</DialogTitle>
                 </DialogHeader>
-                <div className="grid gap-4 py-6" onKeyDown={(e) => e.key === "Enter" && onAdd()}>
+            )}
+            <div className={cn("grid gap-4", embedded ? "py-2" : "py-6")}>
                     <div className="grid gap-2">
                         <Label htmlFor="assetType" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Asset Class</Label>
                         <Select
@@ -363,22 +397,38 @@ export function AddTransactionModal({
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="units" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Units</Label>
+                            <div className="flex items-center justify-between gap-2">
+                                <Label htmlFor="units" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Units</Label>
+                                {isSellType && (
+                                    <span className={cn(
+                                        "text-[10px] font-bold",
+                                        sellQuantityError ? "text-destructive" : "text-muted-foreground"
+                                    )}>
+                                        {sellReferenceHolding ? `Available ${sellRemainingUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : "No holding"}
+                                    </span>
+                                )}
+                            </div>
                             <Input
                                 id="units"
                                 type="number"
                                 step="any"
                                 min="0"
-                                className="rounded-xl border-muted-foreground/20 font-bold"
+                                max={isSellType && sellReferenceHolding ? sellAvailableUnits : undefined}
+                                className={cn(
+                                    "rounded-xl border-muted-foreground/20 font-bold",
+                                    sellQuantityError && "border-destructive/50 focus-visible:ring-destructive/30"
+                                )}
                                 value={Number.isNaN(newTx.quantity) ? "" : newTx.quantity}
                                 placeholder="0"
-                                onChange={(e) =>
-                                    setNewTx({
-                                        ...newTx,
-                                        quantity: e.target.value === "" ? Number.NaN : Number(e.target.value),
-                                    })
-                                }
+                                onChange={(e) => handleQuantityChange(e.target.value)}
                             />
+                            {sellQuantityError && (
+                                <p className="text-[10px] font-semibold text-destructive">
+                                    {sellReferenceHolding
+                                        ? `You can sell up to ${sellAvailableUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units.`
+                                        : "Select a holding you already own before recording a sell."}
+                                </p>
+                            )}
                         </div>
 
                         <div className="grid gap-2">
@@ -402,16 +452,95 @@ export function AddTransactionModal({
                         </div>
                     </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="date" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Date</Label>
-                        <AppDateInput
-                            id="date"
-                            className="rounded-xl border-muted-foreground/20 font-medium"
-                            value={newTx.date}
-                            calendarSystem={calendarSystem}
-                            showPreview={false}
-                            onChange={(date) => setNewTx({ ...newTx, date })}
-                        />
+                    <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
+                        <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                            onClick={() => setIsAdvancedOpen((prev) => !prev)}
+                        >
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Advanced Fields</p>
+                                <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                                    {formatAppDate(newTx.date, calendarSystem)} · {hasCustomNote ? "Custom note" : "Auto note"}
+                                </p>
+                            </div>
+                            {isAdvancedOpen ? (
+                                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            )}
+                        </button>
+
+                        {isAdvancedOpen && (
+                            <div className="mt-3 space-y-3 border-t border-muted/20 pt-3">
+                                <div className="rounded-xl border border-muted/30 bg-background/50 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Date</p>
+                                            <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                                                {formatAppDate(newTx.date, calendarSystem)}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 shrink-0 rounded-lg px-2 text-[10px] font-black uppercase tracking-wider"
+                                            onClick={() => setIsDateOpen((prev) => !prev)}
+                                        >
+                                            {isDateOpen ? "Hide" : "Change"}
+                                        </Button>
+                                    </div>
+                                    {isDateOpen && (
+                                        <div className="mt-3 grid gap-2">
+                                            <Label htmlFor="date" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Date</Label>
+                                            <AppDateInput
+                                                id="date"
+                                                className="rounded-xl border-muted-foreground/20 font-medium"
+                                                value={newTx.date}
+                                                calendarSystem={calendarSystem}
+                                                showPreview={false}
+                                                onChange={(date) => setNewTx({ ...newTx, date })}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-xl border border-muted/30 bg-background/50 p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                                                {hasCustomNote ? "Custom Note" : "Auto Note"}
+                                            </p>
+                                            <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                                                {hasCustomNote ? newTx.description : autoDescription}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 shrink-0 rounded-lg px-2 text-[10px] font-black uppercase tracking-wider"
+                                            onClick={() => setIsNoteOpen((prev) => !prev)}
+                                        >
+                                            {isNoteOpen ? "Hide" : hasCustomNote ? "Edit" : "Add Note"}
+                                        </Button>
+                                    </div>
+                                    {isNoteOpen && (
+                                        <div className="mt-3 grid gap-2">
+                                            <Label htmlFor="description" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Notes</Label>
+                                            <Textarea
+                                                id="description"
+                                                className="min-h-20 resize-none rounded-xl border-muted-foreground/20 font-medium"
+                                                value={newTx.description}
+                                                placeholder={`Optional. Default: ${autoDescription}`}
+                                                onChange={(e) => setNewTx({ ...newTx, description: e.target.value })}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {tradePreview ? (
@@ -445,7 +574,7 @@ export function AddTransactionModal({
                                     </div>
                                     <div className="mt-1.5 border-t border-primary/10 pt-1.5">
                                         <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                            {newTx.type === "buy" ? "Total Payable" : "Net Receivable"}
+                                            {newTx.type === "sell" ? "Net Receivable" : newTx.type === "reinvestment" ? "Reinvestment Cost" : "Total Payable"}
                                         </p>
                                         <p className="mt-0.5 text-lg font-black font-mono text-primary leading-none">
                                             {formatMoney(tradePreview.settlementAmount)}
@@ -535,11 +664,46 @@ export function AddTransactionModal({
                             </div>
                         </div>
                     )}
-                </div>
-                <DialogFooter className="gap-2">
-                    <Button variant="ghost" className="rounded-xl font-bold" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button className="rounded-xl font-bold px-8 shadow-md" onClick={onAdd}>Record</Button>
+            </div>
+            {!hideFooter && (
+                <DialogFooter className={cn(
+                    "gap-2",
+                    embedded && "sticky bottom-0 z-20 -mx-6 mt-2 border-t border-muted/20 bg-card/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+                )}>
+                    <Button variant="ghost" className={cn("rounded-xl font-bold", embedded && "flex-1")} disabled={isSubmitting} onClick={() => (onCancel || (() => onOpenChange(false)))()}>Cancel</Button>
+                    <Button className={cn("rounded-xl font-bold px-8 shadow-md", embedded && "flex-1")} disabled={isSubmitting || sellQuantityError} onClick={onAdd}>
+                        {isSubmitting ? "Recording..." : "Record"}
+                    </Button>
                 </DialogFooter>
+            )}
+        </>
+    )
+
+    if (embedded) {
+        return content
+    }
+
+    return (
+        <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen) {
+                    setIsPreviewDetailsOpen(false)
+                }
+                onOpenChange(nextOpen)
+            }}
+        >
+            <DialogTrigger asChild>
+                <Button size="sm" className="h-10 rounded-xl px-4 font-bold shadow-lg shadow-primary/20">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Transaction
+                </Button>
+            </DialogTrigger>
+            <DialogContent
+                className="sm:max-w-[425px] rounded-xl sm:rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
+                overlayClassName="bg-black/45 backdrop-blur-none"
+            >
+                {content}
             </DialogContent>
         </Dialog>
     )

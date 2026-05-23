@@ -126,6 +126,7 @@ export function PortfolioList() {
     }, [userProfile?.currency, userProfile?.customCurrency])
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+    const [isAddingTransaction, setIsAddingTransaction] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
     const [isEditPortfolioOpen, setIsEditPortfolioOpen] = useState(false)
     const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
@@ -414,7 +415,7 @@ export function PortfolioList() {
                 price: price || Number.NaN,
                 type: type || 'buy',
                 date: todayAdDateKey(),
-                description: `${type || 'buy'} ${symbol}`
+                description: ""
             })
             
             // Open the transaction dialog
@@ -692,12 +693,14 @@ export function PortfolioList() {
     }
 
     const handleAddTransaction = async () => {
+        if (isAddingTransaction) return
         const hasValidQty = Number.isFinite(newTx.quantity) && newTx.quantity > 0
         const hasValidPrice = newTx.type === 'bonus' || newTx.type === 'gift' || (Number.isFinite(newTx.price) && newTx.price > 0)
         if (!newTx.symbol || !hasValidQty || !hasValidPrice) {
             toast.error("Please fill all fields correctly")
             return
         }
+        setIsAddingTransaction(true)
         try {
             let resolvedSymbol = newTx.symbol.trim().toUpperCase()
             if (newTx.assetType === "stock") {
@@ -721,6 +724,24 @@ export function PortfolioList() {
                         throw new Error(resolveData?.error || `Unable to resolve Coinlore symbol: ${symbol}`)
                     }
                     cryptoId = resolveData.id
+                }
+            }
+
+            if (newTx.type === "sell") {
+                const sellHolding = portfolio.find((item) => (
+                    item.portfolioId === activePortfolioId &&
+                    (newTx.assetType === "crypto" || cryptoId
+                        ? ((item.assetType === "crypto" || Boolean(item.cryptoId)) &&
+                            ((cryptoId && item.cryptoId === cryptoId) || normalizeStockSymbol(item.symbol) === resolvedSymbol))
+                        : ((item.assetType || "stock") === "stock" && normalizeStockSymbol(item.symbol) === resolvedSymbol))
+                ))
+                if (!sellHolding || newTx.quantity > (sellHolding.units ?? 0)) {
+                    toast.error("Sell quantity exceeds available units", {
+                        description: sellHolding
+                            ? `Available: ${sellHolding.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units.`
+                            : "Select a holding you already own.",
+                    })
+                    return
                 }
             }
 
@@ -782,6 +803,8 @@ export function PortfolioList() {
             }
         } catch (error) {
             toast.error("Failed to record transaction")
+        } finally {
+            setIsAddingTransaction(false)
         }
     }
 
@@ -3834,6 +3857,7 @@ export function PortfolioList() {
                             newTx={newTx}
                             setNewTx={setNewTx}
                             onAdd={handleAddTransaction}
+                            isSubmitting={isAddingTransaction}
                             stockOptions={stockOptions}
                             portfolioStockOptions={portfolioStockOptions}
                             portfolioCryptoOptions={portfolioCryptoOptions}

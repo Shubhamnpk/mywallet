@@ -346,14 +346,6 @@ export function ValuationTimelineModal({
                                         >
                                             {entry.name}
                                         </button>
-                                        <button
-                                            type="button"
-                                            className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-primary"
-                                            title="See portfolio details"
-                                            onClick={() => onViewPortfolio(entry.id)}
-                                        >
-                                            <Eye className="h-3 w-3" />
-                                        </button>
                                     </div>
                                 )
                             })}

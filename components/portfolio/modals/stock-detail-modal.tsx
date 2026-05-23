@@ -12,15 +12,17 @@ import { Input } from "@/components/ui/input"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip as UITooltip, TooltipContent as UITooltipContent, TooltipProvider as UITooltipProvider, TooltipTrigger as UITooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Viewer, Worker } from "@react-pdf-viewer/core"
 import { zoomPlugin } from "@react-pdf-viewer/zoom"
 import { SIPSetupModal } from "./sip-setup-modal"
 import { EditTransactionModal } from "./edit-transaction-modal"
+import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { adToBsDateKey, formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
@@ -55,6 +57,84 @@ type LtpHistoryPoint = {
     turnover?: number
     trades?: number
     points?: number
+}
+
+type CompanyProfile = {
+    id?: number
+    symbol: string
+    profile?: string
+    email?: string
+    phone?: string
+    fax?: string
+    contact_person?: string
+    address_type?: string
+    address?: string
+    logo_path?: string
+}
+
+type CompanyFinancialDocument = {
+    submitted_date?: string
+    path?: string
+    url?: string
+}
+
+type CompanyFinancialReport = {
+    type?: string
+    quarter?: string
+    fy?: string
+    fy_nepali?: string
+    pe?: number
+    eps?: number
+    paid_up_capital?: number
+    profit?: number
+    net_worth_per_share?: number
+    documents?: CompanyFinancialDocument[]
+}
+
+type CompanyFinancialMetadata = {
+    last_updated?: string
+    source?: string
+    count?: number
+    document_base_url?: string
+}
+
+const formatFinancialReportLabel = (report: CompanyFinancialReport) =>
+    [report.quarter || report.type || "Report", report.fy_nepali || report.fy, report.documents?.[0]?.submitted_date]
+        .filter(Boolean)
+        .join(" / ")
+
+const getFinancialReportKey = (report: CompanyFinancialReport, index: number) => [
+    report.type || "report",
+    report.fy || "fy",
+    report.fy_nepali || "fy-nepali",
+    report.quarter || "annual",
+    report.documents?.[0]?.path || report.documents?.[0]?.url || report.documents?.[0]?.submitted_date || index,
+    index,
+].join("-")
+
+const getNepaliFiscalYearForDate = (date: Date = new Date()) => {
+    const bsDate = adToBsDateKey(date)
+    const match = bsDate.match(/^(\d{4})-(\d{2})-/)
+    if (!match) return ""
+
+    const bsYear = Number(match[1])
+    const bsMonth = Number(match[2])
+    if (!Number.isFinite(bsYear) || !Number.isFinite(bsMonth)) return ""
+
+    const startYear = bsMonth >= 4 ? bsYear : bsYear - 1
+    return `${startYear}-${startYear + 1}`
+}
+
+const getAdFiscalYearForDate = (date: Date = new Date()) => {
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const startYear = month >= 6 ? year : year - 1
+    return `${startYear}-${startYear + 1}`
+}
+
+const getFiscalYearSortValue = (year: string) => {
+    const match = year.match(/(\d{4})/)
+    return match ? Number(match[1]) : 0
 }
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
@@ -157,7 +237,7 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
-    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction } = useWalletData()
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -179,6 +259,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [editingTransaction, setEditingTransaction] = useState<ShareTransaction | null>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("overview")
+    const [showCompanyDetails, setShowCompanyDetails] = useState(false)
+    const [transactionMode, setTransactionMode] = useState<"buy" | "sell" | null>(null)
+    const [isInlineTransactionSaving, setIsInlineTransactionSaving] = useState(false)
+    const [inlineTransaction, setInlineTransaction] = useState<TransactionDraft>({
+        symbol: "",
+        assetType: "stock",
+        cryptoId: "",
+        quantity: Number.NaN,
+        price: Number.NaN,
+        type: "buy",
+        date: new Date().toISOString().split("T")[0],
+        description: "",
+    })
     const [btcNews, setBtcNews] = useState<BtcNewsItem[]>([])
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
@@ -187,6 +280,17 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [priceHistoryCache, setPriceHistoryCache] = useState<Partial<Record<PriceHistoryRange, LtpHistoryPoint[]>>>({})
     const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false)
     const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null)
+    const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null)
+    const [companyProfileLoadedSymbol, setCompanyProfileLoadedSymbol] = useState("")
+    const [isCompanyProfileLoading, setIsCompanyProfileLoading] = useState(false)
+    const [companyProfileError, setCompanyProfileError] = useState<string | null>(null)
+    const [financialReports, setFinancialReports] = useState<CompanyFinancialReport[]>([])
+    const [financialReportsLoadedSymbol, setFinancialReportsLoadedSymbol] = useState("")
+    const [financialCompareReportKey, setFinancialCompareReportKey] = useState("")
+    const [isFinancialCompareOpen, setIsFinancialCompareOpen] = useState(false)
+    const [financialMetadata, setFinancialMetadata] = useState<CompanyFinancialMetadata | null>(null)
+    const [isFinancialReportsLoading, setIsFinancialReportsLoading] = useState(false)
+    const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
     const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
@@ -240,6 +344,18 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setPriceHistoryRange("1M")
             setPriceHistoryCache({})
             setPriceHistoryError(null)
+            setShowCompanyDetails(false)
+            setCompanyProfile(null)
+            setCompanyProfileLoadedSymbol("")
+            setCompanyProfileError(null)
+            setFinancialReports([])
+            setFinancialReportsLoadedSymbol("")
+            setFinancialCompareReportKey("")
+            setIsFinancialCompareOpen(false)
+            setFinancialMetadata(null)
+            setFinancialReportsError(null)
+            setTransactionMode(null)
+            setIsInlineTransactionSaving(false)
         }
     }, [open, mode])
 
@@ -249,6 +365,27 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         setPriceHistoryRange("1M")
         setPriceHistoryCache({})
         setPriceHistoryError(null)
+        setShowCompanyDetails(false)
+        setCompanyProfile(null)
+        setCompanyProfileLoadedSymbol("")
+        setCompanyProfileError(null)
+        setFinancialReports([])
+        setFinancialReportsLoadedSymbol("")
+        setFinancialCompareReportKey("")
+        setIsFinancialCompareOpen(false)
+        setFinancialMetadata(null)
+        setFinancialReportsError(null)
+        setTransactionMode(null)
+        setInlineTransaction({
+            symbol: "",
+            assetType: "stock",
+            cryptoId: "",
+            quantity: Number.NaN,
+            price: Number.NaN,
+            type: "buy",
+            date: new Date().toISOString().split("T")[0],
+            description: "",
+        })
     }, [open, mode, initialItem?.id])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
@@ -298,6 +435,55 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const companyName = item
         ? (isCrypto ? (item.assetName || item.symbol) : (scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol))
         : ""
+    const inlineStockOptions = useMemo(() => {
+        if (!item || isCrypto) return []
+        return [{
+            symbol: normalizeStockSymbol(item.symbol),
+            name: companyName || item.symbol,
+        }]
+    }, [companyName, isCrypto, item])
+    const inlinePortfolioStockOptions = useMemo(() => {
+        const seen = new Set<string>()
+        return portfolio
+            .filter((entry) => entry.portfolioId === item?.portfolioId && (entry.assetType || "stock") === "stock" && entry.units > 0)
+            .map((entry) => {
+                const symbol = normalizeStockSymbol(entry.symbol)
+                return {
+                    symbol,
+                    name: scripNamesMap[symbol] || entry.assetName || entry.symbol,
+                }
+            })
+            .filter((entry) => {
+                if (!entry.symbol || seen.has(entry.symbol)) return false
+                seen.add(entry.symbol)
+                return true
+            })
+    }, [item?.portfolioId, portfolio, scripNamesMap])
+    const inlinePortfolioCryptoOptions = useMemo(() =>
+        portfolio
+            .filter((entry) => entry.portfolioId === item?.portfolioId && (entry.assetType === "crypto" || entry.cryptoId) && entry.units > 0)
+            .map((entry) => ({
+                id: entry.cryptoId,
+                symbol: entry.symbol,
+                name: entry.assetName,
+            })),
+    [item?.portfolioId, portfolio])
+    const inlineSellReferenceHolding = useMemo(() => {
+        if (!item || inlineTransaction.type !== "sell") return null
+        const normalizedSymbol = normalizeStockSymbol(inlineTransaction.symbol)
+        if (!normalizedSymbol) return null
+
+        return portfolio.find((entry) => (
+            entry.portfolioId === item.portfolioId &&
+            (inlineTransaction.assetType === "crypto" || inlineTransaction.cryptoId
+                ? ((entry.assetType === "crypto" || Boolean(entry.cryptoId)) &&
+                    ((inlineTransaction.cryptoId && entry.cryptoId === inlineTransaction.cryptoId) || normalizeStockSymbol(entry.symbol) === normalizedSymbol))
+                : ((entry.assetType || "stock") === "stock" && normalizeStockSymbol(entry.symbol) === normalizedSymbol))
+        )) || null
+    }, [inlineTransaction.assetType, inlineTransaction.cryptoId, inlineTransaction.symbol, inlineTransaction.type, item, portfolio])
+    const inlineSellQuantity = Number(inlineTransaction.quantity)
+    const hasInlineSellQuantity = Number.isFinite(inlineSellQuantity) && inlineSellQuantity > 0
+    const inlineSellQuantityError = inlineTransaction.type === "sell" && hasInlineSellQuantity && (!inlineSellReferenceHolding || inlineSellQuantity > (inlineSellReferenceHolding.units ?? 0))
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
         if (units === 0) return "0"
@@ -332,6 +518,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (amount === 0) return "0"
         if (Math.abs(amount) < 1) return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 10 })
         return amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+    }
+    const formatCompactValue = (amount?: number) => {
+        if (!Number.isFinite(amount)) return "0"
+        return new Intl.NumberFormat(undefined, {
+            notation: "compact",
+            maximumFractionDigits: 2,
+        }).format(amount || 0)
     }
     const formatSignedCurrency = (amount: number) => {
         const sign = amount > 0 ? "+" : amount < 0 ? "-" : ""
@@ -538,6 +731,184 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (!open || activeTab !== "price" || isCrypto) return
         loadPriceHistory(priceHistoryRange)
     }, [activeTab, isCrypto, loadPriceHistory, open, priceHistoryRange])
+
+    const loadCompanyProfile = useCallback(async () => {
+        if (!item || isCrypto || isCompanyProfileLoading) return
+        const nextSymbol = normalizeStockSymbol(item.symbol)
+        if (companyProfileLoadedSymbol === nextSymbol) return
+
+        setIsCompanyProfileLoading(true)
+        setCompanyProfileError(null)
+        try {
+            const response = await fetch(`/api/nepse/company/profile?symbol=${encodeURIComponent(nextSymbol)}`)
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error?.message || data?.message || "Failed to fetch company profile")
+            }
+            setCompanyProfile((data?.profile || null) as CompanyProfile | null)
+            setCompanyProfileLoadedSymbol(nextSymbol)
+        } catch (error: unknown) {
+            setCompanyProfileError(error instanceof Error ? error.message : "Could not load company profile right now.")
+            setCompanyProfileLoadedSymbol(nextSymbol)
+        } finally {
+            setIsCompanyProfileLoading(false)
+        }
+    }, [companyProfileLoadedSymbol, isCompanyProfileLoading, isCrypto, item])
+
+    const loadFinancialReports = useCallback(async () => {
+        if (!item || isCrypto || isFinancialReportsLoading) return
+        const nextSymbol = normalizeStockSymbol(item.symbol)
+        if (financialReportsLoadedSymbol === nextSymbol) return
+
+        setIsFinancialReportsLoading(true)
+        setFinancialReportsError(null)
+        try {
+            const response = await fetch(`/api/nepse/company/financials?symbol=${encodeURIComponent(nextSymbol)}`)
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data?.error?.message || data?.message || "Failed to fetch financial reports")
+            }
+            const reports = Array.isArray(data?.company?.reports) ? data.company.reports : []
+            setFinancialReports(reports as CompanyFinancialReport[])
+            setFinancialMetadata((data?.metadata || null) as CompanyFinancialMetadata | null)
+            setFinancialReportsLoadedSymbol(nextSymbol)
+        } catch (error: unknown) {
+            setFinancialReportsError(error instanceof Error ? error.message : "Could not load financial reports right now.")
+            setFinancialReportsLoadedSymbol(nextSymbol)
+        } finally {
+            setIsFinancialReportsLoading(false)
+        }
+    }, [financialReportsLoadedSymbol, isCrypto, isFinancialReportsLoading, item])
+
+    const sortedFinancialReports = useMemo(() => financialReports.slice().sort((a, b) => {
+        const aSubmitted = a.documents?.[0]?.submitted_date || ""
+        const bSubmitted = b.documents?.[0]?.submitted_date || ""
+        return bSubmitted.localeCompare(aSubmitted)
+    }), [financialReports])
+
+    const currentNepaliFiscalYear = useMemo(() => getNepaliFiscalYearForDate(new Date()), [])
+    const currentAdFiscalYear = useMemo(() => getAdFiscalYearForDate(new Date()), [])
+
+    const currentFinancialYearReports = useMemo(() =>
+        sortedFinancialReports.filter((report) =>
+            report.fy_nepali === currentNepaliFiscalYear || report.fy === currentAdFiscalYear,
+        ),
+    [currentAdFiscalYear, currentNepaliFiscalYear, sortedFinancialReports])
+
+    const latestFinancialReport = useMemo(() => {
+        return currentFinancialYearReports[0] || sortedFinancialReports[0] || null
+    }, [currentFinancialYearReports, sortedFinancialReports])
+
+    const financialCompareReportOptions = useMemo(() => {
+        if (!latestFinancialReport) return []
+        return sortedFinancialReports.filter((report) => report !== latestFinancialReport)
+    }, [latestFinancialReport, sortedFinancialReports])
+
+    const financialCompareReport = useMemo(() => {
+        if (!latestFinancialReport || financialCompareReportOptions.length === 0) return null
+        return financialCompareReportOptions.find((report, index) => getFinancialReportKey(report, index) === financialCompareReportKey) || financialCompareReportOptions[0]
+    }, [financialCompareReportKey, financialCompareReportOptions, latestFinancialReport])
+
+    const activeFinancialCompareKey = useMemo(() => {
+        if (!financialCompareReport) return ""
+        const index = financialCompareReportOptions.findIndex((report) => report === financialCompareReport)
+        return getFinancialReportKey(financialCompareReport, Math.max(index, 0))
+    }, [financialCompareReport, financialCompareReportOptions])
+
+    const isLatestFinancialReportCurrentFy = Boolean(
+        latestFinancialReport &&
+        (latestFinancialReport.fy_nepali === currentNepaliFiscalYear || latestFinancialReport.fy === currentAdFiscalYear),
+    )
+
+    const getFinancialMetricDelta = (
+        currentValue: number | undefined,
+        compareValue: number | undefined,
+        direction: "higher" | "lower" | "neutral" = "higher",
+    ) => {
+        const currentNumber = Number(currentValue)
+        const compareNumber = Number(compareValue)
+        if (!Number.isFinite(currentNumber) || !Number.isFinite(compareNumber) || compareNumber === 0) {
+            return null
+        }
+
+        const delta = currentNumber - compareNumber
+        const percent = (delta / Math.abs(compareNumber)) * 100
+        const isNeutral = direction === "neutral" || Math.abs(delta) < 0.0001
+        const isGood = isNeutral ? null : direction === "higher" ? delta > 0 : delta < 0
+
+        return {
+            delta,
+            percent,
+            isGood,
+            toneClass: isGood === null
+                ? "border-muted/40 bg-muted/10 text-muted-foreground"
+                : isGood
+                    ? "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300"
+                    : "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300",
+        }
+    }
+
+    const renderFinancialDelta = (
+        currentValue: number | undefined,
+        compareValue: number | undefined,
+        direction: "higher" | "lower" | "neutral" = "higher",
+    ) => {
+        const delta = getFinancialMetricDelta(currentValue, compareValue, direction)
+        if (!delta) return null
+
+        return (
+            <span className={cn("mt-2 inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider", delta.toneClass)}>
+                {delta.delta > 0 ? "+" : ""}{delta.percent.toFixed(1)}% {delta.delta > 0 ? "increase" : delta.delta < 0 ? "decrease" : "flat"}
+            </span>
+        )
+    }
+
+    const renderFinancialDeltaPill = (
+        label: string,
+        currentValue: number | undefined,
+        compareValue: number | undefined,
+        direction: "higher" | "lower" | "neutral" = "higher",
+    ) => {
+        const delta = getFinancialMetricDelta(currentValue, compareValue, direction)
+        if (!delta) return null
+
+        return (
+            <span className={cn("rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider", delta.toneClass)}>
+                {label} {delta.delta > 0 ? "+" : ""}{delta.percent.toFixed(1)}%
+            </span>
+        )
+    }
+
+    const financialReportsByYear = useMemo(() => {
+        const groups = new Map<string, CompanyFinancialReport[]>()
+
+        financialReports.forEach((report) => {
+            const year = report.fy_nepali || report.fy || "Unknown FY"
+            const existing = groups.get(year) || []
+            existing.push(report)
+            groups.set(year, existing)
+        })
+
+        return Array.from(groups.entries())
+            .map(([year, reports]) => ({
+                year,
+                reports: reports.slice().sort((a, b) => {
+                    const aSubmitted = a.documents?.[0]?.submitted_date || ""
+                    const bSubmitted = b.documents?.[0]?.submitted_date || ""
+                    return bSubmitted.localeCompare(aSubmitted)
+                }),
+                isCurrentFiscalYear: year === currentNepaliFiscalYear || year === currentAdFiscalYear,
+                latestSubmittedDate: reports.reduce((latest, report) => {
+                    const submittedDate = report.documents?.[0]?.submitted_date || ""
+                    return submittedDate > latest ? submittedDate : latest
+                }, ""),
+            }))
+            .sort((a, b) =>
+                Number(b.isCurrentFiscalYear) - Number(a.isCurrentFiscalYear) ||
+                getFiscalYearSortValue(b.year) - getFiscalYearSortValue(a.year) ||
+                b.latestSubmittedDate.localeCompare(a.latestSubmittedDate)
+            )
+    }, [currentAdFiscalYear, currentNepaliFiscalYear, financialReports])
 
     const loadDividendHistory = async () => {
         if (dividendHistory || isDividendHistoryLoading) return
@@ -808,6 +1179,108 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         setIsEditModalOpen(true)
     }
 
+    const openInlineTransaction = (type: "buy" | "sell") => {
+        const executionPrice = Number.isFinite(item?.currentPrice) ? item?.currentPrice ?? 0 : safeBuyPrice
+        setInlineTransaction({
+            symbol: item?.symbol || "",
+            assetType: item?.assetType || "stock",
+            cryptoId: item?.cryptoId || "",
+            quantity: Number.NaN,
+            price: executionPrice > 0 ? executionPrice : Number.NaN,
+            type,
+            date: new Date().toISOString().split("T")[0],
+            description: "",
+        })
+        setTransactionMode(type)
+    }
+
+    const handleInlineTransactionSubmit = async () => {
+        if (!item || !transactionMode || isInlineTransactionSaving) return
+        const symbol = inlineTransaction.symbol.trim()
+        const quantity = Number(inlineTransaction.quantity)
+        const price = Number(inlineTransaction.price)
+        const requiresPrice = inlineTransaction.type !== "bonus" && inlineTransaction.type !== "gift"
+        if (!symbol || !Number.isFinite(quantity) || quantity <= 0 || (requiresPrice && (!Number.isFinite(price) || price <= 0))) {
+            toast.error("Please fill all fields correctly")
+            return
+        }
+
+        setIsInlineTransactionSaving(true)
+        try {
+            let resolvedSymbol = symbol.toUpperCase()
+            if (inlineTransaction.assetType === "stock") {
+                const rawLower = symbol.toLowerCase()
+                const lookupOptions = [...inlineStockOptions, ...inlinePortfolioStockOptions]
+                const exactSymbol = lookupOptions.find((stock) => stock.symbol.toLowerCase() === rawLower)
+                const exactName = lookupOptions.find((stock) => stock.name.toLowerCase() === rawLower)
+                if (exactSymbol) resolvedSymbol = exactSymbol.symbol
+                else if (exactName) resolvedSymbol = exactName.symbol
+            }
+
+            let cryptoId: string | undefined = undefined
+            if (inlineTransaction.assetType === "crypto") {
+                if (inlineTransaction.cryptoId?.trim()) {
+                    cryptoId = inlineTransaction.cryptoId.trim()
+                } else {
+                    const resolveRes = await fetch(`/api/crypto/coinlore/resolve?symbol=${encodeURIComponent(resolvedSymbol)}`)
+                    const resolveData = await resolveRes.json()
+                    if (!resolveRes.ok) {
+                        throw new Error(resolveData?.error || `Unable to resolve Coinlore symbol: ${resolvedSymbol}`)
+                    }
+                    cryptoId = resolveData.id
+                }
+            }
+
+            if (inlineTransaction.type === "sell") {
+                const sellHolding = portfolio.find((entry) => (
+                    entry.portfolioId === item.portfolioId &&
+                    (inlineTransaction.assetType === "crypto" || cryptoId
+                        ? ((entry.assetType === "crypto" || Boolean(entry.cryptoId)) &&
+                            ((cryptoId && entry.cryptoId === cryptoId) || normalizeStockSymbol(entry.symbol) === resolvedSymbol))
+                        : ((entry.assetType || "stock") === "stock" && normalizeStockSymbol(entry.symbol) === resolvedSymbol))
+                ))
+                if (!sellHolding || quantity > (sellHolding.units ?? 0)) {
+                    toast.error("Sell quantity exceeds available units", {
+                        description: sellHolding
+                            ? `Available: ${sellHolding.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units.`
+                            : "Select a holding you already own.",
+                    })
+                    return
+                }
+            }
+
+            await addShareTransaction({
+                portfolioId: item.portfolioId,
+                assetType: inlineTransaction.assetType,
+                cryptoId,
+                symbol: resolvedSymbol,
+                quantity,
+                price: requiresPrice ? price : 0,
+                type: inlineTransaction.type,
+                date: inlineTransaction.date,
+                description: inlineTransaction.description || `${inlineTransaction.type.toUpperCase()} ${quantity} units of ${resolvedSymbol}`,
+            })
+            toast.success("Transaction recorded")
+            setTransactionMode(null)
+            setInlineTransaction({
+                symbol: "",
+                assetType: "stock",
+                cryptoId: "",
+                quantity: Number.NaN,
+                price: Number.NaN,
+                type: "buy",
+                date: new Date().toISOString().split("T")[0],
+                description: "",
+            })
+        } catch (error: any) {
+            toast.error("Could not record transaction", {
+                description: error?.message || "Please try again.",
+            })
+        } finally {
+            setIsInlineTransactionSaving(false)
+        }
+    }
+
     const totalSipGross = useMemo(() =>
         sipTransactions.reduce((sum, tx) => sum + getSipGrossAmount(tx), 0),
     [getSipGrossAmount, sipTransactions])
@@ -890,7 +1363,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         <>
             <Dialog open={open} onOpenChange={onOpenChange}>
                 {item && (
-                    <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:max-h-[90vh]" showCloseButton={false}>
+                    <DialogContent className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh]" showCloseButton={false}>
                     <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative">
                         <Button
                             variant="ghost"
@@ -901,6 +1374,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             <X className="h-4 w-4" />
                         </Button>
 
+                        {transactionMode ? (
+                            <div className="pr-10">
+                                <Badge variant="outline" className={cn(
+                                    "text-[10px] font-black uppercase tracking-widest",
+                                    transactionMode === "buy"
+                                        ? "border-primary/20 text-primary bg-primary/5"
+                                        : "border-destructive/20 text-destructive bg-destructive/5",
+                                )}>
+                                    {transactionMode === "buy" ? "Record Buy" : "Record Sell"}
+                                </Badge>
+                            </div>
+                        ) : (
+                            <>
                         <div className="flex items-center justify-between mb-2 pr-8">
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
                                 {isSoldDetailMode ? "Sold Transaction Details" : isMarketLookupItem ? "Market Lookup" : isCrypto ? "Crypto Details" : "Stock Details"}
@@ -992,8 +1478,55 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                 </div>
                             </div>
                         </div>
+                            </>
+                        )}
                     </DialogHeader>
 
+                    {transactionMode ? (
+                        <div className="flex flex-1 min-h-0 flex-col bg-muted/5 overflow-hidden">
+                            <ScrollArea className="h-[280px] min-h-0 sm:h-auto sm:flex-1">
+                                <div className="p-6 pt-5">
+                                    <AddTransactionModal
+                                        embedded
+                                        hideFooter
+                                        open={Boolean(transactionMode)}
+                                        onOpenChange={(nextOpen) => {
+                                            if (!nextOpen) setTransactionMode(null)
+                                        }}
+                                        newTx={inlineTransaction}
+                                        setNewTx={setInlineTransaction}
+                                        onAdd={handleInlineTransactionSubmit}
+                                        onCancel={() => setTransactionMode(null)}
+                                        isSubmitting={isInlineTransactionSaving}
+                                        stockOptions={inlineStockOptions}
+                                        portfolioStockOptions={inlinePortfolioStockOptions}
+                                        portfolioCryptoOptions={inlinePortfolioCryptoOptions}
+                                        portfolioItems={portfolio}
+                                        activePortfolioId={item.portfolioId}
+                                        currencySymbol={currencySymbol}
+                                        calendarSystem={calendarSystem}
+                                    />
+                                </div>
+                            </ScrollArea>
+                            <div className="mt-auto flex shrink-0 gap-2 border-t border-muted/20 bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+                                <Button
+                                    variant="ghost"
+                                    className="h-11 flex-1 rounded-xl font-bold"
+                                    disabled={isInlineTransactionSaving}
+                                    onClick={() => setTransactionMode(null)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    className="h-11 flex-1 rounded-xl font-bold shadow-md"
+                                    disabled={isInlineTransactionSaving || inlineSellQuantityError}
+                                    onClick={handleInlineTransactionSubmit}
+                                >
+                                    {isInlineTransactionSaving ? "Recording..." : "Record"}
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col gap-0 overflow-hidden">
                         <div className="px-6 py-1 border-b border-muted/20 bg-muted/5">
                             <TabsList className="h-9 w-full justify-start gap-2 overflow-x-auto rounded-none border-0 bg-transparent p-0 shadow-none">
@@ -1008,6 +1541,17 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                 {!isMarketLookupItem && (
                                     <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                         {isSoldDetailMode ? "All Tx" : "History"}
+                                    </TabsTrigger>
+                                )}
+                                {!isCrypto && (
+                                    <TabsTrigger
+                                        value="financials"
+                                        className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
+                                        onClick={() => {
+                                            loadFinancialReports()
+                                        }}
+                                    >
+                                        Financials
                                     </TabsTrigger>
                                 )}
                                 {!isCrypto && (
@@ -1036,7 +1580,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                         </div>
 
                         <div className="flex-1 min-h-0 bg-muted/5 overflow-hidden">
-                            <ScrollArea className="h-[280px] sm:h-[370px]">
+                            <ScrollArea className="h-[280px] sm:h-full">
                                 <div className="p-6 pt-2 space-y-4">
                                     {isSoldDetailMode && (
                                         <TabsContent value="sold" className="m-0 space-y-4">
@@ -1501,7 +2045,307 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 </div>
                                             </div>
                                         )}
+
+                                        {!isCrypto && (
+                                            <div className="rounded-2xl border border-muted/40 bg-muted/10 p-4">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Company Details</p>
+                                                        <p className="mt-1 text-xs text-muted-foreground">Profile, contact, and office information from the NEPSE company dataset.</p>
+                                                    </div>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-9 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                                                        onClick={() => {
+                                                            const nextOpen = !showCompanyDetails
+                                                            setShowCompanyDetails(nextOpen)
+                                                            if (nextOpen) loadCompanyProfile()
+                                                        }}
+                                                    >
+                                                        {showCompanyDetails ? "Hide Details" : "More Details"}
+                                                    </Button>
+                                                </div>
+
+                                                {showCompanyDetails && (
+                                                    <div className="mt-4 space-y-3 border-t border-muted/30 pt-4">
+                                                        {isCompanyProfileLoading ? (
+                                                            <p className="text-xs text-muted-foreground">Loading company profile...</p>
+                                                        ) : companyProfileError ? (
+                                                            <p className="text-xs text-destructive">{companyProfileError}</p>
+                                                        ) : companyProfile ? (
+                                                            <>
+                                                                <p className="text-sm leading-relaxed text-foreground/90">
+                                                                    {companyProfile.profile?.trim() || "NEPSE has contact details for this company, but no profile description in the current dataset."}
+                                                                </p>
+                                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                    {[
+                                                                        ["Address", companyProfile.address],
+                                                                        ["Address Type", companyProfile.address_type],
+                                                                        ["Phone", companyProfile.phone],
+                                                                        ["Email", companyProfile.email],
+                                                                        ["Contact", companyProfile.contact_person],
+                                                                        ["Fax", companyProfile.fax],
+                                                                    ].filter(([, value]) => value).map(([label, value]) => (
+                                                                        <div key={label} className="rounded-xl border border-muted/40 bg-background/40 p-3">
+                                                                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
+                                                                            <p className="mt-1 break-words text-xs font-bold">{value}</p>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <p className="text-xs text-muted-foreground">No company profile found for {symbol}.</p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </TabsContent>
+
+                                    {!isCrypto && (
+                                        <TabsContent value="financials" className="m-0 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Financial Snapshot</p>
+                                                    <p className="text-xs text-muted-foreground">Latest structured numbers from NEPSE company reports.</p>
+                                                </div>
+                                                <UITooltipProvider delayDuration={150}>
+                                                    <UITooltip>
+                                                        <UITooltipTrigger asChild>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="h-8 w-8 shrink-0 rounded-full border-primary/20"
+                                                                aria-label="Financial field definitions"
+                                                            >
+                                                                <Info className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </UITooltipTrigger>
+                                                        <UITooltipContent side="left" className="max-w-xs bg-card p-3 text-foreground shadow-xl border border-border">
+                                                            <div className="space-y-2 text-[11px] leading-relaxed">
+                                                                <p><strong>EPS</strong>: Earnings per share.</p>
+                                                                <p><strong>P/E</strong>: Price to earnings ratio; lower can mean cheaper relative to earnings.</p>
+                                                                <p><strong>Profit</strong>: Reported company profit for that period.</p>
+                                                                <p><strong>Paid-up Capital</strong>: Share capital actually paid by shareholders.</p>
+                                                                <p><strong>Net Worth / Share</strong>: Book value per share.</p>
+                                                            </div>
+                                                        </UITooltipContent>
+                                                    </UITooltip>
+                                                </UITooltipProvider>
+                                            </div>
+                                            {isFinancialReportsLoading ? (
+                                                <p className="text-xs text-muted-foreground">Loading financial reports...</p>
+                                            ) : financialReportsError ? (
+                                                <p className="text-xs text-destructive">{financialReportsError}</p>
+                                            ) : financialReports.length === 0 ? (
+                                                <p className="text-xs text-center text-muted-foreground py-8">No structured financial reports found for {symbol}.</p>
+                                            ) : (
+                                                <>
+                                                    {latestFinancialReport && financialCompareReport && (
+                                                        <div className="rounded-2xl border border-muted/40 bg-muted/10 p-4">
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Compared To Previous Report</p>
+                                                                    <p className="mt-1 text-xs font-bold">{formatFinancialReportLabel(financialCompareReport)}</p>
+                                                                </div>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="h-8 rounded-lg text-[10px] font-black uppercase tracking-widest"
+                                                                    onClick={() => setIsFinancialCompareOpen((current) => !current)}
+                                                                >
+                                                                    {isFinancialCompareOpen ? "Hide" : "Compare"}
+                                                                </Button>
+                                                            </div>
+                                                            {isFinancialCompareOpen && (
+                                                                <div className="mt-3 border-t border-muted/30 pt-3">
+                                                                    <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Compare latest with</p>
+                                                                    <select
+                                                                        className="h-10 w-full rounded-xl border border-primary/20 bg-background px-3 text-xs font-bold outline-none focus:border-primary"
+                                                                        value={activeFinancialCompareKey}
+                                                                        onChange={(event) => setFinancialCompareReportKey(event.target.value)}
+                                                                        aria-label="Compare latest financial report against"
+                                                                    >
+                                                                        {financialCompareReportOptions.map((report, optionIndex) => {
+                                                                            const reportIndex = optionIndex
+                                                                            return (
+                                                                                <option key={getFinancialReportKey(report, reportIndex)} value={getFinancialReportKey(report, reportIndex)}>
+                                                                                    {formatFinancialReportLabel(report)}
+                                                                                </option>
+                                                                            )
+                                                                        })}
+                                                                    </select>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {latestFinancialReport && (
+                                                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                                            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{isLatestFinancialReportCurrentFy ? "Current FY Latest" : "Latest Submitted"}</p>
+                                                                <p className="mt-1 text-xs font-black">{latestFinancialReport.type || "Report"}</p>
+                                                                <p className="text-[10px] text-muted-foreground">{latestFinancialReport.quarter || latestFinancialReport.fy_nepali || latestFinancialReport.fy || "Recent"}</p>
+                                                                <Badge variant={isLatestFinancialReportCurrentFy ? "default" : "outline"} className="mt-2 text-[8px] font-black uppercase tracking-widest">
+                                                                    {isLatestFinancialReportCurrentFy ? "Current FY" : "Past FY"}
+                                                                </Badge>
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">EPS</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(latestFinancialReport.eps || 0))}</p>
+                                                                {renderFinancialDelta(latestFinancialReport.eps, financialCompareReport?.eps, "higher")}
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">P/E</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(latestFinancialReport.pe || 0))}</p>
+                                                                {renderFinancialDelta(latestFinancialReport.pe, financialCompareReport?.pe, "lower")}
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Profit</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(latestFinancialReport.profit)}</p>
+                                                                {renderFinancialDelta(latestFinancialReport.profit, financialCompareReport?.profit, "higher")}
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Paid-up Capital</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(latestFinancialReport.paid_up_capital)}</p>
+                                                                {renderFinancialDelta(latestFinancialReport.paid_up_capital, financialCompareReport?.paid_up_capital, "higher")}
+                                                            </div>
+                                                            <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
+                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Net Worth / Share</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(latestFinancialReport.net_worth_per_share || 0))}</p>
+                                                                {renderFinancialDelta(latestFinancialReport.net_worth_per_share, financialCompareReport?.net_worth_per_share, "higher")}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Financial History</p>
+                                                            <p className="text-xs text-muted-foreground">Current FY: {currentNepaliFiscalYear || currentAdFiscalYear}. Open a year to see report files.</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        {financialReportsByYear.map((group, groupIndex) => (
+                                                            <details
+                                                                key={`${group.year}-${group.latestSubmittedDate || groupIndex}`}
+                                                                className="rounded-2xl border border-muted/40 bg-muted/10 p-4 open:border-primary/20 open:bg-primary/5"
+                                                            >
+                                                                <summary className="cursor-pointer list-none">
+                                                                    {(() => {
+                                                                        const yearLatest = group.reports[0]
+                                                                        return (
+                                                                            <>
+                                                                    <div className="flex items-center justify-between gap-3">
+                                                                        <div>
+                                                                            <p className="text-sm font-black">{group.year}</p>
+                                                                            <p className="text-[10px] font-bold text-muted-foreground">
+                                                                                {group.isCurrentFiscalYear ? "Current financial year" : "Past financial year"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <Badge variant={group.isCurrentFiscalYear ? "default" : "outline"} className="text-[9px] font-black uppercase tracking-widest">
+                                                                            {group.reports.length} report{group.reports.length === 1 ? "" : "s"}
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                                                        <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
+                                                                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">EPS</p>
+                                                                            <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(yearLatest?.eps || 0))}</p>
+                                                                        </div>
+                                                                        <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
+                                                                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">P/E</p>
+                                                                            <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(yearLatest?.pe || 0))}</p>
+                                                                        </div>
+                                                                        <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
+                                                                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Profit</p>
+                                                                            <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(yearLatest?.profit)}</p>
+                                                                        </div>
+                                                                        <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
+                                                                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Net Worth</p>
+                                                                            <p className="mt-1 text-sm font-black font-mono">{formatValue(Number(yearLatest?.net_worth_per_share || 0))}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                            </>
+                                                                        )
+                                                                    })()}
+                                                                </summary>
+                                                                <div className="mt-4 space-y-3">
+                                                                    {group.reports.map((report, index) => {
+                                                                        const compareReport = group.reports[index + 1]
+                                                                        const firstDocument = report.documents?.[0]
+                                                                        const reportKey = [
+                                                                            group.year,
+                                                                            report.type || "report",
+                                                                            report.fy || "fy",
+                                                                            report.fy_nepali || "fy-nepali",
+                                                                            report.quarter || "annual",
+                                                                            firstDocument?.path || firstDocument?.url || firstDocument?.submitted_date || index,
+                                                                            index,
+                                                                        ].join("-")
+
+                                                                        return (
+                                                                            <div key={reportKey} className="rounded-xl border border-muted/40 bg-background/40 p-3">
+                                                                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                                    <div>
+                                                                                        <p className="text-sm font-black">{report.type || "Financial Report"}</p>
+                                                                                        <p className="text-[10px] font-bold text-muted-foreground">
+                                                                                            {[report.quarter, report.fy].filter(Boolean).join(" / ") || "Fiscal period unavailable"}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    <div className="flex flex-wrap gap-1">
+                                                                                        {report.eps !== undefined && <Badge variant="outline" className="text-[9px] font-black">EPS {formatValue(Number(report.eps))}</Badge>}
+                                                                                        {report.pe !== undefined && <Badge variant="outline" className="text-[9px] font-black">P/E {formatValue(Number(report.pe))}</Badge>}
+                                                                                        {report.net_worth_per_share !== undefined && <Badge variant="outline" className="text-[9px] font-black">NW {formatValue(Number(report.net_worth_per_share))}</Badge>}
+                                                                                    </div>
+                                                                                </div>
+                                                                                {compareReport && (
+                                                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                                                        {renderFinancialDeltaPill("EPS", report.eps, compareReport.eps, "higher")}
+                                                                                        {renderFinancialDeltaPill("P/E", report.pe, compareReport.pe, "lower")}
+                                                                                        {renderFinancialDeltaPill("Profit", report.profit, compareReport.profit, "higher")}
+                                                                                    </div>
+                                                                                )}
+                                                                                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground sm:grid-cols-3">
+                                                                                    <span>Profit: <strong className="text-foreground">{currencySymbol} {formatCompactValue(report.profit)}</strong></span>
+                                                                                    <span>Capital: <strong className="text-foreground">{currencySymbol} {formatCompactValue(report.paid_up_capital)}</strong></span>
+                                                                                    <span>Docs: <strong className="text-foreground">{(report.documents || []).length}</strong></span>
+                                                                                </div>
+                                                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                                                    {(report.documents || []).length > 0 ? (
+                                                                                        (report.documents || []).map((document, documentIndex) => (
+                                                                                            <Button
+                                                                                                key={`${document.path || document.url || documentIndex}`}
+                                                                                                variant="outline"
+                                                                                                size="sm"
+                                                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                                                                onClick={() => {
+                                                                                                    if (document.url) handleOpenDocument(document.url)
+                                                                                                }}
+                                                                                                disabled={!document.url}
+                                                                                            >
+                                                                                                <ExternalLink className="w-3 h-3 mr-2" />
+                                                                                                Report {documentIndex + 1}{document.submitted_date ? ` (${formatAppDate(document.submitted_date, calendarSystem)})` : ""}
+                                                                                            </Button>
+                                                                                        ))
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-muted-foreground">No attached documents</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </details>
+                                                        ))}
+                                                    </div>
+                                                    {financialMetadata?.last_updated && (
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Source updated {formatAppDate(financialMetadata.last_updated, calendarSystem)}.
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
+                                        </TabsContent>
+                                    )}
 
                                     {!isCrypto && (
                                         <TabsContent value="price" className="m-0 space-y-4">
@@ -2268,7 +3112,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             )
                                         ) : matchedNotices.length > 0 ? (
                                             matchedNotices.map((notice) => (
-                                                <div key={`${notice.sourceType || "notice"}-${notice.id}`} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2">
+                                                <div key={`${notice.sourceType || "notice"}-${notice.id}`} className="p-3 rounded-xl border border-muted/30 bg-muted/5 space-y-2 transition-colors hover:border-primary/20 hover:bg-primary/5">
                                                     <div className="flex justify-between items-start gap-2">
                                                         <h4 className="text-xs sm:text-[13px] font-bold leading-tight line-clamp-2">
                                                             {getNoticeTitle(notice)}
@@ -2277,19 +3121,21 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             {getNoticeDate(notice) ? formatAppDate(getNoticeDate(notice), calendarSystem) : "Recent"}
                                                         </span>
                                                     </div>
-                                                    {notice.sourceType && (
-                                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest">
-                                                            {notice.sourceType}
-                                                        </Badge>
-                                                    )}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 px-0 text-[9px] font-black uppercase tracking-wider text-primary hover:bg-transparent"
-                                                        onClick={() => toggleNoticeDetails(notice.id)}
-                                                    >
-                                                        {expandedNoticeId === notice.id ? "Hide Details" : "View Details"}
-                                                    </Button>
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        {notice.sourceType && (
+                                                            <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest">
+                                                                {notice.sourceType}
+                                                            </Badge>
+                                                        )}
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 rounded-full px-2 text-[9px] font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/10 hover:text-primary"
+                                                            onClick={() => toggleNoticeDetails(notice.id)}
+                                                        >
+                                                            {expandedNoticeId === notice.id ? "Hide Details" : "View Details"}
+                                                        </Button>
+                                                    </div>
                                                     {expandedNoticeId === notice.id && (
                                                         <div className="rounded-lg border border-muted/30 bg-muted/10 p-3 space-y-3">
                                                             {getNoticeBody(notice) ? (
@@ -2341,20 +3187,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             <div className="flex gap-2">
                                 <Button
                                     className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 shadow-lg shadow-primary/20"
-                                    onClick={() => {
-                                        const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
-                                        const event = new CustomEvent('openStockTransaction', {
-                                            detail: {
-                                                symbol: item?.symbol,
-                                                assetType: item?.assetType || 'stock',
-                                                cryptoId: item?.cryptoId || '',
-                                                price: current,
-                                                type: 'buy',
-                                                portfolioId: item?.portfolioId
-                                            }
-                                        })
-                                        window.dispatchEvent(event)
-                                    }}
+                                    onClick={() => openInlineTransaction("buy")}
                                 >
                                     <Wallet className="w-3.5 h-3.5 mr-2" />
                                     {isMarketLookupItem ? "Add Buy" : "Buy"}
@@ -2363,20 +3196,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     <Button
                                         variant="outline"
                                         className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10"
-                                        onClick={() => {
-                                            const current = Number.isFinite(item?.currentPrice) ? item.currentPrice : safeBuyPrice
-                                            const event = new CustomEvent('openStockTransaction', {
-                                                detail: {
-                                                    symbol: item?.symbol,
-                                                    assetType: item?.assetType || 'stock',
-                                                    cryptoId: item?.cryptoId || '',
-                                                    price: current,
-                                                    type: 'sell',
-                                                    portfolioId: item?.portfolioId
-                                                }
-                                            })
-                                            window.dispatchEvent(event)
-                                        }}
+                                        onClick={() => openInlineTransaction("sell")}
                                     >
                                         <ArrowUpRight className="w-3.5 h-3.5 mr-2" />
                                         Sell
@@ -2385,6 +3205,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             </div>
                         </div>
                     </Tabs>
+                    )}
                     </DialogContent>
                 )}
             </Dialog>
