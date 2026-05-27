@@ -1,0 +1,481 @@
+{
+  "lastUpdated": "2026-05-27",
+  "milestones": [
+    {
+      "id": "m1",
+      "title": "Foundation & Core Finance",
+      "version": "1.0.0 – 1.3.5",
+      "progress": 100,
+      "description": "Core personal finance tracking, budgets, goals, debt management, and category organization."
+    },
+    {
+      "id": "m2",
+      "title": "NEPSE & Portfolio Platform",
+      "version": "2.0.0 – 2.0.4",
+      "progress": 100,
+      "description": "Full NEPSE stock market integration, crypto support, portfolio management, SIP plans, MeroShare automation, currency tools, Dropbox sync, and biometric security."
+    },
+    {
+      "id": "m3",
+      "title": "Automation & Extension Ecosystem",
+      "version": "2.1.0.0",
+      "progress": 100,
+      "description": "Remote browser automation, browser extension sync bridge, portfolio snapshots, and budget/goal UX refinements."
+    },
+    {
+      "id": "m4",
+      "title": "Storage & Sync Architecture",
+      "version": "2.2.0 (Planned)",
+      "progress": 15,
+      "description": "Migrate from localStorage to IndexedDB, implement record-level sync, and harden data integrity."
+    },
+    {
+      "id": "m5",
+      "title": "AI & Insights Engine",
+      "version": "3.0.0 (Vision)",
+      "progress": 5,
+      "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, and natural language queries."
+    }
+  ],
+  "categories": [
+    { "id": "core", "label": "Core Finance", "color": "emerald" },
+    { "id": "portfolio", "label": "Portfolio & Market", "color": "blue" },
+    { "id": "security", "label": "Security & Auth", "color": "amber" },
+    { "id": "sync", "label": "Sync & Storage", "color": "purple" },
+    { "id": "ux", "label": "UX & Design", "color": "pink" },
+    { "id": "infra", "label": "Infrastructure", "color": "slate" },
+    { "id": "extension", "label": "Extension & Bridge", "color": "cyan" },
+    { "id": "crypto", "label": "Crypto & Exchange", "color": "cyan" },
+    { "id": "tools", "label": "Financial Tools", "color": "pink" },
+    { "id": "ai", "label": "AI & Insights", "color": "orange" }
+  ],
+  "items": [
+    {
+      "id": "r1",
+      "title": "Transaction Tracking & Categories",
+      "description": "Record and categorize all income and expenses with custom categories, subcategories, and payment method support.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m1",
+      "completedDate": "2025-09-01",
+      "priority": "critical"
+    },
+    {
+      "id": "r2",
+      "title": "Budget Management System",
+      "description": "Set monthly/weekly spending limits with subcategories, emergency reserves, and over-budget detection with real-time progress bars.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m1",
+      "completedDate": "2025-09-01",
+      "priority": "critical"
+    },
+    {
+      "id": "r3",
+      "title": "Goal Tracking & Hard Plan Challenges",
+      "description": "Visual progress tracking with auto-contribution, gamified savings challenges, penalty tracking, and investment reward points.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m1",
+      "completedDate": "2026-03-28",
+      "priority": "high"
+    },
+    {
+      "id": "r4",
+      "title": "Debt & Credit Management",
+      "description": "Track loans, credit cards, fast debt accounts, and repayment plans with payment scheduling and interest calculations.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m1",
+      "completedDate": "2026-03-28",
+      "priority": "high"
+    },
+    {
+      "id": "r5",
+      "title": "Financial Health Score & Insights",
+      "description": "Comprehensive financial wellness scoring with spending trends, category performance analysis, and scenario planning.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m1",
+      "completedDate": "2026-03-14",
+      "priority": "medium"
+    },
+    {
+      "id": "r6",
+      "title": "PWA with Offline Support",
+      "description": "Progressive Web App with service worker (Serwist), offline mode, push notifications, and install prompts across all platforms.",
+      "status": "completed",
+      "category": "infra",
+      "milestone": "m1",
+      "completedDate": "2026-02-04",
+      "priority": "critical"
+    },
+    {
+      "id": "r7",
+      "title": "Receipt & QR Code Scanner",
+      "description": "OCR-powered receipt scanning with Tesseract.js and QR code scanning for quick transaction data entry.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m1",
+      "completedDate": "2026-02-13",
+      "priority": "medium"
+    },
+    {
+      "id": "r8",
+      "title": "NEPSE Stock Market Integration",
+      "description": "Real-time Nepali stock market data, company profiles, financial statements, sector analysis, and top stock rankings.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m2",
+      "completedDate": "2026-04-17",
+      "priority": "critical"
+    },
+    {
+      "id": "r9",
+      "title": "Portfolio Management",
+      "description": "Multi-portfolio support for stocks and crypto with holdings tracking, P&L calculations, market snapshots, and IPO management.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m2",
+      "completedDate": "2026-04-17",
+      "priority": "critical"
+    },
+    {
+      "id": "r10",
+      "title": "SIP Plan Automation",
+      "description": "Systematic Investment Plan automation with transaction enrollment, due date calculations, and carryover logic.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m2",
+      "completedDate": "2026-05-09",
+      "priority": "high"
+    },
+    {
+      "id": "r11",
+      "title": "MeroShare IPO Automation",
+      "description": "Automated IPO application through MeroShare with Puppeteer-based browser automation and DPS management.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m2",
+      "completedDate": "2026-04-17",
+      "priority": "high"
+    },
+    {
+      "id": "r12",
+      "title": "Dropbox Cloud Backup & Sync",
+      "description": "Secure OAuth2 PKCE-based Dropbox integration with selective import/export, tombstone sync, and token revocation.",
+      "status": "completed",
+      "category": "sync",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "critical"
+    },
+    {
+      "id": "r13",
+      "title": "Biometric Authentication & PIN Lock",
+      "description": "WebAuthn-based fingerprint/face recognition, PIN management with secure key wrapping, and session timeout controls.",
+      "status": "completed",
+      "category": "security",
+      "milestone": "m2",
+      "completedDate": "2026-04-17",
+      "priority": "critical"
+    },
+    {
+      "id": "r14",
+      "title": "Floating Calculator & Productivity Tools",
+      "description": "Multi-instance movable calculator with keyboard input, live results, docking, tabbed history, and currency converter.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "medium"
+    },
+    {
+      "id": "r36",
+      "title": "Crypto Market Tracking",
+      "description": "Crypto watch data, popular coin discovery, symbol resolution, and portfolio-ready pricing through the Coinlore integration.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "high"
+    },
+    {
+      "id": "r43",
+      "title": "Crypto Portfolio Tracking",
+      "description": "Track crypto holdings inside portfolios with asset type support, crypto identifiers, units, valuation, and P&L alongside stock investments.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "high"
+    },
+    {
+      "id": "r37",
+      "title": "Currency Exchange & Converter",
+      "description": "Built-in currency conversion flow for quick exchange calculations across wallet tools and financial workflows.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "medium"
+    },
+    {
+      "id": "r38",
+      "title": "Coinlore Crypto API Integration",
+      "description": "Server-side Coinlore proxy routes for popular coins, symbol resolution, and crypto price lookup without exposing client-side API assumptions.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "high"
+    },
+    {
+      "id": "r39",
+      "title": "Crypto News & Market Context",
+      "description": "Crypto news endpoint support for BTC and market context so users can connect portfolio movements with broader crypto updates.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "medium"
+    },
+    {
+      "id": "r40",
+      "title": "Currency Conversion API Route",
+      "description": "Dedicated currency conversion API route for transforming amounts between currencies from the app instead of relying only on static symbols.",
+      "status": "completed",
+      "category": "crypto",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "high"
+    },
+    {
+      "id": "r41",
+      "title": "Custom Currency System",
+      "description": "User currency preferences, custom currency symbols, localized money formatting, and consistent currency rendering across wallet modules.",
+      "status": "completed",
+      "category": "tools",
+      "milestone": "m1",
+      "completedDate": "2026-03-14",
+      "priority": "high"
+    },
+    {
+      "id": "r42",
+      "title": "Financial Tools Suite",
+      "description": "Floating calculator, quick-action tools, amount inputs, currency-aware helpers, and productivity utilities for day-to-day financial decisions.",
+      "status": "completed",
+      "category": "tools",
+      "milestone": "m2",
+      "completedDate": "2026-04-30",
+      "priority": "medium"
+    },
+    {
+      "id": "r15",
+      "title": "Shift Tracker & Timed Wallet",
+      "description": "Track work shifts and translate expenses into work-hour equivalents for time-based financial awareness.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m2",
+      "completedDate": "2026-04-15",
+      "priority": "medium"
+    },
+    {
+      "id": "r16",
+      "title": "Browserless Remote MeroShare Automation",
+      "description": "WebSocket-based Browserless integration for running MeroShare automation in cloud browsers without local Puppeteer.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m3",
+      "completedDate": "2026-05-10",
+      "priority": "high"
+    },
+    {
+      "id": "r17",
+      "title": "Browser Extension Sync Bridge",
+      "description": "Chrome/Firefox companion extension with bi-directional wallet state sync via a global extension bridge component.",
+      "status": "completed",
+      "category": "extension",
+      "milestone": "m3",
+      "completedDate": "2026-05-10",
+      "priority": "high"
+    },
+    {
+      "id": "r18",
+      "title": "Portfolio Price Histories & Snapshots",
+      "description": "Grouped price history charts, valuation timeline modals, and snapshot views for portfolio performance analysis.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m3",
+      "completedDate": "2026-05-23",
+      "priority": "high"
+    },
+    {
+      "id": "r19",
+      "title": "Budget Period Boundary Fix",
+      "description": "Corrected monthly/weekly budget transaction counting to start from the 1st day of the active period with proper reset logic.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m3",
+      "completedDate": "2026-05-27",
+      "priority": "critical"
+    },
+    {
+      "id": "r20",
+      "title": "Goal Metrics & Challenge UI Overhaul",
+      "description": "Streamlined goal cards with Key Metrics Grid, restored Hard Plan challenge points/penalties, and fixed history scroll modals.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m3",
+      "completedDate": "2026-05-27",
+      "priority": "high"
+    },
+    {
+      "id": "r21",
+      "title": "4-Digit Versioning System (2.1.0.0)",
+      "description": "Transitioned from 3-digit semver to 4-digit versioning for better sub-release tracking across platforms.",
+      "status": "completed",
+      "category": "infra",
+      "milestone": "m3",
+      "completedDate": "2026-05-27",
+      "priority": "medium"
+    },
+    {
+      "id": "r22",
+      "title": "Sell Quantity Validation & Trade Preview",
+      "description": "Prevent overselling with remaining-units calculation, normalized trade type previews, and reinvestment toggles.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m3",
+      "completedDate": "2026-05-23",
+      "priority": "high"
+    },
+    {
+      "id": "r23",
+      "title": "Migrate Core Data to IndexedDB",
+      "description": "Move transactions, budgets, goals, portfolios, and debts from localStorage JSON blobs to structured IndexedDB stores with indexes.",
+      "status": "in-progress",
+      "category": "sync",
+      "milestone": "m4",
+      "priority": "critical"
+    },
+    {
+      "id": "r24",
+      "title": "Record-Level Sync Engine",
+      "description": "Replace full-array saves with per-record writes. Add consistent createdAt/updatedAt/deletedAt timestamps for conflict resolution.",
+      "status": "in-progress",
+      "category": "sync",
+      "milestone": "m4",
+      "priority": "critical"
+    },
+    {
+      "id": "r25",
+      "title": "Deep Data Integrity Hashing",
+      "description": "Fix shallow JSON.stringify hashing to properly validate nested financial fields and detect all mutations.",
+      "status": "planned",
+      "category": "security",
+      "milestone": "m4",
+      "priority": "critical"
+    },
+    {
+      "id": "r26",
+      "title": "Secure Key Rotation with Re-Encryption",
+      "description": "Fix rotateMasterKey() to re-encrypt all existing wallet records during key rotation instead of creating orphaned data.",
+      "status": "planned",
+      "category": "security",
+      "milestone": "m4",
+      "priority": "critical"
+    },
+    {
+      "id": "r27",
+      "title": "Encrypted Token Storage",
+      "description": "Move Dropbox access/refresh tokens from raw localStorage to encrypted storage to mitigate XSS token theft.",
+      "status": "planned",
+      "category": "security",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r28",
+      "title": "Dropbox Merge Conflict Improvements",
+      "description": "Fix merge logic to use updatedAt timestamps instead of transaction dates, preventing newer changes from being overwritten.",
+      "status": "planned",
+      "category": "sync",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r29",
+      "title": "Split Wallet Context by Domain",
+      "description": "Break the monolithic WalletDataContext into domain-specific providers to reduce unnecessary rerenders across unrelated screens.",
+      "status": "in-progress",
+      "category": "infra",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r30",
+      "title": "Storage Adapter Layer",
+      "description": "Create an abstraction layer over localStorage/IndexedDB to enable transparent backend switching and consistent encryption.",
+      "status": "planned",
+      "category": "sync",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r31",
+      "title": "Smart Spending Predictions",
+      "description": "ML-powered spending pattern analysis to predict monthly expenses and suggest proactive budget adjustments.",
+      "status": "exploring",
+      "category": "ai",
+      "milestone": "m5",
+      "priority": "medium"
+    },
+    {
+      "id": "r32",
+      "title": "Anomaly Detection in Transactions",
+      "description": "Automatically flag unusual transactions based on historical patterns, amounts, and category deviations.",
+      "status": "exploring",
+      "category": "ai",
+      "milestone": "m5",
+      "priority": "medium"
+    },
+    {
+      "id": "r33",
+      "title": "Natural Language Financial Queries",
+      "description": "Ask questions like 'How much did I spend on food last month?' and get instant answers from your wallet data.",
+      "status": "exploring",
+      "category": "ai",
+      "milestone": "m5",
+      "priority": "low"
+    },
+    {
+      "id": "r34",
+      "title": "Multi-Device Real-Time Sync",
+      "description": "WebSocket or Server-Sent Events based real-time sync across multiple devices with conflict resolution.",
+      "status": "exploring",
+      "category": "sync",
+      "milestone": "m5",
+      "priority": "high"
+    },
+    {
+      "id": "r35",
+      "title": "Public Roadmap Page",
+      "description": "Beautiful, searchable, filterable roadmap page with milestone tracking, progress visualization, and status indicators.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m3",
+      "completedDate": "2026-05-27",
+      "priority": "medium"
+    },
+    {
+      "id": "r44",
+      "title": "Version 2.1.1.0 Development Cycle",
+      "description": "Active unreleased development cycle for the next MyWallet build. Release notes will stay on the last public version until 2.1.1.0 is shipped.",
+      "status": "in-progress",
+      "category": "infra",
+      "milestone": "m4",
+      "priority": "high"
+    }
+  ]
+}

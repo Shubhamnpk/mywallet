@@ -6,8 +6,9 @@
       "date": "2026-05-27",
       "status": "current",
       "category": "Feature",
-      "title": "Returning User Recovery, Portfolio Snapshots, MeroShare Automation, and Budget Refinements",
+      "title": "Public Roadmap, Returning User Recovery, Portfolio Snapshots, MeroShare Automation, and Budget Refinements",
       "highlights": [
+        "Public Roadmap: Shipped a dedicated public roadmap with current features, searchable goals, milestone tracking, bento feature showcase, and completed/in-progress/planned visibility.",
         "MeroShare Automation: Added Browserless WebSocket support to delegate automated IPO checks and applications to remote cloud browsers.",
         "Extension Bridge: Integrated a global extension bridge in the root layout to seamlessly sync wallet state with the MyWallet Chrome/Firefox companion extension.",
         "Dropbox & Security: Upgraded sync flows to remember backup PINs, validate OAuth scopes, and revoke active tokens on disconnect.",
