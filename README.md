@@ -6,11 +6,14 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 ## ✨ What's New
 
-### Version 2.1.0 (May 9, 2026)
-- **Welcome Back Flow**: Returning users now get a clearer recovery path from the welcome page straight back to the dashboard
-- **Portfolio Tools**: Added richer sell previews, dividend what-if planning, and stronger import price verification
-- **Calendar Refinements**: Better alignment between app dates, budgeting periods, and dashboard timelines
-- **Platform Consistency**: Web, Android, iOS, and public release metadata are now aligned on the same version number
+### Version 2.1.0.0 (May 27, 2026)
+- **Welcome Back Flow**: Returning users now get a clearer recovery path from the welcome page straight back to the dashboard.
+- **MeroShare Automation & Extension Bridge**: Added remote Browserless browser support for IPO automation and a global companion extension bridge for seamless sync.
+- **Dropbox Sync & Security**: Upgraded flows to remember backup PINs, validate OAuth scopes, and revoke active tokens on disconnect.
+- **Portfolio Snapshots**: Enriched views with grouped price histories, live value previews, dividend what-if planning, and conventional transaction drafts.
+- **Budget Boundaries**: Fixed transaction counting to start exactly from the 1st day of the active month/week, and redesigned the exceeded budget UI with premium red-bordered dark glows.
+- **Goal & Challenge UX**: Streamlined expanded goals into a clean Key Metrics Grid, restored Hard Plan Point/Penalty tracking with 'Use for Investment' actions, and stabilized transaction history scrolls.
+
 
 ### Version 2.0.1 (April 18, 2026)
 - **Bug Fix**: Improved decimal number formatting and precision for better financial calculations

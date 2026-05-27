@@ -1,17 +1,21 @@
 {
-  "currentBuild": "2026.05.09",
+  "currentBuild": "2026.05.27",
   "releases": [
     {
-      "version": "2.1.0",
-      "date": "2026-05-09",
+      "version": "2.1.0.0",
+      "date": "2026-05-27",
       "status": "current",
       "category": "Feature",
-      "title": "Returning User Recovery, Portfolio Planning, and Calendar Refinements",
+      "title": "Returning User Recovery, Portfolio Snapshots, MeroShare Automation, and Budget Refinements",
       "highlights": [
-        "Returning users who land on the welcome page now see a clear welcome-back message and a direct path back to the dashboard.",
-        "Portfolio workflows gained richer sell previews, dividend what-if planning, and better price verification during imports.",
-        "Date-sensitive budgeting and dashboard flows now align more consistently with the app calendar system.",
-        "The About screen and support actions were refreshed, and wallet data hooks were reorganized for cleaner long-term maintenance."
+        "MeroShare Automation: Added Browserless WebSocket support to delegate automated IPO checks and applications to remote cloud browsers.",
+        "Extension Bridge: Integrated a global extension bridge in the root layout to seamlessly sync wallet state with the MyWallet Chrome/Firefox companion extension.",
+        "Dropbox & Security: Upgraded sync flows to remember backup PINs, validate OAuth scopes, and revoke active tokens on disconnect.",
+        "Portfolio Workflows: Enriched views with grouped price histories, sell previews, dividend what-if planning, live value previews, and transaction drafts.",
+        "Budget Boundaries: Fixed transaction periods to begin on the 1st day of active months/weeks, and replaced the washed-out exceeded budget UI with premium red-bordered dark glow states.",
+        "Goal & Challenge Refinement: Consolidated expanded goals into a clean Key Metrics Grid, restored Hard Plan Point/Penalty tracking with 'Use for Investment' actions, and stabilized transaction history scrolls.",
+        "Welcome Back Flow: Returning users who land on the welcome page now see a clear welcome-back message and a direct path back to the dashboard.",
+        "Active Development: Designing storage migration from localStorage to IndexedDB, record-level synchronization, and cryptographic data rotation rules."
       ]
     },
     {
