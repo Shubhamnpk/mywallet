@@ -85,7 +85,7 @@ const getPrimaryAccount = (accounts: MeroShareAccount[]) =>
     accounts.find((account) => account.role === "primary") || accounts[0]
 
 export function MeroShareSettings() {
-    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
+    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, syncMeroShareTransactionHistory, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
     const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
     const [showPassword, setShowPassword] = useState(false)
     const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
@@ -94,6 +94,7 @@ export function MeroShareSettings() {
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [isSyncing, setIsSyncing] = useState(false)
+    const [isSyncingHistory, setIsSyncingHistory] = useState(false)
     const [isDpListOpen, setIsDpListOpen] = useState(false)
     const [selectedTestIpo, setSelectedTestIpo] = useState("")
     const [testMode, setTestMode] = useState<'apply' | 'result'>('apply')
@@ -118,6 +119,7 @@ export function MeroShareSettings() {
         preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
         applyMode: "on-demand",
         showLiveBrowser: false,
+        browserProvider: userProfile?.meroShare?.browserProvider || "auto",
         isAutomatedEnabled: true
     })
     const openIpos = upcomingIPOs.filter(ipo => ipo.status === 'open')
@@ -184,6 +186,7 @@ export function MeroShareSettings() {
             preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
             applyMode: "on-demand",
             showLiveBrowser: false,
+            browserProvider: userProfile?.meroShare?.browserProvider || "auto",
             isAutomatedEnabled: true,
         })
     }, [userProfile?.meroShare])
@@ -209,6 +212,7 @@ export function MeroShareSettings() {
                 shareFeaturesEnabled: nextForm.shareFeaturesEnabled,
                 applyMode: "on-demand",
                 showLiveBrowser: false,
+                browserProvider: nextForm.browserProvider,
                 isAutomatedEnabled: true,
                 dpId: primaryAccount?.dpId || "",
                 username: primaryAccount?.username || "",
@@ -321,7 +325,7 @@ export function MeroShareSettings() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 credentials: formData,
-                options: { showBrowser: false }
+                options: { showBrowser: false, browserProvider: formData.browserProvider }
             })
         }).then(async (res) => {
             const data = await res.json()
@@ -365,6 +369,15 @@ export function MeroShareSettings() {
         persistMeroShareSettings(nextForm, accounts)
     }
 
+    const updateBrowserProvider = (value: "auto" | "browserless" | "local") => {
+        const nextForm = {
+            ...formData,
+            browserProvider: value,
+        }
+        setFormData(nextForm)
+        persistMeroShareSettings(nextForm, accounts)
+    }
+
     const updateField = (key: string, value: any) => {
         setFormData(prev => ({
             ...prev,
@@ -402,7 +415,7 @@ export function MeroShareSettings() {
             ipoToTest,
             formData.preferredKitta || 0,
             "settings-test",
-            { showBrowser: false }
+            { showBrowser: false, browserProvider: formData.browserProvider }
         )
 
         toast.promise(promise, {
@@ -439,6 +452,28 @@ export function MeroShareSettings() {
             error: (err) => {
                 setIsSyncing(false)
                 return err.message || "Failed to sync portfolio."
+            }
+        })
+    }
+
+    const handleSyncTransactionHistory = async () => {
+        if (!formData.dpId || !formData.username || !formData.password) {
+            toast.error("Credentials missing", { description: "Save your credentials first to sync transaction history." })
+            return
+        }
+
+        setIsSyncingHistory(true)
+        const promise = syncMeroShareTransactionHistory(formData, targetPortfolio)
+
+        toast.promise(promise, {
+            loading: "Fetching MeroShare transaction history...",
+            success: (data) => {
+                setIsSyncingHistory(false)
+                return `History synced. Imported ${data.importedCount}, skipped ${data.skippedCount} duplicate${data.skippedCount === 1 ? "" : "s"}.`
+            },
+            error: (err) => {
+                setIsSyncingHistory(false)
+                return err.message || "Failed to sync transaction history."
             }
         })
     }
@@ -915,8 +950,8 @@ export function MeroShareSettings() {
                             <RefreshCw className={cn("w-5 h-5", isSyncing && "animate-spin")} />
                         </div>
                         <div>
-                            <CardTitle className="text-base">Portfolio Sync</CardTitle>
-                            <CardDescription className="text-xs text-info/60">Automatically import your current holdings from Mero Share</CardDescription>
+                            <CardTitle className="text-base">MeroShare Sync</CardTitle>
+                            <CardDescription className="text-xs text-info/60">Import current holdings and transaction history from MeroShare</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
@@ -940,26 +975,72 @@ export function MeroShareSettings() {
 
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-2">
                             <div className="text-xs text-muted-foreground leading-relaxed max-w-sm">
-                                This will fetch your latest scrips and units.
+                                Holdings sync fetches your latest scrips and units.
                                 Existing scrips will have their units updated, while new ones will be added to
                                 <span className="font-bold text-info"> {portfolios.find(p => p.id === targetPortfolio)?.name || "your portfolio"}</span>.
                             </div>
-                            <Button
-                                onClick={handleSyncPortfolio}
-                                disabled={isSyncing || !targetPortfolio}
-                                className="bg-info hover:bg-info/90 text-white shadow-lg shadow-info/20 px-8 rounded-xl font-bold h-11 shrink-0 w-full sm:w-auto border-0"
-                            >
-                                {isSyncing ? "Syncing..." : "Sync Now"}
-                            </Button>
+                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                                <Button
+                                    onClick={handleSyncPortfolio}
+                                    disabled={isSyncing || isSyncingHistory || !targetPortfolio}
+                                    className="bg-info hover:bg-info/90 text-white shadow-lg shadow-info/20 px-8 rounded-xl font-bold h-11 shrink-0 w-full sm:w-auto border-0"
+                                >
+                                    {isSyncing ? "Syncing..." : "Sync Holdings"}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={handleSyncTransactionHistory}
+                                    disabled={isSyncing || isSyncingHistory || !targetPortfolio}
+                                    className="border-info/20 px-8 rounded-xl font-bold h-11 shrink-0 w-full sm:w-auto"
+                                >
+                                    {isSyncingHistory ? "Syncing..." : "Sync History"}
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
                     <p className="text-[10px] text-muted-foreground mt-2 italic flex items-center gap-1.5 opacity-60">
                         <AlertCircle className="w-3 h-3 text-warning" />
-                        Cost price (Buy Price) won't be updated automatically. You may need to update them manually.
+                        Transaction history uses face value for IPO/merger credits and 0 for unknown secondary-market prices.
                     </p>
                 </CardContent>
             </Card>
+
+            {isDeveloperMode && (
+                <Card className="border-dashed border-primary/30 bg-primary/5">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center text-primary">
+                                <Fingerprint className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-base">Developer Browser Runtime</CardTitle>
+                                <CardDescription className="text-xs text-primary/60">Choose how MeroShare Puppeteer sessions launch on this machine</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_220px] sm:items-center">
+                            <div className="text-xs text-muted-foreground leading-relaxed">
+                                Auto uses Browserless when configured, then falls back to local Chrome in development. Local Chrome is only for your own dev machine.
+                            </div>
+                            <Select
+                                value={formData.browserProvider}
+                                onValueChange={(value) => updateBrowserProvider(value as "auto" | "browserless" | "local")}
+                            >
+                                <SelectTrigger className="h-10 bg-background/70">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="auto">Auto</SelectItem>
+                                    <SelectItem value="browserless">Browserless API</SelectItem>
+                                    <SelectItem value="local">Local Chrome</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {false && isDeveloperMode && (
                 <Card className="border-dashed border-primary/40 bg-primary/5">

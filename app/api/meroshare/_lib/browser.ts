@@ -12,17 +12,28 @@ function getBrowserlessEndpoint() {
   return `wss://${region}.browserless.io?token=${encodeURIComponent(token)}`
 }
 
-export async function getMeroShareBrowser(options?: { showBrowser?: boolean }) {
-  const isVisibleDebug = process.env.MEROSHARE_VISIBLE_BROWSER === "1" || Boolean(options?.showBrowser)
+export type MeroShareBrowserProvider = "auto" | "browserless" | "local"
+
+export async function getMeroShareBrowser(options?: { showBrowser?: boolean; browserProvider?: MeroShareBrowserProvider }) {
+  const browserProvider = options?.browserProvider || "auto"
+  const isVisibleDebug = process.env.MEROSHARE_VISIBLE_BROWSER === "1" || Boolean(options?.showBrowser) || browserProvider === "local"
   const browserlessEndpoint = getBrowserlessEndpoint()
 
-  if (browserlessEndpoint) {
+  if (browserProvider === "browserless" && !browserlessEndpoint) {
+    throw new Error("Browserless is selected, but BROWSERLESS_TOKEN, BROWSERLESS_URL, or BROWSERLESS_WS_ENDPOINT is not configured.")
+  }
+
+  if (browserProvider !== "local" && browserlessEndpoint) {
     return await puppeteer.connect({
       browserWSEndpoint: browserlessEndpoint,
     })
   }
 
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+  if (browserProvider === "local" && (process.env.NODE_ENV === "production" || process.env.VERCEL)) {
+    throw new Error("Local Chrome browser mode is only available on a local development machine.")
+  }
+
+  if (browserProvider === "auto" && (process.env.NODE_ENV === "production" || process.env.VERCEL)) {
     return await puppeteer.launch({
       args: chromium.args,
       defaultViewport: (chromium as any).defaultViewport,

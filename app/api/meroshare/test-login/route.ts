@@ -11,7 +11,10 @@ export async function POST(req: Request) {
         }
 
         try {
-            browser = await getMeroShareBrowser({ showBrowser: Boolean(options?.showBrowser) });
+            browser = await getMeroShareBrowser({
+                showBrowser: Boolean(options?.showBrowser),
+                browserProvider: options?.browserProvider || credentials?.browserProvider,
+            });
             const page = await browser.newPage();
 
             // 1. Attempt Login

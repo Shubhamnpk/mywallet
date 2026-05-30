@@ -6,13 +6,14 @@ export async function POST(req: Request) {
     try {
         const { credentials, ipoName, kitta = 10, options } = await req.json();
         const showBrowser = Boolean(options?.showBrowser);
+        const browserProvider = options?.browserProvider || credentials?.browserProvider;
 
         if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
             return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
         }
 
         try {
-            browser = await getMeroShareBrowser({ showBrowser });
+            browser = await getMeroShareBrowser({ showBrowser, browserProvider });
             const page = await browser.newPage();
 
             // 1. Login

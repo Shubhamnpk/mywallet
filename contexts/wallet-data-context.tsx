@@ -100,12 +100,13 @@ export type WalletDataContextType = {
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
   refreshMarketData: () => Promise<void>
   syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
+  syncMeroShareTransactionHistory: (credentials: any, targetPortfolioId?: string) => Promise<{ fetchedCount: number; importedCount: number; skippedCount: number }>
   applyMeroShareIPO: (
     credentials: any,
     ipoName: string,
     kitta?: number,
     source?: "live-apply" | "live-auto" | "settings-test",
-    options?: { showBrowser?: boolean }
+    options?: { showBrowser?: boolean; browserProvider?: "auto" | "browserless" | "local" }
   ) => Promise<any>
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number

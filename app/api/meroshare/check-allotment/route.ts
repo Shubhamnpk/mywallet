@@ -4,14 +4,14 @@ import { getMeroShareBrowser } from "../_lib/browser";
 export async function POST(req: Request) {
     let browser: any = null;
     try {
-        const { credentials, ipoName } = await req.json();
+        const { credentials, ipoName, options } = await req.json();
 
         if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
             return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
         }
 
         try {
-            browser = await getMeroShareBrowser();
+            browser = await getMeroShareBrowser({ browserProvider: options?.browserProvider || credentials?.browserProvider });
             const page = await browser.newPage();
 
             // 1. Login
