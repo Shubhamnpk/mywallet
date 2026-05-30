@@ -1657,9 +1657,18 @@ export function useWalletStore() {
     if (!currentProfile) return
 
     const previousProfile = currentProfile
+    const nextMeroShare = updates.meroShare
+      ? {
+        ...(currentProfile.meroShare || {}),
+        ...updates.meroShare,
+        applicationLogs: updates.meroShare.applicationLogs ?? currentProfile.meroShare?.applicationLogs,
+      }
+      : currentProfile.meroShare
+
     const updatedProfile = {
       ...currentProfile,
       ...updates,
+      meroShare: nextMeroShare,
       calendarSystem: getCalendarSystem(updates.calendarSystem ?? currentProfile.calendarSystem),
       notificationSettings: normalizeNotificationSettings({
         ...currentProfile.notificationSettings,
@@ -4285,7 +4294,8 @@ export function useWalletStore() {
   }
 
   const logMeroShareApplication = async (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => {
-    if (!userProfile) return null
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return null
 
     const nextLog: MeroShareApplicationLog = {
       id: generateId("ipo_log"),
@@ -4293,7 +4303,7 @@ export function useWalletStore() {
       ...entry,
     }
 
-    const existingMeroShare = userProfile.meroShare ?? {
+    const existingMeroShare = currentProfile.meroShare ?? {
       dpId: "",
       username: "",
       shareFeaturesEnabled: false,
@@ -4302,13 +4312,14 @@ export function useWalletStore() {
     }
 
     const updatedProfile: UserProfile = {
-      ...userProfile,
+      ...currentProfile,
       meroShare: {
         ...existingMeroShare,
         applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
       },
     }
 
+    userProfileRef.current = updatedProfile
     setUserProfile(updatedProfile)
     await saveDataWithIntegrity("userProfile", updatedProfile)
     return nextLog

@@ -163,7 +163,7 @@ export default function RootLayout({
               </WalletDataProvider>
             </SessionGuard>
           </PrivacyModeProvider>
-          {process.env.NEXT_PUBLIC_APP_DEV_TOOLS === "1" && <DeveloperMenu />}
+          <DeveloperMenu />
           <Toaster />
         </ThemeProviderWrapper>
       </body>

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { Shield, Lock, User, Key, Building2, Save, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles } from "lucide-react"
+import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Check, ChevronsUpDown } from "lucide-react"
 import {
@@ -31,10 +31,58 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import type { MeroShareAccount } from "@/types/wallet"
+import { useDeveloperMode } from "@/hooks/use-developer-mode"
 
-const MEROSHARE_DEV_MODE_KEY = "wallet_meroshare_dev_mode"
+const emptyAccountForm: MeroShareAccount = {
+    id: "",
+    label: "",
+    role: "primary",
+    dpId: "",
+    username: "",
+    password: "",
+    crn: "",
+    pin: "",
+}
+
+const getMeroShareAccounts = (meroShare?: {
+    accounts?: MeroShareAccount[]
+    dpId?: string
+    username?: string
+    password?: string
+    crn?: string
+    pin?: string
+}) => {
+    if (meroShare?.accounts?.length) return meroShare.accounts
+
+    if (meroShare?.dpId || meroShare?.username) {
+        return [{
+            id: "legacy-primary",
+            label: "Primary account",
+            role: "primary" as const,
+            dpId: meroShare.dpId || "",
+            username: meroShare.username || "",
+            password: meroShare.password || "",
+            crn: meroShare.crn || "",
+            pin: meroShare.pin || "",
+        }]
+    }
+
+    return []
+}
+
+const getPrimaryAccount = (accounts: MeroShareAccount[]) =>
+    accounts.find((account) => account.role === "primary") || accounts[0]
 
 export function MeroShareSettings() {
     const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
@@ -46,65 +94,49 @@ export function MeroShareSettings() {
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [isSyncing, setIsSyncing] = useState(false)
-    const [open, setOpen] = useState(false)
+    const [isDpListOpen, setIsDpListOpen] = useState(false)
     const [selectedTestIpo, setSelectedTestIpo] = useState("")
     const [testMode, setTestMode] = useState<'apply' | 'result'>('apply')
     const [targetPortfolio, setTargetPortfolio] = useState(activePortfolioId || (portfolios.length > 0 ? portfolios[0].id : ""))
     const [customIpoName, setCustomIpoName] = useState("")
     const [isCustomMode, setIsCustomMode] = useState(false)
     const [showLiveBrowserForTest, setShowLiveBrowserForTest] = useState(false)
-    const [isDevMode, setIsDevMode] = useState(false)
+    const { isDeveloperMode } = useDeveloperMode()
+    const [accounts, setAccounts] = useState<MeroShareAccount[]>(() => getMeroShareAccounts(userProfile?.meroShare))
+    const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
+    const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+    const [accountForm, setAccountForm] = useState<MeroShareAccount>(emptyAccountForm)
 
     const [formData, setFormData] = useState({
-        dpId: userProfile?.meroShare?.dpId || "",
-        username: userProfile?.meroShare?.username || "",
-        password: userProfile?.meroShare?.password || "",
-        crn: userProfile?.meroShare?.crn || "",
-        pin: userProfile?.meroShare?.pin || "",
+        dpId: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.dpId || "",
+        username: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.username || "",
+        password: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.password || "",
+        crn: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.crn || "",
+        pin: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.pin || "",
         shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
         shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
         preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
-        applyMode: userProfile?.meroShare?.applyMode || "on-demand",
-        showLiveBrowser: userProfile?.meroShare?.showLiveBrowser || false,
-        isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false
+        applyMode: "on-demand",
+        showLiveBrowser: false,
+        isAutomatedEnabled: true
     })
     const openIpos = upcomingIPOs.filter(ipo => ipo.status === 'open')
     const recentApplicationLogs = (userProfile?.meroShare?.applicationLogs ?? []).slice(0, 10)
-    const requiredFields: Array<keyof typeof formData> = ["dpId", "username", "password", "crn", "pin"]
-    const missingRequiredFields = requiredFields.filter((key) => {
+    const loginRequiredFields: Array<keyof typeof formData> = ["dpId", "username", "password"]
+    const applyRequiredFields: Array<keyof typeof formData> = ["crn", "pin"]
+    const missingLoginFields = loginRequiredFields.filter((key) => {
         const value = formData[key]
         return typeof value !== "string" || value.trim().length === 0
     })
-    const isCredentialComplete = missingRequiredFields.length === 0
-    const isAutomationReady = formData.isAutomatedEnabled && isCredentialComplete
-    const savedMeroShare = userProfile?.meroShare
-    const selectedDp = dps.find((dp) => dp.id === formData.dpId || dp.code === formData.dpId)
-    const hasUnsavedChanges = JSON.stringify({
-        dpId: formData.dpId,
-        username: formData.username,
-        password: formData.password,
-        crn: formData.crn,
-        pin: formData.pin,
-        shareFeaturesEnabled: formData.shareFeaturesEnabled,
-        shareNotificationsEnabled: formData.shareNotificationsEnabled,
-        preferredKitta: formData.preferredKitta,
-        applyMode: formData.applyMode,
-        showLiveBrowser: formData.showLiveBrowser,
-        isAutomatedEnabled: formData.isAutomatedEnabled,
-    }) !== JSON.stringify({
-        dpId: savedMeroShare?.dpId || "",
-        username: savedMeroShare?.username || "",
-        password: savedMeroShare?.password || "",
-        crn: savedMeroShare?.crn || "",
-        pin: savedMeroShare?.pin || "",
-        shareFeaturesEnabled: savedMeroShare?.shareFeaturesEnabled || false,
-        shareNotificationsEnabled: savedMeroShare?.shareNotificationsEnabled || false,
-        preferredKitta: savedMeroShare?.preferredKitta || 0,
-        applyMode: savedMeroShare?.applyMode || "on-demand",
-        showLiveBrowser: savedMeroShare?.showLiveBrowser || false,
-        isAutomatedEnabled: savedMeroShare?.isAutomatedEnabled || false,
+    const missingApplyFields = applyRequiredFields.filter((key) => {
+        const value = formData[key]
+        return typeof value !== "string" || value.trim().length === 0
     })
-
+    const isLoginReady = missingLoginFields.length === 0
+    const isApplyReady = isLoginReady && missingApplyFields.length === 0
+    const isAutomationReady = formData.shareFeaturesEnabled && isLoginReady
+    const savedMeroShare = userProfile?.meroShare
+    const selectedDp = dps.find((dp) => dp.id === accountForm.dpId || dp.code === accountForm.dpId)
     useEffect(() => {
         // Fetch DP list
         const fetchDps = async () => {
@@ -138,55 +170,141 @@ export function MeroShareSettings() {
     }, [])
 
     useEffect(() => {
-        if (typeof window === "undefined") return
-        const stored = localStorage.getItem(MEROSHARE_DEV_MODE_KEY)
-        setIsDevMode(stored === "true")
-
-        const onKeyDown = (event: KeyboardEvent) => {
-            const isToggle = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d"
-            if (!isToggle) return
-
-            event.preventDefault()
-            setIsDevMode((prev) => {
-                const next = !prev
-                localStorage.setItem(MEROSHARE_DEV_MODE_KEY, String(next))
-                toast(next ? "Developer mode enabled" : "Developer mode disabled", {
-                    description: "Automation Tools visibility updated."
-                })
-                return next
-            })
-        }
-
-        window.addEventListener("keydown", onKeyDown)
-        return () => window.removeEventListener("keydown", onKeyDown)
-    }, [])
-
-    useEffect(() => {
+        const nextAccounts = getMeroShareAccounts(userProfile?.meroShare)
+        const primaryAccount = getPrimaryAccount(nextAccounts)
+        setAccounts(nextAccounts)
         setFormData({
-            dpId: userProfile?.meroShare?.dpId || "",
-            username: userProfile?.meroShare?.username || "",
-            password: userProfile?.meroShare?.password || "",
-            crn: userProfile?.meroShare?.crn || "",
-            pin: userProfile?.meroShare?.pin || "",
+            dpId: primaryAccount?.dpId || "",
+            username: primaryAccount?.username || "",
+            password: primaryAccount?.password || "",
+            crn: primaryAccount?.crn || "",
+            pin: primaryAccount?.pin || "",
             shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
             shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
             preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
-            applyMode: userProfile?.meroShare?.applyMode || "on-demand",
-            showLiveBrowser: userProfile?.meroShare?.showLiveBrowser || false,
-            isAutomatedEnabled: userProfile?.meroShare?.isAutomatedEnabled || false,
+            applyMode: "on-demand",
+            showLiveBrowser: false,
+            isAutomatedEnabled: true,
         })
     }, [userProfile?.meroShare])
 
-    const handleSave = () => {
+    const applyPrimaryAccountToForm = (nextAccounts: MeroShareAccount[]) => {
+        const primaryAccount = getPrimaryAccount(nextAccounts)
+        setFormData(prev => ({
+            ...prev,
+            dpId: primaryAccount?.dpId || "",
+            username: primaryAccount?.username || "",
+            password: primaryAccount?.password || "",
+            crn: primaryAccount?.crn || "",
+            pin: primaryAccount?.pin || "",
+        }))
+    }
+
+    const persistMeroShareSettings = (nextForm: typeof formData, nextAccounts: MeroShareAccount[]) => {
+        const primaryAccount = getPrimaryAccount(nextAccounts)
         updateUserProfile({
             meroShare: {
                 ...(userProfile?.meroShare || {}),
-                ...formData
+                ...nextForm,
+                shareFeaturesEnabled: nextForm.shareFeaturesEnabled,
+                applyMode: "on-demand",
+                showLiveBrowser: false,
+                isAutomatedEnabled: true,
+                dpId: primaryAccount?.dpId || "",
+                username: primaryAccount?.username || "",
+                password: primaryAccount?.password || "",
+                crn: primaryAccount?.crn || "",
+                pin: primaryAccount?.pin || "",
+                accounts: nextAccounts,
             }
         })
-        toast("Mero Share Settings Saved", {
-            description: "Your credentials are stored securely in your local storage.",
+    }
+
+    const updateAccounts = (nextAccounts: MeroShareAccount[]) => {
+        const primaryIndex = nextAccounts.findIndex(account => account.role === "primary")
+        const resolvedPrimaryIndex = primaryIndex >= 0 ? primaryIndex : 0
+        const accountsWithPrimary = nextAccounts.map((account, index) => ({
+            ...account,
+            role: index === resolvedPrimaryIndex ? "primary" as const : "secondary" as const,
+        }))
+
+        setAccounts(accountsWithPrimary)
+        applyPrimaryAccountToForm(accountsWithPrimary)
+        const primaryAccount = getPrimaryAccount(accountsWithPrimary)
+        persistMeroShareSettings({
+            ...formData,
+            dpId: primaryAccount?.dpId || "",
+            username: primaryAccount?.username || "",
+            password: primaryAccount?.password || "",
+            crn: primaryAccount?.crn || "",
+            pin: primaryAccount?.pin || "",
+        }, accountsWithPrimary)
+    }
+
+    const openAddAccountDialog = () => {
+        setEditingAccountId(null)
+        setIsDpListOpen(false)
+        setAccountForm({
+            ...emptyAccountForm,
+            id: `mero_${Date.now()}`,
+            role: accounts.length === 0 ? "primary" : "secondary",
         })
+        setIsAccountDialogOpen(true)
+    }
+
+    const openEditAccountDialog = (account: MeroShareAccount) => {
+        setEditingAccountId(account.id)
+        setIsDpListOpen(false)
+        setAccountForm({ ...account })
+        setIsAccountDialogOpen(true)
+    }
+
+    const saveAccount = () => {
+        if (!accountForm.dpId || !accountForm.username || !accountForm.password) {
+            toast.error("Incomplete account", {
+                description: "Fill DP, username, and password before saving this account."
+            })
+            return
+        }
+
+        const nextAccount = {
+            ...accountForm,
+            label: accountForm.label.trim() || (accountForm.role === "primary" ? "Primary account" : "Secondary account"),
+            pin: (accountForm.pin || "").replace(/\D/g, "").slice(0, 4),
+        }
+
+        let nextAccounts = editingAccountId
+            ? accounts.map(account => account.id === editingAccountId ? nextAccount : account)
+            : [...accounts, nextAccount]
+
+        if (nextAccount.role === "primary") {
+            nextAccounts = nextAccounts.map(account => ({
+                ...account,
+                role: account.id === nextAccount.id ? "primary" : "secondary",
+            }))
+        }
+
+        updateAccounts(nextAccounts)
+        setIsAccountDialogOpen(false)
+    }
+
+    const deleteAccount = (accountId: string) => {
+        const nextAccounts = accounts.filter(account => account.id !== accountId)
+        updateAccounts(nextAccounts)
+    }
+
+    const setAccountRole = (accountId: string, role: "primary" | "secondary") => {
+        const nextAccounts = role === "primary"
+            ? accounts.map(account => ({
+                ...account,
+                role: account.id === accountId ? "primary" as const : "secondary" as const,
+            }))
+            : accounts.map((account) => {
+                if (account.id === accountId) return { ...account, role: "secondary" as const }
+                if (account.role !== "primary") return { ...account, role: "primary" as const }
+                return account
+            })
+        updateAccounts(nextAccounts)
     }
 
     const testConnection = async () => {
@@ -203,7 +321,7 @@ export function MeroShareSettings() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 credentials: formData,
-                options: { showBrowser: Boolean(formData.showLiveBrowser) }
+                options: { showBrowser: false }
             })
         }).then(async (res) => {
             const data = await res.json()
@@ -224,16 +342,33 @@ export function MeroShareSettings() {
         })
     }
 
-    const updateField = (key: string, value: any) => {
-        setFormData(prev => ({ ...prev, [key]: value }))
-    }
-
     const toggleShareFeatures = (enabled: boolean) => {
-        setFormData(prev => ({
-            ...prev,
+        const nextForm = {
+            ...formData,
             shareFeaturesEnabled: enabled,
             shareNotificationsEnabled: enabled,
-            isAutomatedEnabled: enabled ? prev.isAutomatedEnabled : false,
+            isAutomatedEnabled: true,
+        }
+        setFormData(nextForm)
+        persistMeroShareSettings(nextForm, accounts)
+        toast(enabled ? "Share features enabled" : "Share features disabled", {
+            description: enabled ? "MeroShare options are now available." : "MeroShare options are hidden.",
+        })
+    }
+
+    const updatePreferredKitta = (value: number) => {
+        const nextForm = {
+            ...formData,
+            preferredKitta: value,
+        }
+        setFormData(nextForm)
+        persistMeroShareSettings(nextForm, accounts)
+    }
+
+    const updateField = (key: string, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            [key]: value,
         }))
     }
 
@@ -267,7 +402,7 @@ export function MeroShareSettings() {
             ipoToTest,
             formData.preferredKitta || 0,
             "settings-test",
-            { showBrowser: showLiveBrowserForTest || Boolean(formData.showLiveBrowser) }
+            { showBrowser: false }
         )
 
         toast.promise(promise, {
@@ -318,7 +453,7 @@ export function MeroShareSettings() {
                         </div>
                         <div>
                             <CardTitle>Mero Share Credentials</CardTitle>
-                            <CardDescription>Setup your credentials for automated IPO application</CardDescription>
+                            <CardDescription>Set up your account to apply from open IPO cards</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
@@ -330,7 +465,7 @@ export function MeroShareSettings() {
                                 Enable Share Features
                             </Label>
                             <p className="text-xs text-muted-foreground">
-                                Master switch for Portfolio section and share-related notifications.
+                                Keep this off if you do not use portfolio shares or IPO tools.
                             </p>
                         </div>
                         <Switch
@@ -338,75 +473,119 @@ export function MeroShareSettings() {
                             onCheckedChange={toggleShareFeatures}
                         />
                     </div>
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
-                        <div className="space-y-1">
-                            <Label className="text-sm font-bold flex items-center gap-2">
-                                <Fingerprint className="w-4 h-4 text-primary" />
-                                Automated IPO Application
-                            </Label>
-                            <p className="text-xs text-muted-foreground">When enabled, you'll be able to apply for IPOs with one click.</p>
+                    {formData.shareFeaturesEnabled && (
+                    <>
+                    <div className="space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <Label className="text-sm font-bold">MeroShare Accounts</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Credentials stay hidden until you add or edit an account.
+                                </p>
+                            </div>
+                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={testConnection}
+                                    disabled={isTesting || !isLoginReady}
+                                    className="border-primary/20 hover:bg-primary/5"
+                                >
+                                    {isTesting ? "Testing..." : "Test Connection"}
+                                </Button>
+                                <Button type="button" onClick={openAddAccountDialog}>
+                                    Add Account
+                                </Button>
+                            </div>
                         </div>
-                        <Switch
-                            checked={formData.isAutomatedEnabled}
-                            onCheckedChange={(checked) => updateField("isAutomatedEnabled", checked)}
-                            disabled={!formData.shareFeaturesEnabled}
+
+                        {accounts.length === 0 ? (
+                            <div className="rounded-xl border border-dashed bg-muted/30 p-5 text-center">
+                                <p className="text-sm font-semibold">No MeroShare account added</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Add an account to enable login testing, portfolio sync, and IPO apply actions.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-3">
+                                {accounts.map((account) => {
+                                    const dp = dps.find(item => item.id === account.dpId || item.code === account.dpId)
+                                    const isPrimary = account.role === "primary"
+
+                                    return (
+                                        <div key={account.id} className="rounded-xl border bg-background/60 p-4">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0 space-y-1">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="font-semibold">{account.label || account.username}</p>
+                                                        <Badge variant={isPrimary ? "default" : "secondary"}>
+                                                            {isPrimary ? "Primary" : "Secondary"}
+                                                        </Badge>
+                                                    </div>
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        {dp?.name || `DP ${account.dpId}`} | {account.username}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {account.crn && account.pin
+                                                            ? "Ready for IPO apply and result checks"
+                                                            : "Ready for result checks; add CRN and PIN to apply"}
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {!isPrimary && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setAccountRole(account.id, "primary")}
+                                                        >
+                                                            Make Primary
+                                                        </Button>
+                                                    )}
+                                                    {isPrimary && accounts.length > 1 && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setAccountRole(account.id, "secondary")}
+                                                        >
+                                                            Make Secondary
+                                                        </Button>
+                                                    )}
+                                                    <Button type="button" variant="outline" size="sm" onClick={() => openEditAccountDialog(account)}>
+                                                        Edit
+                                                    </Button>
+                                                    <Button type="button" variant="destructive" size="sm" onClick={() => deleteAccount(account.id)}>
+                                                        Remove
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                            <Rocket className="w-3 h-3" /> Preferred Kitta (Optional)
+                        </Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            placeholder="0 = Auto-detect minimum"
+                            value={formData.preferredKitta || ""}
+                            onChange={(e) => updatePreferredKitta(parseInt(e.target.value) || 0)}
+                            className="h-11 bg-background/50"
                         />
-                    </div>
-                    <div className="p-4 rounded-xl bg-background/60 border border-border space-y-2">
-                        <Label className="text-sm font-bold">Apply Mode</Label>
-                        <p className="text-xs text-muted-foreground">
-                            Choose whether user-triggered applies run on demand only, or auto-run when opening an IPO modal.
-                        </p>
-                        <Select
-                            value={formData.applyMode}
-                            onValueChange={(value) => updateField("applyMode", value)}
-                            disabled={!formData.shareFeaturesEnabled}
-                        >
-                            <SelectTrigger className="h-10 bg-background/80">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="on-demand">On Demand</SelectItem>
-                                <SelectItem value="automatic">Automatic</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-background/60 border border-border">
-                        <div className="space-y-1">
-                            <Label className="text-sm font-bold">Show Browser While Automating</Label>
-                            <p className="text-xs text-muted-foreground">On-demand visual mode. Useful for debugging or trust checks.</p>
-                        </div>
-                        <Switch
-                            checked={Boolean(formData.showLiveBrowser)}
-                            onCheckedChange={(checked) => updateField("showLiveBrowser", checked)}
-                            disabled={!formData.shareFeaturesEnabled}
-                        />
-                    </div>
-                    <div className={cn(
-                        "p-4 rounded-xl border flex flex-col gap-2",
-                        isAutomationReady ? "bg-success/5 border-success/20" : "bg-muted/40 border-muted"
-                    )}>
-                        <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-semibold">Integration Status</div>
-                            <Badge variant={isAutomationReady ? "default" : "secondary"}>
-                                {isAutomationReady ? "Ready" : "Needs Setup"}
-                            </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            {!formData.shareFeaturesEnabled
-                                ? "Share features are disabled. Turn on 'Enable Share Features' to use Portfolio and share notifications."
-                                : formData.isAutomatedEnabled
-                                ? isCredentialComplete
-                                    ? "Automation is enabled and credentials are complete."
-                                    : `Automation is enabled, but ${missingRequiredFields.length} required field(s) are missing.`
-                                : "Automation is disabled. Enable it to apply/check directly from IPO cards."}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            Open IPOs detected: <span className="font-semibold text-foreground">{openIpos.length}</span>
+                        <p className="text-[10px] text-muted-foreground italic">
+                            Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount.
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* legacy inline credential fields removed; accounts are edited in the modal
+                    <div className="hidden">
                         <div className="space-y-2">
                             <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <Building2 className="w-3 h-3" /> Depository Participant (DP)
@@ -548,38 +727,187 @@ export function MeroShareSettings() {
                             </p>
                         </div>
                     </div>
-
-                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 flex gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-amber-700 dark:text-amber-400">Security Note</h4>
-                            <p className="text-xs text-amber-600/80 dark:text-amber-400/80 leading-relaxed">
-                                Your credentials are saved <strong>only on this device</strong>. They are never sent to our servers except when performing the automated application. We recommend using a PIN for the app itself under the "Security" tab.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 pt-4">
-                        <Button
-                            variant="outline"
-                            onClick={testConnection}
-                            disabled={isTesting}
-                            className="h-12 rounded-xl font-bold border-primary/20 hover:bg-primary/5 transition-all"
-                        >
-                            {isTesting ? "Testing..." : "Test Connection"}
-                        </Button>
-                        <Button
-                            onClick={handleSave}
-                            disabled={!hasUnsavedChanges}
-                            className="h-12 rounded-xl font-bold bg-primary shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all"
-                        >
-                            <Save className="w-4 h-4 mr-2" />
-                            {hasUnsavedChanges ? "Save Settings" : "Saved"}
-                        </Button>
-                    </div>
+                    */}
+                    </>
+                    )}
                 </CardContent>
             </Card>
 
+            <Dialog open={isAccountDialogOpen} onOpenChange={setIsAccountDialogOpen}>
+                <DialogContent className="sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>{editingAccountId ? "Edit MeroShare Account" : "Add MeroShare Account"}</DialogTitle>
+                        <DialogDescription>
+                            DP, username, and password are enough for result checks. CRN and PIN are only needed when applying.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-4 py-2">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_160px]">
+                            <div className="space-y-2">
+                                <Label htmlFor="mero-account-label">Account Label</Label>
+                                <Input
+                                    id="mero-account-label"
+                                    placeholder="Primary account"
+                                    value={accountForm.label}
+                                    onChange={(e) => setAccountForm(prev => ({ ...prev, label: e.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Account Type</Label>
+                                <Select
+                                    value={accountForm.role}
+                                    onValueChange={(value) => setAccountForm(prev => ({ ...prev, role: value as "primary" | "secondary" }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="primary">Primary</SelectItem>
+                                        <SelectItem value="secondary">Secondary</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-2">
+                                <Building2 className="w-3 h-3" /> Depository Participant (DP)
+                            </Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={isDpListOpen}
+                                className="w-full justify-between font-normal"
+                                onClick={() => setIsDpListOpen((prev) => !prev)}
+                            >
+                                <span className="truncate">
+                                    {selectedDp
+                                        ? `${selectedDp.name} (${selectedDp.id})`
+                                        : accountForm.dpId
+                                            ? `Selected DP: ${accountForm.dpId}`
+                                            : "Select your DP..."}
+                                </span>
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                            {isDpListOpen && (
+                                <div className="rounded-md border bg-background">
+                                    <Command className="w-full">
+                                        <CommandInput placeholder="Search bank or DP..." className="h-9" />
+                                        <CommandList className="max-h-[240px] overflow-y-auto">
+                                            <CommandEmpty>No DP found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {dps.map((dp) => (
+                                                    <CommandItem
+                                                        key={dp.id}
+                                                        value={`${dp.name} ${dp.id} ${dp.code}`}
+                                                        onSelect={() => {
+                                                            setAccountForm(prev => ({ ...prev, dpId: dp.id }))
+                                                            setIsDpListOpen(false)
+                                                        }}
+                                                        className="flex items-center justify-between"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">{dp.name}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                MeroShare code: {dp.id}
+                                                                {dp.code && dp.code !== dp.id ? ` | Ref: ${dp.code}` : ""}
+                                                            </span>
+                                                        </div>
+                                                        <Check
+                                                            className={cn(
+                                                                "h-4 w-4",
+                                                                accountForm.dpId === dp.id ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </div>
+                            )}
+                            <p className="text-[11px] text-muted-foreground">
+                                {isLoadingDps ? "Loading DPS list..." : `${dps.length} DPS entries available from bundled data.`}
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="mero-account-username" className="flex items-center gap-2">
+                                    <User className="w-3 h-3" /> Username
+                                </Label>
+                                <Input
+                                    id="mero-account-username"
+                                    value={accountForm.username}
+                                    onChange={(e) => setAccountForm(prev => ({ ...prev, username: e.target.value }))}
+                                    autoComplete="username"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="mero-account-password" className="flex items-center gap-2">
+                                    <Lock className="w-3 h-3" /> Password
+                                </Label>
+                                <div className="relative">
+                                    <Input
+                                        id="mero-account-password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={accountForm.password || ""}
+                                        onChange={(e) => setAccountForm(prev => ({ ...prev, password: e.target.value }))}
+                                        className="pr-10"
+                                        autoComplete="current-password"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute right-1 top-1 h-8 w-8 text-muted-foreground"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="mero-account-crn" className="flex items-center gap-2">
+                                    <Key className="w-3 h-3" /> CRN Number <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                                </Label>
+                                <Input
+                                    id="mero-account-crn"
+                                    value={accountForm.crn || ""}
+                                    onChange={(e) => setAccountForm(prev => ({ ...prev, crn: e.target.value }))}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="mero-account-pin" className="flex items-center gap-2">
+                                    <Shield className="w-3 h-3" /> Transaction PIN <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                                </Label>
+                                <Input
+                                    id="mero-account-pin"
+                                    type="password"
+                                    maxLength={4}
+                                    value={accountForm.pin || ""}
+                                    onChange={(e) => setAccountForm(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, "") }))}
+                                    inputMode="numeric"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsAccountDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="button" onClick={saveAccount}>
+                            Save Account
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {formData.shareFeaturesEnabled && (
+            <>
             <Card className="border-info/20 bg-info/5">
                 <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
@@ -633,7 +961,7 @@ export function MeroShareSettings() {
                 </CardContent>
             </Card>
 
-            {isDevMode && (
+            {false && isDeveloperMode && (
                 <Card className="border-dashed border-primary/40 bg-primary/5">
                     <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
@@ -674,7 +1002,7 @@ export function MeroShareSettings() {
                                 />
                             </div>
                         </div>
-                        {testMode === "apply" && (
+                        {false && testMode === "apply" && (
                             <div className="flex items-center justify-between p-3 rounded-xl bg-background/70 border">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Watch Browser For This Test</Label>
                                 <Switch
@@ -772,6 +1100,8 @@ export function MeroShareSettings() {
                     )}
                 </CardContent>
             </Card>
+            </>
+            )}
         </div>
     )
 }
