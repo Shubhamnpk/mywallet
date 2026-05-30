@@ -100,6 +100,7 @@ export type WalletDataContextType = {
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
   refreshMarketData: () => Promise<void>
   syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
+  importMeroShareTransactionHistoryRows: (rows: any[], targetPortfolioId?: string) => Promise<{ fetchedCount: number; importedCount: number; skippedCount: number }>
   syncMeroShareTransactionHistory: (credentials: any, targetPortfolioId?: string) => Promise<{ fetchedCount: number; importedCount: number; skippedCount: number }>
   applyMeroShareIPO: (
     credentials: any,

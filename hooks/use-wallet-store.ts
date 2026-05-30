@@ -4287,27 +4287,13 @@ export function useWalletStore() {
     }
   }
 
-  const syncMeroShareTransactionHistory = async (credentials: any, targetPortfolioId?: string) => {
+  const importMeroShareTransactionHistoryRows = async (rowsInput: MeroShareTransactionHistoryRow[], targetPortfolioId?: string) => {
     const portId = targetPortfolioId || activePortfolioId
     if (!portId) {
       throw new Error("No target portfolio selected")
     }
 
-    const response = await fetch("/api/meroshare/transaction-history", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        credentials,
-        options: { browserProvider: credentials?.browserProvider },
-      }),
-    })
-
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || "Failed to sync transaction history")
-
-    const rows = Array.isArray(data.transactions)
-      ? data.transactions as MeroShareTransactionHistoryRow[]
-      : []
+    const rows = Array.isArray(rowsInput) ? rowsInput : []
     const fetchedTransactions = rows
       .map((row, index) => mapMeroShareHistoryRowToTransaction(row, portId, index + 1))
       .filter((transaction): transaction is ShareTransaction => Boolean(transaction))
@@ -4340,6 +4326,25 @@ export function useWalletStore() {
       importedCount: newTransactions.length,
       skippedCount: fetchedTransactions.length - newTransactions.length,
     }
+  }
+
+  const syncMeroShareTransactionHistory = async (credentials: any, targetPortfolioId?: string) => {
+    const response = await fetch("/api/meroshare/transaction-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentials,
+        options: { browserProvider: credentials?.browserProvider },
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || "Failed to sync transaction history")
+
+    const rows = Array.isArray(data.transactions)
+      ? data.transactions as MeroShareTransactionHistoryRow[]
+      : []
+    return await importMeroShareTransactionHistoryRows(rows, targetPortfolioId)
   }
 
   const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
@@ -4603,6 +4608,7 @@ export function useWalletStore() {
     fetchPortfolioPrices,
     refreshMarketData,
     syncMeroSharePortfolio,
+    importMeroShareTransactionHistoryRows,
     syncMeroShareTransactionHistory,
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,

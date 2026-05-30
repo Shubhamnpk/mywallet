@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getMeroShareBrowser } from "../_lib/browser"
-import { getMeroShareProfileName, loginToMeroShare, logoutFromMeroShare, scrapeMeroShareTransactionHistory } from "../_lib/transaction-history"
+import { getMeroShareProfileName, loginToMeroShare, logoutFromMeroShare } from "../_lib/transaction-history"
 
 export async function POST(req: Request) {
   let browser: any = null
@@ -20,25 +20,19 @@ export async function POST(req: Request) {
 
     await loginToMeroShare(page, credentials)
     const profileName = await getMeroShareProfileName(page)
-    const transactions = await scrapeMeroShareTransactionHistory(page)
     await logoutFromMeroShare(page)
 
     await browser.close()
     return NextResponse.json({
       success: true,
       profileName,
-      transactions,
-      count: transactions.length,
-      message: transactions.length
-        ? `Fetched ${transactions.length} MeroShare transaction history rows.`
-        : "No MeroShare transaction history rows found.",
     })
   } catch (error: any) {
-    console.error("Puppeteer Transaction History Error:", error)
+    console.error("Puppeteer MeroShare Profile Error:", error)
     if (browser) await browser.close()
 
     return NextResponse.json({
-      error: error?.message || "An error occurred during transaction history sync.",
+      error: error?.message || "Could not read MeroShare profile.",
     }, { status: 500 })
   }
 }
