@@ -140,30 +140,16 @@ export function MeroShareSettings() {
     const savedMeroShare = userProfile?.meroShare
     const selectedDp = dps.find((dp) => dp.id === accountForm.dpId || dp.code === accountForm.dpId)
     useEffect(() => {
-        // Fetch DP list
         const fetchDps = async () => {
             setIsLoadingDps(true)
             try {
-                // In a real scenario, this would be an API call to Mero Share
-                // For now, we'll provide a few common ones or fetch from our API
-                const response = await fetch("/api/meroshare/dps")
+                const response = await fetch("/data/dps.json")
                 if (response.ok) {
                     const data = await response.json()
                     setDps(data)
-                } else {
-                    // Fallback to a few common ones if CORS fails
-                    setDps([
-                        { id: "13100", name: "NIC ASIA Bank Limited", code: "NIC" },
-                        { id: "10200", name: "Nabil Bank Limited", code: "NABIL" },
-                        { id: "11600", name: "Global IME Bank Limited", code: "GBIME" },
-                    ])
                 }
-                } catch {
-                    setDps([
-                        { id: "13100", name: "NIC ASIA Bank Limited", code: "NIC" },
-                    { id: "10200", name: "Nabil Bank Limited", code: "NABIL" },
-                    { id: "11600", name: "Global IME Bank Limited", code: "GBIME" },
-                ])
+            } catch {
+                console.warn("Failed to load DPS list")
             } finally {
                 setIsLoadingDps(false)
             }
@@ -838,7 +824,7 @@ export function MeroShareSettings() {
                                                         key={dp.id}
                                                         value={`${dp.name} ${dp.id} ${dp.code}`}
                                                         onSelect={() => {
-                                                            setAccountForm(prev => ({ ...prev, dpId: dp.id }))
+                                                            setAccountForm(prev => ({ ...prev, dpId: dp.code }))
                                                             setIsDpListOpen(false)
                                                         }}
                                                         className="flex items-center justify-between"
@@ -846,14 +832,13 @@ export function MeroShareSettings() {
                                                         <div className="flex flex-col">
                                                             <span className="font-medium">{dp.name}</span>
                                                             <span className="text-xs text-muted-foreground">
-                                                                MeroShare code: {dp.id}
-                                                                {dp.code && dp.code !== dp.id ? ` | Ref: ${dp.code}` : ""}
+                                                                Code: {dp.code}
                                                             </span>
                                                         </div>
                                                         <Check
                                                             className={cn(
                                                                 "h-4 w-4",
-                                                                accountForm.dpId === dp.id ? "opacity-100" : "opacity-0"
+                                                                accountForm.dpId === dp.code ? "opacity-100" : "opacity-0"
                                                             )}
                                                         />
                                                     </CommandItem>

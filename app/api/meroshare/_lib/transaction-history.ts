@@ -1,4 +1,5 @@
 import type { Page } from "puppeteer-core"
+import { withRetry } from "./retry"
 
 export type MeroShareTransactionHistoryRow = {
   scrip: string
@@ -12,12 +13,19 @@ export type MeroShareTransactionHistoryRow = {
 const MEROSHARE_LOGIN_URL = "https://meroshare.cdsc.com.np/#/login"
 const MEROSHARE_TRANSACTION_URL = "https://meroshare.cdsc.com.np/#/transaction"
 
+const POLL_INTERVAL_MS = 200
+
 async function selectDepositoryParticipant(page: Page, dpId: string) {
   await page.waitForSelector(".select2-selection", { timeout: 20000 })
   await page.click(".select2-selection")
   await page.waitForSelector(".select2-search__field", { visible: true, timeout: 10000 })
   await page.type(".select2-search__field", dpId, { delay: 50 })
-  await page.waitForSelector(".select2-results__option", { visible: true, timeout: 10000 }).catch(() => null)
+
+  try {
+    await page.waitForSelector(".select2-results__option", { visible: true, timeout: 10000 })
+  } catch {
+    console.warn("[meroshare] DP dropdown option did not appear, pressing Enter anyway")
+  }
   await page.keyboard.press("Enter")
 }
 
@@ -37,12 +45,16 @@ export async function loginToMeroShare(page: Page, credentials: {
   if (loginButton) await loginButton.click()
   else await page.keyboard.press("Enter")
 
-  await page.waitForFunction(() => {
-    const body = document.body.textContent || ""
-    return window.location.href.includes("/dashboard") ||
-      document.querySelector(".toast-error, .toast-message, .error-message") !== null ||
-      body.includes("Attempts remaining")
-  }, { timeout: 30000 }).catch(() => null)
+  try {
+    await page.waitForFunction(() => {
+      const body = document.body.textContent || ""
+      return window.location.href.includes("/dashboard") ||
+        document.querySelector(".toast-error, .toast-message, .error-message") !== null ||
+        body.includes("Attempts remaining")
+    }, { timeout: 30000 })
+  } catch {
+    console.warn("[meroshare] Login waitForFunction timed out, checking state manually")
+  }
 
   if (!page.url().includes("/dashboard")) {
     const errorMessage = await page.evaluate(() => {
@@ -55,19 +67,23 @@ export async function loginToMeroShare(page: Page, credentials: {
 }
 
 export async function getMeroShareProfileName(page: Page) {
-  await page.waitForFunction(() => {
-    const selectors = [
-      ".user-profile-name--user-name span",
-      ".user-profile-name span",
-      ".user-name",
-      ".profile-text span",
-    ]
+  try {
+    await page.waitForFunction(() => {
+      const selectors = [
+        ".user-profile-name--user-name span",
+        ".user-profile-name span",
+        ".user-name",
+        ".profile-text span",
+      ]
 
-    return selectors.some((selector) => {
-      const value = document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim()
-      return value && !value.toLowerCase().includes("mero share profile")
-    })
-  }, { timeout: 10000 }).catch(() => null)
+      return selectors.some((selector) => {
+        const value = document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim()
+        return value && !value.toLowerCase().includes("mero share profile")
+      })
+    }, { timeout: 10000 })
+  } catch {
+    console.warn("[meroshare] Profile name element did not appear within timeout")
+  }
 
   return await page.evaluate(() => {
     const selectors = [
@@ -87,36 +103,64 @@ export async function getMeroShareProfileName(page: Page) {
 }
 
 export async function logoutFromMeroShare(page: Page) {
-  await page.evaluate(() => {
-    const candidates = Array.from(document.querySelectorAll<HTMLElement>(
-      "a, button, .header-menu__link, .profile-image__button--logout"
-    ))
-    const logoutTarget = candidates.find((element) => {
-      const text = element.textContent?.replace(/\s+/g, " ").trim().toLowerCase() || ""
-      const tooltip = element.getAttribute("tooltip")?.toLowerCase() || ""
-      const className = element.className?.toString().toLowerCase() || ""
-      return text.includes("logout") || tooltip.includes("logout") || className.includes("logout")
+  try {
+    await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll<HTMLElement>(
+        "a, button, .header-menu__link, .profile-image__button--logout"
+      ))
+      const logoutTarget = candidates.find((element) => {
+        const text = element.textContent?.replace(/\s+/g, " ").trim().toLowerCase() || ""
+        const tooltip = element.getAttribute("tooltip")?.toLowerCase() || ""
+        const className = element.className?.toString().toLowerCase() || ""
+        return text.includes("logout") || tooltip.includes("logout") || className.includes("logout")
+      })
+      if (!logoutTarget) {
+        console.warn("[meroshare] No logout element found on page")
+        return
+      }
+      logoutTarget.click()
     })
-    logoutTarget?.click()
-  }).catch(() => null)
+  } catch (err) {
+    console.warn("[meroshare] Failed to click logout:", (err as Error)?.message)
+  }
 
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await page.waitForFunction(() => {
+    return window.location.href.includes("/login") ||
+      document.querySelector("#username") !== null ||
+      document.querySelector(".select2-selection") !== null
+  }, { timeout: 15000 }).catch(() => {
+    console.warn("[meroshare] Logout navigation not detected, continuing")
+  })
 }
 
 async function clickShareTransactionSidebar(page: Page) {
   await page.goto(MEROSHARE_TRANSACTION_URL, { waitUntil: "domcontentloaded" })
-  await new Promise(resolve => setTimeout(resolve, 2500))
+
+  try {
+    await page.waitForFunction(() => {
+      const body = document.body.textContent?.replace(/\s+/g, " ").toLowerCase() || ""
+      return body.includes("transaction history") ||
+        body.includes("share transaction") ||
+        document.querySelector("#radio-range") !== null
+    }, { timeout: 15000 })
+  } catch {
+    console.warn("[meroshare] Transaction page content did not appear, trying sidebar click")
+  }
 
   if (await waitForTransactionHistoryForm(page, 5000)) return
 
-  await page.evaluate(() => {
-    const candidates = Array.from(document.querySelectorAll("a, button, .nav-link, .sidebar-menu li, li"))
-    const target = candidates.find((element) => {
-      const text = element.textContent?.replace(/\s+/g, " ").trim().toLowerCase() || ""
-      return text === "share transaction" || text.includes("share transaction")
+  try {
+    await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("a, button, .nav-link, .sidebar-menu li, li"))
+      const target = candidates.find((element) => {
+        const text = element.textContent?.replace(/\s+/g, " ").trim().toLowerCase() || ""
+        return text === "share transaction" || text.includes("share transaction")
+      })
+      if (target) (target as HTMLElement).click()
     })
-    if (target) (target as HTMLElement).click()
-  }).catch(() => null)
+  } catch (err) {
+    console.warn("[meroshare] Failed to click share transaction sidebar:", (err as Error)?.message)
+  }
 
   const foundForm = await waitForTransactionHistoryForm(page, 25000)
   if (!foundForm) {
@@ -131,9 +175,9 @@ async function waitForTransactionHistoryForm(page: Page, timeoutMs: number) {
   while (Date.now() < deadline) {
     try {
       const isReady = await page.evaluate(() => {
-      const body = document.body.textContent?.replace(/\s+/g, " ").toLowerCase() || ""
-      return Boolean(document.querySelector("#radio-range")) ||
-        (body.includes("transaction history") && body.includes("filter by"))
+        const body = document.body.textContent?.replace(/\s+/g, " ").toLowerCase() || ""
+        return Boolean(document.querySelector("#radio-range")) ||
+          (body.includes("transaction history") && body.includes("filter by"))
       })
       if (isReady) return true
     } catch (error: any) {
@@ -143,20 +187,29 @@ async function waitForTransactionHistoryForm(page: Page, timeoutMs: number) {
       }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 
   return false
 }
 
 async function getPageDebugText(page: Page) {
-  return await page.evaluate(() =>
-    document.body.textContent?.replace(/\s+/g, " ").trim().slice(0, 500) || ""
-  ).catch(() => "")
+  try {
+    return await page.evaluate(() =>
+      document.body.textContent?.replace(/\s+/g, " ").trim().slice(0, 500) || ""
+    )
+  } catch {
+    return ""
+  }
 }
 
 async function chooseDateFilter(page: Page) {
-  const foundForm = await waitForTransactionHistoryForm(page, 20000)
+  const foundForm = await withRetry(() => waitForTransactionHistoryForm(page, 20000), {
+    maxRetries: 1,
+    baseDelayMs: 2000,
+    label: "waitForTransactionHistoryForm",
+  })
+
   if (!foundForm) {
     const debugText = await getPageDebugText(page)
     throw new Error(`Could not find the Date filter in MeroShare transaction history.${debugText ? ` Page text: ${debugText}` : ""}`)
@@ -200,7 +253,15 @@ async function chooseDateFilter(page: Page) {
     throw new Error(`MeroShare did not switch to Date filter.${debugText ? ` Page text: ${debugText}` : ""}`)
   }
 
-  await new Promise(resolve => setTimeout(resolve, 1500))
+  try {
+    await page.waitForFunction(() => {
+      return document.querySelector("table thead")?.textContent?.includes("Transaction Date") ||
+        document.querySelector("table tbody tr") !== null ||
+        document.body.textContent?.includes("No Record")
+    }, { timeout: 15000 })
+  } catch {
+    console.warn("[meroshare] Date filter table did not appear within timeout")
+  }
 }
 
 async function waitForDateFilterSelected(page: Page, timeoutMs: number) {
@@ -221,7 +282,7 @@ async function waitForDateFilterSelected(page: Page, timeoutMs: number) {
       }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 
   return false
@@ -238,12 +299,16 @@ export async function scrapeMeroShareTransactionHistory(page: Page) {
   await clickShareTransactionSidebar(page)
   await chooseDateFilter(page)
 
-  await page.waitForFunction(() => {
-    const body = document.body.textContent || ""
-    return document.querySelectorAll("table tbody tr").length > 0 ||
-      body.includes("No Record") ||
-      body.includes("Scrip")
-  }, { timeout: 30000 })
+  try {
+    await page.waitForFunction(() => {
+      const body = document.body.textContent || ""
+      return document.querySelectorAll("table tbody tr").length > 0 ||
+        body.includes("No Record") ||
+        body.includes("Scrip")
+    }, { timeout: 30000 })
+  } catch {
+    console.warn("[meroshare] Transaction table did not appear within timeout")
+  }
 
   const rows = await page.evaluate(() => {
     const normalizeHeader = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase()

@@ -1,18 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock, ArrowRight, Timer } from "lucide-react";
+import { Clock, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useWalletData } from "@/contexts/wallet-data-context";
 import { getCurrencySymbol } from "@/lib/currency";
@@ -56,6 +53,7 @@ export function LogShiftDialog({
   const [formEnd, setFormEnd] = useState("");
   const [formNote, setFormNote] = useState("");
   const [formRate, setFormRate] = useState("");
+  const [formInstitution, setFormInstitution] = useState("");
   const [rateHint, setRateHint] = useState("12.50");
   const [timeFormat, setTimeFormat] = useState<TimeFmt>("12h");
 
@@ -68,6 +66,7 @@ export function LogShiftDialog({
       setFormEnd(initialShift.end);
       setFormNote(initialShift.note || "");
       setFormRate(initialShift.rate ? String(initialShift.rate) : "");
+      setFormInstitution(initialShift.institution || "");
       setRateHint(defaultRateInput !== undefined ? defaultRateInput : String(initialShift.rate || 12.5));
     } else {
       // Add mode: reset fields
@@ -76,6 +75,7 @@ export function LogShiftDialog({
       setFormEnd("");
       setFormNote("");
       setFormRate("");
+      setFormInstitution("");
       try {
         const r = localStorage.getItem(STORAGE_RATE);
         if (defaultRateInput !== undefined) {
@@ -146,6 +146,7 @@ export function LogShiftDialog({
       hours: calcHours(formStart, formEnd),
     };
     if (!Number.isNaN(rateOverride)) shift.rate = rateOverride;
+    if (formInstitution.trim()) shift.institution = formInstitution.trim();
     if (onSave(shift)) onOpenChange(false);
   };
 
@@ -154,174 +155,144 @@ export function LogShiftDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        aria-describedby={undefined}
         className={cn(
-          "sm:max-w-md gap-0 p-0 overflow-hidden",
+          "sm:max-w-sm gap-0 p-0 overflow-hidden",
           "animate-in fade-in-0 zoom-in-95 duration-300",
         )}
       >
-        <DialogHeader className="p-6 pb-4 space-y-2 border-b border-border/60 bg-muted/20">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner">
-              <Clock className="h-5 w-5" />
+        {/* Header */}
+        <div className="flex items-center gap-3 pl-5 pr-12 pt-5 pb-3 border-b border-border/40">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Clock className="h-4 w-4" />
+          </div>
+          <DialogTitle className="text-base font-semibold">
+            {initialShift ? "Edit shift" : "New shift"}
+          </DialogTitle>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {/* Date + Rate row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="log-shift-date" className="text-xs text-muted-foreground font-medium">
+                Date
+              </Label>
+              <Input
+                id="log-shift-date"
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+                className="h-10 rounded-lg border-muted/60 text-sm"
+              />
             </div>
-            <div className="min-w-0 flex-1 space-y-1">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                {initialShift ? "Edit shift" : "Log a shift"}
-              </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground leading-snug">
-                Record date, times, and optional note. Saved shifts sync with Shift
-                tracker.
-              </DialogDescription>
+            <div className="space-y-1.5">
+              <Label htmlFor="log-shift-rate" className="text-xs text-muted-foreground font-medium">
+                Rate ({currencySymbol}/hr)
+              </Label>
+              <Input
+                id="log-shift-rate"
+                type="number"
+                step={0.5}
+                placeholder="Default"
+                value={formRate}
+                onChange={(e) => setFormRate(e.target.value)}
+                className="h-10 rounded-lg border-muted/60 text-sm font-mono"
+              />
             </div>
           </div>
-        </DialogHeader>
 
-        <div className="p-6 space-y-5 max-h-[min(70vh,520px)] overflow-y-auto overscroll-contain">
-          <Card className="border-2 border-muted/50 bg-background/60 backdrop-blur-sm rounded-2xl shadow-none overflow-hidden">
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="log-shift-date"
-                    className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                  >
-                    Date
-                  </Label>
-                  <Input
-                    id="log-shift-date"
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="h-11 rounded-xl border-muted/60"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="log-shift-rate"
-                    className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                  >
-                    Rate ({currencySymbol}/hr)
-                  </Label>
-                  <Input
-                    id="log-shift-rate"
-                    type="number"
-                    step={0.5}
-                    placeholder="Optional"
-                    value={formRate}
-                    onChange={(e) => setFormRate(e.target.value)}
-                    className="h-11 rounded-xl border-muted/60 font-mono"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Default: {formatMoney(getRate(), currencySymbol)}/h
-                  </p>
-                </div>
-              </div>
+          {/* Start + End row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="log-shift-start" className="text-xs text-muted-foreground font-medium">
+                Start
+              </Label>
+              <Input
+                id="log-shift-start"
+                type="time"
+                value={formStart}
+                onChange={(e) => setFormStart(e.target.value)}
+                className="h-10 rounded-lg border-muted/60 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="log-shift-end" className="text-xs text-muted-foreground font-medium">
+                End
+              </Label>
+              <Input
+                id="log-shift-end"
+                type="time"
+                value={formEnd}
+                onChange={(e) => setFormEnd(e.target.value)}
+                className="h-10 rounded-lg border-muted/60 text-sm"
+              />
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="log-shift-start"
-                    className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                  >
-                    Start
-                  </Label>
-                  <Input
-                    id="log-shift-start"
-                    type="time"
-                    value={formStart}
-                    onChange={(e) => setFormStart(e.target.value)}
-                    className="h-11 rounded-xl border-muted/60"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="log-shift-end"
-                    className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                  >
-                    End
-                  </Label>
-                  <Input
-                    id="log-shift-end"
-                    type="time"
-                    value={formEnd}
-                    onChange={(e) => setFormEnd(e.target.value)}
-                    className="h-11 rounded-xl border-muted/60"
-                  />
-                </div>
-              </div>
+          {/* Note */}
+          <div className="space-y-1.5">
+            <Label htmlFor="log-shift-note" className="text-xs text-muted-foreground font-medium">
+              Note
+            </Label>
+            <Input
+              id="log-shift-note"
+              placeholder="e.g. Opening shift, overtime"
+              value={formNote}
+              onChange={(e) => setFormNote(e.target.value)}
+              className="h-10 rounded-lg border-muted/60 text-sm"
+            />
+          </div>
 
-              <div className="space-y-2">
-                <Label
-                  htmlFor="log-shift-note"
-                  className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80"
-                >
-                  Note (optional)
-                </Label>
-                <Input
-                  id="log-shift-note"
-                  placeholder="e.g. Opening shift, overtime"
-                  value={formNote}
-                  onChange={(e) => setFormNote(e.target.value)}
-                  className="h-11 rounded-xl border-muted/60"
-                />
-              </div>
-            </CardContent>
-          </Card>
+          {/* Institution */}
+          <div className="space-y-1.5">
+            <Label htmlFor="log-shift-institution" className="text-xs text-muted-foreground font-medium">
+              Institution
+            </Label>
+            <Input
+              id="log-shift-institution"
+              placeholder="e.g. ABC School, XYZ Corp"
+              value={formInstitution}
+              onChange={(e) => setFormInstitution(e.target.value)}
+              className="h-10 rounded-lg border-muted/60 text-sm"
+            />
+          </div>
 
-          {/* Compact Preview Row */}
+          {/* Preview */}
           <div
             className={cn(
-              "rounded-xl border px-4 py-3 flex items-center justify-between gap-4",
+              "rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-3 text-sm",
               !preview
-                ? "border-muted bg-muted/30"
+                ? "bg-muted/30 text-muted-foreground"
                 : !preview.isValid
-                  ? "border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20"
-                  : "border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-950/20",
+                  ? "bg-amber-50/80 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300"
+                  : "bg-emerald-50/80 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300",
             )}
           >
             {!preview ? (
               <>
-                <div className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    Enter times to preview earnings
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground/60">--</span>
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-xs">Enter times to preview</span>
               </>
             ) : !preview.isValid ? (
               <>
-                <div className="flex items-center gap-2.5">
-                  <Timer className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm text-amber-800 dark:text-amber-200">
-                    End must be after start
-                  </span>
-                </div>
-                <span className="text-xs text-amber-700/60 dark:text-amber-400/60">
-                  {preview.startTime} → {preview.endTime}
-                </span>
+                <Timer className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-xs">End must be after start</span>
               </>
             ) : (
               <>
-                {/* Left: Time range */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <span className="font-medium">{preview.startTime}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="font-medium">{preview.endTime}</span>
-                  </div>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-medium">
-                    {preview.hours.toFixed(2)}h
-                  </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium tabular-nums">{preview.startTime}</span>
+                  <span className="text-muted-foreground/40">—</span>
+                  <span className="font-medium tabular-nums">{preview.endTime}</span>
+                  <span className="h-3.5 w-px bg-current opacity-20" />
+                  <span className="font-medium tabular-nums">{preview.hours.toFixed(1)}h</span>
                 </div>
-
-                {/* Right: Rate & Earnings */}
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {formatMoney(preview.rate, currencySymbol)}/hr
-                  </span>
-                  <span className="h-4 w-px bg-emerald-300/50" />
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs opacity-70">{formatMoney(preview.rate, currencySymbol)}/hr</span>
+                  <span className="h-3.5 w-px bg-current opacity-20" />
+                  <span className="font-semibold tabular-nums">
                     {formatMoney(preview.earnings, currencySymbol)}
                   </span>
                 </div>
@@ -330,18 +301,21 @@ export function LogShiftDialog({
           </div>
         </div>
 
-        <div className="flex gap-3 p-6 pt-0 border-t border-border/40 bg-muted/10">
+        {/* Footer */}
+        <div className="flex gap-2.5 px-5 py-4 border-t border-border/40">
           <Button
             type="button"
             variant="outline"
-            className="flex-1 h-12 rounded-2xl font-semibold border-muted/60"
+            size="sm"
+            className="flex-1 h-10 rounded-xl text-sm font-medium"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
           <Button
             type="button"
-            className="flex-[2] h-12 rounded-2xl font-semibold shadow-lg shadow-primary/15"
+            size="sm"
+            className="flex-[2] h-10 rounded-xl text-sm font-medium shadow-sm"
             onClick={handleSave}
             disabled={!canSave}
           >

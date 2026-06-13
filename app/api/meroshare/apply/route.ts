@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getMeroShareBrowser } from "../_lib/browser";
+import { loginToMeroShare } from "../_lib/transaction-history";
 
 export async function POST(req: Request) {
     let browser: any = null;
@@ -16,61 +17,11 @@ export async function POST(req: Request) {
             browser = await getMeroShareBrowser({ showBrowser, browserProvider });
             const page = await browser.newPage();
 
-            // 1. Login
-            await page.goto('https://meroshare.cdsc.com.np/#/login', { waitUntil: 'domcontentloaded' });
-
-            // Search and select DP (Robust Method)
-            try {
-                // Wait for the dropdown trigger
-                await page.waitForSelector('.select2-selection', { timeout: 20000 });
-                await page.click('.select2-selection');
-
-                // Type DP ID and wait for results
-                await page.waitForSelector('.select2-search__field', { visible: true });
-                await page.type('.select2-search__field', credentials.dpId, { delay: 100 });
-
-                // Wait for the specific result to appear in the dropdown
-                await page.waitForSelector('.select2-results__option', { visible: true, timeout: 10000 });
-                await page.keyboard.press('Enter');
-            } catch (dpError) {
-                console.error("DP Selection failed:", dpError);
-                // Fallback: try pressing Enter blindly if selector wait failed
-                await page.keyboard.press('Enter');
-            }
-
-            // Fill Username & Password with delay to ensure Angular binding
-            await page.waitForSelector('#username', { visible: true });
-            await page.type('#username', credentials.username, { delay: 50 });
-            await page.type('#password', credentials.password, { delay: 50 });
-
-            // Click Login
-            const loginBtn = await page.$('button[type="submit"]');
-            if (loginBtn) {
-                await loginBtn.click();
-            } else {
-                await page.keyboard.press('Enter');
-            }
-
-            // Wait for dashboard or error
-            try {
-                await page.waitForFunction(() => {
-                    const isDashboard = window.location.href.includes('/dashboard');
-                    const hasError = document.querySelector('.toast-error') !== null;
-                    const hasAuthError = document.body.textContent?.includes('Attempts remaining');
-                    return isDashboard || hasError || hasAuthError;
-                }, { timeout: 30000 });
-            } catch (_waitError) {
-                // Timeout logic handled below
-            }
-
-            if (!page.url().includes('/dashboard')) {
-                const errorMsg = await page.evaluate(() => {
-                    const toast = document.querySelector('.toast-error, .toast-message');
-                    return toast?.textContent?.trim() || document.body.textContent?.includes('Attempts remaining') ? "Invalid Credentials" : null;
-                });
-                await browser.close();
-                return NextResponse.json({ error: errorMsg || "Login failed or timed out. Check credentials." }, { status: 401 });
-            }
+            await loginToMeroShare(page, {
+                dpId: credentials.dpId,
+                username: credentials.username,
+                password: credentials.password,
+            });
 
             // 2. Navigate to My ASBA
             await page.goto('https://meroshare.cdsc.com.np/#/asba', { waitUntil: 'networkidle2' });
@@ -101,12 +52,13 @@ export async function POST(req: Request) {
                 // Smart wait: Only wait if we clicked the tab, otherwise data is already there
                 if (tabClicked) {
                     await page.waitForSelector('.asba-table, .company-list, app-no-records-found', { timeout: 15000 });
-                    await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 5s
-                } else {
-                    // Tab was already active, just verify content is present
-                    await page.waitForSelector('.asba-table, .company-list, app-no-records-found', { timeout: 10000 });
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Minimal wait
                 }
+                await page.waitForFunction(() => {
+                    return document.querySelectorAll('.company-list').length > 0 ||
+                        document.querySelectorAll('.asba-table tbody tr').length > 0 ||
+                        document.querySelector('app-no-records-found') !== null ||
+                        document.querySelector('.fallback-view') !== null
+                }, { timeout: 15000 });
             } catch (_err) {
                 await browser.close();
                 return NextResponse.json({ error: "ASBA page failed to load correctly." }, { status: 504 });
@@ -253,22 +205,7 @@ export async function POST(req: Request) {
 
             // 4. Fill Application Details (Step 1)
             await page.waitForSelector('#selectBank', { timeout: 15000 });
-
-            // SMART DETECT: Get Minimum Quantity from the page
-            const minKitta = await page.evaluate(() => {
-                const groups = Array.from(document.querySelectorAll('.form-group'));
-                for (const group of groups) {
-                    const label = group.querySelector('label')?.textContent?.trim() || "";
-                    if (label.includes('Minimum Quantity')) {
-                        const val = group.querySelector('.form-value span')?.textContent?.trim();
-                        if (val) return parseInt(val);
-                    }
-                }
-                return 10; // Fallback
-            });
-
-            // Decide which kitta to apply
-            const kittaToApply = (kitta && kitta > 0) ? kitta : minKitta;
+            const kittaToApply = (kitta && kitta > 0) ? kitta : 10;
 
             // 1. Select Bank (skip placeholder, choose first real bank)
             await page.waitForFunction(() => (document.querySelector('#selectBank') as HTMLSelectElement).options.length > 1, { timeout: 10000 });
@@ -286,8 +223,10 @@ export async function POST(req: Request) {
             });
             await page.select('#selectBank', bankValue);
 
-            // Small wait for Angular to process bank selection and load accounts
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await page.waitForFunction(() => {
+                const accountSelect = document.querySelector('#accountNumber') as HTMLSelectElement
+                return accountSelect && accountSelect.options.length > 0
+            }, { timeout: 15000 });
 
             // 2. Select Account Number (appears after bank selection)
             try {
@@ -307,7 +246,10 @@ export async function POST(req: Request) {
                 });
                 if (accountValue) {
                     await page.select('#accountNumber', accountValue);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await page.waitForFunction(() => {
+                        const accountSelect = document.querySelector('#accountNumber') as HTMLSelectElement
+                        return accountSelect && accountSelect.selectedIndex > 0 && accountSelect.value !== ""
+                    }, { timeout: 10000 });
                 }
             } catch (_err) {
                 // Account number selection skipped or not required

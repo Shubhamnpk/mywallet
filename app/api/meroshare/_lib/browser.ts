@@ -1,5 +1,6 @@
-import puppeteer from "puppeteer-core"
+import puppeteer, { type Browser, type Page } from "puppeteer-core"
 import chromium from "@sparticuz/chromium"
+import fs from "fs"
 
 function getBrowserlessEndpoint() {
   const explicitEndpoint = process.env.BROWSERLESS_WS_ENDPOINT || process.env.BROWSERLESS_URL
@@ -14,6 +15,49 @@ function getBrowserlessEndpoint() {
 
 export type MeroShareBrowserProvider = "auto" | "browserless" | "local"
 
+const BLOCKED_RESOURCE_TYPES = new Set([
+  "image", "font", "media", "stylesheet", "texttrack", "imageset",
+])
+
+const BLOCKED_RESOURCE_DOMAINS = new Set([
+  "google-analytics.com", "googletagmanager.com", "facebook.net",
+  "doubleclick.net", "hotjar.com", "newrelic.com",
+])
+
+async function setupPage(page: Page) {
+  await page.setRequestInterception(true)
+  page.on("request", (request) => {
+    const resourceType = request.resourceType()
+    const url = new URL(request.url())
+
+    if (BLOCKED_RESOURCE_TYPES.has(resourceType)) {
+      request.abort()
+      return
+    }
+
+    for (const domain of BLOCKED_RESOURCE_DOMAINS) {
+      if (url.hostname.includes(domain)) {
+        request.abort()
+        return
+      }
+    }
+
+    request.continue()
+  })
+
+  await page.setViewport({ width: 1280, height: 800 })
+}
+
+function patchBrowserNewPage(browser: Browser): Browser {
+  const originalNewPage = browser.newPage.bind(browser)
+  browser.newPage = async () => {
+    const page = await originalNewPage()
+    await setupPage(page)
+    return page
+  }
+  return browser
+}
+
 export async function getMeroShareBrowser(options?: { showBrowser?: boolean; browserProvider?: MeroShareBrowserProvider }) {
   const browserProvider = options?.browserProvider || "auto"
   const isVisibleDebug = process.env.MEROSHARE_VISIBLE_BROWSER === "1" || Boolean(options?.showBrowser) || browserProvider === "local"
@@ -24,9 +68,9 @@ export async function getMeroShareBrowser(options?: { showBrowser?: boolean; bro
   }
 
   if (browserProvider !== "local" && browserlessEndpoint) {
-    return await puppeteer.connect({
+    return patchBrowserNewPage(await puppeteer.connect({
       browserWSEndpoint: browserlessEndpoint,
-    })
+    }))
   }
 
   if (browserProvider === "local" && (process.env.NODE_ENV === "production" || process.env.VERCEL)) {
@@ -34,32 +78,36 @@ export async function getMeroShareBrowser(options?: { showBrowser?: boolean; bro
   }
 
   if (browserProvider === "auto" && (process.env.NODE_ENV === "production" || process.env.VERCEL)) {
-    return await puppeteer.launch({
+    return patchBrowserNewPage(await puppeteer.launch({
       args: chromium.args,
       defaultViewport: (chromium as any).defaultViewport,
       executablePath: await chromium.executablePath(),
       headless: (chromium as any).headless,
-    })
+    }))
   }
 
   const executablePaths = [
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/chromium",
     process.env.CHROME_PATH,
   ].filter(Boolean) as string[]
 
   let executablePath = ""
-  for (const path of executablePaths) {
-    if (require("fs").existsSync(path)) {
-      executablePath = path
+  for (const p of executablePaths) {
+    if (fs.existsSync(p)) {
+      executablePath = p
       break
     }
   }
 
-  return await puppeteer.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  return patchBrowserNewPage(await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     headless: !isVisibleDebug,
     executablePath: executablePath || undefined,
-  })
+  }))
 }

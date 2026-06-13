@@ -20,6 +20,7 @@ export const SHIFT_STORAGE_UPDATED_EVENT = "wallet-shift-shifts-updated";
  * - n: note (string)
  * - h: hours (number)
  * - r: rate (number, optional - only stored if different from global rate)
+ * - g: institution (string, optional)
  */
 export interface Shift {
   id: number;
@@ -29,6 +30,7 @@ export interface Shift {
   note: string;
   hours: number;
   rate?: number;
+  institution?: string;
 }
 
 /** Compact storage format for a single shift */
@@ -40,6 +42,7 @@ export interface ShiftCompact {
   n: string;  // note
   h: number;  // hours
   r?: number; // rate (optional)
+  g?: string; // institution (optional)
 }
 
 /** Legacy storage format (v1) */
@@ -63,6 +66,7 @@ export function expandShift(compact: ShiftCompact): Shift {
     note: compact.n,
     hours: compact.h,
     rate: compact.r,
+    institution: compact.g,
   };
 }
 
@@ -76,9 +80,11 @@ export function compactShift(shift: Shift): ShiftCompact {
     n: shift.note,
     h: shift.hours,
   };
-  // Only include rate if it's set
   if (shift.rate !== undefined) {
     compact.r = shift.rate;
+  }
+  if (shift.institution) {
+    compact.g = shift.institution;
   }
   return compact;
 }
@@ -177,4 +183,159 @@ export function appendShiftToStorage(shift: Shift): boolean {
   } catch {
     return false;
   }
+}
+
+interface ShiftPayment {
+  id: number;
+  type: string;
+  periodKey: string;
+  amount: number;
+  date: string;
+  label: string;
+  walletTransactionId?: string;
+}
+
+export interface ReportOptions {
+  showRate?: boolean;
+  showPayments?: boolean;
+  showNotes?: boolean;
+}
+
+function formatDateForReport(d: string) {
+  const [y, mo, day] = d.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${parseInt(day, 10)} ${months[parseInt(mo, 10) - 1]} ${y}`;
+}
+
+function fmtHM(hours: number) {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+export function generateTextReport(
+  shifts: Shift[],
+  payments: ShiftPayment[],
+  rate: number,
+  timeFormat: "12h" | "24h",
+  currencySymbol: string,
+  selectedIds?: number[],
+  opts?: ReportOptions,
+): string {
+  const showRate = opts?.showRate !== false;
+  const showPayments = opts?.showPayments !== false;
+  const showNotes = opts?.showNotes !== false;
+
+  const filtered = selectedIds?.length
+    ? shifts.filter(s => selectedIds.includes(s.id))
+    : shifts;
+
+  const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+
+  const totalHours = sorted.reduce((s, sh) => s + sh.hours, 0);
+  const totalEarned = showRate ? sorted.reduce((s, sh) => s + sh.hours * (sh.rate ?? rate), 0) : 0;
+  const shiftIds = new Set(sorted.map(s => s.id));
+  const totalPaid = showPayments
+    ? payments
+        .filter(p => {
+          if (p.type === "shift") return shiftIds.has(Number(p.periodKey));
+          return false;
+        })
+        .reduce((s, p) => s + p.amount, 0)
+    : 0;
+
+  const lines: string[] = [];
+  const divider = "─".repeat(56);
+
+  if (showPayments || showRate) {
+    lines.push("╔══════════════════════════════════════════════════════╗");
+    lines.push("║              SHIFT TRACKER REPORT                   ║");
+    lines.push("╚══════════════════════════════════════════════════════╝");
+  } else {
+    lines.push("╔══════════════════════════════════════════════════════╗");
+    lines.push("║              SHIFT LOG                              ║");
+    lines.push("╚══════════════════════════════════════════════════════╝");
+  }
+  lines.push("");
+  lines.push(`  Generated: ${formatDateForReport(new Date().toISOString().split("T")[0])}`);
+  lines.push(`  Period:    ${selectedIds?.length ? "Selected entries" : "All shifts"}`);
+  lines.push(`  Entries:   ${sorted.length} shift${sorted.length !== 1 ? "s" : ""}`);
+  lines.push("");
+
+  if (!sorted.length) {
+    lines.push("  No shifts to report.");
+    return lines.join("\n");
+  }
+
+  lines.push("SHIFT LOG");
+  lines.push(divider);
+
+  sorted.forEach((sh, i) => {
+    const getRate = (s: Shift) => s.rate ?? rate;
+    const tf = (t: string) => {
+      if (!t || timeFormat === "24h") return t;
+      const [h, m] = t.split(":").map(Number);
+      const suffix = h >= 12 ? "PM" : "AM";
+      return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${suffix}`;
+    };
+
+    const tag = sh.institution ? ` [${sh.institution}]` : "";
+    const ratePart = showRate ? `  │  ${currencySymbol}${(sh.hours * getRate(sh)).toFixed(2)}` : "";
+    lines.push(
+      `  ${String(i + 1).padStart(3)}. ${formatDateForReport(sh.date)}${tag}`
+    );
+    lines.push(
+      `       ${tf(sh.start)} - ${tf(sh.end)}  │  ${fmtHM(sh.hours).padStart(7)}${ratePart}`
+    );
+    if (showNotes && sh.note) {
+      lines.push(`       ${sh.note}`);
+    }
+    if (showRate && sh.rate != null && sh.rate !== rate) {
+      lines.push(`       Rate: ${currencySymbol}${sh.rate.toFixed(2)}/hr (override)`);
+    }
+    lines.push("");
+  });
+
+  if (showPayments || showRate) {
+    lines.push("SUMMARY");
+    lines.push(divider);
+    lines.push(`  Total shifts:    ${sorted.length}`);
+    lines.push(`  Total hours:     ${fmtHM(totalHours)}`);
+    if (showRate) {
+      lines.push(`  Total earned:    ${currencySymbol}${totalEarned.toFixed(2)}`);
+    }
+    if (showPayments) {
+      lines.push(`  Total paid:      ${currencySymbol}${totalPaid.toFixed(2)}`);
+      lines.push(`  Balance owed:    ${currencySymbol}${Math.max(0, totalEarned - totalPaid).toFixed(2)}`);
+    }
+    lines.push("");
+  }
+
+  if (showRate) {
+    const instMap = new Map<string, { count: number; hours: number; earned: number }>();
+    for (const sh of sorted) {
+      const key = sh.institution || "(no institution)";
+      const prev = instMap.get(key) || { count: 0, hours: 0, earned: 0 };
+      prev.count++;
+      prev.hours += sh.hours;
+      prev.earned += sh.hours * (sh.rate ?? rate);
+      instMap.set(key, prev);
+    }
+    if (instMap.size > 0) {
+      lines.push("BY INSTITUTION");
+      lines.push(divider);
+      for (const [name, stats] of instMap) {
+        lines.push(
+          `  ${name}: ${stats.count} shift${stats.count !== 1 ? "s" : ""}, ${fmtHM(stats.hours)}, ${currencySymbol}${stats.earned.toFixed(2)} earned`
+        );
+      }
+      lines.push("");
+      lines.push(divider);
+    }
+  }
+
+  lines.push("  Generated by MyWallet Shift Tracker");
+
+  return lines.join("\n");
 }

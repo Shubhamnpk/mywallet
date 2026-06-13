@@ -5,13 +5,20 @@ import { getMeroShareProfileName, loginToMeroShare, logoutFromMeroShare } from "
 export async function POST(req: Request) {
   let browser: any = null
 
+  let credentials: any, options: any
   try {
-    const { credentials, options } = await req.json()
+    const body = await req.json()
+    credentials = body.credentials
+    options = body.options
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
 
-    if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
-      return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
-    }
+  if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
+    return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
+  }
 
+  try {
     browser = await getMeroShareBrowser({
       showBrowser: Boolean(options?.showBrowser),
       browserProvider: options?.browserProvider || credentials?.browserProvider,

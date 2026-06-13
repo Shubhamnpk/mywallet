@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMeroShareBrowser } from "../_lib/browser";
+import { loginToMeroShare } from "../_lib/transaction-history";
 
 export async function POST(req: Request) {
     let browser: any = null;
@@ -11,34 +12,17 @@ export async function POST(req: Request) {
         }
 
         try {
-            browser = await getMeroShareBrowser({ browserProvider: options?.browserProvider || credentials?.browserProvider });
+            browser = await getMeroShareBrowser({
+                showBrowser: Boolean(options?.showBrowser),
+                browserProvider: options?.browserProvider || credentials?.browserProvider
+            });
             const page = await browser.newPage();
 
-            // 1. Login
-            await page.goto('https://meroshare.cdsc.com.np/#/login', { waitUntil: 'networkidle2' });
-
-            // Search and select DP
-            await page.waitForSelector('.select2-selection', { timeout: 15000 });
-            await page.click('.select2-selection');
-            await page.type('.select2-search__field', credentials.dpId);
-            await page.keyboard.press('Enter');
-
-            await page.type('#username', credentials.username);
-            await page.type('#password', credentials.password);
-
-            await page.click('button[type="submit"]');
-
-            // Wait for dashboard or error
-            await page.waitForFunction(() => {
-                return window.location.href.includes('/dashboard') ||
-                    document.querySelector('.toast-error') !== null;
-            }, { timeout: 30000 });
-
-            if (!page.url().includes('/dashboard')) {
-                const errorMsg = await page.evaluate(() => document.querySelector('.toast-error')?.textContent?.trim());
-                await browser.close();
-                return NextResponse.json({ error: errorMsg || "Login failed" }, { status: 401 });
-            }
+            await loginToMeroShare(page, {
+                dpId: credentials.dpId,
+                username: credentials.username,
+                password: credentials.password,
+            });
 
             // 2. Navigate to My Portfolio
             await page.goto('https://meroshare.cdsc.com.np/#/portfolio', { waitUntil: 'networkidle2' });
