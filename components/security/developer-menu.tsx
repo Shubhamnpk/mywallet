@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
+import { useDeveloperMode } from "@/hooks/use-developer-mode"
 import { REMINDER_CACHE_KEY, requestBrowserNotificationPermission, showAppNotification } from "@/lib/notifications"
 import { SessionManager } from "@/lib/session-manager"
 
@@ -30,6 +31,18 @@ export function DeveloperMenu() {
     state: false,
   })
   const [localStorageState, setLocalStorageState] = useState<Record<string, string>>({})
+  const handleDeveloperShortcut = useCallback((enabled: boolean) => {
+    setOpen((prev) => enabled ? !prev : false)
+    toast({
+      title: enabled ? "Developer Mode Enabled" : "Developer Mode Disabled",
+      description: "Control+Shift+D toggles developer tools.",
+    })
+  }, [])
+  const { isDeveloperMode } = useDeveloperMode({
+    shortcut: true,
+    onShortcut: handleDeveloperShortcut,
+  })
+  const { setDeveloperMode } = useDeveloperMode()
 
   useEffect(() => {
     const updateStatus = () => {
@@ -38,17 +51,6 @@ export function DeveloperMenu() {
     updateStatus()
     const timer = setInterval(updateStatus, 1000)
     return () => clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    const onShortcut = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "d") {
-        event.preventDefault()
-        setOpen((prev) => !prev)
-      }
-    }
-    window.addEventListener("keydown", onShortcut)
-    return () => window.removeEventListener("keydown", onShortcut)
   }, [])
 
   useEffect(() => {
@@ -222,13 +224,20 @@ export function DeveloperMenu() {
   }
 
   return (
-    open ? (
+    isDeveloperMode && open ? (
       <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[60]">
         <Card className="w-[22rem] max-h-[85vh] overflow-y-auto shadow-xl">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Developer Menu</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setOpen(false)
+                  setDeveloperMode(false)
+                }}
+              >
                 Close
               </Button>
             </div>

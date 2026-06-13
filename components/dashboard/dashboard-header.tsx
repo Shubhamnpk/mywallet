@@ -103,7 +103,12 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     }
   })
   const { budgets, goals, upcomingIPOs } = useWalletData()
-  const isAutoIpoEnabled = Boolean(userProfile.meroShare?.isAutomatedEnabled)
+  const isIpoApplyConfigured = Boolean(
+    userProfile.meroShare?.shareFeaturesEnabled &&
+    userProfile.meroShare?.dpId &&
+    userProfile.meroShare?.username &&
+    userProfile.meroShare?.password
+  )
   const [billRows, setBillRows] = useState<HeaderBillRow[]>([])
   const [billDialogOpen, setBillDialogOpen] = useState(false)
   const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
@@ -226,7 +231,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
         }
       })
 
-    if (isAutoIpoEnabled) {
+    if (isIpoApplyConfigured) {
       upcomingIPOs.forEach((ipo, index) => {
         const ipoId = `${ipo.company || ipo.url || ipo.date_range || "ipo"}-${ipo.status || "unknown"}-${ipo.openingDate || ipo.announcement_date || ipo.date_range || index}-${index}`
         if (ipo.status === "open") {
@@ -260,7 +265,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     budgets,
     goals,
     upcomingIPOs,
-    isAutoIpoEnabled,
+    isIpoApplyConfigured,
     billRows,
   ])
 

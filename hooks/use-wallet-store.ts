@@ -1657,9 +1657,18 @@ export function useWalletStore() {
     if (!currentProfile) return
 
     const previousProfile = currentProfile
+    const nextMeroShare = updates.meroShare
+      ? {
+        ...(currentProfile.meroShare || {}),
+        ...updates.meroShare,
+        applicationLogs: updates.meroShare.applicationLogs ?? currentProfile.meroShare?.applicationLogs,
+      }
+      : currentProfile.meroShare
+
     const updatedProfile = {
       ...currentProfile,
       ...updates,
+      meroShare: nextMeroShare,
       calendarSystem: getCalendarSystem(updates.calendarSystem ?? currentProfile.calendarSystem),
       notificationSettings: normalizeNotificationSettings({
         ...currentProfile.notificationSettings,
@@ -4220,6 +4229,124 @@ export function useWalletStore() {
     }
   }
 
+  type MeroShareTransactionHistoryRow = {
+    scrip: string
+    transactionDate: string
+    creditQuantity: number
+    debitQuantity: number
+    balanceAfterTransaction: number
+    historyDescription: string
+  }
+
+  const buildMeroShareTransactionKey = (transaction: Pick<ShareTransaction, "portfolioId" | "symbol" | "date" | "type" | "quantity" | "description">) =>
+    [
+      transaction.portfolioId,
+      normalizeStockSymbol(transaction.symbol),
+      transaction.date,
+      transaction.type,
+      transaction.quantity,
+      (transaction.description || "").trim().toUpperCase(),
+    ].join("|")
+
+  const mapMeroShareHistoryRowToTransaction = (
+    row: MeroShareTransactionHistoryRow,
+    portfolioId: string,
+    rowIndex: number,
+  ): ShareTransaction | null => {
+    const symbol = normalizeStockSymbol(row.scrip)
+    const date = row.transactionDate
+    const credit = Number(row.creditQuantity) || 0
+    const debit = Number(row.debitQuantity) || 0
+    const description = row.historyDescription || ""
+    const quantity = credit || debit
+
+    if (!symbol || !date || quantity <= 0) return null
+
+    const upperDescription = description.toUpperCase()
+    let type: ShareTransaction["type"] = "buy"
+    if (upperDescription.includes("CA-BONUS") || upperDescription.includes("BONUS")) type = "bonus"
+    else if (upperDescription.includes("CA-RIGHTS")) type = "bonus"
+    else if (upperDescription.includes("IPO") || upperDescription.includes("INITIAL PUBLIC OFFERING")) type = "ipo"
+    else if (upperDescription.includes("MERGER")) type = credit > 0 ? "merger_in" : "merger_out"
+    else if (debit > 0) type = "sell"
+
+    const sector = sectorsMap[normalizeStockSymbol(symbol)]
+    const faceValue = sector === "Mutual Fund" ? 10 : 100
+    const price = type === "ipo" || type === "merger_in" ? faceValue : 0
+
+    return {
+      id: generateId(`stx_msh_${rowIndex}`),
+      portfolioId,
+      symbol,
+      assetType: "stock",
+      type,
+      quantity,
+      price,
+      date,
+      description,
+    }
+  }
+
+  const importMeroShareTransactionHistoryRows = async (rowsInput: MeroShareTransactionHistoryRow[], targetPortfolioId?: string) => {
+    const portId = targetPortfolioId || activePortfolioId
+    if (!portId) {
+      throw new Error("No target portfolio selected")
+    }
+
+    const rows = Array.isArray(rowsInput) ? rowsInput : []
+    const fetchedTransactions = rows
+      .map((row, index) => mapMeroShareHistoryRowToTransaction(row, portId, index + 1))
+      .filter((transaction): transaction is ShareTransaction => Boolean(transaction))
+
+    const currentTransactions = shareTransactionsRef.current
+    const existingKeys = new Set(currentTransactions.map(buildMeroShareTransactionKey))
+    const newTransactions = fetchedTransactions.filter((transaction) => {
+      const key = buildMeroShareTransactionKey(transaction)
+      if (existingKeys.has(key)) return false
+      existingKeys.add(key)
+      return true
+    })
+
+    if (newTransactions.length === 0) {
+      return {
+        fetchedCount: rows.length,
+        importedCount: 0,
+        skippedCount: fetchedTransactions.length,
+      }
+    }
+
+    const updatedTransactions = [...currentTransactions, ...newTransactions]
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    await recomputePortfolio(updatedTransactions)
+
+    return {
+      fetchedCount: rows.length,
+      importedCount: newTransactions.length,
+      skippedCount: fetchedTransactions.length - newTransactions.length,
+    }
+  }
+
+  const syncMeroShareTransactionHistory = async (credentials: any, targetPortfolioId?: string) => {
+    const response = await fetch("/api/meroshare/transaction-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentials,
+        options: { browserProvider: credentials?.browserProvider },
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || "Failed to sync transaction history")
+
+    const rows = Array.isArray(data.transactions)
+      ? data.transactions as MeroShareTransactionHistoryRow[]
+      : []
+    return await importMeroShareTransactionHistoryRows(rows, targetPortfolioId)
+  }
+
   const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
     const portId = targetPortfolioId || activePortfolioId
     if (!portId) {
@@ -4230,7 +4357,10 @@ export function useWalletStore() {
       const response = await fetch('/api/meroshare/portfolio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials })
+        body: JSON.stringify({
+          credentials,
+          options: { browserProvider: credentials?.browserProvider },
+        })
       })
 
       const data = await response.json()
@@ -4285,7 +4415,8 @@ export function useWalletStore() {
   }
 
   const logMeroShareApplication = async (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => {
-    if (!userProfile) return null
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return null
 
     const nextLog: MeroShareApplicationLog = {
       id: generateId("ipo_log"),
@@ -4293,7 +4424,7 @@ export function useWalletStore() {
       ...entry,
     }
 
-    const existingMeroShare = userProfile.meroShare ?? {
+    const existingMeroShare = currentProfile.meroShare ?? {
       dpId: "",
       username: "",
       shareFeaturesEnabled: false,
@@ -4302,13 +4433,14 @@ export function useWalletStore() {
     }
 
     const updatedProfile: UserProfile = {
-      ...userProfile,
+      ...currentProfile,
       meroShare: {
         ...existingMeroShare,
         applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
       },
     }
 
+    userProfileRef.current = updatedProfile
     setUserProfile(updatedProfile)
     await saveDataWithIntegrity("userProfile", updatedProfile)
     return nextLog
@@ -4319,13 +4451,21 @@ export function useWalletStore() {
     ipoName: string,
     kitta = 10,
     source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
-    options?: { showBrowser?: boolean }
+    options?: { showBrowser?: boolean; browserProvider?: "auto" | "browserless" | "local" }
   ) => {
     try {
       const response = await fetch('/api/meroshare/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials, ipoName, kitta, options })
+        body: JSON.stringify({
+          credentials,
+          ipoName,
+          kitta,
+          options: {
+            ...options,
+            browserProvider: options?.browserProvider || credentials?.browserProvider,
+          },
+        })
       })
 
       const data = await response.json()
@@ -4368,7 +4508,11 @@ export function useWalletStore() {
       const response = await fetch('/api/meroshare/check-allotment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentials, ipoName })
+        body: JSON.stringify({
+          credentials,
+          ipoName,
+          options: { browserProvider: credentials?.browserProvider },
+        })
       })
 
       const data = await response.json()
@@ -4464,6 +4608,8 @@ export function useWalletStore() {
     fetchPortfolioPrices,
     refreshMarketData,
     syncMeroSharePortfolio,
+    importMeroShareTransactionHistoryRows,
+    syncMeroShareTransactionHistory,
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,
     upcomingIPOs,

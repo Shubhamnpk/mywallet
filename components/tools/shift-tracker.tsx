@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog";
+import { ExportDialog } from "@/components/tools/export-dialog";
 import {
   STORAGE_RATE,
   STORAGE_TIME_FMT,
@@ -31,6 +32,7 @@ import {
   todayStr,
   getShiftsFromStorage,
   saveShiftsToStorage,
+  generateTextReport,
 } from "@/lib/shift-tracker-storage";
 import {
   Dialog,
@@ -205,6 +207,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const [periodView, setPeriodView] = useState<PeriodView>("week");
   const [shiftStatusFilter, setShiftStatusFilter] =
     useState<ShiftStatusFilter>("all");
+  const [institutionFilter, setInstitutionFilter] = useState("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const [logOpen, setLogOpen] = useState(false);
@@ -212,7 +215,9 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailShiftId, setDetailShiftId] = useState<number | null>(null);
   const [actionShiftId, setActionShiftId] = useState<number | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
+  const [selectedShifts, setSelectedShifts] = useState<Set<number>>(new Set());
   const [settingsRate, setSettingsRate] = useState("12.20");
   const [paymentSearchTerm, setPaymentSearchTerm] = useState("");
   const [paymentTypeFilter, setPaymentTypeFilter] =
@@ -582,6 +587,51 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     URL.revokeObjectURL(url);
   };
 
+  const exportTextReport = (selectedOnly?: boolean) => {
+    let selectedIds = selectedOnly && selectedShifts.size > 0
+      ? Array.from(selectedShifts)
+      : undefined;
+    // When institution filter is active, restrict export to matching shifts
+    if (institutionFilter !== "all") {
+      const instIds = shifts
+        .filter((s) => s.institution === institutionFilter)
+        .map((s) => s.id);
+      selectedIds = selectedIds
+        ? selectedIds.filter((id) => instIds.includes(id))
+        : instIds;
+    }
+    const report = generateTextReport(
+      shifts,
+      payments,
+      getRate(),
+      timeFormat,
+      currencySymbol,
+      selectedIds?.length ? selectedIds : undefined,
+    );
+    const suffix = selectedIds
+      ? `_${institutionFilter !== "all" ? institutionFilter.replace(/\s+/g, "_").toLowerCase() : "selected"}`
+      : "";
+    const blob = new Blob([report], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shift_report_${todayStr()}${suffix}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${selectedIds?.length || shifts.length} shifts as text`);
+  };
+
+  const toggleSelectShift = (id: number) => {
+    setSelectedShifts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedShifts(new Set());
+
   const importData = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -605,20 +655,38 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     e.target.value = "";
   };
 
+  const uniqueInstitutions = useMemo(() => {
+    const set = new Set<string>();
+    shifts.forEach((s) => { if (s.institution) set.add(s.institution); });
+    return Array.from(set).sort();
+  }, [shifts]);
+
   /* Stats */
   const thisMonth = monthKey(todayStr());
   const scopedShifts = useMemo(
-    () =>
-      statView === "month"
+    () => {
+      let filtered = statView === "month"
         ? shifts.filter((s) => monthKey(s.date) === thisMonth)
-        : shifts,
-    [shifts, statView, thisMonth, monthKey],
+        : shifts;
+      if (institutionFilter !== "all") {
+        filtered = filtered.filter((s) => s.institution === institutionFilter);
+      }
+      return filtered;
+    },
+    [shifts, statView, thisMonth, monthKey, institutionFilter],
   );
+  /* Apply institution filter to stats */
+  const instFilteredShifts = useMemo(
+    () => institutionFilter === "all" ? shifts : shifts.filter((s) => s.institution === institutionFilter),
+    [shifts, institutionFilter],
+  );
+  const instFilteredIds = useMemo(() => new Set(instFilteredShifts.map((s) => s.id)), [instFilteredShifts]);
+
   let atE = 0,
     moE = 0,
     atH = 0,
     moH = 0;
-  shifts.forEach((s) => {
+  instFilteredShifts.forEach((s) => {
     atH += s.hours;
     const r = getShiftRate(s);
     atE += s.hours * r;
@@ -629,11 +697,13 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   });
   let atP = 0;
   payments.forEach((p) => {
+    if (p.type === "shift" && !instFilteredIds.has(Number(p.periodKey))) return;
     atP += p.amount;
   });
 
   let moP = 0;
   payments.forEach((p) => {
+    if (p.type === "shift" && !instFilteredIds.has(Number(p.periodKey))) return;
     if (p.type === "month" && p.periodKey === thisMonth) {
       moP += p.amount;
       return;
@@ -641,7 +711,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     if (p.type === "week") {
       const [a, b] = p.periodKey.split("__");
       if (monthKey(a) === thisMonth || monthKey(b) === thisMonth) {
-        const weekShifts = shifts.filter(
+        const weekShifts = instFilteredShifts.filter(
           (s) => weekKey(s.date) === p.periodKey,
         );
         const weekEarn = weekShifts.reduce(
@@ -659,10 +729,6 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
       const pMonth = p.periodKey ? monthKey(p.periodKey) : "";
       if (pMonth === thisMonth) moP += p.amount;
       return;
-    }
-    if (p.type === "shift") {
-      const shift = shifts.find((s) => String(s.id) === String(p.periodKey));
-      if (shift && monthKey(shift.date) === thisMonth) moP += p.amount;
     }
   });
 
@@ -696,19 +762,19 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           <span className="truncate">Shift tracker</span>
         </h3>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground">
-            <span>{currencySymbol}</span>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <span className="hidden sm:inline">{currencySymbol}</span>
             <Input
               type="number"
               min={0}
               step={0.5}
-              className="h-7 w-14 border-0 bg-transparent p-0 text-right font-mono text-sm font-medium text-foreground shadow-none focus-visible:ring-0"
+              className="h-7 w-12 sm:w-14 border-0 bg-transparent p-0 text-right font-mono text-sm font-medium text-foreground shadow-none focus-visible:ring-0"
               value={rateInput}
               onChange={(e) => setRateInput(e.target.value)}
               aria-label="Hourly rate"
             />
-            <span>/ hr</span>
+            <span className="hidden sm:inline">/ hr</span>
           </div>
           <Button
             type="button"
@@ -734,8 +800,8 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
         </div>
       </div>
 
-      <Card className="gap-4 py-5 shadow-sm">
-        <CardHeader className="px-4 sm:px-6 pb-0">
+      <Card className="gap-3 py-3 shadow-sm sm:gap-4 sm:py-5">
+        <CardHeader className="px-3 pb-0 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Summary</CardTitle>
@@ -768,7 +834,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="px-4 sm:px-6 pt-0">
+        <CardContent className="px-3 pt-0 sm:px-6">
           <div
             className={cn(
               "grid grid-cols-2 gap-2 sm:grid-cols-4",
@@ -825,21 +891,39 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
               <CardTitle className="text-base">
                 Shifts &amp; pay status
               </CardTitle>
-              <Select
-                value={shiftStatusFilter}
-                onValueChange={(value) =>
-                  setShiftStatusFilter(value as ShiftStatusFilter)
-                }
-              >
-                <SelectTrigger className="h-9 w-[160px]">
-                  <SelectValue placeholder="Filter status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="owed">Owed</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                <Select
+                  value={shiftStatusFilter}
+                  onValueChange={(value) =>
+                    setShiftStatusFilter(value as ShiftStatusFilter)
+                  }
+                >
+                  <SelectTrigger className="h-9 w-[140px]">
+                    <SelectValue placeholder="Filter status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="owed">Owed</SelectItem>
+                  </SelectContent>
+                </Select>
+                {uniqueInstitutions.length > 0 && (
+                  <Select
+                    value={institutionFilter}
+                    onValueChange={setInstitutionFilter}
+                  >
+                    <SelectTrigger className="h-9 w-[160px]">
+                      <SelectValue placeholder="Filter institution" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All institutions</SelectItem>
+                      {uniqueInstitutions.map((inst) => (
+                        <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap gap-0.5 rounded-lg border bg-muted/50 p-0.5">
               {(
@@ -889,6 +973,9 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
             onOpenDetails={setDetailShiftId}
             onOpenActions={setActionShiftId}
             currencySymbol={currencySymbol}
+            isMobile={isMobile}
+            selectedShifts={selectedShifts}
+            onToggleSelect={toggleSelectShift}
           />
         </CardContent>
       </Card>
@@ -1150,6 +1237,16 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
         }}
       />
 
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        shifts={shifts}
+        payments={payments}
+        rate={getRate()}
+        timeFormat={timeFormat}
+        currencySymbol={currencySymbol}
+      />
+
       {/* Settings */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent
@@ -1229,16 +1326,24 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
               <div>
                 <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
-                  Data management
+                  Export
                 </Label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     type="button"
+                    variant="default"
+                    className="h-11 rounded-xl font-medium"
+                    onClick={() => setExportOpen(true)}
+                  >
+                    Export
+                  </Button>
+                  <Button
+                    type="button"
                     variant="outline"
                     className="h-11 rounded-xl border-muted/60 font-medium"
-                    onClick={exportData}
+                    onClick={() => exportData()}
                   >
-                    Export backup
+                    Full backup
                   </Button>
                   <Button
                     type="button"
@@ -1285,43 +1390,141 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
         open={!!detailShift}
         onOpenChange={(o) => !o && setDetailShiftId(null)}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Shift details</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          aria-describedby={undefined}
+          className={cn(
+            "sm:max-w-sm gap-0 p-0 overflow-hidden",
+            "animate-in fade-in-0 zoom-in-95 duration-300",
+          )}
+        >
           {detailShift && (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <DetailItem label="Date" value={fd(detailShift.date, calendarSystem)} />
-                <DetailItem label="Duration" value={fh(detailShift.hours)} />
-                <DetailItem
-                  label="Start"
-                  value={formatTimeValue(detailShift.start)}
-                />
-                <DetailItem
-                  label="End"
-                  value={formatTimeValue(detailShift.end)}
-                />
-                <DetailItem
-                  label="Rate"
-                  value={`${formatMoney(getShiftRate(detailShift))}/hr`}
-                />
-                <DetailItem
-                  label="Earned"
-                  value={formatMoney(
-                    detailShift.hours * getShiftRate(detailShift),
-                  )}
-                />
+            <>
+              {/* Header */}
+              <div className="flex items-center gap-3 pl-5 pr-12 pt-5 pb-3 border-b border-border/40">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="text-base font-semibold leading-tight">
+                    Shift
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {fd(detailShift.date, calendarSystem)}
+                  </p>
+                </div>
+                <span className={cn(
+                  "shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                  shiftIsPaid(detailShift)
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                )}>
+                  {shiftIsPaid(detailShift) ? "Paid" : "Owed"}
+                </span>
               </div>
-              <p className="rounded-lg bg-muted/50 p-3 text-sm">
-                <strong>Time range:</strong> {formatShiftTimeRange(detailShift)}
-              </p>
-              {detailShift.note ? (
-                <p className="rounded-lg bg-muted/50 p-3 text-sm">
-                  <strong>Note:</strong> {detailShift.note}
-                </p>
-              ) : null}
-            </div>
+
+              {/* Body */}
+              <div className="px-5 py-4 space-y-4">
+                {/* Time row */}
+                <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3.5 py-3">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="font-medium tabular-nums">{formatTimeValue(detailShift.start)}</span>
+                    <span className="text-muted-foreground/40">—</span>
+                    <span className="font-medium tabular-nums">{formatTimeValue(detailShift.end)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs tabular-nums text-muted-foreground">{fh(detailShift.hours)}</span>
+                    {detailShift.institution && (
+                      <span className="rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {detailShift.institution}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment card */}
+                <div className="rounded-lg border bg-card px-3.5 py-3 space-y-2.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Rate</span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(getShiftRate(detailShift), currencySymbol)}/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Earned</span>
+                    <span className="font-semibold tabular-nums text-emerald-600">
+                      {formatMoney(detailShift.hours * getShiftRate(detailShift), currencySymbol)}
+                    </span>
+                  </div>
+                  <div className="h-px bg-border/60" />
+                  {shiftOwed(detailShift) > 0 ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Still owed</span>
+                      <span className="font-semibold tabular-nums text-amber-600">
+                        {formatMoney(shiftOwed(detailShift), currencySymbol)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-600 font-medium">Fully paid</span>
+                      {paidForShift(detailShift.id) > 0 && (
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          +{formatMoney(paidForShift(detailShift.id), currencySymbol)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Note */}
+                {detailShift.note && (
+                  <div className="rounded-lg bg-muted/30 px-3.5 py-2.5">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {detailShift.note}
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2.5 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-10 rounded-xl text-sm font-medium"
+                    onClick={() => {
+                      setEditShift(detailShift);
+                      setLogOpen(true);
+                      setDetailShiftId(null);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  {shiftOwed(detailShift) > 0 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="flex-1 h-10 rounded-xl text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => {
+                        markShiftPaid(detailShift.id);
+                        setDetailShiftId(null);
+                      }}
+                    >
+                      Mark paid
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 h-10 rounded-xl text-sm font-medium"
+                      disabled
+                    >
+                      Fully paid
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -1439,24 +1642,24 @@ function StatCell({
   className?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-background px-2 py-3 text-center">
-      <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-lg border bg-background px-1.5 py-2 text-center sm:px-2 sm:py-3">
+      <div className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground sm:mb-1 sm:text-[11px]">
         {label}
       </div>
-      <div className={cn("font-mono text-lg font-medium", className)}>
+      <div className={cn("font-mono text-base font-medium sm:text-lg", className)}>
         {value}
       </div>
     </div>
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
+function DetailItem({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
     <div className="rounded-lg border bg-muted/30 p-2.5">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="font-mono text-sm">{value}</div>
+      <div className={cn("font-mono text-sm", className)}>{value}</div>
     </div>
   );
 }
@@ -1482,6 +1685,9 @@ function PeriodsBody({
   onOpenDetails,
   onOpenActions,
   currencySymbol,
+  isMobile,
+  selectedShifts,
+  onToggleSelect,
 }: {
   shifts: Shift[];
   periodView: PeriodView;
@@ -1512,6 +1718,9 @@ function PeriodsBody({
   onOpenDetails: (id: number) => void;
   onOpenActions: (id: number) => void;
   currencySymbol: string;
+  isMobile: boolean;
+  selectedShifts: Set<number>;
+  onToggleSelect: (id: number) => void;
 }) {
   const [page, setPage] = useState(1);
   const pageSize = 7;
@@ -1567,71 +1776,177 @@ function PeriodsBody({
 
     return (
       <div className="space-y-3">
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
-            <thead>
-              <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Note / time</th>
-                <th className="hidden px-3 py-2 sm:table-cell">Hours</th>
-                <th className="px-3 py-2">Rate</th>
-                <th className="px-3 py-2">Earned</th>
-                <th className="w-10 px-1 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedShifts.map((s) => (
-                <tr
+        {isMobile ? (
+          <div className="space-y-2">
+            {paginatedShifts.map((s) => {
+              const earned = s.hours * getShiftRate(s);
+              return (
+                <div
                   key={s.id}
-                  className="border-b last:border-0 hover:bg-muted/40"
+                  className="rounded-xl border bg-background p-3.5 cursor-pointer active:bg-muted/40 transition-colors"
+                  onClick={() => onOpenDetails(s.id)}
                 >
-                  <td className="px-3 py-2 align-middle">{fd(s.date, calendarSystem)}</td>
-                  <td className="px-3 py-2 align-middle">
+                  <div className="flex items-start gap-3">
                     <button
                       type="button"
-                      className="block w-full text-left hover:text-primary"
-                      onClick={() => onOpenDetails(s.id)}
+                      className={cn(
+                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                        selectedShifts.has(s.id)
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border hover:border-primary/50",
+                      )}
+                      onClick={(e) => { e.stopPropagation(); onToggleSelect(s.id); }}
                     >
-                      {s.note || formatShiftTimeRange(s)}
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {s.note ? formatShiftTimeRange(s) : "Tap for details"}
-                      </span>
+                      {selectedShifts.has(s.id) && (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                     </button>
-                    {shiftIsPaid(s) ? (
-                      <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
-                        Paid
-                      </span>
-                    ) : (
-                      <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-300">
-                        Owed
-                      </span>
-                    )}
-                  </td>
-                  <td className="hidden px-3 py-2 align-middle font-mono sm:table-cell">
-                    {fh(s.hours)}
-                  </td>
-                  <td className="px-3 py-2 align-middle font-mono">
-                    {formatMoney(getShiftRate(s), currencySymbol)}/hr
-                  </td>
-                  <td className="px-3 py-2 align-middle font-mono text-emerald-600">
-                    {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
-                  </td>
-                  <td className="px-1 py-2 align-middle text-right">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{fd(s.date, calendarSystem)}</span>
+                        <span className="font-mono text-sm text-emerald-600">
+                          {formatMoney(earned, currencySymbol)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="font-mono">{fh(s.hours)} @ {formatMoney(getShiftRate(s), currencySymbol)}/hr</span>
+                        {s.institution && (
+                          <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {s.institution}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 rounded-full border"
-                      onClick={() => onOpenActions(s.id)}
+                      className="h-8 w-8 shrink-0 rounded-full border"
+                      onClick={(e) => { e.stopPropagation(); onOpenActions(s.id); }}
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
-                  </td>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="w-10 px-1 py-2">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 items-center justify-center rounded border border-border hover:border-primary/50"
+                      onClick={() => {
+                        const allSel = paginatedShifts.every(s => selectedShifts.has(s.id));
+                        paginatedShifts.forEach(s => {
+                          if (allSel && selectedShifts.has(s.id)) onToggleSelect(s.id);
+                          else if (!allSel && !selectedShifts.has(s.id)) onToggleSelect(s.id);
+                        });
+                      }}
+                    >
+                      {paginatedShifts.length > 0 && paginatedShifts.every(s => selectedShifts.has(s.id)) && (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Note / time</th>
+                  <th className="hidden px-3 py-2 sm:table-cell">Hours</th>
+                  <th className="px-3 py-2">Rate</th>
+                  <th className="px-3 py-2">Earned</th>
+                  <th className="w-10 px-1 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginatedShifts.map((s) => (
+                  <tr
+                    key={s.id}
+                    className={cn(
+                      "border-b last:border-0 hover:bg-muted/40",
+                      selectedShifts.has(s.id) && "bg-primary/5",
+                    )}
+                  >
+                    <td className="px-1 py-2 align-middle">
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded border transition-colors",
+                          selectedShifts.has(s.id)
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border hover:border-primary/50",
+                        )}
+                        onClick={() => onToggleSelect(s.id)}
+                      >
+                        {selectedShifts.has(s.id) && (
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2 align-middle">{fd(s.date, calendarSystem)}</td>
+                    <td className="px-3 py-2 align-middle">
+                      <button
+                        type="button"
+                        className="block w-full text-left hover:text-primary"
+                        onClick={() => onOpenDetails(s.id)}
+                      >
+                        {s.note || formatShiftTimeRange(s)}
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          {s.note ? formatShiftTimeRange(s) : "Tap for details"}
+                        </span>
+                      </button>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {shiftIsPaid(s) ? (
+                          <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            Paid
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-300">
+                            Owed
+                          </span>
+                        )}
+                        {s.institution && (
+                          <span className="inline-block rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {s.institution}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="hidden px-3 py-2 align-middle font-mono sm:table-cell">
+                      {fh(s.hours)}
+                    </td>
+                    <td className="px-3 py-2 align-middle font-mono">
+                      {formatMoney(getShiftRate(s), currencySymbol)}/hr
+                    </td>
+                    <td className="px-3 py-2 align-middle font-mono text-emerald-600">
+                      {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
+                    </td>
+                    <td className="px-1 py-2 align-middle text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full border"
+                        onClick={() => onOpenActions(s.id)}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <Pager
           currentPage={currentPage}
           totalPages={totalPages}
@@ -1653,9 +1968,15 @@ function PeriodsBody({
     keyFn = (d) => weekKey(d);
     labelFn = (k) => {
       const [a, b] = k.split("__");
-      const start = fd(a, calendarSystem);
-      const end = fd(b, calendarSystem);
-      return `${start} - ${end}`;
+      if (calendarSystem === "BS") {
+        return `${formatAppDate(a, "BS")} - ${formatAppDate(b, "BS")}`;
+      }
+      const [y1, mo1, d1] = a.split("-");
+      const [y2, mo2, d2] = b.split("-");
+      if (mo1 === mo2 && y1 === y2) {
+        return `${parseInt(d1, 10)}-${parseInt(d2, 10)} ${MONTHS_SHORT[parseInt(mo2, 10) - 1]} ${y2}`;
+      }
+      return `${fd(a, calendarSystem)} - ${fd(b, calendarSystem)}`;
     };
   } else {
     keyFn = (d) => monthKey(d);
@@ -1765,10 +2086,85 @@ function PeriodsBody({
             </div>
             {isOpen ? (
               <div className="border-t">
+                {isMobile ? (
+                  <div className="divide-y">
+                    {d.shifts.map((s) => {
+                      const earned = s.hours * getShiftRate(s);
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex items-start gap-3 px-4 py-3 cursor-pointer active:bg-muted/40 transition-colors"
+                          onClick={() => onOpenDetails(s.id)}
+                        >
+                          <button
+                            type="button"
+                            className={cn(
+                              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                              selectedShifts.has(s.id)
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border hover:border-primary/50",
+                            )}
+                            onClick={(e) => { e.stopPropagation(); onToggleSelect(s.id); }}
+                          >
+                            {selectedShifts.has(s.id) && (
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium">{fd(s.date, calendarSystem)}</span>
+                              <span className="font-mono text-sm text-emerald-600">
+                                {formatMoney(earned, currencySymbol)}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                              <span className="font-mono">{fh(s.hours)} @ {formatMoney(getShiftRate(s), currencySymbol)}/hr</span>
+                              {s.institution && (
+                                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  {s.institution}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 rounded-full border"
+                            onClick={(e) => { e.stopPropagation(); onOpenActions(s.id); }}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] table-fixed border-collapse text-sm">
                     <thead>
                       <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="w-10 px-1 py-2">
+                          <button
+                            type="button"
+                            className="flex h-5 w-5 items-center justify-center rounded border border-border hover:border-primary/50"
+                            onClick={() => {
+                              const allSel = d.shifts.every(sh => selectedShifts.has(sh.id));
+                              d.shifts.forEach(sh => {
+                                if (allSel && selectedShifts.has(sh.id)) onToggleSelect(sh.id);
+                                else if (!allSel && !selectedShifts.has(sh.id)) onToggleSelect(sh.id);
+                              });
+                            }}
+                          >
+                            {d.shifts.length > 0 && d.shifts.every(sh => selectedShifts.has(sh.id)) && (
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                        </th>
                         <th className="px-3 py-2">Date</th>
                         <th className="px-3 py-2">Note / time</th>
                         <th className="hidden px-3 py-2 sm:table-cell">
@@ -1783,8 +2179,29 @@ function PeriodsBody({
                       {d.shifts.map((s) => (
                         <tr
                           key={s.id}
-                          className="border-b last:border-0 hover:bg-muted/40"
+                          className={cn(
+                            "border-b last:border-0 hover:bg-muted/40",
+                            selectedShifts.has(s.id) && "bg-primary/5",
+                          )}
                         >
+                          <td className="px-1 py-2 align-middle">
+                            <button
+                              type="button"
+                              className={cn(
+                                "flex h-5 w-5 items-center justify-center rounded border transition-colors",
+                                selectedShifts.has(s.id)
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border hover:border-primary/50",
+                              )}
+                              onClick={() => onToggleSelect(s.id)}
+                            >
+                              {selectedShifts.has(s.id) && (
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </button>
+                          </td>
                           <td className="px-3 py-2 align-middle">
                             {fd(s.date, calendarSystem)}
                           </td>
@@ -1801,11 +2218,18 @@ function PeriodsBody({
                                   : "Tap for details"}
                               </span>
                             </button>
-                            {shiftIsPaid(s) ? (
-                              <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
-                                Paid
-                              </span>
-                            ) : null}
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {shiftIsPaid(s) ? (
+                                <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                  Paid
+                                </span>
+                              ) : null}
+                              {s.institution && (
+                                <span className="inline-block rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  {s.institution}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="hidden px-3 py-2 align-middle font-mono sm:table-cell">
                             {fh(s.hours)}
@@ -1835,6 +2259,7 @@ function PeriodsBody({
                     </tbody>
                   </table>
                 </div>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2 text-xs">
                   <div className="flex flex-wrap gap-3 font-mono">
                     <span>
@@ -1899,28 +2324,39 @@ function Pager({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
-      <span className="text-muted-foreground">
+    <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+      <span className="text-xs text-muted-foreground hidden sm:inline">
         Page {currentPage} of {totalPages} · {totalItems} {itemLabel}
       </span>
-      <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground sm:hidden">
+        {currentPage}/{totalPages}
+      </span>
+      <div className="flex items-center gap-1.5">
         <Button
           type="button"
           variant="outline"
           size="sm"
+          className="h-8 px-2 sm:px-3 text-xs"
           disabled={currentPage <= 1}
           onClick={() => onPageChange(currentPage - 1)}
         >
-          Previous
+          <svg className="h-3.5 w-3.5 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          <span className="hidden sm:inline">Prev</span>
         </Button>
         <Button
           type="button"
           variant="outline"
           size="sm"
+          className="h-8 px-2 sm:px-3 text-xs"
           disabled={currentPage >= totalPages}
           onClick={() => onPageChange(currentPage + 1)}
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
+          <svg className="h-3.5 w-3.5 sm:ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
         </Button>
       </div>
     </div>

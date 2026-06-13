@@ -24,11 +24,13 @@ export interface UserProfile {
     password?: string
     crn?: string
     pin?: string
+    accounts?: MeroShareAccount[]
     shareFeaturesEnabled?: boolean
     shareNotificationsEnabled?: boolean
     preferredKitta?: number
     applyMode?: "on-demand" | "automatic"
     showLiveBrowser?: boolean
+    browserProvider?: "auto" | "browserless" | "local"
     isAutomatedEnabled: boolean
     applicationLogs?: MeroShareApplicationLog[]
   }
@@ -39,6 +41,17 @@ export interface UserProfile {
   celebratedAchievements?: string[]
   /** Whether biometric was enabled on ANY device (for cross-device prompts) */
   biometricEnabledOnAnyDevice?: boolean
+}
+
+export interface MeroShareAccount {
+  id: string
+  label: string
+  role: "primary" | "secondary"
+  dpId: string
+  username: string
+  password?: string
+  crn?: string
+  pin?: string
 }
 
 export interface NotificationSettings {

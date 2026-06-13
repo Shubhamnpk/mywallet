@@ -498,6 +498,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
   const isPublicRoute =
     pathname === "/welcome" ||
     pathname === "/releases" ||
+    pathname === "/roadmap" ||
     pathname === "/dropbox-callback" ||
     pathname === "/onboarding"
 

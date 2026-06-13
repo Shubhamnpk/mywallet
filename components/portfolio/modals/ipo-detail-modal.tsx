@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { useRouter } from "next/navigation"
 import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
 
@@ -25,21 +25,18 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [hasAppliedInSession, setHasAppliedInSession] = useState(false)
-    const autoApplySessionRef = useRef<string | null>(null)
-    const hasMeroShareCredentials = Boolean(
+    const hasMeroShareLoginCredentials = Boolean(
         userProfile?.meroShare?.dpId &&
         userProfile?.meroShare?.username &&
-        userProfile?.meroShare?.password &&
+        userProfile?.meroShare?.password
+    )
+    const hasMeroShareApplyCredentials = Boolean(
+        hasMeroShareLoginCredentials &&
         userProfile?.meroShare?.crn &&
         userProfile?.meroShare?.pin
     )
-    const canAutomate = Boolean(
-        userProfile?.meroShare?.shareFeaturesEnabled &&
-        userProfile?.meroShare?.isAutomatedEnabled &&
-        hasMeroShareCredentials
-    )
-    const showLiveBrowser = Boolean(userProfile?.meroShare?.showLiveBrowser)
-    const applyMode = userProfile?.meroShare?.applyMode || "on-demand"
+    const canUseMeroShare = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareLoginCredentials)
+    const canApplyFromCard = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareApplyCredentials)
     const normalizeIpoName = (value?: string) =>
         (value || "")
             .toLowerCase()
@@ -60,19 +57,20 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         onOpenChange(false)
         router.push("/settings?tab=meroshare")
     }
-    const openMeroShareLogin = () => {
-        window.open("https://meroshare.cdsc.com.np/#/login", "_blank", "noopener,noreferrer")
-    }
-
-    const handleAutomatedApply = useCallback(async (
-        showBrowser = false,
-        source: "live-apply" | "live-auto" = "live-apply",
+    const handleApplyFromCard = useCallback(async (
+        source: "live-apply" = "live-apply",
         closeOnSuccess = true
     ) => {
         const credentials = userProfile?.meroShare
-        if (!canAutomate) {
-            toast.error("MeroShare automation setup is incomplete.", {
-                description: "Open Settings > MeroShare to enable automation and complete credentials."
+        if (!userProfile?.meroShare?.shareFeaturesEnabled) {
+            toast.error("Share features are disabled.", {
+                description: "Open Settings > MeroShare and enable Share Features first."
+            })
+            return
+        }
+        if (!canApplyFromCard) {
+            toast.error("MeroShare setup is incomplete.", {
+                description: "Add CRN and transaction PIN in Settings > MeroShare to apply."
             })
             return
         }
@@ -87,13 +85,11 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
             ipo?.company || "",
             10,
             source,
-            { showBrowser: showBrowser || showLiveBrowser }
+            { showBrowser: false }
         )
 
         toast.promise(promise, {
-            loading: source === "live-auto"
-                ? `Auto-applying for ${ipo?.company}...`
-                : `Applying for ${ipo?.company}... This may take a few seconds.`,
+            loading: `Applying for ${ipo?.company}... This may take a few seconds.`,
             success: (data) => {
                 setIsApplying(false)
                 setHasAppliedInSession(true)
@@ -108,22 +104,11 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                 return err.message
             }
         })
-    }, [applyMeroShareIPO, canAutomate, ipo?.company, onOpenChange, showLiveBrowser, userProfile?.meroShare])
-
-    useEffect(() => {
-        if (!open || !ipo || ipo.status !== "open" || !canAutomate || applyMode !== "automatic" || isAppliedForIpo) return
-        const key = `${ipo.company}|${ipo.status}|${open}`
-        if (autoApplySessionRef.current === key || isApplying || isCheckingResult) return
-        autoApplySessionRef.current = key
-        const timer = setTimeout(() => {
-            void handleAutomatedApply(false, "live-auto", false)
-        }, 0)
-        return () => clearTimeout(timer)
-    }, [open, ipo, canAutomate, applyMode, isApplying, isCheckingResult, isAppliedForIpo, handleAutomatedApply])
+    }, [applyMeroShareIPO, canApplyFromCard, ipo?.company, onOpenChange, userProfile?.meroShare])
 
     const handleCheckAllotment = async () => {
         const credentials = userProfile?.meroShare
-        if (!canAutomate) {
+        if (!canUseMeroShare) {
             toast.error("Mero Share setup required", { description: "Please setup your credentials in Settings to check allotment." })
             return
         }
@@ -177,9 +162,11 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                 }
                 return {
                     title: "Application is Live!",
-                    description: canAutomate
+                    description: canApplyFromCard
                         ? `You can apply now for 10 units of ${ipo.company}.`
-                        : "Set up MeroShare automation once, then apply from this screen in one click.",
+                        : canUseMeroShare
+                        ? "Add CRN and transaction PIN in MeroShare settings to apply."
+                        : "Enable Share Features and set up MeroShare once, then apply from this screen.",
                     icon: <CheckCircle2 className="w-5 h-5 text-success" />,
                     bgColor: "bg-success/5",
                     borderColor: "border-success/20"
@@ -196,7 +183,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
             default:
                 return {
                     title: "Check Results",
-                    description: "The subscription has ended. You can now use our automation to check if you've been allotted any units.",
+                    description: "The subscription has ended. You can check whether you've been allotted any units.",
                     icon: <History className="w-5 h-5 text-indigo-500" />,
                     bgColor: "bg-indigo-500/5",
                     borderColor: "border-indigo-500/20"
@@ -388,14 +375,14 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 disabled={isApplying || isCheckingResult}
                                 onClick={() => {
                                     if (ipo.status === 'open') {
-                                        if (canAutomate && isAppliedForIpo) {
+                                        if (canApplyFromCard && isAppliedForIpo) {
                                             handleCheckAllotment();
-                                        } else if (canAutomate) {
-                                            handleAutomatedApply();
+                                        } else if (canApplyFromCard) {
+                                            handleApplyFromCard();
                                         } else {
-                                            openMeroShareLogin();
+                                            openMeroShareSettings();
                                         }
-                                    } else if (ipo.status === 'closed' && canAutomate) {
+                                    } else if (ipo.status === 'closed' && canUseMeroShare) {
                                         handleCheckAllotment();
                                     } else {
                                         openMeroShareSettings();
@@ -404,30 +391,19 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             >
                                 {ipo.status === 'open' ? (
                                     <>
-                                        {canAutomate
+                                        {canApplyFromCard
                                             ? (isAppliedForIpo ? "Check Result" : "Apply Now")
                                             : 'Apply Now'}
                                         <ArrowRight className={cn("w-3.5 h-3.5", !isApplying && "animate-pulse")} />
                                     </>
                                 ) : (
                                     <>
-                                        {canAutomate ? 'Check Allotment' : 'Setup'}
+                                        {canUseMeroShare ? 'Check Allotment' : 'Setup'}
                                         <Sparkles className={cn("w-3.5 h-3.5", !isCheckingResult && "animate-pulse")} />
                                     </>
                                 )}
                             </Button>
                         </div>
-                        {ipo.status === 'open' && canAutomate && !isAppliedForIpo && (
-                            <Button
-                                variant="ghost"
-                                className="w-full mt-2 rounded-xl font-semibold text-[11px] uppercase tracking-widest border border-dashed border-primary/30 hover:bg-primary/5"
-                                disabled={isApplying || isCheckingResult}
-                                onClick={() => handleAutomatedApply(true)}
-                            >
-                                Watch Live Browser (On Demand)
-                            </Button>
-                        )}
-
                         {ipo.announcement_date && (
                             <div className="flex items-center justify-center gap-2 mt-3 grayscale opacity-30">
                                 <History className="w-2.5 h-2.5" />

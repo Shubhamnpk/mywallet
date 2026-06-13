@@ -1,75 +1,28 @@
 import { NextResponse } from "next/server";
 import { getMeroShareBrowser } from "../_lib/browser";
+import { loginToMeroShare } from "../_lib/transaction-history";
 
 export async function POST(req: Request) {
     let browser: any = null;
     try {
-        const { credentials, ipoName } = await req.json();
+        const { credentials, ipoName, options } = await req.json();
 
         if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
             return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
         }
 
         try {
-            browser = await getMeroShareBrowser();
+            browser = await getMeroShareBrowser({
+                showBrowser: Boolean(options?.showBrowser),
+                browserProvider: options?.browserProvider || credentials?.browserProvider
+            });
             const page = await browser.newPage();
 
-            // 1. Login
-            await page.goto('https://meroshare.cdsc.com.np/#/login', { waitUntil: 'domcontentloaded' });
-
-            // Search and select DP (Robust Method)
-            try {
-                // Wait for the dropdown trigger
-                await page.waitForSelector('.select2-selection', { timeout: 20000 });
-                await page.click('.select2-selection');
-
-                // Type DP ID and wait for results
-                await page.waitForSelector('.select2-search__field', { visible: true });
-                await page.type('.select2-search__field', credentials.dpId, { delay: 100 });
-
-                // Wait for the specific result to appear in the dropdown
-                await page.waitForSelector('.select2-results__option', { visible: true, timeout: 10000 });
-                await page.keyboard.press('Enter');
-            } catch (dpError) {
-                console.error("DP Selection failed:", dpError);
-                // Fallback: try pressing Enter blindly if selector wait failed
-                await page.keyboard.press('Enter');
-            }
-
-            // Fill Username & Password with delay to ensure Angular binding
-            await page.waitForSelector('#username', { visible: true });
-            await page.type('#username', credentials.username, { delay: 50 });
-            await page.type('#password', credentials.password, { delay: 50 });
-
-            // Click Login
-            const loginBtn = await page.$('button[type="submit"]');
-            if (loginBtn) {
-                await loginBtn.click();
-            } else {
-                await page.keyboard.press('Enter');
-            }
-
-            // Wait for dashboard or error
-            try {
-                await page.waitForFunction(() => {
-                    const isDashboard = window.location.href.includes('/dashboard');
-                    const hasError = document.querySelector('.toast-error') !== null;
-                    const hasAuthError = document.body.textContent?.includes('Attempts remaining');
-                    return isDashboard || hasError || hasAuthError;
-                }, { timeout: 30000 });
-            } catch (_waitError) {
-                // Timeout handled below
-            }
-
-            if (!page.url().includes('/dashboard')) {
-                const errorMsg = await page.evaluate(() => {
-                    const toast = document.querySelector('.toast-error, .toast-message');
-                    return toast?.textContent?.trim() ||
-                        (document.body.textContent?.includes('Attempts remaining') ? "Invalid Credentials" : null);
-                });
-                await browser.close();
-                return NextResponse.json({ error: errorMsg || "Login failed or timed out. Check credentials." }, { status: 401 });
-            }
+            await loginToMeroShare(page, {
+                dpId: credentials.dpId,
+                username: credentials.username,
+                password: credentials.password,
+            });
 
             // 2. Navigate to My ASBA
             await page.goto('https://meroshare.cdsc.com.np/#/asba', { waitUntil: 'networkidle2' });
@@ -99,8 +52,10 @@ export async function POST(req: Request) {
                 });
 
                 if (reportTabFound) {
-                    // Critical: Give it time after clicking to swap components
-                    await new Promise(resolve => setTimeout(resolve, 4000));
+                    await page.waitForFunction(() => {
+                        return document.querySelector('.asba-table, .company-list, .fallback-view') !== null ||
+                            document.body.textContent?.includes("Application Report")
+                    }, { timeout: 20000 });
                 }
             } catch (tabErr) {
                 console.error("Tab selection error:", tabErr);
@@ -187,10 +142,11 @@ export async function POST(req: Request) {
             }
 
             // 5. Check Allotment Status in the Report Detail Page
-            // The report detail loads in a new view. We wait for any content container to appear.
             await page.waitForSelector('.asba-report-detail, .modal-content, .card-body, .row', { timeout: 15000 });
-            // Small extra wait for Angular state transition to finish
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await page.waitForFunction(() => {
+                return document.querySelectorAll('.form-group').length > 0 &&
+                    document.querySelector('.form-group label') !== null
+            }, { timeout: 15000 });
 
             const reportData = await page.evaluate(() => {
                 const data: any = {};

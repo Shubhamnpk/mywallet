@@ -115,9 +115,14 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
 export function PortfolioList() {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction} = portfolioData
+    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
+    const hasMeroShareLoginCredentials = Boolean(
+        userProfile?.meroShare?.dpId &&
+        userProfile?.meroShare?.username &&
+        userProfile?.meroShare?.password
+    )
     const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
     const currencySymbol = useMemo(() => {
         if (userProfile?.currency === "NPR") return "Rs. "
@@ -137,6 +142,7 @@ export function PortfolioList() {
     const [importTransactionPrices, setImportTransactionPrices] = useState<Record<string, string>>({})
     const [pendingImport, setPendingImport] = useState<{ type: string, data: string } | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
+    const [isCreatingMeroSharePortfolio, setIsCreatingMeroSharePortfolio] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState("holdings")
     const [holdingsView, setHoldingsView] = useState<"list" | "grid">("list")
@@ -871,6 +877,55 @@ export function PortfolioList() {
             toast.success("Portfolio created successfully")
         } catch (error) {
             toast.error("Failed to create portfolio")
+        }
+    }
+
+    const createPortfolioFromMeroShare = async () => {
+        const credentials = userProfile?.meroShare
+        if (!credentials?.dpId || !credentials.username || !credentials.password) {
+            toast.error("MeroShare credentials missing", {
+                description: "Add DP, username, and password in Settings > MeroShare first."
+            })
+            return
+        }
+
+        setIsCreatingMeroSharePortfolio(true)
+        const promise = (async () => {
+            const response = await fetch("/api/meroshare/transaction-history", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    credentials,
+                    options: { browserProvider: credentials.browserProvider },
+                }),
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.error || "Failed to read MeroShare account")
+
+            const profileName = (data.profileName || "").trim()
+            const portfolioName = profileName || userProfile?.name?.trim() || "MeroShare Portfolio"
+            const createdPortfolio = await addPortfolio(portfolioName, "Created from your MeroShare account", "#0ea5e9")
+            const syncResult = await importMeroShareTransactionHistoryRows(
+                Array.isArray(data.transactions) ? data.transactions : [],
+                createdPortfolio.id
+            )
+
+            return { portfolioName, syncResult }
+        })()
+
+        toast.promise(promise, {
+            loading: "Creating portfolio from MeroShare...",
+            success: ({ portfolioName, syncResult }) =>
+                `${portfolioName}: imported ${syncResult.importedCount}, skipped ${syncResult.skippedCount} duplicate${syncResult.skippedCount === 1 ? "" : "s"}.`,
+            error: (error: any) => error?.message || "Failed to create portfolio from MeroShare",
+        })
+
+        try {
+            await promise
+        } catch (_error) {
+            // The toast already renders the failure; keep the app from surfacing a runtime overlay.
+        } finally {
+            setIsCreatingMeroSharePortfolio(false)
         }
     }
 
@@ -3499,14 +3554,47 @@ export function PortfolioList() {
                             <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-muted/50 rounded-3xl bg-muted/5 text-center">
                                 <Activity className="w-12 h-12 text-muted-foreground/30 mb-4" />
                                 <h3 className="text-lg font-bold">No portfolios yet</h3>
-                                <p className="text-muted-foreground mb-6">Create your first portfolio to start tracking your investments.</p>
-                                <Button
-                                    onClick={() => setIsCreatePortfolioOpen(true)}
-                                    className="rounded-xl font-bold px-8"
-                                >
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Create Your First Portfolio
-                                </Button>
+                                {isShareFeaturesEnabled && hasMeroShareLoginCredentials ? (
+                                    <>
+                                        <p className="text-muted-foreground mb-6 max-w-md">
+                                            MeroShare is already connected. You can create your first portfolio from that account, and we will use the profile name from MeroShare when it is available.
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <Button
+                                                onClick={() => showConfirm(
+                                                    "Create portfolio from MeroShare?",
+                                                    "We will log in to MeroShare, read the profile name from the dashboard, and create a portfolio for this account.",
+                                                    createPortfolioFromMeroShare,
+                                                    "Create Portfolio"
+                                                )}
+                                                disabled={isCreatingMeroSharePortfolio}
+                                                className="rounded-xl font-bold px-8"
+                                            >
+                                                <Sparkles className="w-4 h-4 mr-2" />
+                                                {isCreatingMeroSharePortfolio ? "Creating..." : "Create from MeroShare"}
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                onClick={() => setIsCreatePortfolioOpen(true)}
+                                                className="rounded-xl font-bold px-8"
+                                            >
+                                                <Plus className="w-4 h-4 mr-2" />
+                                                Create Manually
+                                            </Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-muted-foreground mb-6">Create your first portfolio to start tracking your investments.</p>
+                                        <Button
+                                            onClick={() => setIsCreatePortfolioOpen(true)}
+                                            className="rounded-xl font-bold px-8"
+                                        >
+                                            <Plus className="w-4 h-4 mr-2" />
+                                            Create Your First Portfolio
+                                        </Button>
+                                    </>
+                                )}
                             </div>
                         )}
                         <CreatePortfolioModal
