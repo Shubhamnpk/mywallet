@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/goals/goals-list"
@@ -12,6 +12,8 @@ import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
 import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
+import { BrokerTraining } from "@/components/tools/broker-training"
+import { ScannerTool } from "@/components/tools/scanner/scanner-tool"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
 import type {UserProfile,Transaction,Budget,Goal,Category} from "@/types/wallet"
@@ -57,6 +59,8 @@ const MOBILE_TOOLS_GROUP = [
   "portfolio",
   "insights",
   "shift-tracker",
+  "broker-training",
+  "scanner",
 ] as const
 
 const DESKTOP_TOOLS_GROUP = [
@@ -64,9 +68,11 @@ const DESKTOP_TOOLS_GROUP = [
   "categories",
   "insights",
   "shift-tracker",
+  "broker-training",
+  "scanner",
 ] as const
 
-const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "tools"])
+const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools"])
 
 // Custom hook for delayed tooltip
 function useDelayedTooltip(delay: number = 3000) {
@@ -222,6 +228,18 @@ export function MainTabs({
       icon: Clock,
       description: "Log hours and pay from shifts",
     },
+    {
+      value: "broker-training",
+      label: "Broker training",
+      icon: Landmark,
+      description: "Browse NEPSE brokers by sector & activity",
+    },
+    {
+      value: "scanner",
+      label: "Scanner",
+      icon: Scan,
+      description: "Scan receipts and QR codes",
+    },
   ]
 
   const toolsHubTab: TabDef = {
@@ -306,14 +324,18 @@ export function MainTabs({
     pickTab(allTabs, "categories"),
     pickTab(allTabs, "insights"),
     pickTab(allTabs, "shift-tracker"),
+    pickTab(allTabs, "broker-training"),
+    pickTab(allTabs, "scanner"),
   ]
 
   const mobileHubCards: TabDef[] = [
     pickTab(allTabs, "debt-credit"),
     pickTab(allTabs, "categories"),
     pickTab(allTabs, "portfolio"),
-    pickTab(allTabs, "shift-tracker"),  // Second-to-last
-    pickTab(allTabs, "insights"),        // Last
+    pickTab(allTabs, "shift-tracker"),
+    pickTab(allTabs, "broker-training"),
+    pickTab(allTabs, "scanner"),
+    pickTab(allTabs, "insights"),
   ]
 
   return (
@@ -443,6 +465,14 @@ export function MainTabs({
 
           <TabsContent value="shift-tracker" className="space-y-4">
             <ShiftTracker onAddIncomeTransaction={onAddTransaction} />
+          </TabsContent>
+
+          <TabsContent value="broker-training" className="space-y-4">
+            <BrokerTraining />
+          </TabsContent>
+
+          <TabsContent value="scanner" className="space-y-4">
+            <ScannerTool />
           </TabsContent>
 
           <TabsContent

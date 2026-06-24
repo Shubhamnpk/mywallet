@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Upload, Scan, X, CheckCircle, AlertCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat } from "lucide-react"
+import { Camera, Upload, Scan, X, CheckCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat, ChevronDown } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
 type QRContentType = 'url' | 'email' | 'phone' | 'wifi' | 'contact' | 'calendar' | 'bitcoin' | 'text'
@@ -706,361 +706,265 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   }, [stopQRCamera])
 
   return (
-    <div className="space-y-6">
-       {/* Image Selection */}
+    <div className="space-y-4">
+      {/* Initial choice */}
       {!selectedImage && !showScannerView && !isCameraActive && !isInitializingCamera && (
-        <Card className="border-0 sm:border shadow-lg">
-          <CardHeader className="pb-3 sm:pb-6 text-center">
-            <CardTitle className="text-lg sm:text-xl">
-              <div className="flex items-center justify-center gap-2">
-                <QrCode className="w-5 h-5 sm:w-6 sm:h-6" />
-                QR Code Scanner
-              </div>
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">
-              Choose how you want to scan the QR code
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <Button
-                onClick={() => qrFileInputRef.current?.click()}
-                variant="outline"
-                className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
-              >
-                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-full">
-                  <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-blue-600 dark:text-blue-400" />
-                </div>
-                <span className="text-base sm:text-lg font-semibold">Upload File</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">
-                  Select from your device
-                </span>
-              </Button>
-
-              <Button
-                onClick={startQRCamera}
-                variant="outline"
-                className="h-32 sm:h-36 flex flex-col gap-3 sm:gap-4 p-6 sm:p-8 border-2 hover:border-primary transition-colors"
-                disabled={isInitializingCamera}
-              >
-                <div className="p-3 bg-purple-50 dark:bg-purple-950/20 rounded-full">
-                  {isInitializingCamera ? (
-                    <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin text-purple-600 dark:text-purple-400" />
-                  ) : (
-                    <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600 dark:text-purple-400" />
-                  )}
-                </div>
-                <span className="text-base sm:text-lg font-semibold">
-                  {isInitializingCamera ? 'Starting Camera...' : 'Scan with Camera'}
-                </span>
-                <span className="text-xs sm:text-sm text-muted-foreground">
-                  Use your device camera
-                </span>
-              </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => qrFileInputRef.current?.click()}
+            className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-muted-foreground/25 p-6 sm:p-8 hover:border-primary/50 hover:bg-accent/30 transition-all active:scale-[0.99]"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950/30">
+              <Upload className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
+            <div className="text-center">
+              <div className="font-semibold text-sm">Upload File</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Select from your device</div>
+            </div>
+          </button>
 
-            <Input
-              ref={qrFileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-          </CardContent>
-        </Card>
+          <button
+            onClick={startQRCamera}
+            disabled={isInitializingCamera}
+            className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-muted-foreground/25 p-6 sm:p-8 hover:border-primary/50 hover:bg-accent/30 transition-all active:scale-[0.99] disabled:opacity-50"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-50 dark:bg-purple-950/30">
+              {isInitializingCamera ? (
+                <Loader2 className="w-6 h-6 animate-spin text-purple-600 dark:text-purple-400" />
+              ) : (
+                <Camera className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              )}
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-sm">{isInitializingCamera ? 'Starting...' : 'Scan with Camera'}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Use your device camera</div>
+            </div>
+          </button>
+
+          <Input ref={qrFileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+        </div>
       )}
 
       {/* Camera View */}
       {(showScannerView || isCameraActive || isInitializingCamera) && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Camera className="w-5 h-5" />
-                Camera {cameraFacingMode === 'environment' ? 'Back' : 'Front'}
-              </CardTitle>
-              <div className="flex flex-wrap gap-1 sm:gap-2">
-                <Button
-                  onClick={switchQRCamera}
-                  variant="outline"
-                  size="sm"
-                  disabled={isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
-                >
-                  <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden sm:inline">Switch Camera</span>
-                  <span className="sm:hidden">Switch</span>
-                </Button>
-                <Button
-                  onClick={() => stopQRCamera()}
-                  variant="outline"
-                  size="sm"
-                  disabled={isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
-                >
-                  <Square className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  Stop
-                </Button>
-
-                {/* Camera select */}
-                <select
-                  aria-label="Choose camera"
-                  value={currentDeviceId ?? ''}
-                  onChange={async (e) => {
-                    const id = e.target.value || undefined
-                    stopQRCamera()
-                    await startQRCameraWithDevice(id)
-                  }}
-                  className="px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm rounded-lg border"
-                  disabled={isInitializingCamera || availableCameras.length === 0}
-                >
-                  <option value="">Default</option>
-                  {availableCameras.map(cam => (
-                    <option key={cam.deviceId} value={cam.deviceId}>{cam.label || cam.deviceId}</option>
-                  ))}
-                </select>
-
-                {/* Continuous scan toggle */}
-                <Button
-                  onClick={() => setContinuousScan(!continuousScan)}
-                  variant={continuousScan ? "default" : "outline"}
-                  size="sm"
-                  disabled={isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
-                >
-                  <Repeat className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden sm:inline">{continuousScan ? 'Continuous' : 'Single'}</span>
-                  <span className="sm:hidden">{continuousScan ? 'Cont' : 'Single'}</span>
-                </Button>
-
-                {/* Torch / flashlight toggle */}
-                <Button
-                  onClick={toggleTorch}
-                  variant="outline"
-                  size="sm"
-                  disabled={!torchAvailable || isInitializingCamera}
-                  className="text-xs sm:text-sm px-2 sm:px-3"
-                >
-                  <span className="hidden sm:inline">{isFlashlightOn ? 'Flash Off' : 'Flash On'}</span>
-                  <span className="sm:hidden">{isFlashlightOn ? 'Off' : 'On'}</span>
-                </Button>
-              </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-1.5">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Camera className="w-4 h-4" />
+              {cameraFacingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
             </div>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="relative">
-              <video
-                ref={qrVideoRef}
-                autoPlay
-                playsInline
-                muted
-                controls={false}
-                className={`w-full h-64 sm:h-80 object-cover rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''} bg-black`}
-                onError={(e) => {
-                  toast.error('Video display error. Please refresh the page and try again.')
+            <div className="flex gap-1.5 flex-wrap">
+              <select
+                aria-label="Choose camera"
+                value={currentDeviceId ?? ''}
+                onChange={async (e) => {
+                  const id = e.target.value || undefined
                   stopQRCamera()
+                  await startQRCameraWithDevice(id)
                 }}
-              />
-              <canvas ref={qrCanvasRef} className="hidden" />
-
-              {/* Loading overlay */}
-              {isInitializingCamera && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-white rounded-lg">
-                  <div className="text-center px-4">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                    <div className="text-sm font-medium">Starting camera...</div>
-                    <div className="text-xs mt-1 opacity-80">Please allow camera permission if prompted</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Camera overlay with focus guide */}
-              {isCameraActive && !isInitializingCamera && (
-                <>
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="w-full h-full border-2 border-white/50 rounded-lg">
-                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-40 h-40 border-2 border-white rounded-lg opacity-75"></div>
-                    </div>
-                  </div>
-
-                  {/* Camera status indicator */}
-                  <div className="absolute top-4 left-4">
-                    <div className="flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      scanning...
-                    </div>
-                  </div>
-                </>
-              )}
+                className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                disabled={isInitializingCamera || availableCameras.length === 0}
+              >
+                <option value="">Default</option>
+                {availableCameras.map(cam => (
+                  <option key={cam.deviceId} value={cam.deviceId}>{cam.label || `Camera ${cam.deviceId.slice(0, 8)}`}</option>
+                ))}
+              </select>
+              <button
+                onClick={switchQRCamera}
+                disabled={isInitializingCamera}
+                className="flex items-center gap-1 rounded-lg border border-input px-2 h-8 text-xs hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                <RotateCcw className="w-3 h-3" /> Switch
+              </button>
+              <button
+                onClick={() => setContinuousScan(!continuousScan)}
+                disabled={isInitializingCamera}
+                className={`flex items-center gap-1 rounded-lg border px-2 h-8 text-xs transition-colors disabled:opacity-50 ${continuousScan ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-accent'}`}
+              >
+                <Repeat className="w-3 h-3" /> {continuousScan ? 'Cont' : 'Single'}
+              </button>
+              <button
+                onClick={toggleTorch}
+                disabled={!torchAvailable || isInitializingCamera}
+                className="flex items-center gap-1 rounded-lg border border-input px-2 h-8 text-xs hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                {isFlashlightOn ? 'Off' : 'Flash'}
+              </button>
+              <button
+                onClick={() => stopQRCamera()}
+                disabled={isInitializingCamera}
+                className="flex items-center gap-1 rounded-lg border border-input px-2 h-8 text-xs text-destructive hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                <Square className="w-3 h-3" /> Stop
+              </button>
             </div>
+          </div>
 
-            {/* Camera tips */}
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
-                <div className="text-sm text-blue-700 dark:text-blue-300">
-                  <strong>Camera Tips:</strong>
-                  <ul className="mt-1 space-y-1 text-xs">
-                    <li>- Position QR code in the center square</li>
-                    <li>- Ensure good lighting for better detection</li>
-                    <li>- Hold camera steady when capturing</li>
-                    <li>- QR code should be clearly visible</li>
-                  </ul>
+          <div className="relative overflow-hidden rounded-xl bg-black">
+            <video
+              ref={qrVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full aspect-[4/3] object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+              onError={() => {
+                toast.error('Camera error. Please try again.')
+                stopQRCamera()
+              }}
+            />
+            <canvas ref={qrCanvasRef} className="hidden" />
+
+            {isInitializingCamera && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-xl">
+                <div className="text-center text-white">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <div className="text-sm font-medium">Starting camera...</div>
+                  <div className="text-xs text-white/70 mt-1">Please allow camera access</div>
                 </div>
               </div>
+            )}
+
+            {isCameraActive && !isInitializingCamera && (
+              <>
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-36 sm:w-56 sm:h-44 border-2 border-white/40 rounded-xl" />
+                </div>
+                <div className="absolute top-3 left-3">
+                  <span className="flex items-center gap-1.5 bg-black/50 text-white text-xs px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                    scanning...
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <details className="group">
+            <summary className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors list-none">
+              <ChevronDown className="w-3 h-3 group-open:rotate-180 transition-transform" />
+              Camera tips
+            </summary>
+            <div className="mt-2 rounded-xl bg-muted/50 px-4 py-3 text-xs text-muted-foreground space-y-1">
+              <p>• Position QR code in the center square</p>
+              <p>• Ensure good lighting for better detection</p>
+              <p>• Hold camera steady when capturing</p>
+              <p>• QR code should be clearly visible</p>
             </div>
-          </CardContent>
-        </Card>
+          </details>
+        </div>
       )}
 
       {/* Selected Image Preview */}
       {selectedImage && !isCameraActive && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">QR Code Preview</CardTitle>
-              <Button
-                onClick={resetQRScanner}
-                variant="ghost"
-                size="sm"
-              >
-                <X className="w-4 h-4" />
-              </Button>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Upload className="w-4 h-4" />
+              QR Code Preview
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <img
-                src={selectedImage}
-                alt="QR Code"
-                className="w-full max-h-64 object-contain rounded-lg border"
-              />
-            </div>
-
-            {!qrScanResult && (
-              <Button
-                onClick={processQRImage}
-                disabled={isProcessing}
-                className="w-full"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Scanning QR Code...
-                  </>
-                ) : (
-                  <>
-                    <Scan className="w-4 h-4 mr-2" />
-                    Scan QR Code
-                  </>
-                )}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+            <button onClick={resetQRScanner} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="overflow-hidden rounded-xl border">
+            <img src={selectedImage} alt="QR Code" className="w-full max-h-72 object-contain bg-muted/30" />
+          </div>
+          {!qrScanResult && (
+            <button
+              onClick={processQRImage}
+              disabled={isProcessing}
+              className="flex w-full items-center justify-center gap-2 h-11 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {isProcessing ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Scanning QR Code...</>
+              ) : (
+                <><Scan className="w-4 h-4" /> Scan QR Code</>
+              )}
+            </button>
+          )}
+        </div>
       )}
 
       {/* QR Scan Result */}
       {qrScanResult && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                QR Code Detected
-              </CardTitle>
-              <Button
-                onClick={clearQRResult}
-                variant="ghost"
-                size="sm"
-              >
-                <X className="w-4 h-4" />
-              </Button>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              <span className="font-semibold text-sm">QR Code Detected</span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                {qrScanResult.beautified?.type === 'url' && <ExternalLink className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'email' && <Mail className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'phone' && <Phone className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'wifi' && <Wifi className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'calendar' && <CheckCircle className="w-4 h-4" />}
-                {qrScanResult.beautified?.type === 'bitcoin' && <QrCode className="w-4 h-4" />}
-                <Badge variant="secondary">{qrScanResult.beautified?.title}</Badge>
+            <button onClick={clearQRResult} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="rounded-xl bg-muted/40 p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {qrScanResult.beautified?.type === 'url' && <ExternalLink className="w-4 h-4 text-blue-500" />}
+              {qrScanResult.beautified?.type === 'email' && <Mail className="w-4 h-4 text-blue-500" />}
+              {qrScanResult.beautified?.type === 'phone' && <Phone className="w-4 h-4 text-blue-500" />}
+              {qrScanResult.beautified?.type === 'wifi' && <Wifi className="w-4 h-4 text-blue-500" />}
+              {qrScanResult.beautified?.type === 'calendar' && <CheckCircle className="w-4 h-4 text-blue-500" />}
+              {qrScanResult.beautified?.type === 'bitcoin' && <QrCode className="w-4 h-4 text-orange-500" />}
+              <Badge variant="secondary">{qrScanResult.beautified?.title}</Badge>
+            </div>
+
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Content</div>
+              <p className="text-sm mt-0.5 break-all">{qrScanResult.beautified?.displayText || qrScanResult.data}</p>
+            </div>
+
+            {qrScanResult.beautified?.type === 'wifi' && (
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 px-3 py-2.5 space-y-1">
+                <div className="text-xs font-medium">Network Details</div>
+                <div className="text-xs flex justify-between"><span className="text-muted-foreground">SSID:</span> <span className="font-mono">{qrScanResult.beautified.ssid}</span></div>
+                {qrScanResult.beautified.password && (
+                  <div className="text-xs flex justify-between"><span className="text-muted-foreground">Password:</span> <span className="font-mono">{qrScanResult.beautified.password}</span></div>
+                )}
               </div>
+            )}
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Content:</p>
-                <p className="text-sm text-muted-foreground break-all">
-                  {qrScanResult.beautified?.displayText || qrScanResult.data}
-                </p>
+            {qrScanResult.beautified?.type === 'calendar' && (
+              <div className="rounded-lg bg-green-50 dark:bg-green-950/20 px-3 py-2.5 space-y-1">
+                <div className="text-xs font-medium">Event Details</div>
+                <div className="text-xs"><span className="text-muted-foreground">Summary:</span> {qrScanResult.beautified.summary}</div>
+                {qrScanResult.beautified.startDate && <div className="text-xs"><span className="text-muted-foreground">Start:</span> {formatAppDateTime(qrScanResult.beautified.startDate, calendarSystem)}</div>}
+                {qrScanResult.beautified.location && <div className="text-xs"><span className="text-muted-foreground">Location:</span> {qrScanResult.beautified.location}</div>}
               </div>
+            )}
 
-              {qrScanResult.beautified?.type === 'wifi' && (
-                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded border">
-                  <p className="text-sm font-medium">Network Details:</p>
-                  <p className="text-xs">SSID: {qrScanResult.beautified.ssid}</p>
-                  {qrScanResult.beautified.password && (
-                    <p className="text-xs">Password: {qrScanResult.beautified.password}</p>
-                  )}
-                </div>
-              )}
+            {qrScanResult.beautified?.type === 'bitcoin' && (
+              <div className="rounded-lg bg-orange-50 dark:bg-orange-950/20 px-3 py-2.5 space-y-1">
+                <div className="text-xs font-medium">Bitcoin Address</div>
+                <div className="text-xs break-all font-mono">{qrScanResult.beautified.address}</div>
+              </div>
+            )}
+          </div>
 
-              {qrScanResult.beautified?.type === 'calendar' && (
-                <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 rounded border">
-                  <p className="text-sm font-medium">Event Details:</p>
-                  <p className="text-xs">Summary: {qrScanResult.beautified.summary}</p>
-                  {qrScanResult.beautified.startDate && (
-                    <p className="text-xs">Start: {formatAppDateTime(qrScanResult.beautified.startDate, calendarSystem)}</p>
-                  )}
-                  {qrScanResult.beautified.location && (
-                    <p className="text-xs">Location: {qrScanResult.beautified.location}</p>
-                  )}
-                </div>
-              )}
-
-              {qrScanResult.beautified?.type === 'bitcoin' && (
-                <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950/20 rounded border">
-                  <p className="text-sm font-medium">Bitcoin Address:</p>
-                  <p className="text-xs break-all">{qrScanResult.beautified.address}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 sm:gap-3">
-              <Button
-                onClick={() => {
-                  if (qrScanResult.beautified) {
-                    handleQRAction(qrScanResult.beautified)
-                  }
-                }}
-                className="flex-1 text-xs sm:text-sm"
-                size="sm"
-                disabled={!qrScanResult.beautified}
-              >
-                {qrScanResult.beautified?.type === 'url' && 'Open Link'}
-                {qrScanResult.beautified?.type === 'email' && 'Send Email'}
-                {qrScanResult.beautified?.type === 'phone' && 'Call Number'}
-                {qrScanResult.beautified?.type === 'wifi' && 'Copy Password'}
-                {qrScanResult.beautified?.type === 'calendar' && 'Copy Event'}
-                {qrScanResult.beautified?.type === 'bitcoin' && 'Copy Address'}
-                {qrScanResult.beautified?.type === 'text' && 'Copy Text'}
-                {qrScanResult.beautified?.type === 'contact' && 'Copy Contact'}
-              </Button>
-              <Button
-                onClick={() => copyToClipboard(qrScanResult.data)}
-                variant="outline"
-                size="sm"
-                className="text-xs sm:text-sm"
-              >
-                <Copy className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Copy Raw</span>
-                <span className="sm:hidden">Copy</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { if (qrScanResult.beautified) handleQRAction(qrScanResult.beautified) }}
+              disabled={!qrScanResult.beautified}
+              className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {qrScanResult.beautified?.type === 'url' && 'Open Link'}
+              {qrScanResult.beautified?.type === 'email' && 'Send Email'}
+              {qrScanResult.beautified?.type === 'phone' && 'Call Number'}
+              {qrScanResult.beautified?.type === 'wifi' && 'Copy Password'}
+              {qrScanResult.beautified?.type === 'calendar' && 'Copy Event'}
+              {qrScanResult.beautified?.type === 'bitcoin' && 'Copy Address'}
+              {qrScanResult.beautified?.type === 'text' && 'Copy Text'}
+              {qrScanResult.beautified?.type === 'contact' && 'Copy Contact'}
+            </button>
+            <button
+              onClick={() => copyToClipboard(qrScanResult.data)}
+              className="flex items-center gap-1.5 h-11 rounded-xl border border-input px-4 text-sm font-medium hover:bg-accent transition-colors"
+            >
+              <Copy className="w-4 h-4" /> Copy
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -216,6 +216,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
   const [detailShiftId, setDetailShiftId] = useState<number | null>(null);
   const [actionShiftId, setActionShiftId] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportSelectedOnly, setExportSelectedOnly] = useState(false);
 
   const [selectedShifts, setSelectedShifts] = useState<Set<number>>(new Set());
   const [settingsRate, setSettingsRate] = useState("12.20");
@@ -632,6 +633,23 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
   const clearSelection = () => setSelectedShifts(new Set());
 
+  const handleBulkPay = async () => {
+    const unpaid = shifts.filter((s) => selectedShifts.has(s.id) && shiftOwed(s) > 0);
+    if (!unpaid.length) {
+      toast.info("No unpaid shifts selected.");
+      return;
+    }
+    let paid = 0;
+    for (const shift of unpaid) {
+      try {
+        await markShiftPaid(shift.id);
+        paid++;
+      } catch { /* skip failed */ }
+    }
+    clearSelection();
+    toast.success(`Paid ${paid} of ${unpaid.length} selected shift${unpaid.length > 1 ? "s" : ""}.`);
+  };
+
   const importData = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -952,6 +970,39 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
           </div>
         </CardHeader>
         <CardContent className="px-4 sm:px-6 pt-0">
+          {selectedShifts.size > 0 && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border bg-primary/5 px-3 py-2.5 text-sm">
+              <span className="mr-1 font-medium">{selectedShifts.size} selected</span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                  onClick={handleBulkPay}
+                >
+                  Pay selected
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                onClick={() => { setExportSelectedOnly(true); setExportOpen(true); }}
+              >
+                Export selected
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs text-muted-foreground"
+                  onClick={clearSelection}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
           <PeriodsBody
             shifts={scopedShifts}
             periodView={periodView}
@@ -1239,8 +1290,8 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
 
       <ExportDialog
         open={exportOpen}
-        onOpenChange={setExportOpen}
-        shifts={shifts}
+        onOpenChange={(open) => { setExportOpen(open); if (!open) setExportSelectedOnly(false); }}
+        shifts={exportSelectedOnly ? shifts.filter((s) => selectedShifts.has(s.id)) : shifts}
         payments={payments}
         rate={getRate()}
         timeFormat={timeFormat}
@@ -1834,11 +1885,11 @@ function PeriodsBody({
             })}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border px-1">
             <table className="w-full min-w-[600px] table-fixed border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="w-10 px-1 py-2">
+                  <th className="w-12 px-3 py-2.5">
                     <button
                       type="button"
                       className="flex h-5 w-5 items-center justify-center rounded border border-border hover:border-primary/50"
@@ -1862,7 +1913,7 @@ function PeriodsBody({
                   <th className="hidden px-3 py-2 sm:table-cell">Hours</th>
                   <th className="px-3 py-2">Rate</th>
                   <th className="px-3 py-2">Earned</th>
-                  <th className="w-10 px-1 py-2" />
+                  <th className="w-14 px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -1874,7 +1925,7 @@ function PeriodsBody({
                       selectedShifts.has(s.id) && "bg-primary/5",
                     )}
                   >
-                    <td className="px-1 py-2 align-middle">
+                    <td className="px-3 py-2.5 align-middle">
                       <button
                         type="button"
                         className={cn(
@@ -1930,7 +1981,7 @@ function PeriodsBody({
                     <td className="px-3 py-2 align-middle font-mono text-emerald-600">
                       {formatMoney(s.hours * getShiftRate(s), currencySymbol)}
                     </td>
-                    <td className="px-1 py-2 align-middle text-right">
+                    <td className="px-3 py-2.5 align-middle text-right">
                       <Button
                         type="button"
                         variant="ghost"
@@ -2142,11 +2193,11 @@ function PeriodsBody({
                     })}
                   </div>
                 ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto px-1">
                   <table className="w-full min-w-[560px] table-fixed border-collapse text-sm">
                     <thead>
                       <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                        <th className="w-10 px-1 py-2">
+                        <th className="w-12 px-3 py-2.5">
                           <button
                             type="button"
                             className="flex h-5 w-5 items-center justify-center rounded border border-border hover:border-primary/50"
@@ -2172,7 +2223,7 @@ function PeriodsBody({
                         </th>
                         <th className="px-3 py-2">Rate</th>
                         <th className="px-3 py-2">Earned</th>
-                        <th className="w-10 px-1 py-2" />
+                        <th className="w-14 px-3 py-2.5" />
                       </tr>
                     </thead>
                     <tbody>
@@ -2184,7 +2235,7 @@ function PeriodsBody({
                             selectedShifts.has(s.id) && "bg-primary/5",
                           )}
                         >
-                          <td className="px-1 py-2 align-middle">
+                          <td className="px-3 py-2.5 align-middle">
                             <button
                               type="button"
                               className={cn(
@@ -2243,7 +2294,7 @@ function PeriodsBody({
                               currencySymbol,
                             )}
                           </td>
-                          <td className="px-1 py-2 align-middle text-right">
+                          <td className="px-3 py-2.5 align-middle text-right">
                             <Button
                               type="button"
                               variant="ghost"
@@ -2281,16 +2332,7 @@ function PeriodsBody({
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300">
                       Fully paid
                     </span>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
-                      onClick={() => markPaid(k, periodView, labelFn(k), owed)}
-                    >
-                      Make paid
-                    </Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : null}
