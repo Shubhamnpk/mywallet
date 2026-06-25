@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface CreditDetailsDialogProps {
     open: boolean
@@ -21,7 +22,7 @@ export function CreditDetailsDialog({
     transactions,
     userProfile
 }: CreditDetailsDialogProps) {
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">

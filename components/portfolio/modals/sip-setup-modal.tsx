@@ -29,7 +29,8 @@ import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Settings2 } from "lucide-react"
-import { getCalendarSystem, toAdDateKey } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { toAdDateKey } from "@/lib/app-calendar"
 
 interface SIPSetupModalProps {
   item: PortfolioItem | null
@@ -72,7 +73,7 @@ export function SIPSetupModal({
   onPlanSaved,
 }: SIPSetupModalProps) {
   const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, userProfile } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
     frequency: "monthly",

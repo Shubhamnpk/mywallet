@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-import { getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
+import { getCalendarMonthKey, getCalendarMonthRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface CategoryPerformanceDashboardProps {
   transactions: Transaction[]
@@ -49,7 +50,7 @@ function OverviewCard({ title, value, subtitle, bgColor, titleColor, valueColor 
 export function CategoryPerformanceDashboard({ transactions, userProfile }: CategoryPerformanceDashboardProps) {
   const categoryData = useMemo(() => {
     const now = new Date()
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const currentMonth = getCalendarMonthRange(now, calendarSystem).key
     const lastMonthKey = getCalendarMonthRange(now, calendarSystem, -1).key
 

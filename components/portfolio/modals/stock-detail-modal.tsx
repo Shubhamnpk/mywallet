@@ -22,7 +22,8 @@ import { EditTransactionModal } from "./edit-transaction-modal"
 import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
-import { adToBsDateKey, formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { adToBsDateKey, formatAppDate } from "@/lib/app-calendar"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
@@ -293,7 +294,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
 
     const item = useMemo(() => {
         if (!initialItem) return null

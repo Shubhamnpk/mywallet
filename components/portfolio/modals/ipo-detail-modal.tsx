@@ -10,7 +10,8 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
 import { useCallback, useState } from "react"
 import { useRouter } from "next/navigation"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate } from "@/lib/app-calendar"
 
 interface IPODetailModalProps {
     ipo: UpcomingIPO | null
@@ -21,7 +22,7 @@ interface IPODetailModalProps {
 export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps) {
     const router = useRouter()
     const { userProfile, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [hasAppliedInSession, setHasAppliedInSession] = useState(false)

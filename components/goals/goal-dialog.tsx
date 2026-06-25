@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { cn } from "@/lib/utils"
 import type { Goal, UserProfile } from "@/types/wallet"
-import { getCurrencySymbol } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getGoalChallengeSummary } from "@/lib/goal-challenge"
 import {
   AlertTriangle,
@@ -226,10 +226,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
   const [goalCreationMode, setGoalCreationMode] = useState<GoalCreationMode>("template")
   const [selectedTemplateName, setSelectedTemplateName] = useState("")
 
-  const currencySymbol = useMemo(
-    () => getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency),
-    [userProfile?.currency, (userProfile as any)?.customCurrency],
-  )
+  const currencySymbol = useCurrencySymbol()
 
   const goalInsights = useMemo(() => {
     if (!formData.targetAmount || !formData.targetDate) return null

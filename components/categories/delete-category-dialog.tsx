@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, AlertCircle, Info } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import type { Category, Transaction } from "@/types/wallet"
 interface DeleteCategoryDialogProps {
@@ -157,7 +158,7 @@ export function DeleteCategoryDialog({
             >
               {isDeleting ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                  <Spinner className="border-white/50 border-t-white" />
                   Deleting...
                 </div>
               ) : (

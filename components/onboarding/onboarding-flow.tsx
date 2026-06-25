@@ -35,6 +35,7 @@ import { ONBOARDING_CURRENCIES } from '@/lib/currency';
 import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { Spinner } from "@/components/ui/spinner";
 import { compressImageToDataUrl } from '@/lib/image-utils';
 
 interface OnboardingProps {
@@ -887,7 +888,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   disabled={isLoading}
                 >
                   {isLoading ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    <Spinner className="border-white/30 border-t-white mr-2" />
                   ) : (
                     <Sparkles className="w-4 h-4 mr-2" />
                   )}

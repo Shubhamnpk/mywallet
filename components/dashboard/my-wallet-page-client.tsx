@@ -7,6 +7,7 @@ import { BiometricCrossDevicePrompt } from "@/components/security/biometric-cros
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 export function MyWalletPageClient() {
   const router = useRouter()
   const walletData = useWalletData()
@@ -18,11 +19,7 @@ export function MyWalletPageClient() {
   }, [userProfile, showOnboarding, router])
 
   if (!userProfile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
   return (

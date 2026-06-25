@@ -11,7 +11,8 @@ import { CategoryProgressCard } from "./category-progress-card"
 import { CreateCategoryModal } from "./create-category-modal"
 import { DeleteCategoryDialog } from "./delete-category-dialog"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
-import { getCalendarMonthKey, getCalendarSystem } from "@/lib/app-calendar"
+import { getCalendarMonthKey } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface CategoriesManagementProps {
   categories: Category[]
@@ -45,7 +46,7 @@ export function CategoriesManagement({
   // Calculate enhanced category statistics
   const categoryStats = useMemo(() => {
     const now = new Date()
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     return categories.map((category) => {

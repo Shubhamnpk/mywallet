@@ -68,3 +68,9 @@ export function formatMoney(amount: number, currencySymbol?: string): string {
   const formatted = Math.abs(amount).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   return currencySymbol ? `${currencySymbol}${formatted}` : formatted
 }
+
+export function getNumberFormatLocale(): string {
+  if (typeof window === 'undefined') return 'en-US'
+  const format = localStorage.getItem("wallet_number_format") || "us"
+  return format === 'us' ? 'en-US' : format === 'eu' ? 'de-DE' : format === 'in' ? 'en-IN' : 'en-IN'
+}

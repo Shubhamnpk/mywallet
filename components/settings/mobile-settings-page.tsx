@@ -14,6 +14,7 @@ import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { MeroShareSettings } from "./mero-share-settings"
 import { NotificationSettings } from "./notification-settings"
+import { DeveloperSettings } from "./developer-settings"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
@@ -38,7 +39,8 @@ import {
   ChevronRight,
   Home,
   Share2,
-  Bell
+  Bell,
+  FlaskConical,
 } from "lucide-react"
 
 interface MobileSettingsPageProps {
@@ -46,7 +48,7 @@ interface MobileSettingsPageProps {
   initialView?: SettingsView
 }
 
-export type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about"
+export type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about" | "developer"
 
 export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSettingsPageProps) {
   const [currentView, setCurrentView] = useState<SettingsView>(initialView)
@@ -226,6 +228,15 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       category: "system",
       keywords: ["about", "version", "support", "legal", "help", "info"]
     },
+    {
+      id: "developer",
+      icon: <FlaskConical className="w-6 h-6" />,
+      iconBg: "bg-purple-600",
+      title: "Developer",
+      subtitle: "Demo data • Testing • Debug",
+      category: "system",
+      keywords: ["developer", "demo", "test", "debug", "seed", "data generation"]
+    },
 
   ], [])
 
@@ -325,7 +336,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
                 subtitle={item.subtitle}
                 onClick={() => {
                   if (item.id === "profile" || item.id === "security" || item.id === "meroshare" || item.id === "theme" ||
-                    item.id === "notifications" || item.id === "data" || item.id === "accessibility" || item.id === "about") {
+                    item.id === "notifications" || item.id === "data" || item.id === "accessibility" || item.id === "about" || item.id === "developer") {
                     setCurrentView(item.id as SettingsView)
                     setHighlightQuery(searchQuery)
                   }
@@ -367,6 +378,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
         case "data": return "Data"
         case "accessibility": return "Accessibility"
         case "about": return "About"
+        case "developer": return "Developer"
         default: return "Settings"
       }
     }
@@ -381,6 +393,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
         case "data": return <DataSettings />
         case "accessibility": return <AccessibilitySettings />
         case "about": return <AboutSettings />
+        case "developer": return <DeveloperSettings />
         default: return null
       }
     }

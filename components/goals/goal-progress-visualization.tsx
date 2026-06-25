@@ -19,7 +19,8 @@ import {
 import type { Goal, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface GoalProgressVisualizationProps {
   goals: Goal[]
@@ -46,7 +47,7 @@ interface Milestone {
 }
 
 export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVisualizationProps) {
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const goalProjections = useMemo(() => {
     return goals.map((goal): GoalProjection => {
       const challengeSummary = getGoalChallengeSummary(goal)

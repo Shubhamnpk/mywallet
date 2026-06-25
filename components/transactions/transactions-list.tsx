@@ -18,7 +18,8 @@ import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate } from "@/lib/app-calendar"
 
 function BadgeRow({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -85,7 +86,7 @@ export function TransactionsList({
   fetchTransactions,
 }: TransactionsListProps) {
   const { updateTransaction, categories: walletCategories } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -176,7 +177,7 @@ export function TransactionsList({
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              Recent Transactions
+             Transactions
             </CardTitle>
             <div className="flex items-center gap-2">
               <Button

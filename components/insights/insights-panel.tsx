@@ -14,7 +14,8 @@ import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
 import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
-import { formatAppMonthKey, getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
+import { formatAppMonthKey, getCalendarMonthKey, getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface InsightsPanelProps {
   transactions: Transaction[]
@@ -58,7 +59,7 @@ export function InsightsPanel({
   const totalExpenses = transactions.filter(isTrueExpense).reduce((sum, t) => sum + t.amount, 0)
   const netWorth = totalIncome - totalExpenses
   const now = new Date()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const currentMonthRange = getCalendarMonthRange(now, calendarSystem)
   const lastMonthRange = getCalendarMonthRange(now, calendarSystem, -1)
   const activeMonthLabel = formatAppMonthKey(currentMonthRange.key, calendarSystem)

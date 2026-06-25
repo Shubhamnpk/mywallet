@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Target, Clock, Plus, X, Tag, Search } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getDefaultCategoryNames } from "@/lib/categories"
 import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import type { UserProfile, Budget } from "@/types/wallet"
@@ -78,9 +78,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
   }, [categories])
 
   // Get currency symbol
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+  const currencySymbol = useCurrencySymbol()
 
   // Filter categories based on search term
   const filteredCategories = useMemo(() => {

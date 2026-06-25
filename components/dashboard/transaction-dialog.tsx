@@ -13,11 +13,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle, Receipt, X } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol, getLocaleForCurrency } from "@/lib/currency"
+import { getLocaleForCurrency } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -135,9 +137,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const amountInputRef = useRef<HTMLInputElement>(null)
   const customCurrency = userProfile?.customCurrency
 
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", customCurrency)
-  }, [userProfile?.currency, customCurrency])
+  const currencySymbol = useCurrencySymbol()
 
   const [numberFormat, setNumberFormat] = useState(() => {
     return localStorage.getItem("wallet_number_format") || "us"
@@ -2093,7 +2093,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <Spinner />
                       Adding...
                     </div>
                   ) : cooldownRemaining > 0 ? (

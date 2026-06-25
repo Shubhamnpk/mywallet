@@ -42,6 +42,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
 import { calculateGoalProgress, getGoalTransactions } from "@/lib/goal-calculations"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -49,7 +50,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GoalProgressVisualization } from "./goal-progress-visualization"
 import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
-import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface EnhancedGoalsListProps {
   goals: Goal[]
@@ -61,12 +63,10 @@ type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
   const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
 
   // Get currency symbol
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+  const currencySymbol = useCurrencySymbol()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set())

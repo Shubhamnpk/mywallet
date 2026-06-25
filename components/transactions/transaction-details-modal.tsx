@@ -19,7 +19,8 @@ import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
-import { formatAppDate, getCalendarSystem, todayAdDateKey, toAdDateKey } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate, todayAdDateKey, toAdDateKey } from "@/lib/app-calendar"
 
 function toDateInputValue(iso: string) {
   const d = new Date(iso)
@@ -70,7 +71,7 @@ export function TransactionDetailsModal({
   const [formSubcategory, setFormSubcategory] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const { goals, debtAccounts } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
 
   const syncFormFromTransaction = useCallback((t: Transaction) => {
     setFormAmount(String(t.amount))

@@ -13,7 +13,8 @@ import { toast } from "sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import QRCodeScanner from "./qr-code-scanner"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { getCurrencySymbol } from "@/lib/currency"
 
@@ -125,7 +126,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
 }) => {
   const { userProfile } = useWalletData()
   const currencySymbol = getCurrencySymbol(userProfile?.currency || "NPR")
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
   const [activeTab, setActiveTab] = useState("receipt")
   const [videoElementReady, setVideoElementReady] = useState(false)
   const [qrScanning, setQrScanning] = useState(false)

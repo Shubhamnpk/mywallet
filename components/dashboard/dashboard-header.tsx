@@ -22,7 +22,8 @@ import {
   readNotificationHistory,
   type NotificationHistoryItem,
 } from "@/lib/notification-history"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
@@ -78,7 +79,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   const router = useRouter()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {}

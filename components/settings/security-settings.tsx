@@ -20,7 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 
 interface SecuritySettingsProps {
   onLock?: () => void
@@ -28,7 +29,7 @@ interface SecuritySettingsProps {
 
 export function SecuritySettings({ onLock }: SecuritySettingsProps) {
   const { userProfile, updateUserProfile } = useSecurityData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
   const [pinEnabled, setPinEnabled] = useState(!!userProfile?.securityEnabled && !!userProfile?.pin)

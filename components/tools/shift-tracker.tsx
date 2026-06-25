@@ -62,11 +62,11 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import type { DateRange } from "react-day-picker";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import {
   formatAppDate,
   formatAppMonthKey,
   getCalendarMonthKey,
-  getCalendarSystem,
 } from "@/lib/app-calendar";
 
 /** Dispatched by the main floating + button when the Shift tracker tab is active. */
@@ -191,7 +191,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     userProfile?.currency ?? "USD",
     userProfile?.customCurrency,
   );
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem);
+    const calendarSystem = useCalendarSystem();
   const monthKey = useCallback(
     (date: string) => getCalendarMonthKey(date, calendarSystem),
     [calendarSystem],

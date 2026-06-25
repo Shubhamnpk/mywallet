@@ -9,7 +9,8 @@ import { getTimeSinceCreation, calculateInterest } from "../debt-credit-utils"
 import type { UserProfile } from "@/types/wallet"
 import { Receipt, TrendingDown, TrendingUp, CreditCard, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface DebtDetailsDialogProps {
     open: boolean
@@ -31,7 +32,7 @@ export function DebtDetailsDialog({
     userProfile
 }: DebtDetailsDialogProps) {
     const [historyRange, setHistoryRange] = useState<HistoryRange>("active-month")
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
 
     const getPeriodRange = (range: HistoryRange) => {
         const now = new Date()

@@ -40,7 +40,8 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 import type { MeroShareAccount } from "@/types/wallet"
 import { useDeveloperMode } from "@/hooks/use-developer-mode"
 
@@ -86,7 +87,7 @@ const getPrimaryAccount = (accounts: MeroShareAccount[]) =>
 
 export function MeroShareSettings() {
     const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, syncMeroShareTransactionHistory, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const [showPassword, setShowPassword] = useState(false)
     const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
     const [isLoadingDps, setIsLoadingDps] = useState(false)

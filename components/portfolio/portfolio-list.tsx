@@ -20,8 +20,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
-import { cn, getCurrencySymbol } from "@/lib/utils"
-import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
+import { cn, getCurrencySymbol, getNumberFormatLocale } from "@/lib/utils"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
@@ -123,7 +124,7 @@ export function PortfolioList() {
         userProfile?.meroShare?.username &&
         userProfile?.meroShare?.password
     )
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const currencySymbol = useMemo(() => {
         if (userProfile?.currency === "NPR") return "Rs. "
         const symbol = getCurrencySymbol(userProfile?.currency || "NPR", userProfile?.customCurrency)
@@ -234,17 +235,17 @@ export function PortfolioList() {
             const sign = amount < 0 ? "-" : ""
             const abs = Math.abs(amount)
             const adjusted = abs < 0.01 ? 0.01 : abs
-            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+            return `${sign}${adjusted.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
         }
-        return amount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+        return amount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })
     }
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
         if (units === 0) return "0"
         if (Math.abs(units) < 1) {
-            return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+            return units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 10 })
         }
-        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+        return units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })
     }
     const formatTimeSince = (dateValue?: string | number) => {
         if (!dateValue) return "Unknown date"
@@ -744,7 +745,7 @@ export function PortfolioList() {
                 if (!sellHolding || newTx.quantity > (sellHolding.units ?? 0)) {
                     toast.error("Sell quantity exceeds available units", {
                         description: sellHolding
-                            ? `Available: ${sellHolding.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units.`
+                            ? `Available: ${sellHolding.units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units.`
                             : "Select a holding you already own.",
                     })
                     return
@@ -2214,18 +2215,18 @@ export function PortfolioList() {
                 <div className="space-y-3 text-left">
                     <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
                         <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Current Invested</p>
-                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString()}</p>
+                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString(getNumberFormatLocale())}</p>
                         <p className="mt-1 text-xs text-muted-foreground">Cost basis of holdings that are currently active.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-primary">Fresh Capital</p>
-                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString(getNumberFormatLocale())}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">New money added by the user.</p>
                         </div>
                         <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-cyan-700">Reinvestment</p>
-                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString(getNumberFormatLocale())}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">Buys funded from previous sales.</p>
                         </div>
                     </div>
@@ -2278,14 +2279,14 @@ export function PortfolioList() {
                                 <Activity className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             </div>
                         </div>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight">रु {totalCurrent.toLocaleString()}</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <div className={cn(
                             "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
                             totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                         )}>
-                            {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString()} ({totalPlPerc.toFixed(2)}%)
+                            {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString(getNumberFormatLocale())} ({totalPlPerc.toFixed(2)}%)
                         </div>
                     </CardContent>
                 </Card>
@@ -2306,7 +2307,7 @@ export function PortfolioList() {
                                 "text-xl sm:text-2xl font-black font-mono tracking-tight",
                                 totalTodayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString()}
+                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString(getNumberFormatLocale())}
                             </CardTitle>
                             <div className={cn(
                                 "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-tight",
@@ -2330,7 +2331,7 @@ export function PortfolioList() {
                 >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString()}</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Cost Basis</span>
@@ -2530,12 +2531,12 @@ export function PortfolioList() {
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Cash Dividend</p>
-                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">Across included portfolios only.</p>
                     </div>
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Bonus Units</p>
-                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">Projected units from bonus shares.</p>
                     </div>
                     <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
@@ -2607,13 +2608,13 @@ export function PortfolioList() {
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </p>
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}
                                                     </p>
                                                 </div>
                                             </div>
@@ -2634,7 +2635,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{allYearsRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2648,7 +2649,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{allYearsRow.topBonusContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topBonusContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2669,8 +2670,8 @@ export function PortfolioList() {
                                                                     </Badge>
                                                                 </div>
                                                                 <div className="mt-2 text-[10px] text-muted-foreground">
-                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
+                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units</p>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -2686,7 +2687,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{yearlyRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2700,7 +2701,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{yearlyRow.topBonusContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topBonusContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2723,7 +2724,7 @@ export function PortfolioList() {
                                                             <div className="mt-2 text-[10px] text-muted-foreground">
                                                                 <p>Units: {formatUnits(holding.units)}</p>
                                                                 <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
-                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
                                                                 <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
                                                             </div>
                                                         </div>
@@ -2830,7 +2831,7 @@ export function PortfolioList() {
                     <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         <div className="flex flex-col gap-0.5">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Current Value</span>
-                            <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString()}</span>
+                            <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString(getNumberFormatLocale())}</span>
                         </div>
                         <div className="flex flex-col gap-0.5 items-end">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">today move</span>
@@ -2838,7 +2839,7 @@ export function PortfolioList() {
                                 "text-sm sm:text-base font-black font-mono leading-tight",
                                 summary.todayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString()}
+                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString(getNumberFormatLocale())}
                             </span>
                         </div>
                     </div>
@@ -3208,7 +3209,7 @@ export function PortfolioList() {
                                                                 </div>
                                                                 <p className="mt-1 text-sm font-black truncate">
                                                                     {typeof marketSnapshot.turnover === "number"
-                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`
                                                                         : "Not available right now"}
                                                                 </p>
                                                             </div>
@@ -3230,7 +3231,7 @@ export function PortfolioList() {
                                                                                 </TooltipProvider>
                                                                                 <div className="text-right">
                                                                                     <p className="font-black text-success">+{item.percentageChange.toFixed(2)}%</p>
-                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString(getNumberFormatLocale())}</p>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
@@ -3256,7 +3257,7 @@ export function PortfolioList() {
                                                                                 </TooltipProvider>
                                                                                 <div className="text-right">
                                                                                     <p className="font-black text-error">{item.percentageChange.toFixed(2)}%</p>
-                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString(getNumberFormatLocale())}</p>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
@@ -4066,7 +4067,7 @@ export function PortfolioList() {
                                 </div>
                             </div>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
-                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4076,7 +4077,7 @@ export function PortfolioList() {
                                         {formatUnits(soldPortfolioStats.totalSoldUnits)} Units Sold
                                     </div>
                                     <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-success/10 text-success border border-success/20">
-                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} Reinvested
+                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })} Reinvested
                                     </div>
                                 </div>
                             ) : (
@@ -4084,7 +4085,7 @@ export function PortfolioList() {
                                     "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
                                     totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                                 )}>
-                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
+                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString(getNumberFormatLocale())} ({totalProfitLossPercentage.toFixed(1)}%)
                                 </div>
                             )}
                         </CardContent>
@@ -4098,8 +4099,8 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
                                 <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
                                     {showSoldStocks
-                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`
+                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
                                 </span>
                             </CardTitle>
                         </CardHeader>
@@ -4113,7 +4114,7 @@ export function PortfolioList() {
                                             : "text-success bg-success/10 border-success/20"
                                     )}>
                                         {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
-                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                         {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
                                         {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
                                     </div>
@@ -4146,7 +4147,7 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
                                 {showSoldStocks
                                     ? `${soldPortfolioStats.soldScrips} Scrips`
-                                    : `${currencySymbol}${totalInvestment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                    : `${currencySymbol}${totalInvestment.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4330,7 +4331,7 @@ export function PortfolioList() {
                                                                         <span className="text-[10px] font-black text-right">
                                                                             {chartMetric === "units"
                                                                                 ? formatUnits(data.units || 0)
-                                                                                : `रु${data.value.toLocaleString()}`}
+                                                                                : `रु${data.value.toLocaleString(getNumberFormatLocale())}`}
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex justify-between gap-8">
@@ -4339,7 +4340,7 @@ export function PortfolioList() {
                                                                         </span>
                                                                         <span className="text-[10px] font-black text-right">
                                                                             {chartMetric === "units"
-                                                                                ? `रु${data.value.toLocaleString()}`
+                                                                                ? `रु${data.value.toLocaleString(getNumberFormatLocale())}`
                                                                                 : formatUnits(data.units || 0)}
                                                                         </span>
                                                                     </div>
@@ -4387,14 +4388,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Missed Upside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
-                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <TrendingUp className="w-3.5 h-3.5 text-error" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.missedUpsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.missedUpside.map((row) => (
@@ -4415,7 +4416,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-error">
                                                                 +{row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4428,14 +4429,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Saved Downside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <TrendingDown className="w-3.5 h-3.5 text-success" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.savedDownsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.savedDownside.map((row) => (
@@ -4456,7 +4457,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-success">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4469,14 +4470,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Flat Since Sold</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-muted-foreground bg-muted/40 border border-muted px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <Activity className="w-3.5 h-3.5 text-muted-foreground" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.flatTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.flat.map((row) => (
@@ -4497,7 +4498,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-muted-foreground">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4516,7 +4517,7 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
-                                                        +{portfolioMovers.topMoversProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        +{portfolioMovers.topMoversProfit.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </span>
                                                     <TrendingUp className="w-3.5 h-3.5 text-success" />
                                                 </div>
@@ -4555,7 +4556,7 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
-                                                        -{portfolioMovers.topLosersLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        -{portfolioMovers.topLosersLoss.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </span>
                                                     <TrendingDown className="w-3.5 h-3.5 text-error" />
                                                 </div>
@@ -5244,7 +5245,7 @@ export function PortfolioList() {
                                                         </div>
                                                         {tx.price > 0 && (
                                                             <div className="text-[9px] sm:text-[10px] text-muted-foreground font-bold">
-                                                                @ रु{tx.price.toLocaleString()}
+                                                                @ रु{tx.price.toLocaleString(getNumberFormatLocale())}
                                                             </div>
                                                         )}
                                                     </div>

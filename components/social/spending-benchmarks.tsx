@@ -14,7 +14,8 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-import { getCalendarMonthKey, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { getCalendarMonthKey } from "@/lib/app-calendar"
 
 interface SpendingBenchmarksProps {
   transactions: Transaction[]
@@ -42,7 +43,7 @@ const mockPeerData = {
 
 export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchmarksProps) {
   const benchmarkData = useMemo(() => {
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const userSpending: Record<string, number> = {}
 
     // Calculate user's monthly spending by category

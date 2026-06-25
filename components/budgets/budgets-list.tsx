@@ -33,7 +33,8 @@ import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown, isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface BudgetsListProps {
   budgets: Budget[]
@@ -45,7 +46,7 @@ interface BudgetsListProps {
 
 export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
   const { transactions } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())

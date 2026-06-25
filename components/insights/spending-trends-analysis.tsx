@@ -7,7 +7,8 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-import { formatAppDate, getCalendarMonthKey, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate, getCalendarMonthKey, getCalendarMonthRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface SpendingTrendsAnalysisProps {
   transactions: Transaction[]
@@ -46,7 +47,7 @@ function TrendCard({ title, value, subtitle, bgColor, titleColor, valueColor }: 
 
 export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTrendsAnalysisProps) {
   const trendData = useMemo(() => {
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const monthlyData: Record<string, { income: number; expenses: number; count: number; anchor: Date }> = {}
 
     // Group transactions by month

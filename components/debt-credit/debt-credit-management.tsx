@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Banknote } from "lucide-react"
 import { useDebtCreditData } from "@/hooks/use-debt-credit-data"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import type { UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
 import {
   validateAccountName,
   validateAmount,
@@ -34,7 +35,7 @@ interface DebtCreditManagementProps {
 }
 
 export function DebtCreditManagement({ userProfile }: DebtCreditManagementProps) {
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const wallet = useDebtCreditData()
   const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'

@@ -13,10 +13,11 @@ import { TimeTooltip } from "@/components/ui/time-tooltip"
 import BalanceCard from "@/components/dashboard/balance-card-component"
 import { useMemo, useState, useRef, useEffect } from "react"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
-import { getCurrencySymbol } from "@/lib/currency"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import type { Transaction } from "@/types/wallet"
-import { formatAppMonthKey, getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
+import { formatAppMonthKey, getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
 
 export function CombinedBalanceCard() {
   const { balance, userProfile, transactions, debtAccounts, creditAccounts, emergencyFund, balanceChange, portfolio } =
@@ -26,7 +27,7 @@ export function CombinedBalanceCard() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [incomeExpenseRange, setIncomeExpenseRange] = useState<"monthly" | "all-time">("monthly")
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const activeMonthLabel = formatAppMonthKey(getCalendarMonthRange(new Date(), calendarSystem).key, calendarSystem)
 
   // Optimize calculations with useMemo and better logic
@@ -95,9 +96,7 @@ export function CombinedBalanceCard() {
   }, [portfolio])
   const hasShareHoldings = totalShareValuation > 0
   const creditUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+  const currencySymbol = useCurrencySymbol()
 
   const isPositive = balance >= 0
   const absoluteBalance = Math.abs(balance)
