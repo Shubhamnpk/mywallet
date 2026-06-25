@@ -977,10 +977,10 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8 bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                  className="h-7 bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 text-xs"
                   onClick={handleBulkPay}
                 >
-                  Pay selected
+                  Make paid
                 </Button>
                 <Button
                   type="button"
@@ -989,16 +989,18 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   className="h-8 text-xs"
                 onClick={() => { setExportSelectedOnly(true); setExportOpen(true); }}
               >
-                Export selected
+                Export
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant="ghost"
-                  className="h-8 text-xs text-muted-foreground"
+                  className="h-8 w-8 text-muted-foreground"
                   onClick={clearSelection}
                 >
-                  Clear
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </Button>
               </div>
             </div>
@@ -2108,7 +2110,7 @@ function PeriodsBody({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {isPaid ? (
+                {selectedShifts.size === 0 && (isPaid ? (
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300">
                     Paid
                   </span>
@@ -2124,7 +2126,7 @@ function PeriodsBody({
                   >
                     Make paid
                   </Button>
-                )}
+                ))}
                 <span className="font-mono text-sm font-medium text-emerald-600">
                   {formatMoney(d.earn, currencySymbol)}
                 </span>
