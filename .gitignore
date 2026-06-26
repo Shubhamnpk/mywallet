@@ -28,6 +28,12 @@ next-env.d.ts
 eslint-report.json
 docs/impovemnt.txt
 
+# test artifacts
+tests/reports/
+tests/results/
+playwright-report/
+test-results/
+
 # pwa
 public/sw.js
 public/sw.js.map

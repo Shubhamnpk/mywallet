@@ -42,6 +42,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useWalletData } from "@/contexts/wallet-data-context";
+import { useTransactions } from "@/contexts/transactions-context";
+import { useUser } from "@/contexts/user-context";
 import { getCurrencySymbol } from "@/lib/currency";
 import { cn, formatMoney } from "@/lib/utils";
 import { toast } from "sonner";
@@ -148,33 +150,22 @@ function mname(m: string) {
   return MONTHS_FULL[parseInt(m, 10) - 1];
 }
 
-interface ShiftTrackerProps {
-  onAddIncomeTransaction?: (
-    tx: Omit<Transaction, "id" | "createdAt">,
-  ) => void | Promise<unknown>;
-}
-
-export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
-  const { addTransaction, deleteTransaction, categories, userProfile } =
-    useWalletData();
+export function ShiftTracker() {
+  const { addTransaction } = useTransactions();
+  const { userProfile } = useUser();
+  const { deleteTransaction, categories } = useWalletData();
   const isMobile = useIsMobile();
 
   const addIncome = useCallback(
     async (
       partial: Omit<Transaction, "id" | "timeEquivalent" | "createdAt">,
     ) => {
-      if (onAddIncomeTransaction) {
-        return onAddIncomeTransaction({
-          ...partial,
-          type: "income",
-        } as Omit<Transaction, "id" | "createdAt">);
-      }
       return addTransaction({
         ...partial,
         type: "income",
       });
     },
-    [addTransaction, onAddIncomeTransaction],
+    [addTransaction],
   );
 
   const incomeCategory = useMemo(() => {

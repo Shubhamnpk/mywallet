@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useUser } from "@/contexts/user-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -73,11 +74,8 @@ type HeaderBillRow = {
   reminderDays: number
 }
 
-interface DashboardHeaderProps {
-  userProfile: UserProfile
-}
-
-export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
+export function DashboardHeader() {
+  const { userProfile } = useUser()
   const router = useRouter()
   const calendarSystem = useCalendarSystem()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)

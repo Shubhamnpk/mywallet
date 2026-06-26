@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatTime, getCurrencySymbol } from "../utils"
+import { formatTime, getCurrencySymbol } from "@/lib/utils"
 
 describe("utils", () => {
   it("formats fractional hours as minutes", () => {

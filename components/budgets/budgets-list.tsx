@@ -28,24 +28,20 @@ import {
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
-import type { Budget, Transaction, UserProfile } from "@/types/wallet"
+import type { Budget, Transaction } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown, isTimeWalletEnabled } from "@/lib/wallet-utils"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useBudgets } from "@/contexts/budgets-context"
+import { useUser } from "@/contexts/user-context"
+import { useTransactions } from "@/contexts/transactions-context"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
-interface BudgetsListProps {
-  budgets: Budget[]
-  userProfile: UserProfile
-  onAddBudget: (budget: any) => void
-  onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
-  onDeleteBudget: (id: string) => void
-}
-
-export function BudgetsList({ budgets, userProfile, onAddBudget, onUpdateBudget, onDeleteBudget }: BudgetsListProps) {
-  const { transactions } = useWalletData()
+export function BudgetsList() {
+  const { budgets, addBudget, updateBudget, deleteBudget } = useBudgets()
+  const { userProfile } = useUser()
+  const { transactions } = useTransactions()
   const calendarSystem = useCalendarSystem()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)

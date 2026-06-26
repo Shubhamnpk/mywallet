@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildSipExecutionPlan, canSipCycleBuyUnit, getSipCycleAmounts, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate } from "../sip"
+import { buildSipExecutionPlan, canSipCycleBuyUnit, getSipCycleAmounts, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate } from "@/lib/sip"
 
 describe("sip calculations", () => {
   it("calculates cycle amounts with carried remainder", () => {

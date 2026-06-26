@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { buildDividendData, getDefaultDividendYear, type ProposedDividendRecord } from "../dividend-outlook"
+import { buildDividendData, getDefaultDividendYear, type ProposedDividendRecord } from "@/lib/dividend-outlook"
 import type { Portfolio, PortfolioItem, ShareTransaction } from "@/types/wallet"
 
 describe("dividend-outlook", () => {

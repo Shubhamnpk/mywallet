@@ -8,7 +8,7 @@ import { TrendingUp, Clock, Download, PieChart, BarChart3, Target, AlertTriangle
 import { useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useFinancialHealthScore, FinancialHealthScore } from "./financial-health-score"
-import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
+import type { Transaction } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { isTimeWalletEnabled } from "@/lib/wallet-utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
@@ -16,34 +16,22 @@ import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
 import { CategoryPerformanceDashboard } from "./category-performance-dashboard"
 import { formatAppMonthKey, getCalendarMonthKey, getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useTransactions } from "@/contexts/transactions-context"
+import { useUser } from "@/contexts/user-context"
+import { useBudgets } from "@/contexts/budgets-context"
+import { useGoals } from "@/contexts/goals-context"
 
 interface InsightsPanelProps {
-  transactions: Transaction[]
-  userProfile: UserProfile
-  budgets: Budget[]
-  goals: Goal[]
-  debtAccounts: DebtAccount[]
-  balance: number
-  onExportData: () => void
-  calculateTimeEquivalent: (amount: number) => number
   onNavigate?: (tab: string) => void
-  onAddGoal?: (goal: Omit<Goal, "id">) => void
-  onAddBudget?: (budget: Omit<Budget, "id">) => void
 }
 
 export function InsightsPanel({
-  transactions,
-  userProfile,
-  budgets,
-  goals,
-  debtAccounts,
-  balance,
-  onExportData,
-  calculateTimeEquivalent: _calculateTimeEquivalent,
   onNavigate,
-  onAddGoal,
-  onAddBudget,
 }: InsightsPanelProps) {
+  const { transactions, calculateTimeEquivalent } = useTransactions()
+  const { userProfile } = useUser()
+  const { budgets, addBudget } = useBudgets()
+  const { goals, addGoal } = useGoals()
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
 
   const timeWalletActive = isTimeWalletEnabled(userProfile)

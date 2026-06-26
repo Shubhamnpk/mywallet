@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { ThemeProviderWrapper } from "@/components/theme-provider-wrapper"
 import { WalletDataProvider } from "@/contexts/wallet-data-context"
+import { DomainProviders } from "@/contexts/domain-providers"
 import { PrivacyModeProvider } from "@/hooks/use-privacy-mode"
 import { SessionGuard } from "@/components/security/session-guard"
 import { DeveloperMenu } from "@/components/security/developer-menu"
@@ -153,8 +154,10 @@ export default function RootLayout({
           <PrivacyModeProvider>
             <SessionGuard>
               <WalletDataProvider>
-                <MyWalletExtensionBridge />
-                {children}
+                <DomainProviders>
+                  <MyWalletExtensionBridge />
+                  {children}
+                </DomainProviders>
               </WalletDataProvider>
             </SessionGuard>
           </PrivacyModeProvider>

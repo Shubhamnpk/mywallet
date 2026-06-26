@@ -38,7 +38,8 @@ import {
   Receipt,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useGoals } from "@/contexts/goals-context"
+import { useUser } from "@/contexts/user-context"
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -52,17 +53,15 @@ import { GoalProgressVisualization } from "./goal-progress-visualization"
 import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
-
-interface EnhancedGoalsListProps {
-  goals: Goal[]
-  userProfile: UserProfile
-}
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
-export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
-  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
+export function EnhancedGoalsList() {
+  const { goals, addGoal, updateGoal, deleteGoal, transferToGoal, useGoalForInvestment } = useGoals()
+  const { userProfile } = useUser()
+  const { balance, transactions } = useWalletData()
   const calendarSystem = useCalendarSystem()
 
   // Get currency symbol

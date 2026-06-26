@@ -4,8 +4,8 @@ import {
     buildLiveMarketStockQuotes,
     createMarketSearchPortfolioItem,
     filterLiveMarketStockQuotes,
-} from "../market-stock-search"
-import { MARKET_SEARCH_PORTFOLIO_ID } from "../market-stock-detail"
+} from "@/lib/market-stock-search"
+import { MARKET_SEARCH_PORTFOLIO_ID } from "@/lib/market-stock-detail"
 import type { PortfolioItem } from "@/types/wallet"
 
 describe("market-stock-search", () => {

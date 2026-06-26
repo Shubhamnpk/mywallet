@@ -16,27 +16,6 @@ import { BrokerTraining } from "@/components/tools/broker-training"
 import { ScannerTool } from "@/components/tools/scanner/scanner-tool"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
-import type {UserProfile,Transaction,Budget,Goal,Category} from "@/types/wallet"
-interface MainTabsProps {
-  transactions: Transaction[]
-  budgets: Budget[]
-  goals: Goal[]
-  categories: Category[]
-  userProfile: UserProfile
-  balance: number
-  onExportData: () => void
-  calculateTimeEquivalent: (amount: number) => number
-  onDeleteTransaction?: (id: string) => void
-  onAddBudget: (budget: Omit<Budget, "id">) => void
-  onDeleteBudget: (id: string) => void
-  onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
-  onAddGoal?: (goal: Omit<Goal, "id">) => void
-  onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">,) => Category
-  onUpdateCategory?: (id: string, updates: Partial<Category>) => void
-  onDeleteCategory?: (id: string) => void
-  onAddTransaction: (transaction: Omit<Transaction, "id" | "createdAt">) => void | Promise<unknown>
-  debtAccounts?: any[]
-}
 
 type TabDef = {
   value: string
@@ -74,7 +53,6 @@ const DESKTOP_TOOLS_GROUP = [
 
 const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools"])
 
-// Custom hook for delayed tooltip
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -96,26 +74,7 @@ function useDelayedTooltip(delay: number = 3000) {
   return { showTooltip, handleMouseEnter, handleMouseLeave }
 }
 
-export function MainTabs({
-  transactions,
-  budgets,
-  goals,
-  categories,
-  userProfile,
-  balance,
-  onExportData,
-  calculateTimeEquivalent,
-  onDeleteTransaction,
-  onAddBudget,
-  onDeleteBudget,
-  onUpdateBudget,
-  onAddGoal,
-  onAddCategory,
-  onUpdateCategory,
-  onDeleteCategory,
-  onAddTransaction,
-  debtAccounts = [],
-}: MainTabsProps) {
+export function MainTabs() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === "undefined") return "transactions"
     const requestedTab = new URLSearchParams(window.location.search).get("tab")
@@ -142,15 +101,13 @@ export function MainTabs({
     }
   }, [])
 
-  // Scroll to tools content when Tools tab is active (for mobile)
   useEffect(() => {
     if (activeTab === "tools" && toolsContentRef.current) {
       setTimeout(() => {
-        // Scroll down a bit to show the second row of tool cards
         const element = toolsContentRef.current
         if (!element) return
         const rect = element.getBoundingClientRect()
-        const scrollOffset = window.scrollY + rect.top - 100 // Offset to show second row
+        const scrollOffset = window.scrollY + rect.top - 100
         window.scrollTo({ top: scrollOffset, behavior: "smooth" })
       }, 150)
     }
@@ -265,7 +222,6 @@ export function MainTabs({
     activeTab as (typeof MOBILE_TOOLS_GROUP)[number],
   )
 
-  // Tab trigger component with delayed tooltip
   const TabTriggerWithTooltip = ({ tab }: { tab: TabDef }) => {
     const { showTooltip, handleMouseEnter, handleMouseLeave } = useDelayedTooltip(800)
 
@@ -341,7 +297,6 @@ export function MainTabs({
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Desktop: lighter primary bar + Tools hub */}
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-6 gap-1 h-auto p-1.5 bg-muted/15 border border-border/50 rounded-xl">
             {desktopNavTabs.map((tab) => (
@@ -350,7 +305,6 @@ export function MainTabs({
           </TabsList>
         </div>
 
-        {/* Mobile Bottom Navigation */}
         <div className="block lg:hidden">
           <TabsList className="fixed bottom-0 left-0 right-0 w-full bg-background/80 backdrop-blur-xl border-t border-zinc-200/80 dark:border-white/10 shadow-2xl z-50 flex justify-around items-end pb-2 pt-1.5 h-[70px] px-4 safe-area-bottom">
             {desktopNavTabs
@@ -407,40 +361,23 @@ export function MainTabs({
 
         <div className="mt-6">
           <TabsContent value="transactions" className="space-y-4">
-            <TransactionsList
-              transactions={transactions}
-              userProfile={userProfile}
-              onDeleteTransaction={onDeleteTransaction}
-            />
+            <TransactionsList />
           </TabsContent>
 
           <TabsContent value="budgets" className="space-y-4">
-            <BudgetsList
-              budgets={budgets}
-              userProfile={userProfile}
-              onAddBudget={onAddBudget}
-              onUpdateBudget={onUpdateBudget}
-              onDeleteBudget={onDeleteBudget}
-            />
+            <BudgetsList />
           </TabsContent>
 
           <TabsContent value="goals" className="space-y-4">
-            <EnhancedGoalsList goals={goals} userProfile={userProfile} />
+            <EnhancedGoalsList />
           </TabsContent>
 
           <TabsContent value="categories" className="space-y-4">
-            <CategoriesManagement
-              categories={categories}
-              transactions={transactions}
-              userProfile={userProfile}
-              onAddCategory={onAddCategory}
-              onUpdateCategory={onUpdateCategory}
-              onDeleteCategory={onDeleteCategory}
-            />
+            <CategoriesManagement />
           </TabsContent>
 
           <TabsContent value="debt-credit" className="space-y-4">
-            <DebtCreditManagement userProfile={userProfile} />
+            <DebtCreditManagement />
           </TabsContent>
 
           <TabsContent value="portfolio" className="space-y-4">
@@ -448,23 +385,11 @@ export function MainTabs({
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">
-            <InsightsPanel
-              transactions={transactions}
-              userProfile={userProfile}
-              budgets={budgets}
-              goals={goals}
-              debtAccounts={debtAccounts}
-              balance={balance}
-              onExportData={onExportData}
-              calculateTimeEquivalent={calculateTimeEquivalent}
-              onNavigate={setActiveTab}
-              onAddGoal={onAddGoal}
-              onAddBudget={onAddBudget}
-            />
+            <InsightsPanel onNavigate={setActiveTab} />
           </TabsContent>
 
           <TabsContent value="shift-tracker" className="space-y-4">
-            <ShiftTracker onAddIncomeTransaction={onAddTransaction} />
+            <ShiftTracker />
           </TabsContent>
 
           <TabsContent value="broker-training" className="space-y-4">
@@ -499,7 +424,6 @@ export function MainTabs({
               ))}
             </div>
 
-            {/* Mobile: 4 compact tool cards in a row */}
             <div className="grid grid-cols-4 gap-2 lg:hidden">
               {mobileHubCards.map((tool) => (
                 <button

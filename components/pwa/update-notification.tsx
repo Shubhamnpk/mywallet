@@ -163,7 +163,7 @@ export default function UpdateNotification() {
             Update Available
           </DialogTitle>
           <DialogDescription>
-            A new version is ready.  you can update now.
+            A new version is ready. You can update now.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex gap-2">
