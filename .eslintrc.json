@@ -1,4 +1,0 @@
-{
-  "extends": "next",
-  "plugins": ["react", "react-hooks"]
-}

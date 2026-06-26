@@ -83,7 +83,7 @@ export class SessionManager {
    */
   static clearSession(): void {
     // Clear cookie
-    document.cookie = `${this.SESSION_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`
+    document.cookie = `${this.SESSION_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict; Secure`
 
     // Stop activity tracking
     this.stopActivityTracking()
@@ -121,12 +121,8 @@ export class SessionManager {
   private static setSessionCookie(sessionData: SessionData): void {
     const encodedData = encodeURIComponent(JSON.stringify(sessionData))
     const expires = new Date(Date.now() + this.COOKIE_MAX_AGE * 1000)
-    const secureAttr =
-      typeof window !== "undefined" && window.location.protocol === "https:"
-        ? "; Secure"
-        : ""
 
-    document.cookie = `${this.SESSION_COOKIE}=${encodedData}; expires=${expires.toUTCString()}; path=/; SameSite=Lax${secureAttr}`
+    document.cookie = `${this.SESSION_COOKIE}=${encodedData}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; Secure`
   }
 
   /**

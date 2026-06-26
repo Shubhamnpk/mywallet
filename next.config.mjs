@@ -30,7 +30,7 @@ const nextConfig = {
     /** Inlined at build time so dev-only UI cannot leak into production bundles. */
     NEXT_PUBLIC_APP_DEV_TOOLS: isNextDevelopment ? "1" : "0",
   },
-  images: { unoptimized: true },
+  images: { unoptimized: false },
   // Force webpack as Serwist uses it for SW bundling
   webpack: (config) => {
     config.resolve = config.resolve || {};
@@ -40,10 +40,10 @@ const nextConfig = {
     };
     return config;
   },
-  // Keep turbopack alias for future-proofing
+  // Keep turbopack alias for future-proofing (relative path avoids Windows drive-letter bug)
   turbopack: {
     resolveAlias: {
-      canvas: emptyCanvasPath,
+      canvas: "./lib/empty-canvas.js",
     },
   },
 };
