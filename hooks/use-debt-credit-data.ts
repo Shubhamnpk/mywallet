@@ -22,6 +22,7 @@ export function useDebtCreditData() {
       createDebtForTransaction: wallet.createDebtForTransaction,
       completeTransactionWithDebt: wallet.completeTransactionWithDebt,
       addDebtToAccount: wallet.addDebtToAccount,
+      addTransaction: wallet.addTransaction,
     }),
     [
       wallet.debtAccounts,
@@ -38,6 +39,7 @@ export function useDebtCreditData() {
       wallet.createDebtForTransaction,
       wallet.completeTransactionWithDebt,
       wallet.addDebtToAccount,
+      wallet.addTransaction,
     ],
   )
 }

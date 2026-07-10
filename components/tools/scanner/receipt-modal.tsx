@@ -17,23 +17,7 @@ import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDateTime } from "@/lib/app-calendar"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { getCurrencySymbol } from "@/lib/currency"
-
-interface TransactionData {
-  amount: string
-  description: string
-  category: string
-  type: "income" | "expense"
-  date?: string
-  receiptImage?: string
-}
-
-interface ExtractedData {
-  amount: string
-  merchant: string
-  date: string
-  items: string[]
-  total: string
-}
+import type { TransactionData, ExtractedData } from "./types"
 
 interface QRCodeData {
   id: string

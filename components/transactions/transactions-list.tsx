@@ -83,6 +83,7 @@ export function TransactionsList({
 }: TransactionsListProps) {
   const { transactions: contextTransactions, deleteTransaction: contextDeleteTransaction, updateTransaction, calculateTimeEquivalent } = useTransactions()
   const { userProfile } = useUser()
+  const { categories: allCategories } = useCategories()
   const calendarSystem = useCalendarSystem()
   const [transactions, setTransactions] = useState<Transaction[]>(contextTransactions)
   const [loading, setLoading] = useState(false)
@@ -394,8 +395,11 @@ export function TransactionsList({
         <TransactionDetailsModal
           transaction={selectedTransaction}
           userProfile={userProfile}
+          categories={allCategories}
           isOpen={!!selectedTransaction}
           onClose={() => setSelectedTransaction(null)}
+          onDelete={contextDeleteTransaction}
+          updateTransaction={updateTransaction}
           onSaved={(tx) => setSelectedTransaction(tx)}
         />
       )}

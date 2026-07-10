@@ -13,7 +13,7 @@ import { CategoriesManagement } from "@/components/categories/categories-managem
 import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
 import { BrokerTraining } from "@/components/tools/broker-training"
-import { ScannerTool } from "@/components/tools/scanner/scanner-tool"
+import { ScannerTool } from "@/components/tools/scanner/scan-tool"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
 

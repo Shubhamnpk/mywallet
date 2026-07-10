@@ -140,10 +140,11 @@ const getFiscalYearSortValue = (year: string) => {
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
 
-type PriceHistoryRange = "1M" | "1Y" | "5Y" | "ALL"
+type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
 
 const PRICE_HISTORY_RANGES: Array<{ value: PriceHistoryRange; label: string; months: number; grouping: "daily" | "weekly" | "monthly" }> = [
     { value: "1M", label: "1M", months: 1, grouping: "daily" },
+    { value: "6M", label: "6M", months: 6, grouping: "weekly" },
     { value: "1Y", label: "1Y", months: 12, grouping: "weekly" },
     { value: "5Y", label: "5Y", months: 60, grouping: "monthly" },
     { value: "ALL", label: "All", months: 120, grouping: "monthly" },
@@ -2355,7 +2356,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">LTP History</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily"
-                                                            ? "Daily closes · 1M"
+                                                            ? `Daily closes · ${getPriceHistoryRangeConfig(priceHistoryRange).label}`
                                                             : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly"
                                                                 ? "Weekly avg · daily closes"
                                                                 : "Monthly avg · daily closes"}

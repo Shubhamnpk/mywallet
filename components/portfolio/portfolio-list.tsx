@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
 import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
 import { useNepseData } from "@/hooks/use-nepse-data"
-import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
+import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -117,7 +117,7 @@ export function PortfolioList() {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
     const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
-    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
+    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
         userProfile?.meroShare?.dpId &&
@@ -1801,6 +1801,43 @@ export function PortfolioList() {
         }
     }, [topStocks, marketSummary])
 
+    const nepseIndexData = useMemo(() => {
+        const nepseIndex = Array.isArray(marketIndices)
+            ? marketIndices.find((item) => item.id === 58)
+            : null
+        if (!nepseIndex) return null
+        const isPositive = nepseIndex.change >= 0
+        return {
+            currentValue: nepseIndex.currentValue,
+            change: nepseIndex.change,
+            perChange: nepseIndex.perChange,
+            high: nepseIndex.high,
+            low: nepseIndex.low,
+            previousClose: nepseIndex.previousClose,
+            fiftyTwoWeekHigh: nepseIndex.fiftyTwoWeekHigh,
+            fiftyTwoWeekLow: nepseIndex.fiftyTwoWeekLow,
+            isPositive,
+            changeColor: isPositive ? "text-success" : "text-error",
+            arrow: isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />,
+        }
+    }, [marketIndices])
+
+    const intradayChartData = useMemo(() => {
+        if (!Array.isArray(marketIndexGraph) || marketIndexGraph.length === 0) return []
+        const firstTs = marketIndexGraph[0][0]
+        return marketIndexGraph
+            .filter(([ts]) => ts >= firstTs)
+            .map(([ts, value]) => {
+                const date = new Date(ts * 1000)
+                const hours = date.getHours().toString().padStart(2, "0")
+                const mins = date.getMinutes().toString().padStart(2, "0")
+                return {
+                    time: `${hours}:${mins}`,
+                    value: Number(value.toFixed(2)),
+                }
+            })
+    }, [marketIndexGraph])
+
     const marketStatusMeta = useMemo(() => {
         const statusText = marketStatus?.isOpen === true
             ? "OPEN"
@@ -1889,7 +1926,7 @@ export function PortfolioList() {
         }))
 
         return dailySeries.slice(-Number(dayWindow))
-    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
+    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow, calendarSystem])
 
     const overviewNotifications = useMemo(() => {
         // Add invalid SIP plan notifications
@@ -2259,9 +2296,80 @@ export function PortfolioList() {
 
         return (
             <>
-            <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-4">
+            <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-5">
+                <Card className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden">
+                    <CardHeader className="pb-0 px-2 pt-2 sm:px-3 sm:pt-3">
+                        <div className="flex items-center justify-between gap-1">
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-1">
+                                <span className={cn("inline-block w-1.5 h-1.5 rounded-full", marketStatusMeta.dotClass)} />
+                                NEPSE
+                            </CardDescription>
+                            {nepseIndexData && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-wider", marketStatus?.isOpen === true ? "text-success" : marketStatus?.isOpen === false ? "text-error" : "text-muted-foreground")}>{marketStatusMeta.statusText}</span>
+                                    <span className={cn("text-[10px] font-black tracking-tight", nepseIndexData.changeColor)}>
+                                        {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.perChange.toFixed(2)}%
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                        {nepseIndexData && (
+                            <div className="flex items-baseline gap-1 -mt-0.5">
+                                <span className={cn("text-sm sm:text-base font-black font-mono tracking-tight", nepseIndexData.changeColor)}>
+                                    {nepseIndexData.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className={cn("text-[10px] font-semibold", nepseIndexData.changeColor)}>
+                                    {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.change.toFixed(2)}
+                                </span>
+                            </div>
+                        )}
+                    </CardHeader>
+                    <CardContent className="px-1 pb-1 sm:px-2 sm:pb-2">
+                        {intradayChartData.length > 0 && (() => {
+                            const chartColor = nepseIndexData?.isPositive ? "#10b981" : "#ef4444"
+                            const lineGradId = "nepseLineGrad"
+                            const fillGradId = "nepseFillGrad"
+                            return (
+                            <div className="h-[48px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={intradayChartData} margin={{ top: 1, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
+                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.4} />
+                                                <stop offset="50%" stopColor={chartColor} stopOpacity={0.9} />
+                                                <stop offset="100%" stopColor={chartColor} stopOpacity={1} />
+                                            </linearGradient>
+                                            <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.15} />
+                                                <stop offset="100%" stopColor={chartColor} stopOpacity={0.005} />
+                                            </linearGradient>
+                                        </defs>
+                                        <XAxis dataKey="time" hide />
+                                        <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} hide />
+                                        <Tooltip content={({ active, payload, label }) => {
+                                            if (!active || !payload || payload.length === 0) return null
+                                            const value = payload[0]?.value as number | undefined
+                                            return (
+                                                <div className="rounded-lg border border-border/50 bg-background/95 backdrop-blur-sm shadow-lg px-2.5 py-1.5" style={{ borderColor: `${chartColor}30` }}>
+                                                    <p className="text-[8px] font-bold text-muted-foreground/70">{label}</p>
+                                                    <p className="text-xs font-black tracking-tight" style={{ color: chartColor }}>
+                                                        {typeof value === "number" ? value.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value}
+                                                    </p>
+                                                </div>
+                                            )
+                                        }} />
+                                        <Area type="monotone" dataKey="value" fill={`url(#${fillGradId})`} stroke="none" />
+                                        <Line type="monotone" dataKey="value" stroke={`url(#${lineGradId})`} strokeWidth={1.5} dot={false} activeDot={{ r: 2.5, strokeWidth: 0, fill: chartColor }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            )
+                        })()}
+                    </CardContent>
+                </Card>
+
                 <Card
-                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
+                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
                     role="button"
                     tabIndex={0}
                     onClick={() => loadValuationTimeline("Total Valuation Timeline")}
@@ -2338,23 +2446,12 @@ export function PortfolioList() {
                     </CardContent>
                 </Card>
 
-                <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <div className="mb-1 flex items-start justify-between gap-2">
                             <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
                                 Diversification
                             </CardDescription>
-                            <Badge
-                                variant="outline"
-                                className={cn(
-                                    "h-6 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
-                                    marketStatusMeta.badgeClass,
-                                )}
-                                title="Nepal Stock Exchange session"
-                            >
-                                <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
-                                NEPSE {marketStatusMeta.statusText}
-                            </Badge>
                         </div>
                         <CardTitle className={cn("text-xl sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
                     </CardHeader>
@@ -2373,27 +2470,6 @@ export function PortfolioList() {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
-
-            <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-muted/50 bg-card/40 px-4 py-3 shadow-sm md:hidden">
-                <div className="min-w-0 text-left">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Diversification</p>
-                    <p className={cn("text-lg font-black font-mono leading-tight", diversificationColor)}>{diversificationLabel}</p>
-                    <p className="text-[10px] font-semibold text-muted-foreground">
-                        {uniqueStocks} symbols · {uniqueSectors} sectors
-                    </p>
-                </div>
-                <Badge
-                    variant="outline"
-                    className={cn(
-                        "h-7 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
-                        marketStatusMeta.badgeClass,
-                    )}
-                    title="Nepal Stock Exchange session"
-                >
-                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
-                    NEPSE {marketStatusMeta.statusText}
-                </Badge>
             </div>
             </>
         )
@@ -3165,7 +3241,7 @@ export function PortfolioList() {
 
                     <div className="mt-8">
                         {!isDividendSectionOpen && renderOverviewHeader()}
-                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
+                        {(nepseIndexData || intradayChartData.length > 0 || marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
                             <div className="mb-6">
                                 <Button
                                     type="button"
@@ -3484,10 +3560,10 @@ export function PortfolioList() {
                                                                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                                                     <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                                                                     {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
-                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "hsl(var(--primary))" }} />
+                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#f97316" }} label={{ value: "Turnover (Cr)", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 10, fill: "#f97316" } }} />
                                                                     )}
                                                                     {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
-                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} />
+                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} label={{ value: "Transactions (K)", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 10, fill: "#10b981" } }} />
                                                                     )}
                                                                     <Tooltip
                                                                         content={({ active, payload, label }) => {
@@ -3500,12 +3576,12 @@ export function PortfolioList() {
                                                                                         {marketHistoryView === "yearly" ? `Year ${label}` : label}
                                                                                     </p>
                                                                                     {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
-                                                                                        <p className="text-xs font-bold text-primary">
+                                                                                        <p className="text-xs font-bold" style={{ color: "#f97316" }}>
                                                                                             Turnover: {typeof turnoverValue === "number" ? turnoverValue.toFixed(2) : turnoverValue} Cr
                                                                                         </p>
                                                                                     )}
                                                                                     {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
-                                                                                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                        <p className="text-xs font-bold" style={{ color: "#10b981" }}>
                                                                                             Transactions: {typeof txValue === "number" ? txValue.toFixed(1) : txValue} K
                                                                                         </p>
                                                                                     )}

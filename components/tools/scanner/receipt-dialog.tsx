@@ -2,28 +2,14 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import ReceiptScannerModal from "./scanner-modal"
+import type { TransactionData, ExtractedData } from "./types"
+import ReceiptScannerModal from "./receipt-modal"
 import { todayAdDateKey } from "@/lib/app-calendar"
+
 interface ReceiptScannerProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   onTransactionData: (data: TransactionData) => void
-}
-interface TransactionData {
-  amount: string
-  description: string
-  category: string
-  type: "income" | "expense"
-  date?: string
-  receiptImage?: string
-}
-
-interface ExtractedData {
-  amount: string
-  merchant: string
-  date: string
-  items: string[]
-  total: string
 }
 
 const ReceiptScanner: React.FC<ReceiptScannerProps> = ({

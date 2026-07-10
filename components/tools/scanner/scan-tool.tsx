@@ -4,25 +4,9 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { todayAdDateKey } from "@/lib/app-calendar"
-import ReceiptScannerModal from "./scanner-modal"
+import ReceiptScannerModal from "./receipt-modal"
 import { getCurrencySymbol } from "@/lib/currency"
-
-interface ExtractedData {
-  amount: string
-  merchant: string
-  date: string
-  items: string[]
-  total: string
-}
-
-interface TransactionData {
-  amount: string
-  description: string
-  category: string
-  type: "income" | "expense"
-  date?: string
-  receiptImage?: string
-}
+import type { TransactionData, ExtractedData } from "./types"
 
 export function ScannerTool() {
   const { userProfile, addTransaction } = useWalletData()

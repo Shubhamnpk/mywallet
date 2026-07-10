@@ -20,6 +20,7 @@ import { useTransactions } from "@/contexts/transactions-context"
 import { useUser } from "@/contexts/user-context"
 import { useBudgets } from "@/contexts/budgets-context"
 import { useGoals } from "@/contexts/goals-context"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 interface InsightsPanelProps {
   onNavigate?: (tab: string) => void
@@ -32,6 +33,7 @@ export function InsightsPanel({
   const { userProfile } = useUser()
   const { budgets, addBudget } = useBudgets()
   const { goals, addGoal } = useGoals()
+  const { debtAccounts, balance } = useWalletData()
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
 
   const timeWalletActive = isTimeWalletEnabled(userProfile)

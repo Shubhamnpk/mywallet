@@ -42,11 +42,11 @@ function canEditTransaction(t: Transaction) {
 interface TransactionDetailsModalProps {
   transaction: Transaction
   userProfile: UserProfile
-  categories: Category[]
+  categories?: Category[]
   isOpen: boolean
   onClose: () => void
   onDelete?: (id: string) => void
-  updateTransaction: (
+  updateTransaction?: (
     id: string,
     updates: Partial<Pick<Transaction, "amount" | "description" | "category" | "date" | "subcategory">>,
   ) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>
@@ -107,7 +107,7 @@ export function TransactionDetailsModal({
 
   const categoryNames = Array.from(
     new Set(
-      categories
+      (categories ?? [])
         .filter((c) => c.type === transaction.type)
         .map((c) => c.name.trim())
         .filter(Boolean),

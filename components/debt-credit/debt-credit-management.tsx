@@ -2,11 +2,12 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronRight, ChevronUp, Banknote } from "lucide-react"
+import { CreditCard, TrendingDown, Plus, Minus, AlertTriangle, Trash2, ChevronDown, ChevronUp, Banknote, HandCoins, Users, Clock, Archive } from "lucide-react"
 import { useDebtCreditData } from "@/hooks/use-debt-credit-data"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatCurrency } from "@/lib/utils"
@@ -34,12 +35,16 @@ export function DebtCreditManagement() {
   const { userProfile } = useUser()
   const calendarSystem = useCalendarSystem()
   const wallet = useDebtCreditData()
-  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, balance, debtCreditTransactions } = wallet
+  const { debtAccounts, creditAccounts, addDebtAccount, addCreditAccount, deleteDebtAccount, deleteCreditAccount, makeDebtPayment, addDebtToAccount, addTransaction, balance, debtCreditTransactions } = wallet
   const hasMakeCreditPayment = typeof (wallet as any)?.makeCreditPayment === 'function'
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const lendingAccounts = debtAccounts.filter((a) => a.direction === "lend" && !a.closedAt)
+  const borrowedAccounts = debtAccounts.filter((a) => a.direction !== "lend" && !a.closedAt)
+  const archivedAccounts = debtAccounts.filter((a) => a.closedAt)
 
   const [activeTab, setActiveTab] = useState("debt")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -67,8 +72,7 @@ export function DebtCreditManagement() {
   })
   const [debtDetailsDialog, setDebtDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
   const [creditDetailsDialog, setCreditDetailsDialog] = useState<{ open: boolean; accountId: string | null }>({ open: false, accountId: null })
-  const [summaryExpanded, setSummaryExpanded] = useState(false)
-  const [insightsExpanded, setInsightsExpanded] = useState(false)
+
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
 
   const toggleExpanded = useCallback((accountId: string) => {
@@ -100,6 +104,17 @@ export function DebtCreditManagement() {
     interestType: "simple",
     minimumPayment: "",
     dueDate: "",
+  })
+
+  const [lendForm, setLendForm] = useState({
+    name: "",
+    phone: "",
+    amount: "",
+    interestRate: "",
+    interestFrequency: "yearly",
+    interestType: "simple",
+    notes: "",
+    source: "wallet" as "wallet" | "external",
   })
 
   // Auto-update fast debt checkbox based on interest and payment settings
@@ -202,9 +217,49 @@ export function DebtCreditManagement() {
     setShowAddDialog(false)
   }
 
+  const handleAddLend = () => {
+    if (!lendForm.name || !lendForm.amount) return
+
+    const amount = Number.parseFloat(lendForm.amount)
+    const autoIsFastDebt = Number.parseFloat(lendForm.interestRate) === 0
+    addDebtAccount({
+      name: lendForm.name,
+      balance: amount,
+      interestRate: autoIsFastDebt ? 0 : Number.parseFloat(lendForm.interestRate),
+      minimumPayment: 0,
+      dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+      interestFrequency: lendForm.interestFrequency,
+      interestType: lendForm.interestType,
+      isFastDebt: autoIsFastDebt,
+      direction: "lend",
+      source: lendForm.source,
+      contactName: lendForm.name,
+      contactPhone: lendForm.phone || undefined,
+      notes: lendForm.notes || undefined,
+    } as any)
+
+    if (lendForm.source === "wallet") {
+      addTransaction({
+        type: "expense",
+        amount: amount,
+        description: `Lent to ${lendForm.name}`,
+        category: "Lending",
+        date: new Date().toISOString(),
+        allocationType: "debt_loan",
+      })
+    }
+
+    setLendForm({ name: "", phone: "", amount: "", interestRate: "", interestFrequency: "yearly", interestType: "simple", notes: "", source: "wallet" })
+    setShowAddDialog(false)
+  }
+
   const handlePayment = async () => {
     const amount = Number.parseFloat(paymentAmount)
-    if (!Number.isFinite(amount) || amount <= 0 || amount > balance) return
+    if (!Number.isFinite(amount) || amount <= 0) return
+
+    const isLendRepayment = paymentDialog.accountType === "debt" && debtAccounts.find(d => d.id === paymentDialog.accountId)?.direction === "lend"
+    if (!isLendRepayment && amount > balance) return
 
     if (paymentDialog.accountType === "debt") {
       const result = await makeDebtPayment(paymentDialog.accountId, amount)
@@ -265,19 +320,18 @@ export function DebtCreditManagement() {
     )
 
     if (accruedInterest > 0) {
-      // Here you would typically call an API to update the debt balance
-      // For now, we'll just show an alert with the calculated interest
       alert(`Accrued interest: ${formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}\nTotal amount to pay: ${formatCurrency(debt.balance + accruedInterest, userProfile.currency, userProfile.customCurrency)}`)
     }
   }
 
-  const totalDebt = debtAccounts.reduce((sum, debt) => sum + debt.balance, 0)
+  const totalDebt = borrowedAccounts.reduce((sum, debt) => sum + debt.balance, 0)
+  const totalLent = lendingAccounts.reduce((sum, debt) => sum + debt.balance, 0)
   const totalCreditUsed = creditAccounts.reduce((sum, credit) => sum + credit.balance, 0)
   const totalCreditLimit = creditAccounts.reduce((sum, credit) => sum + credit.creditLimit, 0)
   const overallUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
 
-  // Calculate total accrued interest across all debt accounts (excluding fast debts)
-  const totalAccruedInterest = debtAccounts.reduce((sum, debt) => {
+  // Calculate total accrued interest across all debt accounts (excluding fast debts and lending)
+  const totalAccruedInterest = borrowedAccounts.reduce((sum, debt) => {
     if (debt.isFastDebt) return sum
     const timeElapsed = getTimeSinceCreation(debt.createdAt || new Date().toISOString())
     const accrued = calculateInterest(
@@ -295,6 +349,7 @@ export function DebtCreditManagement() {
 
   // Get debt payoff strategy
   const payoffStrategy = getDebtPayoffStrategy(debtAccounts)
+  if (!userProfile) return null
   return (
     <div className="space-y-6">
       {/* Enhanced Header with Theme Colors */}
@@ -302,7 +357,7 @@ export function DebtCreditManagement() {
         <div className="flex items-center gap-3">
             <CreditCard className="w-5 h-5" />
          <h3 className="text-lg font-semibold flex items-center gap-2">
-          Debt & Credit Management ({debtAccounts.length + creditAccounts.length})
+          Debt & Credit Management
         </h3>
         </div>
         <Button
@@ -315,11 +370,11 @@ export function DebtCreditManagement() {
       </div>
 
       {/* Summary Cards - Portfolio Style */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Card className="bg-gradient-to-br from-red-500/15 via-red-500/5 to-transparent border-red-500/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1">
           <CardHeader className="pb-2 px-3 sm:px-6">
             <div className="flex items-center justify-between mb-1">
-              <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Total Liability</CardDescription>
+              <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Gross Liability</CardDescription>
               <div className="p-1 sm:p-1.5 bg-red-500/10 rounded-lg text-red-500">
                 <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </div>
@@ -329,19 +384,11 @@ export function DebtCreditManagement() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6">
-            <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm bg-red-500/10 text-red-600 border border-red-500/20">
-              High Priority
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm bg-red-500/10 text-red-600 border border-red-500/20">
+                {debtAccounts.length + creditAccounts.length} Account{(debtAccounts.length + creditAccounts.length) !== 1 ? "s" : ""}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
-          <CardHeader className="pb-2 px-3 sm:px-6">
-            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Accounts</CardDescription>
-            <CardTitle className="text-xl sm:text-2xl font-black font-mono">{debtAccounts.length + creditAccounts.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6">
-            <Badge variant="secondary" className="bg-primary/5 text-primary text-[9px] sm:text-[10px] font-black uppercase tracking-wide">Active Handles</Badge>
           </CardContent>
         </Card>
 
@@ -357,39 +404,48 @@ export function DebtCreditManagement() {
           </CardContent>
         </Card>
 
-        <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+        <Card className="bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent border-emerald-500/20 shadow-xl text-left">
           <CardHeader className="pb-2 px-3 sm:px-6">
-            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Accrued Interest</CardDescription>
-            <CardTitle className="text-xl sm:text-2xl font-black font-mono">
-              {formatCurrency(totalAccruedInterest, userProfile.currency, userProfile.customCurrency)}
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">People Owe You</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight text-emerald-600">
+              {formatCurrency(totalLent, userProfile.currency, userProfile.customCurrency)}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6">
-            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-amber-600 bg-amber-50/50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">PROJECTED</Badge>
+            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-emerald-600 bg-emerald-50/50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
+              {lendingAccounts.length} Loan{lendingAccounts.length !== 1 ? "s" : ""}
+            </Badge>
           </CardContent>
         </Card>
+
       </div>
       {/* Debt and Credit Management */}
       <Card>
         <CardContent className="p-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 h-9 mb-4">
+            <TabsList className="grid w-full grid-cols-4 h-9 mb-4">
               <TabsTrigger value="debt" className="text-sm font-medium px-3">
-                Debt ({debtAccounts.length})
+                Debt
+              </TabsTrigger>
+              <TabsTrigger value="lend" className="text-sm font-medium px-3">
+                Lending
               </TabsTrigger>
               <TabsTrigger value="credit" className="text-sm font-medium px-3">
-                Credit ({creditAccounts.length})
+                Credit
+              </TabsTrigger>
+              <TabsTrigger value="history" className="text-sm font-medium px-3">
+                History
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="debt" className="space-y-4">
-              {debtAccounts.length === 0 ? (
+              {borrowedAccounts.length === 0 ? (
                 <div className="text-center py-8 px-4">
                   <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-3">
                     <TrendingDown className="w-6 h-6 text-destructive" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">No Debt Accounts Yet</h3>
-                  <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">Start tracking your debts to stay on top of your financial health.</p>
+                  <h3 className="text-lg font-semibold mb-2">No Debts Owed</h3>
+                  <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">You don't owe anyone right now.</p>
                   <Button onClick={() => setShowAddDialog(true)} size="sm" className="bg-destructive hover:bg-destructive/90">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Debt Account
@@ -397,7 +453,7 @@ export function DebtCreditManagement() {
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {debtAccounts.map((debt) => {
+                  {borrowedAccounts.map((debt) => {
                     // Calculate debt reduction progress
                     const totalPaid = debtCreditTransactions
                       .filter((t: any) => t.accountId === debt.id && t.type === 'payment')
@@ -475,8 +531,9 @@ export function DebtCreditManagement() {
                                     e.stopPropagation();
                                     deleteDebtAccount(debt.id);
                                   }}
+                                  title="Archive"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Archive className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>
@@ -586,7 +643,7 @@ export function DebtCreditManagement() {
                                   onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
                                   className="flex-1"
                                 >
-                                  📊 History ({recentTransactions.length})
+                                History ({recentTransactions.length})
                                 </Button>
                                 <Button
                                   size="sm"
@@ -595,7 +652,7 @@ export function DebtCreditManagement() {
                                   disabled={accruedInterest <= 0}
                                   className="flex-1"
                                 >
-                                  💰 Interest
+                                Interest
                                 </Button>
                               </div>
 
@@ -676,6 +733,193 @@ export function DebtCreditManagement() {
                                 </div>
                               </div>
                             </CardContent>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="lend" className="space-y-4">
+              {lendingAccounts.length === 0 ? (
+                <div className="text-center py-8 px-4">
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <HandCoins className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No Lending Records</h3>
+                  <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">Track money you've lent to friends and family.</p>
+                  <Button onClick={() => { setActiveTab("debt"); setShowAddDialog(true) }} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Lending Record
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {lendingAccounts.map((debt) => {
+                    const totalPaid = debtCreditTransactions
+                      .filter((t: any) => t.accountId === debt.id && t.type === 'payment')
+                      .reduce((sum: number, t: any) => sum + t.amount, 0) || 0
+                    const originalBalance = debt.balance + totalPaid
+                    const progress = originalBalance > 0 ? (totalPaid / originalBalance) * 100 : 0
+                    const isFastDebt = debt.isFastDebt
+                    const timeElapsed = isFastDebt ? 0 : getTimeSinceCreation(debt.createdAt || new Date().toISOString())
+                    const accruedInterest = isFastDebt ? 0 : calculateInterest(
+                      debt.balance,
+                      (debt as any).interestRate || 0,
+                      timeElapsed,
+                      (debt as any).interestFrequency || 'yearly',
+                      (debt as any).interestType || 'simple'
+                    )
+                    const isExpanded = expandedAccounts.has(debt.id)
+
+                    return (
+                      <Card key={debt.id} className="border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent overflow-hidden">
+                        <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(debt.id)}>
+                          <CollapsibleTrigger asChild>
+                            <div className="p-4 cursor-pointer hover:bg-emerald-500/5 transition-colors">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <div className="p-2 rounded-full bg-emerald-500/10 text-emerald-600 flex-shrink-0 mt-0.5">
+                                    <HandCoins className="w-5 h-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-semibold text-sm">{debt.contactName || debt.name}</span>
+                                      {debt.contactPhone && (
+                                        <span className="text-xs text-muted-foreground">{debt.contactPhone}</span>
+                                      )}
+                                      {(debt as any).source === "wallet" ? (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-blue-300 text-blue-600 bg-blue-50/50 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400">Wallet</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-300 text-amber-600 bg-amber-50/50 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">External</Badge>
+                                      )}
+                                      {isFastDebt && (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-300 text-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">No Interest</Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground mt-0.5">
+                                      Lent {formatCurrency(originalBalance, userProfile.currency, userProfile.customCurrency)}
+                                    </p>
+                                    {debt.notes && (
+                                      <p className="text-xs text-muted-foreground/70 mt-1 italic">{debt.notes}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-lg font-black font-mono text-emerald-600">
+                                    {formatCurrency(debt.balance, userProfile.currency, userProfile.customCurrency)}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {progress >= 100 ? "Fully Repaid" : `${totalPaid > 0 ? `${progress.toFixed(0)}% repaid` : "Awaiting repayment"}`}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <Separator className="opacity-50" />
+                            <div className="p-4 space-y-3">
+                              {!isFastDebt && (debt as any).interestRate > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Interest</span>
+                                  <span className="font-medium">
+                                    {(debt as any).interestRate}% ({(debt as any).interestFrequency || "yearly"}, {(debt as any).interestType || "simple"})
+                                  </span>
+                                </div>
+                              )}
+                              {accruedInterest > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Accrued Interest</span>
+                                  <span className="font-medium text-emerald-600">
+                                    {formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Created</span>
+                                <span className="font-medium">{formatAppDate(debt.createdAt, calendarSystem)}</span>
+                              </div>
+
+                              <Separator className="opacity-50" />
+
+                              {/* Recent Repayment History */}
+                              {debtCreditTransactions.filter((t: any) => t.accountId === debt.id).length > 0 && (
+                                <div className="space-y-2">
+                                  <h5 className="font-medium text-xs flex items-center gap-2">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Repayment History
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
+                                      className="text-[10px] h-6 px-2 ml-auto"
+                                    >
+                                      View All
+                                    </Button>
+                                  </h5>
+                                  <div className="space-y-1">
+                                    {debtCreditTransactions
+                                      .filter((t: any) => t.accountId === debt.id)
+                                      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                      .slice(0, 3)
+                                      .map((tx: any) => (
+                                        <div key={tx.id} className="flex justify-between items-center p-2 bg-emerald-500/5 rounded text-xs">
+                                          <div>
+                                            <p className="font-medium">
+                                              {tx.type === 'payment' ? '💰 Repayment' : tx.type === 'closed' ? '✅ Closed' : '📝 Other'}
+                                            </p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                              {formatAppDate(tx.date, calendarSystem)}
+                                            </p>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="font-semibold text-emerald-600">
+                                              +{formatCurrency(tx.amount, userProfile.currency, userProfile.customCurrency)}
+                                            </p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                              Remaining: {formatCurrency(tx.balanceAfter, userProfile.currency, userProfile.customCurrency)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setPaymentDialog({ open: true, accountId: debt.id, accountName: debt.contactName || debt.name, accountType: "debt" })}
+                                  className="w-full border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                                >
+                                  <Minus className="w-3.5 h-3.5 mr-1.5" />
+                                  Record Payment
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setDebtDetailsDialog({ open: true, accountId: debt.id })
+                                  }}
+                                  className="w-full border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                                >
+                                  <Clock className="w-3.5 h-3.5 mr-1.5" />
+                                  History
+                                </Button>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => deleteDebtAccount(debt.id)}
+                                className="w-full border-red-500/30 text-red-600 hover:bg-red-500/10 text-sm"
+                              >
+                                <Archive className="w-3.5 h-3.5 mr-1.5" />
+                                Archive
+                              </Button>
+                            </div>
                           </CollapsibleContent>
                         </Collapsible>
                       </Card>
@@ -960,6 +1204,64 @@ export function DebtCreditManagement() {
                 </div>
               )}
             </TabsContent>
+
+            <TabsContent value="history" className="space-y-4">
+              {archivedAccounts.length === 0 ? (
+                <div className="text-center py-8 px-4">
+                  <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Clock className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No Archived Accounts</h3>
+                  <p className="text-muted-foreground text-sm max-w-sm mx-auto">When you close a debt or lending account, it will appear here.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {archivedAccounts.map((account) => {
+                    const isLend = account.direction === "lend"
+                    const totalTransactions = debtCreditTransactions.filter((t: any) => t.accountId === account.id).length
+                    return (
+                      <Card key={account.id} className="border-muted/50 bg-muted/10">
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
+                              <div className={`p-2 rounded-full flex-shrink-0 mt-0.5 ${isLend ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+                                {isLend ? <HandCoins className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-sm">{account.contactName || account.name}</span>
+                                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-muted-foreground">Archived</Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {isLend ? `Lent ` : `Borrowed `}
+                                  {formatCurrency(account.originalBalance || account.balance + (account.originalBalance ? 0 : 0), userProfile.currency, userProfile.customCurrency)}
+                                  {account.closedAt && ` · Closed ${formatAppDate(account.closedAt, calendarSystem)}`}
+                                </p>
+                                {account.notes && (
+                                  <p className="text-xs text-muted-foreground/70 mt-1 italic">{account.notes}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-xs text-muted-foreground">{totalTransactions} transaction{totalTransactions !== 1 ? "s" : ""}</p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs mt-1"
+                                onClick={() => setDebtDetailsDialog({ open: true, accountId: account.id })}
+                              >
+                                <Clock className="w-3 h-3 mr-1" />
+                                View
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -968,13 +1270,16 @@ export function DebtCreditManagement() {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(v) => { setActiveTab(v); if (v === "lend" && !lendForm.name && !lendForm.amount) { /* reset handled by form */ } }}
         debtForm={debtForm}
         setDebtForm={setDebtForm}
         creditForm={creditForm}
         setCreditForm={setCreditForm}
+        lendForm={lendForm}
+        setLendForm={setLendForm}
         onAddDebt={handleAddDebt}
         onAddCredit={handleAddCredit}
+        onAddLend={handleAddLend}
         userProfile={userProfile}
       />
 
@@ -1023,102 +1328,7 @@ export function DebtCreditManagement() {
         userProfile={userProfile}
       />
 
-      <Card className="border-primary/20">
-        <Collapsible open={insightsExpanded} onOpenChange={setInsightsExpanded}>
-          <CollapsibleTrigger asChild>
-            <CardContent className="p-3 cursor-pointer hover:bg-primary/5 transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-primary" />
-                  <h4 className="font-semibold text-sm text-primary">Financial Insights</h4>
-                  <Badge variant="outline" className="text-xs border-primary/20 text-primary">
-                    {insightsExpanded ? 'Hide' : 'Show'} Insights
-                  </Badge>
-                </div>
-                {insightsExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-primary" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-primary" />
-                )}
-              </div>
-              {/* Quick Summary - Always Visible */}
-              <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-                <div className="text-center p-2 bg-primary/5 rounded border border-primary/10">
-                  <p className="text-muted-foreground text-xs">Strategy</p>
-                  <p className="font-medium text-primary">
-                    {payoffStrategy?.strategy === 'avalanche' ? 'Avalanche' : 'Snowball'}
-                  </p>
-                </div>
-                <div className="text-center p-2 bg-chart-2/5 rounded border border-chart-2/10">
-                  <p className="text-muted-foreground text-xs">Credit Status</p>
-                  <p className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</p>
-                </div>
-              </div>
-            </CardContent>
-          </CollapsibleTrigger>
 
-          <CollapsibleContent>
-            <CardContent className="pt-0 pb-3 px-3 border-t border-primary/10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                {/* Debt Payoff Strategy */}
-                {payoffStrategy && totalDebt > 0 && (
-                  <Card className="border-primary/20">
-                    <CardContent className="p-3">
-                      <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <TrendingDown className="w-4 h-4 text-primary" />
-                        Payoff Strategy
-                      </h4>
-                      <div className="space-y-1.5 text-xs">
-                        <p className="text-muted-foreground">
-                          <span className="font-medium text-primary">Recommended: {payoffStrategy.strategy === 'avalanche' ? 'Debt Avalanche' : 'Debt Snowball'}</span>
-                        </p>
-                        <p className="text-muted-foreground">
-                          Savings: {formatCurrency(payoffStrategy.recommendedSavings, userProfile.currency, userProfile.customCurrency)}/year
-                        </p>
-                        <div className="mt-2 p-1.5 bg-primary/5 rounded border border-primary/10">
-                          <p className="font-medium text-primary text-xs">Next Priority:</p>
-                          <p className="text-primary/80 text-xs truncate">
-                            {payoffStrategy.avalancheDebts[0]?.name} ({(payoffStrategy.avalancheDebts[0] as any)?.interestRate || 0}% interest)
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-                {/* Credit Health Insights */}
-                {totalCreditUsed > 0 && (
-                  <Card className="border-chart-2/20">
-                    <CardContent className="p-3">
-                      <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-chart-2" />
-                        Credit Health
-                      </h4>
-                      <div className="space-y-1.5 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Utilization:</span>
-                          <span className={`font-medium ${utilizationStatus.color}`}>{overallUtilization.toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Status:</span>
-                          <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.status}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Est. Score:</span>
-                          <span className={`font-medium ${utilizationStatus.color}`}>{utilizationStatus.score}+</span>
-                        </div>
-                        <div className="mt-2 p-1.5 bg-chart-2/5 rounded border border-chart-2/10">
-                          <p className="font-medium text-chart-2 text-xs">Tip:</p>
-                          <p className="text-chart-2/80 text-xs">{utilizationStatus.recommendation}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Collapsible>
-      </Card>
     </div>
   )
 }

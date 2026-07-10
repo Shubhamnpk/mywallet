@@ -25,6 +25,8 @@ import type {
   NepseDisclosure,
   NepseExchangeMessage,
   SIPPlan,
+  NepseIndexItem,
+  NepseIndexGraphPoint,
 } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent } from "@/lib/wallet-utils"
@@ -303,7 +305,7 @@ const rebuildDebtAccountsFromHistory = (
         balance: Math.max(0, calculatedBalance),
       }
     })
-    .filter((account) => account.balance > 0)
+    .filter((account) => account.balance > 0 || account.closedAt)
 }
 
 const readReminderCache = (): Record<string, number> => {
@@ -377,6 +379,8 @@ export function useWalletStore() {
   const [topStocks, setTopStocks] = useState<TopStocksData | null>(null)
   const [marketSummary, setMarketSummary] = useState<MarketSummaryMetric[]>([])
   const [marketSummaryHistory, setMarketSummaryHistory] = useState<MarketSummaryHistoryItem[]>([])
+  const [marketIndices, setMarketIndices] = useState<NepseIndexItem[]>([])
+  const [marketIndexGraph, setMarketIndexGraph] = useState<NepseIndexGraphPoint[]>([])
   const [marketStatus, setMarketStatus] = useState<MarketStatusData | null>(null)
   const [noticesBundle, setNoticesBundle] = useState<NepseNoticesBundle | null>(null)
   const [disclosures, setDisclosures] = useState<NepseDisclosure[]>([])
@@ -571,6 +575,22 @@ export function useWalletStore() {
         }
       })
 
+    const marketIndicesTask = fetch("/api/nepse/market-indices")
+      .then(res => res.json())
+      .then((data: NepseIndexItem[]) => {
+        if (Array.isArray(data)) {
+          setMarketIndices(data)
+        }
+      })
+
+    const marketIndexGraphTask = fetch("/api/nepse/market-indices/graph?index=nepse")
+      .then(res => res.json())
+      .then((data: NepseIndexGraphPoint[]) => {
+        if (Array.isArray(data)) {
+          setMarketIndexGraph(data)
+        }
+      })
+
     const results = await Promise.allSettled([
       sectorsTask,
       localNamesTask,
@@ -582,6 +602,8 @@ export function useWalletStore() {
       noticesTask,
       disclosuresTask,
       exchangeMessagesTask,
+      marketIndicesTask,
+      marketIndexGraphTask,
     ])
 
     results.forEach((result, index) => {
@@ -1897,13 +1919,6 @@ export function useWalletStore() {
   }
 
   const makeDebtPayment = async (debtId: string, paymentAmount: number) => {
-    if (balance < paymentAmount) {
-      return {
-        error: "Insufficient balance for debt payment",
-        success: false,
-      }
-    }
-
     const debt = debtAccounts.find((d) => d.id === debtId)
     if (!debt) {
       return {
@@ -1912,34 +1927,53 @@ export function useWalletStore() {
       }
     }
 
-    const paymentTransactionId = generateId('tx')
-    const paymentTransaction: Transaction = {
-      id: paymentTransactionId,
-      type: "expense",
-      amount: paymentAmount,
-      description: `Debt payment: ${debt.name}`,
-      category: "Debt Payment",
-      date: new Date().toISOString(),
-      timeEquivalent: userProfile ? calculateTimeEquivalent(paymentAmount, userProfile) : undefined,
-      total: paymentAmount,
-      actual: paymentAmount,
-      debtUsed: 0,
-      debtAccountId: debtId,
-      status: "repayment",
+    const isLendingAccount = debt.direction === "lend"
+    const isExternalLendRepayment = isLendingAccount && debt.source !== "wallet"
+
+    // Only check balance for regular debt payments (not lending repayments)
+    if (!isLendingAccount && balance < paymentAmount) {
+      return {
+        error: "Insufficient balance for debt payment",
+        success: false,
+      }
     }
 
-    const updatedTransactions = [...transactions, paymentTransaction]
-    setTransactions(updatedTransactions)
-    await saveDataWithIntegrity("transactions", updatedTransactions)
-    // Calculate balance based on actual cash flow
-    const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
-      if (tx.type === "income") {
-        return sum + (tx.actual ?? tx.amount)
-      } else {
-        return sum - (tx.actual ?? tx.amount)
+    let paymentTransaction: Transaction | null = null
+    let paymentTransactionId: string | null = null
+
+    // For external lending repayments, skip wallet transaction entirely
+    if (!isExternalLendRepayment) {
+      paymentTransactionId = generateId('tx')
+      paymentTransaction = {
+        id: paymentTransactionId,
+        type: isLendingAccount ? "income" : "expense",
+        amount: paymentAmount,
+        description: isLendingAccount
+          ? `Repayment received from ${debt.contactName || debt.name}`
+          : `Debt payment: ${debt.name}`,
+        category: isLendingAccount ? "Lending" : "Debt Payment",
+        date: new Date().toISOString(),
+        timeEquivalent: userProfile ? calculateTimeEquivalent(paymentAmount, userProfile) : undefined,
+        total: paymentAmount,
+        actual: paymentAmount,
+        debtUsed: 0,
+        debtAccountId: debtId,
+        status: isLendingAccount ? "normal" : "repayment",
       }
-    }, 0)
-    setBalance(newBalance)
+
+      const updatedTransactions = [...transactions, paymentTransaction]
+      setTransactions(updatedTransactions)
+      await saveDataWithIntegrity("transactions", updatedTransactions)
+      // Calculate balance based on actual cash flow
+      const newBalance = updatedTransactions.reduce((sum: number, tx: Transaction) => {
+        if (tx.type === "income") {
+          return sum + (tx.actual ?? tx.amount)
+        } else {
+          return sum - (tx.actual ?? tx.amount)
+        }
+      }, 0)
+      setBalance(newBalance)
+    }
 
     const debtTransaction: DebtCreditTransaction = {
       id: generateId('debt_tx'),
@@ -1947,10 +1981,12 @@ export function useWalletStore() {
       accountType: "debt",
       type: "payment",
       amount: paymentAmount,
-      description: `Payment towards ${debt.name}`,
+      description: isLendingAccount
+        ? `Repayment from ${debt.contactName || debt.name}`
+        : `Payment towards ${debt.name}`,
       date: new Date().toISOString(),
       balanceAfter: Math.max(0, debt.balance - paymentAmount),
-      sourceTransactionId: paymentTransactionId,
+      sourceTransactionId: paymentTransactionId || undefined,
     }
 
     const updatedDebtTransactions = [...debtCreditTransactions, debtTransaction]
@@ -1960,13 +1996,14 @@ export function useWalletStore() {
     const currentCalculatedBalance = Math.max(0, debt.balance - paymentAmount)
 
     if (currentCalculatedBalance === 0) {
+      const label = isLendingAccount ? `${debt.contactName || debt.name} fully repaid` : `Debt ${debt.name} fully repaid`
       const congrats: DebtCreditTransaction = {
         id: generateId('debt_tx'),
         accountId: debtId,
         accountType: 'debt',
         type: 'closed',
         amount: 0,
-        description: `Debt ${debt.name} fully repaid. Congratulations!`,
+        description: isLendingAccount ? `${label}. Congratulations!` : `${label}. Congratulations!`,
         date: new Date().toISOString(),
         balanceAfter: 0,
       }
@@ -1976,14 +2013,20 @@ export function useWalletStore() {
     setDebtCreditTransactions(finalDebtTransactions)
     saveToLocalStorage("debtCreditTransactions", finalDebtTransactions, true)
 
+    // Auto-archive when fully repaid, so it persists in history
+    const nowClosed = currentCalculatedBalance === 0
+    const updatedDebtAccounts = nowClosed
+      ? debtAccounts.map((d) => d.id === debtId ? { ...d, closedAt: new Date().toISOString() } : d)
+      : debtAccounts
+
     // Rebuild debt accounts from updated history - this ensures balance is derived
-    const updatedDebts = rebuildDebtAccountsFromHistory(debtAccounts, finalDebtTransactions)
+    const updatedDebts = rebuildDebtAccountsFromHistory(updatedDebtAccounts, finalDebtTransactions)
     setDebtAccounts(updatedDebts)
     saveToLocalStorage("debtAccounts", updatedDebts, true)
 
     return {
       success: true,
-      transaction: paymentTransaction,
+      transaction: paymentTransaction || { id: generateId('tx_debt'), amount: paymentAmount, description: `External lending repayment from ${debt.contactName || debt.name}`, type: "income" } as Transaction,
       newBalance: Math.max(0, debt.balance - paymentAmount),
     }
   }
@@ -2279,7 +2322,6 @@ export function useWalletStore() {
 
     showUndoToast({
       message: "Transaction deleted",
-      description: "You can undo this action if it was a mistake.",
       onUndo: () => undoPendingTransactionDeletion(id),
       duration: DELETE_UNDO_WINDOW_MS,
       type: "delete",
@@ -2454,10 +2496,31 @@ export function useWalletStore() {
   }
 
   const deleteDebtAccount = async (id: string) => {
-    const updatedDebtAccounts = debtAccounts.filter((debt) => debt.id !== id)
+    const debt = debtAccounts.find((d) => d.id === id)
+    if (!debt) return
+    const closedAt = new Date().toISOString()
+    const updatedDebtAccounts = debtAccounts.map((d) =>
+      d.id === id ? { ...d, closedAt } : d
+    )
     setDebtAccounts(updatedDebtAccounts)
     await saveDataWithIntegrity("debtAccounts", updatedDebtAccounts)
     await recordDeletion(TOMBSTONE_KEYS.debtAccounts, [id])
+
+    const closeTx: DebtCreditTransaction = {
+      id: generateId('debt_tx'),
+      accountId: id,
+      accountType: "debt",
+      type: "closed",
+      amount: 0,
+      description: debt.direction === "lend"
+        ? `Lending to ${debt.contactName || debt.name} archived`
+        : `Debt ${debt.name} archived`,
+      date: closedAt,
+      balanceAfter: debt.balance,
+    }
+    const updatedTxns = [...debtCreditTransactions, closeTx]
+    setDebtCreditTransactions(updatedTxns)
+    saveToLocalStorage("debtCreditTransactions", updatedTxns, true)
   }
 
   const deleteCreditAccount = async (id: string) => {
@@ -2526,6 +2589,8 @@ export function useWalletStore() {
     setTopStocks(null)
     setMarketSummary([])
     setMarketSummaryHistory([])
+    setMarketIndices([])
+    setMarketIndexGraph([])
     setMarketStatus(null)
     setNoticesBundle(null)
     setDisclosures([])
@@ -4617,6 +4682,8 @@ export function useWalletStore() {
     marketStatus,
     marketSummary,
     marketSummaryHistory,
+    marketIndices,
+    marketIndexGraph,
     noticesBundle,
     disclosures,
     exchangeMessages,
