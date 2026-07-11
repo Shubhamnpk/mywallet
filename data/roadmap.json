@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-05-27",
+  "lastUpdated": "2026-07-10",
   "milestones": [
     {
       "id": "m1",
@@ -33,8 +33,8 @@
       "id": "m5",
       "title": "AI & Insights Engine",
       "version": "3.0.0 (Vision)",
-      "progress": 5,
-      "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, and natural language queries."
+      "progress": 10,
+      "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, natural language queries, and insights engine foundation."
     }
   ],
   "categories": [
@@ -475,6 +475,17 @@
       "status": "in-progress",
       "category": "infra",
       "milestone": "m4",
+      "priority": "high",
+      "progress": 25
+    },
+    {
+      "id": "r45",
+      "title": "Insights Engine Stability & Hooks Compliance",
+      "description": "Fixed React rules-of-hooks violations across Financial Health Score, Spending Trends, Category Dashboard, and Spending Benchmarks. Added Export Report functionality to Insights Panel.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m4",
+      "completedDate": "2026-07-10",
       "priority": "high"
     }
   ]

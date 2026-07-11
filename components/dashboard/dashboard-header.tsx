@@ -103,10 +103,10 @@ export function DashboardHeader() {
   })
   const { budgets, goals, upcomingIPOs } = useWalletData()
   const isIpoApplyConfigured = Boolean(
-    userProfile.meroShare?.shareFeaturesEnabled &&
-    userProfile.meroShare?.dpId &&
-    userProfile.meroShare?.username &&
-    userProfile.meroShare?.password
+    userProfile?.meroShare?.shareFeaturesEnabled &&
+    userProfile?.meroShare?.dpId &&
+    userProfile?.meroShare?.username &&
+    userProfile?.meroShare?.password
   )
   const [billRows, setBillRows] = useState<HeaderBillRow[]>([])
   const [billDialogOpen, setBillDialogOpen] = useState(false)
@@ -137,6 +137,7 @@ export function DashboardHeader() {
     window.addEventListener(NOTIFICATION_HISTORY_EVENT, sync)
     return () => window.removeEventListener(NOTIFICATION_HISTORY_EVENT, sync)
   }, [])
+  if (!userProfile) return null
 
   const notifications = useMemo<HeaderNotification[]>(() => {
     const items: HeaderNotification[] = []

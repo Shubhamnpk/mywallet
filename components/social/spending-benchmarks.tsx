@@ -42,8 +42,8 @@ const mockPeerData = {
 }
 
 export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchmarksProps) {
+  const calendarSystem = useCalendarSystem()
   const benchmarkData = useMemo(() => {
-    const calendarSystem = useCalendarSystem()
     const userSpending: Record<string, number> = {}
 
     // Calculate user's monthly spending by category
@@ -92,7 +92,7 @@ export function SpendingBenchmarks({ transactions, userProfile }: SpendingBenchm
     })
 
     return benchmarks.sort((a, b) => b.userAverage - a.userAverage).slice(0, 6)
-  }, [transactions, userProfile.calendarSystem])
+  }, [transactions, calendarSystem])
 
   const overallPercentile = useMemo(() => {
     if (benchmarkData.length === 0) return 50

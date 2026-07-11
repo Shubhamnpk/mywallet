@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue,} from "@/components/ui/select"
 import { AppDateInput } from "@/components/ui/app-date-input"
+import { AmountInput } from "@/components/ui/amount-input"
 import { formatAppDate } from "@/lib/app-calendar"
 import type { CalendarSystem } from "@/lib/app-calendar"
 import { createNepseTradePreview } from "@/lib/nepse-trade-preview"
@@ -432,22 +433,18 @@ export function AddTransactionModal({
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="price" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Price</Label>
-                            <Input
+                            <AmountInput
                                 id="price"
-                                type="number"
-                                step="any"
-                                min="0"
-                                disabled={newTx.type === "bonus" || newTx.type === "gift"}
-                                className="rounded-xl border-muted-foreground/20 font-bold"
-                                value={Number.isNaN(newTx.price) ? "" : newTx.price}
-                                placeholder="0"
-                                onChange={(e) =>
+                                label="Price"
+                                value={Number.isNaN(newTx.price) ? "" : newTx.price.toString()}
+                                onChange={(value) =>
                                     setNewTx({
                                         ...newTx,
-                                        price: e.target.value === "" ? Number.NaN : Number(e.target.value),
+                                        price: value === "" ? Number.NaN : Number(value),
                                     })
                                 }
+                                currencySymbol={resolvedCurrencySymbol}
+                                disabled={newTx.type === "bonus" || newTx.type === "gift"}
                             />
                         </div>
                     </div>

@@ -30,13 +30,14 @@ export function CategoriesManagement() {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false)
   const [disabledCategories, setDisabledCategories] = useState<Set<string>>(new Set())
+  if (!userProfile) return null
 
-  const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
+  const currencySymbol = getCurrencySymbol(userProfile.currency, (userProfile as any)?.customCurrency)
+  const calendarSystem = useCalendarSystem()
 
   // Calculate enhanced category statistics
   const categoryStats = useMemo(() => {
     const now = new Date()
-    const calendarSystem = useCalendarSystem()
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     return categories.map((category) => {

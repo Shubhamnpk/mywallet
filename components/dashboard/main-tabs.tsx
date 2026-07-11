@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/goals/goals-list"
@@ -74,7 +74,28 @@ function useDelayedTooltip(delay: number = 3000) {
   return { showTooltip, handleMouseEnter, handleMouseLeave }
 }
 
-export function MainTabs() {
+interface MainTabsProps {
+  mobileFullscreenTab?: string | null
+  onMobileFullscreenChange?: (tab: string | null) => void
+}
+
+function getTabLabel(value: string): string {
+  const labels: Record<string, string> = {
+    transactions: "Transactions",
+    budgets: "Budgets",
+    goals: "Goals",
+    "debt-credit": "Debt & Credit",
+    categories: "Categories",
+    portfolio: "Portfolio",
+    insights: "Insights",
+    "shift-tracker": "Shift Tracker",
+    "broker-training": "Broker Training",
+    scanner: "Scanner",
+  }
+  return labels[value] ?? value
+}
+
+export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: MainTabsProps = {}) {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === "undefined") return "transactions"
     const requestedTab = new URLSearchParams(window.location.search).get("tab")
@@ -112,6 +133,16 @@ export function MainTabs() {
       }, 150)
     }
   }, [activeTab])
+
+  useEffect(() => {
+    if (!onMobileFullscreenChange) return
+    const isMobile = window.innerWidth < 1024
+    if (isMobile && MOBILE_TOOLS_GROUP.includes(activeTab as any) && activeTab !== "tools") {
+      onMobileFullscreenChange(activeTab)
+    } else {
+      onMobileFullscreenChange(null)
+    }
+  }, [activeTab, onMobileFullscreenChange])
 
   useEffect(() => {
     const validateSession = () => {
@@ -294,8 +325,10 @@ export function MainTabs() {
     pickTab(allTabs, "insights"),
   ]
 
+  const isFullscreen = !!mobileFullscreenTab
+
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className={isFullscreen ? "" : "space-y-6 pb-24 lg:pb-6"}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-6 gap-1 h-auto p-1.5 bg-muted/15 border border-border/50 rounded-xl">
@@ -359,7 +392,24 @@ export function MainTabs() {
           </TabsList>
         </div>
 
-        <div className="mt-6">
+        <div className={isFullscreen ? "" : "mt-6"}>
+          {isFullscreen && (
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab("tools")}
+                className="p-2 -ml-2 rounded-lg hover:bg-muted/50 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              {(() => {
+                const tab = allTabs.find((t) => t.value === activeTab)
+                return tab ? <tab.icon className="w-5 h-5 text-muted-foreground" /> : null
+              })()}
+              <span className="font-semibold text-sm">
+                {getTabLabel(activeTab)}
+              </span>
+            </div>
+          )}
           <TabsContent value="transactions" className="space-y-4">
             <TransactionsList />
           </TabsContent>

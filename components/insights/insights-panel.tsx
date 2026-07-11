@@ -35,6 +35,37 @@ export function InsightsPanel({
   const { goals, addGoal } = useGoals()
   const { debtAccounts, balance } = useWalletData()
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
+  if (!userProfile) return null
+
+  const exportInsightsReport = () => {
+    const report = {
+      exportedAt: new Date().toISOString(),
+      summary: {
+        totalIncome,
+        totalExpenses,
+        netWorth,
+        thisMonthIncome,
+        thisMonthExpenses,
+      },
+      transactions: transactions.length,
+      budgets: budgets.length,
+      goals: goals.length,
+      debtAccounts: debtAccounts.length,
+      userProfile: {
+        currency: userProfile.currency,
+        monthlyEarning: userProfile.monthlyEarning,
+      },
+    }
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `mywallet-insights-report-${new Date().toISOString().split("T")[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const timeWalletActive = isTimeWalletEnabled(userProfile)
 
@@ -370,11 +401,10 @@ export function InsightsPanel({
   const handleSmartAction = (insight: any) => {
     if (insight.actionId === 'setup_ef') {
       const monthlyNeeds = thisMonthExpenses || (userProfile.monthlyEarning * 0.5)
-      if (onAddGoal) {
-        onAddGoal({
+      if (addGoal) {
+        addGoal({
           title: "Emergency Fund",
           targetAmount: monthlyNeeds * 6,
-          currentAmount: 0,
           category: "emergency",
           priority: "high",
           targetDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
@@ -385,13 +415,12 @@ export function InsightsPanel({
         onNavigate?.('goals')
       }
     } else if (insight.actionId === 'setup_goals_defaults') {
-      if (onAddGoal) {
+      if (addGoal) {
         // 1. Emergency Fund
         const monthlyNeeds = thisMonthExpenses || (userProfile.monthlyEarning * 0.5)
-        onAddGoal({
+        addGoal({
           title: "Emergency Fund",
           targetAmount: monthlyNeeds * 6,
-          currentAmount: 0,
           category: "emergency",
           priority: "high",
           targetDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
@@ -400,10 +429,9 @@ export function InsightsPanel({
           createdAt: new Date().toISOString()
         })
         // 2. General Savings / Vacation
-        onAddGoal({
+        addGoal({
           title: "Dream Vacation",
           targetAmount: userProfile.monthlyEarning * 2, // Approx 2 months salary
-          currentAmount: 0,
           category: "travel",
           priority: "medium",
           targetDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
@@ -419,9 +447,9 @@ export function InsightsPanel({
         { name: "Food", category: "Food & Dining", limit: userProfile.monthlyEarning * 0.15 },
         { name: "Transport", category: "Transportation", limit: userProfile.monthlyEarning * 0.1 },
       ]
-      if (onAddBudget) {
+      if (addBudget) {
         defaults.forEach(d => {
-          onAddBudget({
+          addBudget({
             ...d,
             period: 'monthly',
             alertThreshold: 80,
@@ -464,7 +492,7 @@ export function InsightsPanel({
               <Button onClick={() => setIsModalOpen(true)} className="rounded-full px-6 font-bold shadow-lg shadow-primary/20">
                 View Score Breakdown
               </Button>
-              <Button variant="outline" className="rounded-full px-6 font-bold bg-white/50 dark:bg-black/20" onClick={onExportData}>
+              <Button variant="outline" className="rounded-full px-6 font-bold bg-white/50 dark:bg-black/20" onClick={exportInsightsReport}>
                 <Download className="w-4 h-4 mr-2" />
                 Export Report
               </Button>

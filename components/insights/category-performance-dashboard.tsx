@@ -48,9 +48,9 @@ function OverviewCard({ title, value, subtitle, bgColor, titleColor, valueColor 
 }
 
 export function CategoryPerformanceDashboard({ transactions, userProfile }: CategoryPerformanceDashboardProps) {
+  const calendarSystem = useCalendarSystem()
   const categoryData = useMemo(() => {
     const now = new Date()
-    const calendarSystem = useCalendarSystem()
     const currentMonth = getCalendarMonthRange(now, calendarSystem).key
     const lastMonthKey = getCalendarMonthRange(now, calendarSystem, -1).key
 
@@ -150,7 +150,7 @@ export function CategoryPerformanceDashboard({ transactions, userProfile }: Cate
     }
 
     return { categories, summary }
-  }, [transactions, userProfile])
+  }, [transactions, userProfile, calendarSystem])
 
   const { categories, summary } = categoryData
 

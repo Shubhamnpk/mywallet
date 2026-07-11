@@ -319,10 +319,12 @@ export function DebtCreditManagement() {
       (debt as any).interestType || 'simple'
     )
 
-    if (accruedInterest > 0) {
+    if (accruedInterest > 0 && userProfile) {
       alert(`Accrued interest: ${formatCurrency(accruedInterest, userProfile.currency, userProfile.customCurrency)}\nTotal amount to pay: ${formatCurrency(debt.balance + accruedInterest, userProfile.currency, userProfile.customCurrency)}`)
     }
   }
+
+  if (!userProfile) return null
 
   const totalDebt = borrowedAccounts.reduce((sum, debt) => sum + debt.balance, 0)
   const totalLent = lendingAccounts.reduce((sum, debt) => sum + debt.balance, 0)
@@ -349,7 +351,6 @@ export function DebtCreditManagement() {
 
   // Get debt payoff strategy
   const payoffStrategy = getDebtPayoffStrategy(debtAccounts)
-  if (!userProfile) return null
   return (
     <div className="space-y-6">
       {/* Enhanced Header with Theme Colors */}

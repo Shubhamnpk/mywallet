@@ -63,6 +63,7 @@ export function EnhancedGoalsList() {
   const { userProfile } = useUser()
   const { balance, transactions } = useWalletData()
   const calendarSystem = useCalendarSystem()
+  if (!userProfile) return null
 
   // Get currency symbol
   const currencySymbol = useCurrencySymbol()

@@ -46,8 +46,8 @@ function TrendCard({ title, value, subtitle, bgColor, titleColor, valueColor }: 
 }
 
 export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTrendsAnalysisProps) {
+  const calendarSystem = useCalendarSystem()
   const trendData = useMemo(() => {
-    const calendarSystem = useCalendarSystem()
     const monthlyData: Record<string, { income: number; expenses: number; count: number; anchor: Date }> = {}
 
     // Group transactions by month
@@ -141,7 +141,7 @@ export function SpendingTrendsAnalysis({ transactions, userProfile }: SpendingTr
     }
 
     return { trends, summary }
-  }, [transactions, userProfile.calendarSystem])
+  }, [transactions, calendarSystem])
 
   const { trends, summary } = trendData
 

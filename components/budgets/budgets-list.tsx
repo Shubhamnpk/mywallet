@@ -43,6 +43,7 @@ export function BudgetsList() {
   const { userProfile } = useUser()
   const { transactions } = useTransactions()
   const calendarSystem = useCalendarSystem()
+  if (!userProfile) return null
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
@@ -157,12 +158,12 @@ export function BudgetsList() {
 
 
   const handleAddBudget = (budgetData: any) => {
-    onAddBudget(budgetData)
+    addBudget(budgetData)
     setDialogOpen(false)
   }
 
   const handleUpdateBudget = (id: string, budgetData: any) => {
-    onUpdateBudget?.(id, budgetData)
+    updateBudget(id, budgetData)
     setDialogOpen(false)
     setEditingBudget(null)
   }
@@ -192,7 +193,7 @@ export function BudgetsList() {
   }
 
   const handleBulkDelete = () => {
-    selectedBudgets.forEach(id => onDeleteBudget(id))
+    selectedBudgets.forEach(id => deleteBudget(id))
     setSelectedBudgets(new Set())
   }
 
@@ -415,7 +416,7 @@ export function BudgetsList() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onDeleteBudget(budget.id)
+                            deleteBudget(budget.id)
                           }}
                           className="text-muted-foreground hover:text-destructive"
                         >

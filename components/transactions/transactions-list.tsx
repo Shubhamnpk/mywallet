@@ -85,6 +85,7 @@ export function TransactionsList({
   const { userProfile } = useUser()
   const { categories: allCategories } = useCategories()
   const calendarSystem = useCalendarSystem()
+  if (!userProfile) return null
   const [transactions, setTransactions] = useState<Transaction[]>(contextTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")

@@ -131,6 +131,7 @@ export function TransactionDetailsModal({
       toast.error("Enter a valid amount")
       return
     }
+    if (!updateTransaction) return
     setIsSaving(true)
     try {
       const result = await updateTransaction(transaction.id, {

@@ -32,6 +32,7 @@ import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
+import { PortfolioHeatMap } from "./portfolio-heatmap"
 import { OverviewStockSearch } from "./overview-stock-search"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
@@ -126,7 +127,7 @@ export function PortfolioList() {
     )
     const calendarSystem = useCalendarSystem()
     const currencySymbol = useMemo(() => {
-        if (userProfile?.currency === "NPR") return "Rs. "
+        if (userProfile?.currency === "NPR") return "रु "
         const symbol = getCurrencySymbol(userProfile?.currency || "NPR", userProfile?.customCurrency)
         return `${symbol}${symbol.endsWith(" ") ? "" : " "}`
     }, [userProfile?.currency, userProfile?.customCurrency])
@@ -3921,26 +3922,7 @@ export function PortfolioList() {
                                 </Card>
                             )}
 
-                            <Card className="bg-card/40 backdrop-blur-sm border-muted/50 flex flex-col text-left">
-                                <CardHeader>
-                                    <CardTitle className="text-lg font-black">Market Sentiment</CardTitle>
-                                    <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Snapshot of current IPO pipeline</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-1 flex flex-col justify-center items-center py-10">
-                                    <div className="w-24 h-24 rounded-full border-8 border-primary/20 flex items-center justify-center mb-6">
-                                        <div className="w-16 h-16 rounded-full border-4 border-primary animate-pulse flex items-center justify-center">
-                                            <TrendingUp className="w-8 h-8 text-primary" />
-                                        </div>
-                                    </div>
-                                    <h4 className={cn("text-xl font-black mb-2", sentiment.toneClass)}>{sentiment.label}</h4>
-                                    <p className="text-xs text-muted-foreground text-center max-w-[240px] font-medium leading-relaxed italic">
-                                        {sentiment.description}
-                                    </p>
-                                </CardContent>
-                                <div className="p-4 bg-muted/10 border-t border-muted/20 flex justify-center">
-                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">Source: Upcoming IPO Feed</Badge>
-                                </div>
-                            </Card>
+                            <PortfolioHeatMap portfolio={portfolio} />
                         </div>
                     </div>
                 </div >
