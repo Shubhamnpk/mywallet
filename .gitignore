@@ -42,3 +42,4 @@ public/fallback-*.js
 public/worker-*.js
 
 .playwright-mcp
+public/sw.js

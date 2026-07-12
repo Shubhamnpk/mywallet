@@ -35,9 +35,36 @@ export function useAchievements({
     show: boolean
     achievement: Achievement | null
     goal?: Goal
+    pendingCount?: number
+    totalCount?: number
   }>({ show: false, achievement: null })
 
   const celebratedAchievements = useRef<Set<string>>(new Set())
+  const firstUnlockedTimes = useRef<Map<string, number>>(new Map())
+  const isCelebratedLoaded = useRef(false)
+  const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingCelebrationQueue = useRef<Achievement[]>([])
+  const celebrationIndexRef = useRef(0)
+
+  // Initialize celebrated achievements from userProfile
+  useEffect(() => {
+    const ids = userProfile.celebratedAchievements
+    if (Array.isArray(ids)) {
+      celebratedAchievements.current = new Set(ids)
+    } else {
+      celebratedAchievements.current = new Set()
+    }
+    isCelebratedLoaded.current = true
+  }, [userProfile.celebratedAchievements])
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (celebrationTimerRef.current) {
+        clearTimeout(celebrationTimerRef.current)
+      }
+    }
+  }, [])
 
   const achievements = useMemo(() => {
     const newAchievements: Achievement[] = []
@@ -46,7 +73,6 @@ export function useAchievements({
     goals.forEach((goal) => {
       const progress = (goal.currentAmount / goal.targetAmount) * 100
 
-      // Progress-based achievements
       const progressMilestones = [
         { threshold: 25, title: "First Steps", description: "Reached 25% of your goal", icon: <Target className="w-5 h-5" />, color: "text-blue-600 bg-blue-50" },
         { threshold: 50, title: "Halfway Hero", description: "Reached 50% of your goal", icon: <Star className="w-5 h-5" />, color: "text-amber-600 bg-amber-50" },
@@ -59,6 +85,11 @@ export function useAchievements({
         const isUnlocked = progress >= milestone.threshold
         const rarity = milestone.threshold === 25 ? "common" : milestone.threshold === 50 ? "rare" : milestone.threshold === 75 ? "epic" : "legendary"
 
+        // Preserve first unlock time
+        if (isUnlocked && !firstUnlockedTimes.current.has(achievementId)) {
+          firstUnlockedTimes.current.set(achievementId, Date.now())
+        }
+
         newAchievements.push({
           id: achievementId,
           title: milestone.title,
@@ -66,7 +97,9 @@ export function useAchievements({
           icon: milestone.icon,
           color: milestone.color,
           unlocked: isUnlocked,
-          unlockedAt: isUnlocked ? new Date() : undefined,
+          unlockedAt: isUnlocked
+            ? new Date(firstUnlockedTimes.current.get(achievementId) || Date.now())
+            : undefined,
           goalId: goal.id,
           progress: Math.min(progress, milestone.threshold),
           maxProgress: milestone.threshold,
@@ -77,11 +110,9 @@ export function useAchievements({
     })
 
     // Global goal achievements
-    // Global goal achievements
     const totalGoals = goals.length
     const completedGoals = goals.filter(g => (g.currentAmount / g.targetAmount) * 100 >= 100).length
     const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0)
-    const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0)
 
     const globalAchievements: Partial<Achievement>[] = [
       {
@@ -142,7 +173,7 @@ export function useAchievements({
         progress: Math.min(totalSaved, 10000),
         maxProgress: 10000,
         category: "Savings",
-        rarity: "epic" as const
+        rarity: "rare" as const
       },
       {
         id: "consistency_king",
@@ -151,23 +182,50 @@ export function useAchievements({
         icon: <Flame className="w-5 h-5" />,
         color: "text-red-600 bg-red-50",
         unlocked: goals.some(g => {
+          if (!g.createdAt) return false
           const createdDate = new Date(g.createdAt)
           const now = new Date()
-          const diffTime = Math.abs(now.getTime() - createdDate.getTime())
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+          const diffTime = now.getTime() - createdDate.getTime()
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
           return diffDays >= 365
         }),
-        progress: 1,
-        maxProgress: 1,
+        progress: goals.length > 0
+          ? Math.min(
+              Math.floor(
+                (Date.now() - Math.min(...goals.filter(g => g.createdAt).map(g => new Date(g.createdAt).getTime()))) /
+                (1000 * 60 * 60 * 24)
+              ),
+              365
+            )
+          : 0,
+        maxProgress: 365,
         category: "Consistency",
         rarity: "epic" as const
+      },
+      {
+        id: "goal_perfectionist",
+        title: "Goal Perfectionist",
+        description: "Created 25 financial goals",
+        icon: <Star className="w-5 h-5" />,
+        color: "text-indigo-600 bg-indigo-50",
+        unlocked: totalGoals >= 25,
+        progress: Math.min(totalGoals, 25),
+        maxProgress: 25,
+        category: "Goal Setting",
+        rarity: "legendary" as const
       }
     ]
 
     globalAchievements.forEach((achievement) => {
+      const id = achievement.id!
+      if (achievement.unlocked && !firstUnlockedTimes.current.has(id)) {
+        firstUnlockedTimes.current.set(id, Date.now())
+      }
       newAchievements.push({
         ...achievement,
-        unlockedAt: achievement.unlocked ? new Date() : undefined
+        unlockedAt: achievement.unlocked
+          ? new Date(firstUnlockedTimes.current.get(id) || Date.now())
+          : undefined
       } as Achievement)
     })
 
@@ -175,9 +233,17 @@ export function useAchievements({
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
     const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
 
-    // Streak calculation (days with transactions)
+    // Count distinct days with transactions
     const transactionDates = new Set(transactions.map(t => new Date(t.date).toDateString()))
-    const transactionStreak = transactionDates.size
+    const transactionDayCount = transactionDates.size
+
+    // Compute budget spending once
+    const budgetSpending = budgets.map(budget => {
+      const spent = transactions
+        .filter(t => t.type === 'expense' && t.category?.toLowerCase() === budget.category?.toLowerCase())
+        .reduce((s, t) => s + t.amount, 0)
+      return { budget, spent, withinLimit: spent <= budget.limit }
+    })
 
     const transactionAchievements: Partial<Achievement>[] = [
       {
@@ -198,8 +264,8 @@ export function useAchievements({
         description: "Recorded transactions on 7 different days",
         icon: <Zap className="w-5 h-5" />,
         color: "text-yellow-600 bg-yellow-50",
-        unlocked: transactionStreak >= 7,
-        progress: Math.min(transactionStreak, 7),
+        unlocked: transactionDayCount >= 7,
+        progress: Math.min(transactionDayCount, 7),
         maxProgress: 7,
         category: "Activity",
         rarity: "rare" as const
@@ -210,19 +276,9 @@ export function useAchievements({
         description: "Stayed within budget limits for all categories",
         icon: <Shield className="w-5 h-5" />,
         color: "text-blue-600 bg-blue-50",
-        unlocked: budgets.length > 0 && budgets.every(budget => {
-          const spent = transactions
-            .filter(t => t.type === 'expense' && t.category === budget.category)
-            .reduce((s, t) => s + t.amount, 0)
-          return spent <= budget.limit
-        }),
-        progress: budgets.filter(budget => {
-          const spent = transactions
-            .filter(t => t.type === 'expense' && t.category === budget.category)
-            .reduce((s, t) => s + t.amount, 0)
-          return spent <= budget.limit
-        }).length,
-        maxProgress: budgets.length || 1,
+        unlocked: budgetSpending.length > 0 && budgetSpending.every(b => b.withinLimit),
+        progress: budgetSpending.filter(b => b.withinLimit).length,
+        maxProgress: Math.max(budgetSpending.length, 1),
         category: "Discipline",
         rarity: "rare" as const
       },
@@ -233,7 +289,7 @@ export function useAchievements({
         icon: <CheckCircle2 className="w-5 h-5" />,
         color: "text-emerald-600 bg-emerald-50",
         unlocked: debtAccounts.length > 0 && debtAccounts.every(d => d.balance === 0),
-        progress: debtAccounts.filter(d => d.balance === 0).length,
+        progress: debtAccounts.length > 0 ? debtAccounts.filter(d => d.balance === 0).length : 0,
         maxProgress: Math.max(debtAccounts.length, 1),
         category: "Freedom",
         rarity: "epic" as const
@@ -275,18 +331,6 @@ export function useAchievements({
         rarity: "legendary" as const
       },
       {
-        id: "goal_perfectionist",
-        title: "Goal Perfectionist",
-        description: "Created 25 financial goals",
-        icon: <Star className="w-5 h-5" />,
-        color: "text-indigo-600 bg-indigo-50",
-        unlocked: totalGoals >= 25,
-        progress: Math.min(totalGoals, 25),
-        maxProgress: 25,
-        category: "Goal Setting",
-        rarity: "legendary" as const
-      },
-      {
         id: "income_mogul",
         title: "Income Mogul",
         description: "Earned over $100,000 in total income",
@@ -301,7 +345,7 @@ export function useAchievements({
       {
         id: "six_figure_club",
         title: "Six-Figure Club",
-        description: "Reach a net worth of $100,000",
+        description: "Reach a net income surplus of $100,000",
         icon: <Gem className="w-5 h-5" />,
         color: "text-amber-600 bg-amber-50",
         unlocked: (totalIncome - totalExpenses) >= 100000,
@@ -320,67 +364,90 @@ export function useAchievements({
         progress: Math.min(totalSaved, 15000),
         maxProgress: 15000,
         category: "Discipline",
-        rarity: "rare" as const
+        rarity: "epic" as const
       }
     ]
 
     transactionAchievements.forEach((achievement) => {
+      const id = achievement.id!
+      if (achievement.unlocked && !firstUnlockedTimes.current.has(id)) {
+        firstUnlockedTimes.current.set(id, Date.now())
+      }
       newAchievements.push({
         ...achievement,
-        unlockedAt: achievement.unlocked ? new Date() : undefined
+        unlockedAt: achievement.unlocked
+          ? new Date(firstUnlockedTimes.current.get(id) || Date.now())
+          : undefined
       } as Achievement)
     })
 
     return newAchievements
   }, [goals, transactions, budgets, debtAccounts])
 
-  // Initialize celebrated achievements from userProfile (syncs across devices)
-  useEffect(() => {
-    const ids = userProfile.celebratedAchievements
-    if (Array.isArray(ids)) {
-      celebratedAchievements.current = new Set(ids)
-      return
-    }
-    celebratedAchievements.current = new Set()
-  }, [userProfile.celebratedAchievements])
-
   // Trigger celebrations for newly unlocked achievements
   useEffect(() => {
-    const unlockedAchievements = achievements.filter(a => a.unlocked && !celebratedAchievements.current.has(a.id))
+    if (!isCelebratedLoaded.current) return
 
-    if (unlockedAchievements.length > 0 && !celebration.show) {
-      const achievement = unlockedAchievements[0] // Celebrate the first new achievement
+    if (!celebration.show) {
+      const unlockedAchievements = achievements.filter(a => a.unlocked && !celebratedAchievements.current.has(a.id))
 
-      // Add to celebrated set immediately to prevent double celebration
-      celebratedAchievements.current.add(achievement.id)
+      if (unlockedAchievements.length > 0) {
+        pendingCelebrationQueue.current = unlockedAchievements
+        celebrationIndexRef.current = 0
+        const achievement = unlockedAchievements[0]
 
-      setTimeout(() => {
-        setCelebration({
-          show: true,
-          achievement,
-          goal: achievement.goalId ? goals.find(g => g.id === achievement.goalId) : undefined
-        })
-      }, 1000)
+        celebrationTimerRef.current = setTimeout(() => {
+          setCelebration({
+            show: true,
+            achievement,
+            goal: achievement.goalId ? goals.find(g => g.id === achievement.goalId) : undefined,
+            pendingCount: unlockedAchievements.length - 1,
+            totalCount: unlockedAchievements.length
+          })
+        }, 1000)
+      }
     }
   }, [achievements, celebration.show, goals])
-
 
   const unlockedAchievements = achievements.filter(a => a.unlocked)
   const lockedAchievements = achievements.filter(a => !a.unlocked)
 
-  // Get current celebrated achievements as array (for updating userProfile)
   const getCelebratedAchievements = useCallback(() => {
     return Array.from(celebratedAchievements.current)
   }, [])
 
   const dismissCelebration = useCallback(() => {
-    if (celebration.achievement) {
-      celebratedAchievements.current.add(celebration.achievement.id)
-    }
-    setCelebration({ show: false, achievement: null })
-  }, [celebration.achievement])
+    setCelebration(prev => {
+      if (prev.achievement) {
+        celebratedAchievements.current.add(prev.achievement.id)
+      }
 
-  // Mark multiple achievements as celebrated (e.g., when batch celebrating)
+      const queue = pendingCelebrationQueue.current
+      const nextIndex = celebrationIndexRef.current + 1
+
+      if (nextIndex < queue.length) {
+        celebrationIndexRef.current = nextIndex
+        const nextAchievement = queue[nextIndex]
+        return {
+          show: true,
+          achievement: nextAchievement,
+          goal: nextAchievement.goalId ? goals.find(g => g.id === nextAchievement.goalId) : undefined,
+          pendingCount: queue.length - nextIndex - 1,
+          totalCount: queue.length
+        }
+      }
+
+      return { show: false, achievement: null }
+    })
+  }, [goals])
+
+  const skipAllCelebrations = useCallback(() => {
+    pendingCelebrationQueue.current.forEach(a => celebratedAchievements.current.add(a.id))
+    pendingCelebrationQueue.current = []
+    celebrationIndexRef.current = 0
+    setCelebration({ show: false, achievement: null })
+  }, [])
+
   const markAsCelebrated = useCallback((achievementIds: string[]) => {
     achievementIds.forEach(id => celebratedAchievements.current.add(id))
   }, [])
@@ -391,6 +458,7 @@ export function useAchievements({
     lockedAchievements,
     celebration,
     dismissCelebration,
+    skipAllCelebrations,
     getCelebratedAchievements,
     markAsCelebrated
   }

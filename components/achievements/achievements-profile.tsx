@@ -16,8 +16,11 @@ interface AchievementsProfileProps {
   celebration: {
     show: boolean
     achievement: Achievement | null
+    pendingCount?: number
+    totalCount?: number
   }
   onDismissCelebration: () => void
+  onSkipAllCelebrations?: () => void
 }
 
 // Custom Circular Progress Component with Premium Styling
@@ -40,7 +43,7 @@ const CircularProgressBar = ({
 }) => {
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
-  const progressPercent = Math.min((progress / maxProgress) * 100, 100)
+  const progressPercent = maxProgress > 0 ? Math.min((progress / maxProgress) * 100, 100) : 0
   const offset = circumference - (progressPercent / 100) * circumference
 
   const getRarityGradient = () => {
@@ -246,7 +249,8 @@ export function AchievementsProfile({
   unlockedAchievements,
   lockedAchievements,
   celebration,
-  onDismissCelebration
+  onDismissCelebration,
+  onSkipAllCelebrations
 }: AchievementsProfileProps) {
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null)
   const [filter, setFilter] = useState("all")
@@ -284,8 +288,8 @@ export function AchievementsProfile({
   // Sort locked by progress (closest to unlock first)
   const sortLocked = (list: Achievement[]) => {
     return [...list].sort((a, b) => {
-      const aPct = a.progress / a.maxProgress
-      const bPct = b.progress / b.maxProgress
+      const aPct = a.maxProgress > 0 ? a.progress / a.maxProgress : 0
+      const bPct = b.maxProgress > 0 ? b.progress / b.maxProgress : 0
       return bPct - aPct // Descending: closest to unlock first
     })
   }
@@ -301,7 +305,7 @@ export function AchievementsProfile({
     ? filteredLocked 
     : filteredLocked.slice(0, INITIAL_LOCKED_COUNT)
 
-  const totalProgress = achievements.reduce((acc, a) => acc + (a.progress / a.maxProgress), 0)
+  const totalProgress = achievements.reduce((acc, a) => acc + (a.maxProgress > 0 ? a.progress / a.maxProgress : 0), 0)
   const overallPercentage = achievements.length > 0 ? Math.round((totalProgress / achievements.length) * 100) : 0
 
   return (
@@ -586,7 +590,7 @@ export function AchievementsProfile({
                         </div>
                       </div>
                       <Badge className={`font-bold ${selectedAchievement.unlocked ? 'bg-emerald-500' : 'bg-blue-500'}`}>
-                        {selectedAchievement.unlocked ? 'UNLOCKED' : `${Math.round((selectedAchievement.progress / selectedAchievement.maxProgress) * 100)}%`}
+                        {selectedAchievement.unlocked ? 'UNLOCKED' : `${Math.round(selectedAchievement.maxProgress > 0 ? (selectedAchievement.progress / selectedAchievement.maxProgress) * 100 : 0)}%`}
                       </Badge>
                     </div>
                     <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
@@ -596,7 +600,7 @@ export function AchievementsProfile({
                             selectedAchievement.rarity === 'rare' ? 'from-blue-400 to-cyan-500' :
                               'from-slate-400 to-slate-600'
                           }`}
-                        style={{ width: `${(selectedAchievement.progress / selectedAchievement.maxProgress) * 100}%` }}
+                        style={{ width: `${selectedAchievement.maxProgress > 0 ? (selectedAchievement.progress / selectedAchievement.maxProgress) * 100 : 0}%` }}
                       >
                         <div className="w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[progress-bar-stripes_1s_linear_infinite]"></div>
                       </div>
@@ -619,16 +623,16 @@ export function AchievementsProfile({
 
       {/* Celebration Dialog - CORRECTED and PREMIUM */}
       <Dialog open={celebration.show} onOpenChange={onDismissCelebration}>
-        <DialogContent className="sm:max-w-md rounded-[3rem] border-0 p-0 overflow-hidden bg-slate-950 text-white shadow-[0_0_100px_rgba(245,158,11,0.2)]">
+        <DialogContent className="sm:max-w-md rounded-[3rem] border-0 p-0 overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-[0_0_100px_rgba(245,158,11,0.15)]">
           <DialogTitle className="sr-only">Achievement Unlocked</DialogTitle>
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-purple-900/40 to-pink-900/40 animate-pulse"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-100/60 via-orange-100/40 to-pink-100/60 dark:from-indigo-900/40 dark:via-purple-900/40 dark:to-pink-900/40 animate-pulse"></div>
 
           {celebration.achievement && (
             <div className="flex flex-col items-center space-y-8 p-10 relative z-10 text-center">
               <div className="relative">
                 {/* Orbital Glow rings */}
-                <div className="absolute inset-0 bg-amber-500/20 rounded-full scale-[1.5] blur-3xl animate-pulse"></div>
-                <div className="absolute inset-0 bg-orange-500/20 rounded-full scale-[2] blur-3xl animate-pulse delay-700"></div>
+                <div className="absolute inset-0 bg-amber-500/10 dark:bg-amber-500/20 rounded-full scale-[1.5] blur-3xl animate-pulse"></div>
+                <div className="absolute inset-0 bg-orange-500/10 dark:bg-orange-500/20 rounded-full scale-[2] blur-3xl animate-pulse delay-700"></div>
 
                 <CircularProgressBar
                   progress={celebration.achievement.maxProgress}
@@ -638,8 +642,8 @@ export function AchievementsProfile({
                   isUnlocked={true}
                   rarity={celebration.achievement.rarity}
                 >
-                  <div className="w-40 h-40 rounded-full bg-white/5 backdrop-blur-xl flex items-center justify-center shadow-2xl border border-white/10 overflow-hidden group">
-                    <div className="text-8xl animate-bounce-slow transform-gpu drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]">
+                  <div className="w-40 h-40 rounded-full bg-slate-100/80 dark:bg-white/5 backdrop-blur-xl flex items-center justify-center shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden group">
+                    <div className="text-8xl animate-bounce-slow transform-gpu drop-shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]">
                       {celebration.achievement.icon}
                     </div>
                   </div>
@@ -654,36 +658,54 @@ export function AchievementsProfile({
               </div>
 
               <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-black tracking-widest uppercase">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 dark:border-emerald-500/30 text-xs font-black tracking-widest uppercase">
                   <Sparkles className="w-3 h-3" />
                   New Rank Achieved
+                  {celebration.totalCount && celebration.totalCount > 1 && (
+                    <span className="text-emerald-600/70 dark:text-emerald-400/70 ml-1">
+                      {celebration.pendingCount != null
+                        ? `${celebration.totalCount - celebration.pendingCount}/${celebration.totalCount}`
+                        : `1/${celebration.totalCount}`}
+                    </span>
+                  )}
                 </div>
-                <h3 className="text-5xl font-black italic tracking-tighter bg-gradient-to-r from-amber-400 via-orange-400 to-pink-500 bg-clip-text text-transparent">
+                <h3 className="text-5xl font-black italic tracking-tighter bg-gradient-to-r from-amber-500 via-orange-500 to-pink-500 dark:from-amber-400 dark:via-orange-400 dark:to-pink-500 bg-clip-text text-transparent">
                   {celebration.achievement.title}
                 </h3>
-                <p className="text-white/60 text-lg font-medium leading-relaxed max-w-sm">
+                <p className="text-slate-500 dark:text-white/60 text-lg font-medium leading-relaxed max-w-sm">
                   {celebration.achievement.description}
                 </p>
 
                 <div className="flex gap-4 justify-center pt-2">
-                  <div className="px-6 py-2 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-white/40 uppercase">Rarity</span>
-                    <span className="font-black text-amber-400 uppercase tracking-tighter">{celebration.achievement.rarity}</span>
+                  <div className="px-6 py-2 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex flex-col items-center">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-white/40 uppercase">Rarity</span>
+                    <span className="font-black text-amber-600 dark:text-amber-400 uppercase tracking-tighter">{celebration.achievement.rarity}</span>
                   </div>
-                  <div className="px-6 py-2 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-white/40 uppercase">Category</span>
-                    <span className="font-black uppercase tracking-tighter">{celebration.achievement.category}</span>
+                  <div className="px-6 py-2 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex flex-col items-center">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-white/40 uppercase">Category</span>
+                    <span className="font-black text-slate-800 dark:text-white uppercase tracking-tighter">{celebration.achievement.category}</span>
                   </div>
                 </div>
               </div>
 
-              <Button
-                onClick={onDismissCelebration}
-                className="w-full h-16 rounded-[2rem] bg-gradient-to-r from-amber-500 via-orange-600 to-pink-600 hover:scale-105 transition-all duration-300 font-black text-lg shadow-[0_10px_40px_-10px_rgba(245,158,11,0.5)] border-0"
-                size="lg"
-              >
-                Continue Your Journey
-              </Button>
+              <div className="flex flex-col gap-3 w-full">
+                <Button
+                  onClick={onDismissCelebration}
+                  className="w-full h-16 rounded-[2rem] bg-gradient-to-r from-amber-500 via-orange-600 to-pink-600 hover:scale-105 transition-all duration-300 font-black text-lg shadow-[0_10px_40px_-10px_rgba(245,158,11,0.5)] border-0"
+                  size="lg"
+                >
+                  Continue Your Journey
+                </Button>
+                {celebration.totalCount && celebration.totalCount > 1 && onSkipAllCelebrations && (
+                  <Button
+                    onClick={onSkipAllCelebrations}
+                    variant="ghost"
+                    className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10 rounded-full h-12 text-sm font-semibold"
+                  >
+                    Skip All ({celebration.totalCount} remaining)
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

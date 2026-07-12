@@ -2298,6 +2298,7 @@ export function PortfolioList() {
         return (
             <>
             <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-5">
+                {nepseIndexData && (
                 <Card className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden">
                     <CardHeader className="pb-0 px-2 pt-2 sm:px-3 sm:pt-3">
                         <div className="flex items-center justify-between gap-1">
@@ -2305,25 +2306,21 @@ export function PortfolioList() {
                                 <span className={cn("inline-block w-1.5 h-1.5 rounded-full", marketStatusMeta.dotClass)} />
                                 NEPSE
                             </CardDescription>
-                            {nepseIndexData && (
-                                <div className="flex items-center gap-1.5">
-                                    <span className={cn("text-[8px] font-bold uppercase tracking-wider", marketStatus?.isOpen === true ? "text-success" : marketStatus?.isOpen === false ? "text-error" : "text-muted-foreground")}>{marketStatusMeta.statusText}</span>
-                                    <span className={cn("text-[10px] font-black tracking-tight", nepseIndexData.changeColor)}>
-                                        {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.perChange.toFixed(2)}%
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                        {nepseIndexData && (
-                            <div className="flex items-baseline gap-1 -mt-0.5">
-                                <span className={cn("text-sm sm:text-base font-black font-mono tracking-tight", nepseIndexData.changeColor)}>
-                                    {nepseIndexData.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <span className={cn("text-[10px] font-semibold", nepseIndexData.changeColor)}>
-                                    {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.change.toFixed(2)}
+                            <div className="flex items-center gap-1.5">
+                                <span className={cn("text-[8px] font-bold uppercase tracking-wider", marketStatus?.isOpen === true ? "text-success" : marketStatus?.isOpen === false ? "text-error" : "text-muted-foreground")}>{marketStatusMeta.statusText}</span>
+                                <span className={cn("text-[10px] font-black tracking-tight", nepseIndexData.changeColor)}>
+                                    {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.perChange.toFixed(2)}%
                                 </span>
                             </div>
-                        )}
+                        </div>
+                        <div className="flex items-baseline gap-1 -mt-0.5">
+                            <span className={cn("text-sm sm:text-base font-black font-mono tracking-tight", nepseIndexData.changeColor)}>
+                                {nepseIndexData.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className={cn("text-[10px] font-semibold", nepseIndexData.changeColor)}>
+                                {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.change.toFixed(2)}
+                            </span>
+                        </div>
                     </CardHeader>
                     <CardContent className="px-1 pb-1 sm:px-2 sm:pb-2">
                         {intradayChartData.length > 0 && (() => {
@@ -2368,6 +2365,7 @@ export function PortfolioList() {
                         })()}
                     </CardContent>
                 </Card>
+                )}
 
                 <Card
                     className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"

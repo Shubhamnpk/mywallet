@@ -43,6 +43,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
     lockedAchievements,
     celebration,
     dismissCelebration,
+    skipAllCelebrations,
     getCelebratedAchievements
   } = useAchievements({
     goals,
@@ -55,7 +56,15 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   // Wrapped dismiss that saves to userProfile for cross-device sync
   const handleDismissCelebration = () => {
     dismissCelebration()
-    // Save celebrated achievements to userProfile for sync
+    saveCelebratedAchievements()
+  }
+
+  const handleSkipAllCelebrations = () => {
+    skipAllCelebrations()
+    saveCelebratedAchievements()
+  }
+
+  const saveCelebratedAchievements = () => {
     const celebratedIds = getCelebratedAchievements()
     if (userProfile && JSON.stringify(userProfile.celebratedAchievements) !== JSON.stringify(celebratedIds)) {
       void updateUserProfile({
@@ -95,6 +104,37 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
 
   useEffect(() => {
     setHasChanges(JSON.stringify(formData) !== JSON.stringify(userProfile ? normalizeProfileFormData(userProfile) : userProfile))
+  }, [formData, userProfile])
+
+  const changedFields = useMemo(() => {
+    if (!userProfile) return []
+    const changes: { key: string; label: string }[] = []
+    const original = normalizeProfileFormData(userProfile)
+
+    const fieldLabels: Record<string, string> = {
+      name: "Name",
+      currency: "Currency",
+      calendarSystem: "Calendar",
+      monthlyEarning: "Earning",
+      workingHoursPerDay: "Hours/Day",
+      workingDaysPerMonth: "Days/Month",
+    }
+
+    for (const [key, label] of Object.entries(fieldLabels)) {
+      if (JSON.stringify(formData[key]) !== JSON.stringify(original[key])) {
+        changes.push({ key, label })
+      }
+    }
+
+    if (formData.currency === "CUSTOM" && JSON.stringify(formData.customCurrency) !== JSON.stringify(original.customCurrency)) {
+      changes.push({ key: "customCurrency", label: "Custom Currency" })
+    }
+
+    if ((formData.image || formData.avatar) !== (original.image || original.avatar)) {
+      changes.push({ key: "avatar", label: "Avatar" })
+    }
+
+    return changes
   }, [formData, userProfile])
 
   const updateField = (key: string, value: any) => {
@@ -703,45 +743,67 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
             lockedAchievements={lockedAchievements}
             celebration={celebration}
             onDismissCelebration={handleDismissCelebration}
+            onSkipAllCelebrations={handleSkipAllCelebrations}
           />
         </CardContent>
       </Card>
 
-      {/* Enhanced Save Changes (only in edit mode and when there are changes) */}
+      {/* Unsaved Changes Panel — redesigned */}
       {editMode && hasChanges && (
-        <Card className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 max-w-lg md:max-w-sm border-0 shadow-lg transition-all duration-300 bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 shadow-primary/10">
-          <CardContent className="pt-4 pb-4 px-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="w-3 h-3 rounded-full bg-primary animate-pulse flex-shrink-0"></div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-primary">
-                    Unsaved Changes
-                  </p>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl animate-in slide-in-from-bottom-8 fade-in duration-300">
+          <div className="relative rounded-2xl bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border border-primary/20 dark:border-primary/20 shadow-[0_8px_40px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)] overflow-hidden">
+            {/* Top accent bar */}
+            <div className="h-1 w-full bg-gradient-to-r from-primary via-primary/80 to-primary/60"></div>
+
+            <div className="p-3 md:p-5">
+              <div className="flex flex-row items-center gap-2 md:gap-3">
+                {/* Left: status + count */}
+                <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-primary rounded-full"></div>
+                  <span className="text-xs md:text-sm font-bold text-primary whitespace-nowrap">
+                    Unsaved
+                  </span>
+                  <div className="px-1.5 py-0.5 md:px-2 rounded-full bg-primary/10 text-[10px] md:text-[11px] font-bold text-primary tabular-nums">
+                    {changedFields.length}
+                  </div>
+                </div>
+
+                {/* Middle: changed field chips — scrollable on mobile */}
+                <div className="flex-1 flex gap-1.5 overflow-x-auto min-w-0 flex-nowrap scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {changedFields.map((f) => (
+                    <span
+                      key={f.key}
+                      className="inline-flex items-center px-2 py-0.5 md:px-2.5 md:py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] md:text-[11px] font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap shrink-0"
+                    >
+                      {f.label}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Right: actions */}
+                <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+                  <Button
+                    onClick={handleCancelChanges}
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 px-4 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-all"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1.5" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    size="sm"
+                    className="h-9 px-5 rounded-full text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    Save
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  onClick={handleCancelChanges}
-                  variant="outline"
-                  size="sm"
-                  className="border-muted-foreground/20 hover:bg-muted/50 transition-all duration-200 text-xs px-2 py-1 h-8 min-w-[60px]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={!hasChanges}
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-200 text-xs px-2 py-1 h-8 min-w-[80px]"
-                >
-                  <Save className="w-3 h-3 mr-1" />
-                  Save
-                </Button>
-              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       <Separator />

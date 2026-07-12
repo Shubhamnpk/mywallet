@@ -8,9 +8,6 @@ import {
   Target,
   TrendingUp,
   Calendar,
-  Trophy,
-  Star,
-  Award,
   Zap,
   CheckCircle2,
   AlertTriangle,
@@ -18,7 +15,7 @@ import {
 } from "lucide-react"
 import type { Goal, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
-import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
+import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveRemainingAmount } from "@/lib/goal-challenge"
 import { formatAppDate } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
@@ -35,15 +32,6 @@ interface GoalProjection {
   monthlyNeeded: number
   projectedCompletion: Date
   status: 'on-track' | 'behind' | 'ahead' | 'completed'
-  milestones: Milestone[]
-}
-
-interface Milestone {
-  percentage: number
-  amount: number
-  achieved: boolean
-  label: string
-  icon: React.ReactNode
 }
 
 export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVisualizationProps) {
@@ -51,7 +39,6 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
   const goalProjections = useMemo(() => {
     return goals.map((goal): GoalProjection => {
       const challengeSummary = getGoalChallengeSummary(goal)
-      const effectiveTargetAmount = getGoalEffectiveTargetAmount(goal)
       const progress = getGoalEffectiveProgress(goal)
       const remaining = getGoalEffectiveRemainingAmount(goal)
       const targetDate = new Date(challengeSummary?.currentDeadline || goal.targetDate)
@@ -68,37 +55,6 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
       else if (projectedCompletion > targetDate) status = 'behind'
       else if (projectedCompletion < targetDate && progress > 50) status = 'ahead'
 
-      const milestones: Milestone[] = [
-        {
-          percentage: 25,
-          amount: effectiveTargetAmount * 0.25,
-          achieved: progress >= 25,
-          label: "Quarter Complete",
-          icon: <Star className="w-4 h-4" />
-        },
-        {
-          percentage: 50,
-          amount: effectiveTargetAmount * 0.5,
-          achieved: progress >= 50,
-          label: "Halfway There",
-          icon: <Target className="w-4 h-4" />
-        },
-        {
-          percentage: 75,
-          amount: effectiveTargetAmount * 0.75,
-          achieved: progress >= 75,
-          label: "Three Quarters",
-          icon: <Award className="w-4 h-4" />
-        },
-        {
-          percentage: 100,
-          amount: effectiveTargetAmount,
-          achieved: progress >= 100,
-          label: "Goal Complete!",
-          icon: <Trophy className="w-4 h-4" />
-        }
-      ]
-
       return {
         goal,
         progress,
@@ -106,27 +62,35 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
         timeToComplete,
         monthlyNeeded,
         projectedCompletion,
-        status,
-        milestones
+        status
       }
     })
   }, [goals])
 
-  const getStatusColor = (status: GoalProjection['status']) => {
+  const getStatusBadgeClass = (status: GoalProjection['status']) => {
     switch (status) {
-      case 'completed': return 'text-emerald-600 bg-emerald-50 border-emerald-200'
-      case 'ahead': return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'on-track': return 'text-primary bg-primary/50 border-primary/20'
-      case 'behind': return 'text-amber-600 bg-amber-50 border-amber-200'
+      case 'completed': return "bg-primary/15 text-primary border-primary/20"
+      case 'ahead': return "bg-primary/10 text-primary border-primary/20"
+      case 'on-track': return "bg-primary/10 text-primary border-primary/20"
+      case 'behind': return "bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
     }
   }
 
   const getStatusIcon = (status: GoalProjection['status']) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="w-5 h-5 text-success" />
-      case 'ahead': return <TrendingUp className="w-5 h-5 text-info" />
-      case 'on-track': return <Target className="w-5 h-5 text-primary" />
-      case 'behind': return <AlertTriangle className="w-5 h-5 text-error" />
+      case 'completed': return <CheckCircle2 className="w-5 h-5 text-white" />
+      case 'ahead': return <TrendingUp className="w-5 h-5 text-white" />
+      case 'on-track': return <Target className="w-5 h-5 text-white" />
+      case 'behind': return <AlertTriangle className="w-5 h-5 text-white" />
+    }
+  }
+
+  const getStatusIconBg = (status: GoalProjection['status']) => {
+    switch (status) {
+      case 'completed': return "bg-primary"
+      case 'ahead': return "bg-primary"
+      case 'on-track': return "bg-primary"
+      case 'behind': return "bg-amber-500"
     }
   }
 
@@ -140,42 +104,47 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
 
   if (goals.length === 0) {
     return (
-      <Card>
+      <Card className="border-primary/15">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            Goal Progress Visualization
+            <Target className="w-5 h-5 text-primary" />
+            Goal Progress
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center text-muted-foreground py-8">
-            <Target className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <Target className="w-16 h-16 mx-auto mb-4 opacity-30 text-primary" />
             <p className="text-lg font-medium">No goals to visualize</p>
-            <p className="text-sm">Create some financial goals to see progress visualizations</p>
+            <p className="text-sm">Create financial goals to see progress here</p>
           </div>
         </CardContent>
       </Card>
     )
   }
 
+  const totalProgress = goals.reduce((sum, g) => sum + getGoalEffectiveProgress(g), 0) / goals.length
+  const completedCount = goals.filter(g => getGoalEffectiveProgress(g) >= 100).length
+  const behindCount = goalProjections.filter(g => g.status === 'behind').length
+  const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0)
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Strategy Hub - Left Side/Top */}
-        <Card className="lg:col-span-1 border-primary/10 overflow-hidden shadow-xl bg-background/50 backdrop-blur-sm flex flex-col">
-          <CardHeader className="border-b bg-muted/30 py-3 px-4">
+        {/* Strategy Hub */}
+        <Card className="lg:col-span-1 border-primary/10 overflow-hidden shadow-lg bg-background/50 backdrop-blur-sm flex flex-col">
+          <CardHeader className="border-b border-primary/10 bg-primary/[0.02] py-3 px-4">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-sm font-bold">
                 <div className="p-1.5 bg-primary/10 rounded-md text-primary">
                   <Target className="w-4 h-4" />
                 </div>
-                Strategy Hub
+                At a Glance
               </CardTitle>
             </div>
           </CardHeader>
           <CardContent className="p-4 flex-1 flex flex-col justify-between gap-4">
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-muted/20 border border-muted/50 rounded-xl">
+              <div className="flex items-center justify-between p-3 bg-muted/30 border border-primary/10 rounded-xl">
                 <div>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Goals</p>
                   <p className="text-xl font-bold font-mono text-primary">{goals.length}</p>
@@ -186,33 +155,30 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/20 rounded-xl">
-                  <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Done</p>
-                  <p className="text-lg font-bold font-mono text-emerald-600">
-                    {goals.filter(g => getGoalEffectiveProgress(g) >= 100).length}
-                  </p>
+                <div className="p-3 bg-primary/5 border border-primary/15 rounded-xl">
+                  <p className="text-[9px] font-bold text-primary uppercase tracking-widest">Done</p>
+                  <p className="text-lg font-bold font-mono text-primary">{completedCount}</p>
                 </div>
-                <div className="p-3 bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900/20 rounded-xl">
-                  <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">Lagging</p>
-                  <p className="text-lg font-bold font-mono text-amber-600">
-                    {goalProjections.filter(g => g.status === 'behind').length}
-                  </p>
+                <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-xl">
+                    <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Behind</p>
+                  <p className="text-lg font-bold font-mono text-amber-600 dark:text-amber-400">{behindCount}</p>
                 </div>
               </div>
 
-              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/20 rounded-xl">
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Total Savings Progress</p>
+              <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl">
+                <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Total Savings Progress</p>
                 <div className="flex items-end justify-between mb-1">
-                  <p className="text-lg font-bold font-mono text-blue-600 truncate mr-2">
-                    {formatCurrency(goals.reduce((sum, g) => sum + g.currentAmount, 0), userProfile.currency, userProfile.customCurrency)}
+                  <p className="text-lg font-bold font-mono text-primary truncate mr-2">
+                    {formatCurrency(totalSaved, userProfile.currency, userProfile.customCurrency)}
                   </p>
-                  <p className="text-xs font-bold text-blue-600/70 shrink-0">
-                    {Math.round(goals.reduce((sum, g) => sum + getGoalEffectiveProgress(g), 0) / goals.length) || 0}%
+                  <p className="text-xs font-bold text-primary/70 shrink-0">
+                    {Math.round(totalProgress)}%
                   </p>
                 </div>
                 <Progress
-                  value={goals.reduce((sum, g) => sum + getGoalEffectiveProgress(g), 0) / goals.length || 0}
-                  className="h-1 bg-blue-100 dark:bg-blue-900/30"
+                  value={totalProgress}
+                  className="h-1 bg-primary/10"
+                  indicatorClassName="bg-primary"
                 />
               </div>
             </div>
@@ -220,60 +186,51 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
             <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl mt-auto">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="w-3 h-3 text-primary" />
-                <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Intelligence</p>
+                <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Tip</p>
               </div>
               <p className="text-[11px] leading-relaxed text-muted-foreground italic">
-                {goalProjections.filter(g => g.status === 'behind').length > 0
-                  ? "Your trajectory suggests focusing on 'Lagging' goals to maintain overall momentum."
-                  : "Excellent coverage! All active goals are performing within projected parameters."}
+                {behindCount > 0
+                  ? "Focus on lagging goals to maintain overall momentum."
+                  : "All active goals are on track — keep it up!"}
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Individual Goal View - Right Side/Main */}
+        {/* Goal Cards */}
         <div className="lg:col-span-3 space-y-4">
           {goalProjections.map((projection) => (
-            <Card key={projection.goal.id} className="border-primary/10 overflow-hidden shadow-lg bg-background/40 backdrop-blur-md transition-all hover:shadow-primary/5 group/card">
+            <Card key={projection.goal.id} className="border-primary/10 overflow-hidden shadow-lg bg-background/40 backdrop-blur-md transition-all hover:shadow-primary/10 group/card">
               <div className="flex flex-col md:flex-row">
-                {/* Left Section: Status & Progress */}
-                <div className="flex-1 p-5 border-b md:border-b-0 md:border-r border-primary/5">
+                {/* Left: Status & Progress */}
+                <div className="flex-1 p-5 border-b md:border-b-0 md:border-r border-primary/10">
                   <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div className={cn(
-                        "p-2 rounded-lg text-white shadow-sm transition-transform group-hover/card:scale-110",
-                        projection.status === 'completed' ? 'bg-emerald-500' :
-                          projection.status === 'ahead' ? 'bg-blue-500' :
-                            projection.status === 'behind' ? 'bg-amber-500' : 'bg-primary'
+                        "p-1.5 rounded-lg text-white shadow-sm shrink-0 transition-transform group-hover/card:scale-110",
+                        getStatusIconBg(projection.status)
                       )}>
                         {getStatusIcon(projection.status)}
                       </div>
-                      <div>
-                        <h3 className="text-base font-bold leading-none mb-1.5">
-                          {projection.goal.title || projection.goal.name}
-                        </h3>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={cn("text-[8px] font-bold uppercase tracking-widest h-3.5 px-1", getStatusColor(projection.status))}>
-                            {projection.status.replace('-', ' ')}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
-                            <Calendar className="w-2.5 h-2.5" /> {formatAppDate(projection.goal.targetDate, calendarSystem)}
-                          </span>
-                        </div>
-                      </div>
+                      <h3 className="text-sm font-bold truncate">
+                        {projection.goal.title || projection.goal.name}
+                      </h3>
+                      <Badge variant="outline" className={cn("text-[8px] font-bold uppercase tracking-widest px-1.5 py-0 shrink-0", getStatusBadgeClass(projection.status))}>
+                        {projection.status.replace('-', ' ')}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1 shrink-0">
+                        <Calendar className="w-2.5 h-2.5" /> {formatAppDate(projection.goal.targetDate, calendarSystem)}
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold font-mono text-primary leading-none">
-                        {projection.progress.toFixed(1)}<span className="text-sm font-normal opacity-70 ml-0.5">%</span>
-                      </p>
-                    </div>
+                    <p className="text-2xl font-bold font-mono text-primary leading-none shrink-0">
+                      {projection.progress.toFixed(1)}<span className="text-sm font-normal text-muted-foreground ml-0.5">%</span>
+                    </p>
                   </div>
 
-                  {/* Enhanced Progress Bar with Milestones */}
+                  {/* Progress Bar with Milestones */}
                   <div className="space-y-8">
                     <div className="relative pt-1 px-1">
-                      {/* Milestone Markers */}
-                      <div className="absolute top-[-4px] left-0 w-full h-full pointer-events-none z-10 px-1">
+                      <div className="absolute top-[-4px] left-0 w-full h-full pointer-events-none px-1">
                         {[25, 50, 75].map((m) => (
                           <div
                             key={m}
@@ -287,39 +244,32 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                               "absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full",
                               projection.progress >= m ? "bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" : "bg-muted-foreground/30"
                             )} />
-                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] font-bold opacity-40">{m}%</span>
+                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted-foreground/60">{m}%</span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="h-2.5 bg-muted/30 rounded-full overflow-hidden border border-primary/5 relative">
+                      <div className="h-2.5 bg-muted/30 rounded-full overflow-hidden border border-primary/10">
                         <div
                           className={cn(
-                            "h-full transition-all duration-1000 ease-out",
-                            projection.status === 'completed' ? 'bg-emerald-500' : 'bg-primary',
-                            projection.status === 'behind' && 'bg-amber-500'
+                            "h-full transition-all duration-1000 ease-out rounded-full",
+                            projection.status === 'behind' ? "bg-amber-500" : "bg-primary"
                           )}
                           style={{ width: `${Math.min(projection.progress, 100)}%` }}
                         />
-                        {projection.progress < 100 && (
-                          <div
-                            className="absolute top-0 right-0 h-full bg-primary/5 animate-pulse"
-                            style={{ width: `${100 - Math.min(projection.progress, 100)}%` }}
-                          />
-                        )}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-muted/10 rounded-xl border border-dashed border-primary/10">
+                      <div className="p-3 bg-muted/20 rounded-xl border border-dashed border-primary/10">
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Still Needed</p>
-                        <p className="text-sm font-bold font-mono text-red-500/80">
+                        <p className="text-sm font-bold font-mono text-amber-600 dark:text-amber-400">
                           {formatCurrency(projection.remaining, userProfile.currency, userProfile.customCurrency)}
                         </p>
                       </div>
-                      <div className="p-3 bg-muted/10 rounded-xl border border-dashed border-primary/10">
+                      <div className="p-3 bg-muted/20 rounded-xl border border-dashed border-primary/10">
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Monthly Plan</p>
-                        <p className="text-sm font-bold font-mono text-blue-600/80">
+                        <p className="text-sm font-bold font-mono text-primary">
                           {formatCurrency(projection.monthlyNeeded, userProfile.currency, userProfile.customCurrency)}
                         </p>
                       </div>
@@ -327,44 +277,44 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                   </div>
                 </div>
 
-                {/* Right Section: Intelligence & Projections */}
+                {/* Right: Intelligence & Projections */}
                 <div className="w-full md:w-64 lg:w-72 bg-muted/10 p-5 flex flex-col justify-between">
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-primary/10 rounded-md">
                         <Zap className="w-3 h-3 text-primary" />
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Strategic Insight</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Insight</span>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="p-3 bg-background/50 rounded-xl border border-primary/5">
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase opacity-60 mb-1">Est. Completion</p>
+                      <div className="p-3 bg-background/50 rounded-xl border border-primary/10">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Est. Completion</p>
                         <p className="text-sm font-bold font-mono text-primary">
                           {formatAppDate(projection.projectedCompletion, calendarSystem)}
-                          <span className="text-[10px] font-normal opacity-60 ml-2">({formatTime(projection.timeToComplete)})</span>
+                          <span className="text-[10px] font-normal text-muted-foreground ml-2">({formatTime(projection.timeToComplete)})</span>
                         </p>
                         <p className="text-[8px] text-muted-foreground italic mt-1 font-medium">
-                          {projection.status === 'ahead' ? 'Running ahead of original schedule' :
-                            projection.status === 'behind' ? 'Action required to meet deadline' : 'Aligned with target schedule'}
+                          {projection.status === 'ahead' ? 'Ahead of schedule' :
+                            projection.status === 'behind' ? 'Needs attention to meet deadline' : 'On track'}
                         </p>
                       </div>
 
                       <div className={cn(
                         "p-3 rounded-xl border text-[10px] leading-relaxed font-medium",
-                        projection.status === 'ahead' ? 'bg-emerald-50/50 border-emerald-200/50 text-emerald-700/80' :
-                          projection.status === 'behind' ? 'bg-amber-50/50 border-amber-200/50 text-amber-700/80' :
-                            'bg-blue-50/50 border-blue-200/50 text-blue-700/80'
+                        projection.status === 'ahead' ? "bg-primary/5 border-primary/15 text-primary" :
+                          projection.status === 'behind' ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-300" :
+                            "bg-primary/5 border-primary/10 text-muted-foreground"
                       )}>
-                        {projection.status === 'ahead' ? 'Velocity is high. You could potentially increase your target or complete early.' :
-                          projection.status === 'behind' ? `Warning: You need to increase monthly savings by approx 20% to hit original target.` :
-                            'Stable trajectory. Maintain current savings levels to achieve target on time.'}
+                        {projection.status === 'ahead' ? 'You are ahead of schedule. Consider increasing your target or completing early.' :
+                          projection.status === 'behind' ? `Increase monthly savings by ~20% to meet your original deadline.` :
+                            'On track. Keep saving at the current rate.'}
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t border-primary/10 mt-4 flex items-center justify-between">
-                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Velocity Index</p>
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Pace</p>
                     <div className="flex gap-0.5">
                       {[1, 2, 3, 4, 5].map((i) => (
                         <div
@@ -373,7 +323,7 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
                             "w-1 h-3 rounded-full transition-all duration-500",
                             i <= (projection.progress > 0 ? Math.ceil(projection.progress / 20) : 1)
                               ? projection.status === 'behind' ? "bg-amber-400" : "bg-primary"
-                              : "bg-muted"
+                              : "bg-muted-foreground/20"
                           )}
                           style={{ transitionDelay: `${i * 100}ms` }}
                         />
