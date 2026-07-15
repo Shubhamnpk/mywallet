@@ -310,7 +310,7 @@ We welcome contributions! Please follow these steps:
 
 ## 📄 License
 
-This project is licensed under the [YoGuru Limited Contributor License](LICENSE.md).
+This project is licensed under the [YoGuru Limited Contributor License](docs/LICENSE.md).
 
 ## 🙏 Acknowledgments
 
@@ -327,7 +327,7 @@ This project is licensed under the [YoGuru Limited Contributor License](LICENSE.
 
 If you have any questions or need help, please:
 - Open an issue on GitHub
-- Follow the [Security Policy](SECURITY.md) for vulnerability reports
+- Follow the [Security Policy](docs/SECURITY.md) for vulnerability reports
 - Check the documentation
 - Contact the maintainers
 

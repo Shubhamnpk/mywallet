@@ -3,8 +3,8 @@
 import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Badge } from "@/components/ui/badge"
 import {
   Calculator,
@@ -59,6 +59,8 @@ export function ScenarioPlanningCalculator({
   const [timeframe, setTimeframe] = useState("12")
   const [monthlySavings, setMonthlySavings] = useState("")
 
+  const currencySymbol = getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)
+
   const scenarioResult = useMemo((): ScenarioResult | null => {
     const amount = Number.parseFloat(purchaseAmount) || 0
     const months = Number.parseInt(timeframe) || 12
@@ -70,7 +72,6 @@ export function ScenarioPlanningCalculator({
     const remainingBalance = currentBalance - amount
     const totalAvailable = currentBalance + totalSavings
 
-    // Calculate goal impacts
     const goalImpacts: GoalImpact[] = goals
       .filter(goal => goal.currentAmount < goal.targetAmount)
       .map(goal => {
@@ -80,9 +81,10 @@ export function ScenarioPlanningCalculator({
         const monthsToTarget = Math.max(1, Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24 * 30)))
 
         const currentMonthly = remaining / monthsToTarget
-        const newMonthly = remaining / Math.max(1, monthsToTarget - months)
+        const monthsAfterPurchase = Math.max(1, monthsToTarget - months)
+        const newMonthly = remaining / monthsAfterPurchase
         const additionalMonthly = Math.max(0, newMonthly - currentMonthly)
-        const delayMonths = monthsToTarget - Math.max(1, monthsToTarget - months)
+        const delayMonths = months
 
         let severity: 'low' | 'medium' | 'high' = 'low'
         if (delayMonths > 6) severity = 'high'
@@ -97,7 +99,6 @@ export function ScenarioPlanningCalculator({
         }
       })
 
-    // Determine feasibility
     let feasibility: ScenarioResult['feasibility'] = 'excellent'
     if (totalAvailable < amount) {
       feasibility = 'impossible'
@@ -107,7 +108,6 @@ export function ScenarioPlanningCalculator({
       feasibility = 'good'
     }
 
-    // Generate recommendations
     const recommendations: string[] = []
     if (feasibility === 'impossible') {
       recommendations.push("Consider increasing your savings rate or extending the timeframe")
@@ -133,24 +133,7 @@ export function ScenarioPlanningCalculator({
       feasibility,
       recommendations
     }
-  }, [purchaseAmount, timeframe, monthlySavings, goals, currentBalance])
-
-  const getFeasibilityColor = (feasibility: ScenarioResult['feasibility']) => {
-    switch (feasibility) {
-      case 'excellent': return 'text-emerald-600 bg-emerald-50 border-emerald-200'
-      case 'good': return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'challenging': return 'text-amber-600 bg-amber-50 border-amber-200'
-      case 'impossible': return 'text-red-600 bg-red-50 border-red-200'
-    }
-  }
-
-  const getSeverityColor = (severity: GoalImpact['severity']) => {
-    switch (severity) {
-      case 'low': return 'text-blue-600 bg-blue-50 border-blue-200'
-      case 'medium': return 'text-amber-600 bg-amber-50 border-amber-200'
-      case 'high': return 'text-red-600 bg-red-50 border-red-200'
-    }
-  }
+  }, [purchaseAmount, timeframe, monthlySavings, goals, currentBalance, monthlyIncome])
 
   const presetScenarios = [
     { name: "New Car", amount: 25000, timeframe: 24 },
@@ -170,37 +153,36 @@ export function ScenarioPlanningCalculator({
   const applyPreset = (scenario: typeof presetScenarios[0]) => {
     setPurchaseAmount(scenario.amount.toString())
     setTimeframe(scenario.timeframe.toString())
-    // Auto-calculate a reasonable savings rate if not set
     if (!monthlySavings) {
       setMonthlySavings(Math.ceil(scenario.amount / scenario.timeframe).toString())
     }
   }
 
   return (
-    <Card className="glass-card border-primary/20 overflow-hidden shadow-2xl relative">
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-info to-primary/50 opacity-50" />
+    <Card className="border-primary/15 shadow-lg overflow-hidden relative">
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-primary/60 to-primary/30" />
 
-      <CardHeader className="border-b border-primary/5 py-4 px-6 bg-primary/5">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-3 text-lg font-black uppercase tracking-tight">
-            <div className="p-2 bg-primary rounded-xl text-white shadow-lg shadow-primary/20">
-              <Calculator className="w-5 h-5" />
+      <CardHeader className="border-b border-primary/10 py-2.5 px-4 md:py-4 md:px-6 bg-primary/[0.03]">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 md:gap-3 min-w-0 text-sm md:text-lg font-black uppercase tracking-tight">
+            <div className="p-1.5 md:p-2 bg-primary rounded-xl text-primary-foreground shadow-lg shadow-primary/20 shrink-0">
+              <Calculator className="w-4 h-4 md:w-5 md:h-5" />
             </div>
-            Strategic Scenario Engine
+            <span className="truncate">Purchase Planner</span>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={resetSimulation} className="h-8 w-8 rounded-full hover:bg-error/10 hover:text-error transition-colors">
-                    <RotateCcw className="w-4 h-4" />
+                  <Button variant="ghost" size="icon" onClick={resetSimulation} className="h-7 w-7 md:h-8 md:w-8 rounded-full hover:bg-destructive/10 hover:text-destructive transition-colors">
+                    <RotateCcw className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Reset Simulation</TooltipContent>
+                <TooltipContent>Reset</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Badge className="bg-primary/20 text-primary border-primary/30 font-black text-[10px] tracking-widest uppercase px-2 py-0.5">
-              Live Simulation
+            <Badge className="bg-primary/15 text-primary border-primary/20 font-black text-[8px] md:text-[10px] tracking-widest uppercase px-1.5 md:px-2 py-0.5">
+              Preview
             </Badge>
           </div>
         </div>
@@ -208,12 +190,11 @@ export function ScenarioPlanningCalculator({
 
       <CardContent className="p-0">
         <div className="grid grid-cols-1 xl:grid-cols-12">
-          {/* Left Panel: Inputs (4 cols) */}
-          <div className="xl:col-span-4 p-6 border-r border-primary/5 space-y-8 bg-muted/5">
-            {/* Presets Grid */}
-            <div className="space-y-4">
+          {/* Left Panel: Inputs */}
+          <div className="xl:col-span-4 p-3 md:p-6 border-r border-primary/10 space-y-3 md:space-y-6 bg-muted/5">
+            <div className="space-y-3 md:space-y-4">
               <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-primary" /> Target Blueprints
+                <Sparkles className="w-3.5 h-3.5 text-primary" /> Quick Start
               </Label>
               <div className="grid grid-cols-2 gap-2">
                 {presetScenarios.map((scenario) => (
@@ -222,40 +203,34 @@ export function ScenarioPlanningCalculator({
                     variant="outline"
                     size="sm"
                     onClick={() => applyPreset(scenario)}
-                    className="justify-start rounded-xl border-primary/10 hover:bg-primary/5 hover:border-primary/30 transition-all font-bold text-[10px] uppercase tracking-tighter px-3 h-9"
+                    className="justify-start rounded-xl border-primary/15 hover:bg-primary/5 hover:border-primary/30 transition-all font-bold text-[10px] uppercase tracking-tighter px-2.5 h-8 md:px-3 md:h-9"
                   >
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 mr-2" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 mr-1.5" />
                     {scenario.name}
                   </Button>
                 ))}
               </div>
             </div>
 
-            {/* Core Parameters */}
-            <div className="space-y-6">
-              <div className="space-y-3">
+            <div className="space-y-4 md:space-y-6">
+              <div className="space-y-2 md:space-y-3">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="purchase-amount" className="text-[11px] font-black uppercase tracking-widest text-primary/80">Acquisition Cost</Label>
+                  <Label htmlFor="purchase-amount" className="text-[11px] font-black uppercase tracking-widest text-primary/80">Purchase Amount</Label>
                 </div>
-                <div className="relative group/input">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-black opacity-40">
-                    {getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
-                  </span>
-                  <Input
-                    id="purchase-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={purchaseAmount}
-                    onChange={(e) => setPurchaseAmount(e.target.value)}
-                    className="h-11 pl-10 rounded-2xl bg-background border-primary/10 focus:border-primary font-black text-lg transition-all"
-                  />
-                </div>
+                <AmountInput
+                  id="purchase-amount"
+                  value={purchaseAmount}
+                  onChange={setPurchaseAmount}
+                  currencySymbol={currencySymbol}
+                  className="h-10 md:h-11 rounded-2xl border-primary/15 focus:border-primary font-black text-base md:text-lg transition-all"
+                  placeholder="0.00"
+                />
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 <div className="flex justify-between items-center">
-                  <Label className="text-[11px] font-black uppercase tracking-widest text-info/80">Time Horizon</Label>
-                  <Badge variant="outline" className="text-[10px] border-info/30 text-info">{timeframe} Months</Badge>
+                  <Label className="text-[11px] font-black uppercase tracking-widest text-primary/80">Timeframe</Label>
+                  <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">{timeframe} Months</Badge>
                 </div>
                 <Slider
                   value={[Number(timeframe)]}
@@ -263,7 +238,7 @@ export function ScenarioPlanningCalculator({
                   max={60}
                   step={1}
                   onValueChange={(val) => setTimeframe(val[0].toString())}
-                  className="py-4"
+                  className="py-2 md:py-4"
                 />
                 <div className="flex justify-between text-[9px] font-black text-muted-foreground/40 uppercase tracking-tighter">
                   <span>1 Month</span>
@@ -271,10 +246,10 @@ export function ScenarioPlanningCalculator({
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 <div className="flex justify-between items-center">
-                  <Label className="text-[11px] font-black uppercase tracking-widest text-success/80">Monthly Capacity</Label>
-                  <Badge variant="outline" className="text-[10px] border-success/30 text-success">{formatCurrency(Number(monthlySavings) || 0, userProfile.currency, userProfile.customCurrency)}</Badge>
+                  <Label className="text-[11px] font-black uppercase tracking-widest text-primary/80">Monthly Savings</Label>
+                  <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">{formatCurrency(Number(monthlySavings) || 0, userProfile.currency, userProfile.customCurrency)}</Badge>
                 </div>
                 <Slider
                   value={[Number(monthlySavings)]}
@@ -282,61 +257,66 @@ export function ScenarioPlanningCalculator({
                   max={Math.max(monthlyIncome, Number(monthlySavings) || 1000)}
                   step={50}
                   onValueChange={(val) => setMonthlySavings(val[0].toString())}
-                  className="py-4"
+                  className="py-2 md:py-4"
                 />
                 <div className="flex justify-between text-[9px] font-black text-muted-foreground/40 uppercase tracking-tighter">
-                  <span>रु 0 </span>
+                  <span>{currencySymbol} 0</span>
                   <span>Max Income</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Panel: Advisor Output (8 cols) */}
-          <div className="xl:col-span-8 p-6 space-y-6">
+          {/* Right Panel: Advisor Output */}
+          <div className="xl:col-span-8 p-3 md:p-6 space-y-3 md:space-y-6">
             {scenarioResult ? (
-              <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
-                {/* Strategic Verdict HUD */}
-                <div className={cn(
-                  "relative rounded-[32px] border-2 p-6 overflow-hidden transition-all duration-700",
-                  getFeasibilityColor(scenarioResult.feasibility).split(' ')[1] === 'bg-emerald-50' ? 'bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-500/20 shadow-emerald-500/10' :
-                    getFeasibilityColor(scenarioResult.feasibility).split(' ')[1] === 'bg-blue-50' ? 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-500/20 shadow-blue-500/10' :
-                      getFeasibilityColor(scenarioResult.feasibility).split(' ')[1] === 'bg-amber-50' ? 'bg-amber-50/50 dark:bg-amber-950/10 border-amber-500/20 shadow-amber-500/10' :
-                        'bg-red-50/50 dark:bg-red-950/10 border-red-500/20 shadow-red-500/10'
-                )}>
-                  {/* Background Decoration */}
-                  <div className="absolute top-0 right-0 p-8 text-primary opacity-[0.03] scale-150 rotate-12">
+              <div className="space-y-4 md:space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                {/* Strategic Verdict */}
+                <div className="relative rounded-2xl md:rounded-[32px] border md:border-2 p-3 md:p-6 overflow-hidden transition-all duration-700 bg-card/50 border-primary/15 shadow-sm">
+                  <div className="hidden md:block absolute top-0 right-0 p-8 text-primary opacity-[0.03] scale-150 rotate-12">
                     <LayoutDashboard className="w-48 h-48" />
                   </div>
 
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative">
-                    <div className="space-y-2">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6 relative">
+                    <div className="space-y-1 md:space-y-2">
                       <div className="flex items-center gap-2">
-                        <div className={cn("p-1.5 rounded-lg", getFeasibilityColor(scenarioResult.feasibility))}>
-                          {scenarioResult.feasibility === 'excellent' && <ShieldCheck className="w-5 h-5" />}
-                          {scenarioResult.feasibility === 'good' && <TrendingUp className="w-5 h-5" />}
-                          {scenarioResult.feasibility === 'challenging' && <AlertTriangle className="w-5 h-5" />}
-                          {scenarioResult.feasibility === 'impossible' && <TrendingDown className="w-5 h-5" />}
+                        <div className={cn(
+                          "p-1.5 rounded-lg",
+                          scenarioResult.feasibility === 'excellent' && "bg-primary/15 text-primary",
+                          scenarioResult.feasibility === 'good' && "bg-primary/10 text-primary",
+                          scenarioResult.feasibility === 'challenging' && "bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400",
+                          scenarioResult.feasibility === 'impossible' && "bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400",
+                        )}>
+                          {scenarioResult.feasibility === 'excellent' && <ShieldCheck className="w-4 h-4 md:w-5 md:h-5" />}
+                          {scenarioResult.feasibility === 'good' && <TrendingUp className="w-4 h-4 md:w-5 md:h-5" />}
+                          {scenarioResult.feasibility === 'challenging' && <AlertTriangle className="w-4 h-4 md:w-5 md:h-5" />}
+                          {scenarioResult.feasibility === 'impossible' && <TrendingDown className="w-4 h-4 md:w-5 md:h-5" />}
                         </div>
-                        <h3 className="text-sm font-black uppercase tracking-[0.2em] opacity-80">Simulation Verdict</h3>
+                        <h3 className="text-xs md:text-sm font-black uppercase tracking-[0.2em] text-muted-foreground/80">Result</h3>
                       </div>
-                      <h2 className={cn("text-3xl font-black tracking-tighter uppercase", getFeasibilityColor(scenarioResult.feasibility).split(' ')[0])}>
+                      <h2 className={cn(
+                        "text-2xl md:text-3xl font-black tracking-tighter uppercase",
+                        scenarioResult.feasibility === 'excellent' && "text-primary",
+                        scenarioResult.feasibility === 'good' && "text-primary",
+                        scenarioResult.feasibility === 'challenging' && "text-amber-600 dark:text-amber-400",
+                        scenarioResult.feasibility === 'impossible' && "text-red-600 dark:text-red-400",
+                      )}>
                         {scenarioResult.feasibility} PLAN
                       </h2>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-background/40 backdrop-blur-md rounded-2xl p-4 border border-white/10 shadow-sm min-w-[140px]">
-                        <p className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-1">Total Project</p>
-                        <p className="text-xl font-black font-mono tracking-tighter">
+                    <div className="grid grid-cols-2 gap-2 md:gap-4">
+                      <div className="bg-background/60 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-primary/10 shadow-sm">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5 md:mb-1">Total Cost</p>
+                        <p className="text-base md:text-xl font-black font-mono tracking-tighter">
                           {formatCurrency(scenarioResult.purchaseAmount, userProfile.currency, userProfile.customCurrency)}
                         </p>
                       </div>
-                      <div className="bg-background/40 backdrop-blur-md rounded-2xl p-4 border border-white/10 shadow-sm min-w-[140px]">
-                        <p className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-1">Safety Buffer</p>
+                      <div className="bg-background/60 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-primary/10 shadow-sm">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5 md:mb-1">Remaining Balance</p>
                         <p className={cn(
-                          "text-xl font-black font-mono tracking-tighter",
-                          scenarioResult.remainingBalance >= 0 ? 'text-emerald-500' : 'text-red-500'
+                          "text-base md:text-xl font-black font-mono tracking-tighter",
+                          scenarioResult.remainingBalance >= 0 ? 'text-primary' : 'text-red-500'
                         )}>
                           {formatCurrency(scenarioResult.remainingBalance, userProfile.currency, userProfile.customCurrency)}
                         </p>
@@ -344,42 +324,49 @@ export function ScenarioPlanningCalculator({
                     </div>
                   </div>
 
-                  <div className="mt-8 pt-6 border-t border-primary/5 grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Recommendations List */}
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Strategic Advice
+                  <div className="mt-3 md:mt-8 pt-3 md:pt-6 border-t border-primary/10 grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-8">
+                    <div className="space-y-3 md:space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-primary" /> Recommendations
                       </p>
-                      <div className="space-y-3">
-                        {scenarioResult.recommendations.map((rec, i) => (
-                          <div key={i} className="flex gap-3 text-[13px] font-bold leading-relaxed opacity-90 group/item">
-                            <div className="w-1 h-1 rounded-full bg-primary mt-2 shrink-0 group-hover/item:scale-150 transition-transform" />
+                      <div className="space-y-2 md:space-y-3">
+                        {scenarioResult.recommendations.length > 0 ? scenarioResult.recommendations.map((rec, i) => (
+                          <div key={i} className="flex gap-3 text-xs md:text-[13px] font-bold leading-relaxed text-foreground/80 group/item">
+                            <div className="w-1 h-1 rounded-full bg-primary mt-1.5 md:mt-2 shrink-0 group-hover/item:scale-150 transition-transform" />
                             {rec}
                           </div>
-                        ))}
+                        )) : (
+                          <div className="text-xs md:text-[13px] font-bold text-muted-foreground/60 italic">
+                            No adjustments needed , this plan aligns with your current trajectory.
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Goal Impacts Visualization */}
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                        <Target className="w-3.5 h-3.5 text-blue-500" /> Collateral Impact
+                    <div className="space-y-3 md:space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
+                        <Target className="w-3.5 h-3.5 text-primary" /> Goal Impact
                       </p>
                       <div className="space-y-2">
                         {scenarioResult.goalImpacts.length > 0 ? (
                           scenarioResult.goalImpacts.slice(0, 3).map((impact) => (
-                            <div key={impact.goal.id} className="flex items-center justify-between p-3 rounded-xl bg-background/30 border border-white/5 group/impact hover:bg-white/10 transition-colors">
-                              <span className="text-xs font-black truncate max-w-[120px]">{impact.goal.title || impact.goal.name}</span>
-                              <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-bold text-red-500">+{impact.delayMonths}m delay</span>
-                                <Badge className={cn("text-[8px] font-black px-1.5 h-4 border-none uppercase shadow-sm", getSeverityColor(impact.severity))}>
+                            <div key={impact.goal.id} className="flex items-center justify-between p-2 md:p-3 rounded-xl bg-muted/30 border border-primary/10 hover:bg-muted/50 transition-colors">
+                              <span className="text-[11px] md:text-xs font-black truncate max-w-[100px] md:max-w-[120px]">{impact.goal.title || impact.goal.name}</span>
+                              <div className="flex items-center gap-2 md:gap-3">
+                                <span className="text-[9px] md:text-[10px] font-bold text-destructive">+{impact.delayMonths}m delay</span>
+                                <Badge className={cn(
+                                  "text-[7px] md:text-[8px] font-black px-1 md:px-1.5 h-3.5 md:h-4 border-none uppercase shadow-sm",
+                                  impact.severity === 'low' && "bg-primary/10 text-primary",
+                                  impact.severity === 'medium' && "bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400",
+                                  impact.severity === 'high' && "bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400",
+                                )}>
                                   {impact.severity}
                                 </Badge>
                               </div>
                             </div>
                           ))
                         ) : (
-                          <div className="h-full flex items-center justify-center p-8 text-xs font-bold opacity-40 italic border border-dashed rounded-2xl">
+                          <div className="h-full flex items-center justify-center p-6 md:p-8 text-xs font-bold text-muted-foreground/50 italic border border-dashed rounded-2xl">
                             Zero impact on existing milestones
                           </div>
                         )}
@@ -388,52 +375,52 @@ export function ScenarioPlanningCalculator({
                   </div>
                 </div>
 
-                {/* Capital Readiness Timeline */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-2">
-                      <LayoutDashboard className="w-3.5 h-3.5" /> Project Capital Readiness
+                {/* Savings Progress */}
+                <div className="space-y-3 md:space-y-4">
+                  <div className="flex items-center justify-between gap-2 whitespace-nowrap">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-1.5 truncate">
+                      <LayoutDashboard className="w-3.5 h-3.5 text-primary shrink-0" /> Savings Progress
                     </h4>
-                    <span className="text-xs font-black text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
+                    <span className="text-[10px] md:text-xs font-black text-primary bg-primary/10 px-1.5 md:px-2 py-0.5 rounded-lg shrink-0">
                       {Math.min(100, Math.round((currentBalance / scenarioResult.purchaseAmount) * 100))}% Ready
                     </span>
                   </div>
 
-                  <div className="p-6 rounded-[32px] bg-muted/20 border border-primary/5 relative group/progress">
-                    <div className="relative h-2.5 bg-background/50 rounded-full overflow-hidden shadow-inner border border-primary/5">
+                  <div className="p-3 md:p-6 rounded-2xl md:rounded-[32px] bg-muted/20 border border-primary/10 relative group/progress">
+                    <div className="relative h-2 bg-muted-foreground/10 rounded-full overflow-hidden shadow-inner border border-primary/5">
                       <div
-                        className="h-full bg-gradient-to-r from-primary via-info to-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(59,130,246,0.3)]"
+                        className="h-full bg-gradient-to-r from-primary via-primary/80 to-primary/60 transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.3)]"
                         style={{ width: `${Math.min(100, (currentBalance / scenarioResult.purchaseAmount) * 100)}%` }}
                       >
                         <div className="w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:24px_24px] animate-pulse" />
                       </div>
                     </div>
 
-                    <div className="mt-6 p-4 rounded-2xl bg-primary text-white shadow-xl shadow-primary/20 flex items-center gap-5 group/banner hover:scale-[1.01] transition-all">
-                      <div className="p-3 bg-white/20 rounded-xl group-hover/banner:rotate-6 transition-transform">
-                        <TrendingUp className="w-6 h-6" />
+                    <div className="mt-3 md:mt-6 p-2.5 md:p-4 rounded-xl md:rounded-2xl bg-primary text-primary-foreground shadow-lg md:shadow-xl shadow-primary/20 flex items-center gap-2 md:gap-5 group/banner hover:scale-[1.01] transition-all">
+                      <div className="hidden sm:block p-2 md:p-3 bg-primary-foreground/20 rounded-xl group-hover/banner:rotate-6 transition-transform">
+                        <TrendingUp className="w-5 h-5 md:w-6 md:h-6" />
                       </div>
-                      <div className="flex-1">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-white/60 mb-1">Execution Strategy</p>
-                        <p className="text-xs md:text-sm font-extrabold leading-tight">
-                          Saving <span className="bg-white text-primary px-1.5 py-0.5 rounded-md mx-1">{formatCurrency(scenarioResult.monthlySavings, userProfile.currency, userProfile.customCurrency)}</span>
-                          per month will complete this project in <span className="bg-white/20 px-1.5 py-0.5 rounded-md mx-1">{scenarioResult.timeframe} months</span>.
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-primary-foreground/60 mb-0.5">Your Plan</p>
+                        <p className="text-[10px] md:text-sm font-extrabold leading-tight text-primary-foreground/90">
+                          Saving <span className="bg-primary-foreground/20 text-primary-foreground px-1 md:px-1.5 py-0.5 rounded-md mx-0.5 md:mx-1">{formatCurrency(scenarioResult.monthlySavings, userProfile.currency, userProfile.customCurrency)}</span>
+                          per month will complete this in <span className="bg-primary-foreground/20 px-1 md:px-1.5 py-0.5 rounded-md mx-0.5 md:mx-1">{scenarioResult.timeframe} months</span>.
                         </p>
                       </div>
-                      <ArrowRight className="w-5 h-5 opacity-40 group-hover/banner:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-primary-foreground/40 group-hover/banner:translate-x-1 transition-transform shrink-0" />
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center space-y-6 opacity-30 select-none">
-                <div className="p-12 rounded-full bg-primary/5 border border-primary/10 relative">
-                  <Calculator className="w-24 h-24 text-primary animate-pulse" />
+              <div className="h-full min-h-[200px] md:min-h-[400px] flex flex-col items-center justify-center text-center space-y-3 md:space-y-6 opacity-30 select-none">
+                <div className="p-6 md:p-12 rounded-full bg-primary/5 border border-primary/10 relative">
+                  <Calculator className="w-12 h-12 md:w-24 md:h-24 text-primary animate-pulse" />
                   <div className="absolute inset-0 bg-primary/20 blur-3xl opacity-20" />
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-xl font-black uppercase tracking-widest">Awaiting Parameters</h3>
-                  <p className="text-sm font-bold max-w-xs">Enter your target acquisition cost to initialize the strategic simulation.</p>
+                <div className="space-y-1 md:space-y-2">
+                  <h3 className="text-lg md:text-xl font-black uppercase tracking-widest">Enter an Amount</h3>
+                   <p className="text-xs md:text-sm font-bold max-w-xs">Enter a purchase amount to see how it affects your goals.</p>
                 </div>
               </div>
             )}
@@ -441,6 +428,5 @@ export function ScenarioPlanningCalculator({
         </div>
       </CardContent>
     </Card>
-
   )
 }

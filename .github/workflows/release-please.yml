@@ -32,6 +32,6 @@ jobs:
       - uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          config-file: docs/release-please-config.json
+          manifest-file: docs/.release-please-manifest.json
           release-type: ${{ github.event.inputs.release_type }}

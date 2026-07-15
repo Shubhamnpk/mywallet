@@ -109,7 +109,7 @@ export function getIPOStatus(startDate: Date, endDate: Date) {
             openingDay,
             closingDay
         };
-    } else if (today <= end) {
+    } else if (today < end) {
         const diffTime = end.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
 import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
 import { useNepseData } from "@/hooks/use-nepse-data"
-import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure } from "@/types/wallet"
+import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -20,8 +20,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
-import { cn, getCurrencySymbol } from "@/lib/utils"
-import { formatAppDate, getCalendarSystem, todayAdDateKey } from "@/lib/app-calendar"
+import { cn, getCurrencySymbol, getNumberFormatLocale } from "@/lib/utils"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
@@ -31,6 +32,7 @@ import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
 import { AddTransactionModal } from "./modals/add-transaction-modal"
 import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
+import { PortfolioHeatMap } from "./portfolio-heatmap"
 import { OverviewStockSearch } from "./overview-stock-search"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
@@ -116,16 +118,16 @@ export function PortfolioList() {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
     const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
-    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
+    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
         userProfile?.meroShare?.dpId &&
         userProfile?.meroShare?.username &&
         userProfile?.meroShare?.password
     )
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
     const currencySymbol = useMemo(() => {
-        if (userProfile?.currency === "NPR") return "Rs. "
+        if (userProfile?.currency === "NPR") return "रु "
         const symbol = getCurrencySymbol(userProfile?.currency || "NPR", userProfile?.customCurrency)
         return `${symbol}${symbol.endsWith(" ") ? "" : " "}`
     }, [userProfile?.currency, userProfile?.customCurrency])
@@ -197,7 +199,7 @@ export function PortfolioList() {
     const valuationHistoryCacheRef = useRef<Map<string, Array<{ date: string; ltp: number }>>>(new Map())
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
-    const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
+    const [dayWindow, setDayWindow] = useState<"30" | "90" | "180" | "365" | "all">("90")
     const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
     const [sellConfirmModal, setSellConfirmModal] = useState<{
@@ -234,17 +236,17 @@ export function PortfolioList() {
             const sign = amount < 0 ? "-" : ""
             const abs = Math.abs(amount)
             const adjusted = abs < 0.01 ? 0.01 : abs
-            return `${sign}${adjusted.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+            return `${sign}${adjusted.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
         }
-        return amount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+        return amount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })
     }
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
         if (units === 0) return "0"
         if (Math.abs(units) < 1) {
-            return units.toLocaleString(undefined, { maximumFractionDigits: 10 })
+            return units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 10 })
         }
-        return units.toLocaleString(undefined, { maximumFractionDigits: 4 })
+        return units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })
     }
     const formatTimeSince = (dateValue?: string | number) => {
         if (!dateValue) return "Unknown date"
@@ -744,7 +746,7 @@ export function PortfolioList() {
                 if (!sellHolding || newTx.quantity > (sellHolding.units ?? 0)) {
                     toast.error("Sell quantity exceeds available units", {
                         description: sellHolding
-                            ? `Available: ${sellHolding.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units.`
+                            ? `Available: ${sellHolding.units.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units.`
                             : "Select a holding you already own.",
                     })
                     return
@@ -1179,6 +1181,7 @@ export function PortfolioList() {
 
     useEffect(() => {
         if (availableDividendYears.length === 0) return
+        if (selectedDividendYear === "all") return
         if (selectedDividendYear && availableDividendYears.includes(selectedDividendYear)) return
         setSelectedDividendYear(getDefaultDividendYear(availableDividendYears))
     }, [availableDividendYears, selectedDividendYear])
@@ -1800,6 +1803,43 @@ export function PortfolioList() {
         }
     }, [topStocks, marketSummary])
 
+    const nepseIndexData = useMemo(() => {
+        const nepseIndex = Array.isArray(marketIndices)
+            ? marketIndices.find((item) => item.id === 58)
+            : null
+        if (!nepseIndex) return null
+        const isPositive = nepseIndex.change >= 0
+        return {
+            currentValue: nepseIndex.currentValue,
+            change: nepseIndex.change,
+            perChange: nepseIndex.perChange,
+            high: nepseIndex.high,
+            low: nepseIndex.low,
+            previousClose: nepseIndex.previousClose,
+            fiftyTwoWeekHigh: nepseIndex.fiftyTwoWeekHigh,
+            fiftyTwoWeekLow: nepseIndex.fiftyTwoWeekLow,
+            isPositive,
+            changeColor: isPositive ? "text-success" : "text-error",
+            arrow: isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />,
+        }
+    }, [marketIndices])
+
+    const intradayChartData = useMemo(() => {
+        if (!Array.isArray(marketIndexGraph) || marketIndexGraph.length === 0) return []
+        const firstTs = marketIndexGraph[0][0]
+        return marketIndexGraph
+            .filter(([ts]) => ts >= firstTs)
+            .map(([ts, value]) => {
+                const date = new Date(ts * 1000)
+                const hours = date.getHours().toString().padStart(2, "0")
+                const mins = date.getMinutes().toString().padStart(2, "0")
+                return {
+                    time: `${hours}:${mins}`,
+                    value: Number(value.toFixed(2)),
+                }
+            })
+    }, [marketIndexGraph])
+
     const marketStatusMeta = useMemo(() => {
         const statusText = marketStatus?.isOpen === true
             ? "OPEN"
@@ -1887,8 +1927,8 @@ export function PortfolioList() {
             transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
         }))
 
-        return dailySeries.slice(-Number(dayWindow))
-    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow])
+        return dayWindow === "all" ? dailySeries : dailySeries.slice(-Number(dayWindow))
+    }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow, calendarSystem])
 
     const overviewNotifications = useMemo(() => {
         // Add invalid SIP plan notifications
@@ -2214,18 +2254,18 @@ export function PortfolioList() {
                 <div className="space-y-3 text-left">
                     <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
                         <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Current Invested</p>
-                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString()}</p>
+                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString(getNumberFormatLocale())}</p>
                         <p className="mt-1 text-xs text-muted-foreground">Cost basis of holdings that are currently active.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-primary">Fresh Capital</p>
-                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString(getNumberFormatLocale())}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">New money added by the user.</p>
                         </div>
                         <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-cyan-700">Reinvestment</p>
-                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString()}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString(getNumberFormatLocale())}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">Buys funded from previous sales.</p>
                         </div>
                     </div>
@@ -2258,9 +2298,78 @@ export function PortfolioList() {
 
         return (
             <>
-            <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-4">
+            <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-5">
+                {nepseIndexData && (
+                <Card className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden">
+                    <CardHeader className="pb-0 px-2 pt-2 sm:px-3 sm:pt-3">
+                        <div className="flex items-center justify-between gap-1">
+                            <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-1">
+                                <span className={cn("inline-block w-1.5 h-1.5 rounded-full", marketStatusMeta.dotClass)} />
+                                NEPSE
+                            </CardDescription>
+                            <div className="flex items-center gap-1.5">
+                                <span className={cn("text-[8px] font-bold uppercase tracking-wider", marketStatus?.isOpen === true ? "text-success" : marketStatus?.isOpen === false ? "text-error" : "text-muted-foreground")}>{marketStatusMeta.statusText}</span>
+                                <span className={cn("text-[10px] font-black tracking-tight", nepseIndexData.changeColor)}>
+                                    {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.perChange.toFixed(2)}%
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex items-baseline gap-1 -mt-0.5">
+                            <span className={cn("text-sm sm:text-base font-black font-mono tracking-tight", nepseIndexData.changeColor)}>
+                                {nepseIndexData.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className={cn("text-[10px] font-semibold", nepseIndexData.changeColor)}>
+                                {nepseIndexData.isPositive ? "+" : ""}{nepseIndexData.change.toFixed(2)}
+                            </span>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="px-1 pb-1 sm:px-2 sm:pb-2">
+                        {intradayChartData.length > 0 && (() => {
+                            const chartColor = nepseIndexData?.isPositive ? "#10b981" : "#ef4444"
+                            const lineGradId = "nepseLineGrad"
+                            const fillGradId = "nepseFillGrad"
+                            return (
+                            <div className="h-[48px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={intradayChartData} margin={{ top: 1, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
+                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.4} />
+                                                <stop offset="50%" stopColor={chartColor} stopOpacity={0.9} />
+                                                <stop offset="100%" stopColor={chartColor} stopOpacity={1} />
+                                            </linearGradient>
+                                            <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.15} />
+                                                <stop offset="100%" stopColor={chartColor} stopOpacity={0.005} />
+                                            </linearGradient>
+                                        </defs>
+                                        <XAxis dataKey="time" hide />
+                                        <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} hide />
+                                        <Tooltip content={({ active, payload, label }) => {
+                                            if (!active || !payload || payload.length === 0) return null
+                                            const value = payload[0]?.value as number | undefined
+                                            return (
+                                                <div className="rounded-lg border border-border/50 bg-background/95 backdrop-blur-sm shadow-lg px-2.5 py-1.5" style={{ borderColor: `${chartColor}30` }}>
+                                                    <p className="text-[8px] font-bold text-muted-foreground/70">{label}</p>
+                                                    <p className="text-xs font-black tracking-tight" style={{ color: chartColor }}>
+                                                        {typeof value === "number" ? value.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value}
+                                                    </p>
+                                                </div>
+                                            )
+                                        }} />
+                                        <Area type="monotone" dataKey="value" fill={`url(#${fillGradId})`} stroke="none" />
+                                        <Line type="monotone" dataKey="value" stroke={`url(#${lineGradId})`} strokeWidth={1.5} dot={false} activeDot={{ r: 2.5, strokeWidth: 0, fill: chartColor }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            )
+                        })()}
+                    </CardContent>
+                </Card>
+                )}
+
                 <Card
-                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
+                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
                     role="button"
                     tabIndex={0}
                     onClick={() => loadValuationTimeline("Total Valuation Timeline")}
@@ -2278,14 +2387,14 @@ export function PortfolioList() {
                                 <Activity className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             </div>
                         </div>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight">रु {totalCurrent.toLocaleString()}</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <div className={cn(
                             "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
                             totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                         )}>
-                            {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString()} ({totalPlPerc.toFixed(2)}%)
+                            {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString(getNumberFormatLocale())} ({totalPlPerc.toFixed(2)}%)
                         </div>
                     </CardContent>
                 </Card>
@@ -2306,7 +2415,7 @@ export function PortfolioList() {
                                 "text-xl sm:text-2xl font-black font-mono tracking-tight",
                                 totalTodayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString()}
+                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString(getNumberFormatLocale())}
                             </CardTitle>
                             <div className={cn(
                                 "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-tight",
@@ -2330,30 +2439,19 @@ export function PortfolioList() {
                 >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString()}</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Cost Basis</span>
                     </CardContent>
                 </Card>
 
-                <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <div className="mb-1 flex items-start justify-between gap-2">
                             <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
                                 Diversification
                             </CardDescription>
-                            <Badge
-                                variant="outline"
-                                className={cn(
-                                    "h-6 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
-                                    marketStatusMeta.badgeClass,
-                                )}
-                                title="Nepal Stock Exchange session"
-                            >
-                                <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
-                                NEPSE {marketStatusMeta.statusText}
-                            </Badge>
                         </div>
                         <CardTitle className={cn("text-xl sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
                     </CardHeader>
@@ -2372,27 +2470,6 @@ export function PortfolioList() {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
-
-            <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-muted/50 bg-card/40 px-4 py-3 shadow-sm md:hidden">
-                <div className="min-w-0 text-left">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Diversification</p>
-                    <p className={cn("text-lg font-black font-mono leading-tight", diversificationColor)}>{diversificationLabel}</p>
-                    <p className="text-[10px] font-semibold text-muted-foreground">
-                        {uniqueStocks} symbols · {uniqueSectors} sectors
-                    </p>
-                </div>
-                <Badge
-                    variant="outline"
-                    className={cn(
-                        "h-7 shrink-0 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5",
-                        marketStatusMeta.badgeClass,
-                    )}
-                    title="Nepal Stock Exchange session"
-                >
-                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", marketStatusMeta.dotClass)} />
-                    NEPSE {marketStatusMeta.statusText}
-                </Badge>
             </div>
             </>
         )
@@ -2495,47 +2572,35 @@ export function PortfolioList() {
                             >
                                 Current
                             </Button>
-                            <Button
-                                type="button"
-                                variant={dividendViewMode === "all" ? "default" : "outline"}
-                                size="sm"
-                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                onClick={() => setDividendViewMode("all")}
-                            >
-                                All
-                            </Button>
                         </div>
                         <Badge variant="outline" className="h-6 rounded-md text-[9px] font-black uppercase">
                             {dividendViewMode === "historical"
                                 ? "Uses units on dividend date"
-                                : dividendViewMode === "current"
-                                    ? "Uses current holdings"
-                                    : "Rolls up all available years"}
+                                : "Uses current holdings"}
                         </Badge>
-                        {dividendViewMode !== "all" && (
-                            <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
-                                <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                    <SelectValue placeholder="Select FY" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableDividendYears.map((year) => (
-                                        <SelectItem key={year} value={year}>{year}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
+                        <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
+                            <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                <SelectValue placeholder="Select FY" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All</SelectItem>
+                                {availableDividendYears.map((year) => (
+                                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
 
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Cash Dividend</p>
-                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">Across included portfolios only.</p>
                     </div>
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Bonus Units</p>
-                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                        <p className="mt-1 text-lg font-black font-mono">{dividendOverviewTotals.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">Projected units from bonus shares.</p>
                     </div>
                     <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
@@ -2562,13 +2627,13 @@ export function PortfolioList() {
                     </div>
                 )}
 
-                {dividendViewMode !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
+                {selectedDividendYear !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
                         <p className="text-xs font-semibold text-muted-foreground">
                             No proposed dividend records were found for {selectedDividendYear}.
                         </p>
                     </div>
-                ) : dividendViewMode === "all" && dividendAllYearsRows.length === 0 ? (
+                ) : selectedDividendYear === "all" && dividendAllYearsRows.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
                         <p className="text-xs font-semibold text-muted-foreground">
                             No historical dividend rollups are available yet.
@@ -2576,10 +2641,10 @@ export function PortfolioList() {
                     </div>
                 ) : (
                     <div className="space-y-2">
-                        {(dividendViewMode === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
+                        {(selectedDividendYear === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
                             const isExpanded = expandedDividendPortfolios.has(row.portfolioId)
-                            const allYearsRow = dividendViewMode === "all" ? row as DividendPortfolioAllYearsRow : null
-                            const yearlyRow = dividendViewMode === "all" ? null : row as DividendPortfolioSummaryRow
+                            const allYearsRow = selectedDividendYear === "all" ? row as DividendPortfolioAllYearsRow : null
+                            const yearlyRow = selectedDividendYear === "all" ? null : row as DividendPortfolioSummaryRow
                             return (
                                 <div key={row.portfolioId} className="rounded-xl border border-muted/30 bg-background/70">
                                     <button
@@ -2597,7 +2662,7 @@ export function PortfolioList() {
                                                 )}
                                             </div>
                                             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                {dividendViewMode === "all"
+                                                {selectedDividendYear === "all"
                                                     ? `${allYearsRow?.years.length || 0} years rolled up across matched history`
                                                     : `${yearlyRow?.matchedCount || 0}/${yearlyRow?.holdingsCount || 0} holdings matched for ${selectedDividendYear}`}
                                             </p>
@@ -2607,13 +2672,13 @@ export function PortfolioList() {
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        {currencySymbol}{(selectedDividendYear === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </p>
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                                                        {(selectedDividendYear === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}
                                                     </p>
                                                 </div>
                                             </div>
@@ -2624,7 +2689,7 @@ export function PortfolioList() {
                                     </button>
                                     {isExpanded && (
                                         <div className="border-t border-muted/20 px-3 pb-3 pt-3">
-                                            {dividendViewMode === "all" ? (
+                                            {selectedDividendYear === "all" ? (
                                                 <div className="space-y-3">
                                                     <div className="grid gap-2 md:grid-cols-2">
                                                         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
@@ -2634,7 +2699,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{allYearsRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2648,7 +2713,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{allYearsRow.topBonusContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topBonusContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                        Est. bonus {allYearsRow.topBonusContributor.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2669,8 +2734,8 @@ export function PortfolioList() {
                                                                     </Badge>
                                                                 </div>
                                                                 <div className="mt-2 text-[10px] text-muted-foreground">
-                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
+                                                                    <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units</p>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -2686,7 +2751,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{yearlyRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2700,7 +2765,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{yearlyRow.topBonusContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topBonusContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} units
+                                                                        Est. bonus {yearlyRow.topBonusContributor.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -2723,7 +2788,7 @@ export function PortfolioList() {
                                                             <div className="mt-2 text-[10px] text-muted-foreground">
                                                                 <p>Units: {formatUnits(holding.units)}</p>
                                                                 <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
-                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(undefined, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
                                                                 <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
                                                             </div>
                                                         </div>
@@ -2830,7 +2895,7 @@ export function PortfolioList() {
                     <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         <div className="flex flex-col gap-0.5">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Current Value</span>
-                            <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString()}</span>
+                            <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString(getNumberFormatLocale())}</span>
                         </div>
                         <div className="flex flex-col gap-0.5 items-end">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">today move</span>
@@ -2838,7 +2903,7 @@ export function PortfolioList() {
                                 "text-sm sm:text-base font-black font-mono leading-tight",
                                 summary.todayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString()}
+                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString(getNumberFormatLocale())}
                             </span>
                         </div>
                     </div>
@@ -3164,7 +3229,7 @@ export function PortfolioList() {
 
                     <div className="mt-8">
                         {!isDividendSectionOpen && renderOverviewHeader()}
-                        {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
+                        {(nepseIndexData || intradayChartData.length > 0 || marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null || overviewNotificationsWithMeta.length > 0 || hasDividendEligibleHoldings) && (
                             <div className="mb-6">
                                 <Button
                                     type="button"
@@ -3208,7 +3273,7 @@ export function PortfolioList() {
                                                                 </div>
                                                                 <p className="mt-1 text-sm font-black truncate">
                                                                     {typeof marketSnapshot.turnover === "number"
-                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                                                        ? `NPR ${marketSnapshot.turnover.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`
                                                                         : "Not available right now"}
                                                                 </p>
                                                             </div>
@@ -3230,7 +3295,7 @@ export function PortfolioList() {
                                                                                 </TooltipProvider>
                                                                                 <div className="text-right">
                                                                                     <p className="font-black text-success">+{item.percentageChange.toFixed(2)}%</p>
-                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString(getNumberFormatLocale())}</p>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
@@ -3256,7 +3321,7 @@ export function PortfolioList() {
                                                                                 </TooltipProvider>
                                                                                 <div className="text-right">
                                                                                     <p className="font-black text-error">{item.percentageChange.toFixed(2)}%</p>
-                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString()}</p>
+                                                                                    <p className="text-[10px] text-muted-foreground">LTP {item.ltp.toLocaleString(getNumberFormatLocale())}</p>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
@@ -3401,80 +3466,87 @@ export function PortfolioList() {
                                             </div>
                                             {marketHistorySeries.length > 0 && (
                                                 <div className="mt-4 border-t border-primary/10 pt-4">
-                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                                    <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                                                         <Button
                                                             type="button"
                                                             variant="outline"
                                                             size="sm"
-                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20"
+                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20 hover:border-primary/40 transition-all"
                                                             onClick={() => setIsMarketHistoryOpen((prev) => !prev)}
                                                         >
                                                             {isMarketHistoryOpen ? "Hide Market History Chart" : "Show Market History Chart"}
                                                             {isMarketHistoryOpen ? <ChevronUp className="ml-2 w-3.5 h-3.5" /> : <ChevronDown className="ml-2 w-3.5 h-3.5" />}
                                                         </Button>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
-                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="yearly">Yearly</SelectItem>
-                                                                    <SelectItem value="daily">Daily</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            {marketHistoryView === "yearly" ? (
-                                                            <Select value={yearWindow} onValueChange={(value) => setYearWindow(value as "5" | "10" | "all")}>
-                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="5">Last 5Y</SelectItem>
-                                                                    <SelectItem value="10">Last 10Y</SelectItem>
-                                                                    <SelectItem value="all">All Years</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            ) : (
-                                                                <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
-                                                                    <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                        {isMarketHistoryOpen && (
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <div className="flex items-center rounded-lg border border-border p-0.5 bg-muted/50">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMarketHistoryView("yearly")}
+                                                                        className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${marketHistoryView === "yearly" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                                                    >
+                                                                        Yearly
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMarketHistoryView("daily")}
+                                                                        className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${marketHistoryView === "daily" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                                                    >
+                                                                        Daily
+                                                                    </button>
+                                                                </div>
+                                                                <Select value={marketHistoryView === "yearly" ? yearWindow : dayWindow} onValueChange={(value) => {
+                                                                    if (marketHistoryView === "yearly") setYearWindow(value as "5" | "10" | "all")
+                                                                    else setDayWindow(value as "30" | "90" | "180" | "365" | "all")
+                                                                }}>
+                                                                    <SelectTrigger className="h-8 w-28 rounded-lg text-[10px] font-black uppercase tracking-wider border-border">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        <SelectItem value="30">Last 30D</SelectItem>
-                                                                        <SelectItem value="90">Last 90D</SelectItem>
-                                                                        <SelectItem value="365">Last 1Y</SelectItem>
+                                                                        {marketHistoryView === "yearly" ? (
+                                                                            <>
+                                                                                <SelectItem value="5">Last 5Y</SelectItem>
+                                                                                <SelectItem value="10">Last 10Y</SelectItem>
+                                                                                <SelectItem value="all">All Years</SelectItem>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <SelectItem value="30">Last 30D</SelectItem>
+                                                                                <SelectItem value="90">Last 90D</SelectItem>
+                                                                                <SelectItem value="180">Last 6M</SelectItem>
+                                                                                <SelectItem value="365">Last 1Y</SelectItem>
+                                                                                <SelectItem value="all">All Days</SelectItem>
+                                                                            </>
+                                                                        )}
                                                                     </SelectContent>
                                                                 </Select>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-1 sm:ml-auto">
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "both" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                                                onClick={() => setHistorySeriesMode("both")}
-                                                            >
-                                                                Both
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "turnover" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/30 text-primary"
-                                                                onClick={() => setHistorySeriesMode("turnover")}
-                                                            >
-                                                                Turnover
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "transactions" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                                                onClick={() => setHistorySeriesMode("transactions")}
-                                                            >
-                                                                Transactions
-                                                            </Button>
-                                                        </div>
+                                                                <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("both")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "both" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Both
+                                                                    </button>
+                                                                    <div className="w-px h-5 bg-border" />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("turnover")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "turnover" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Turnover
+                                                                    </button>
+                                                                    <div className="w-px h-5 bg-border" />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("transactions")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "transactions" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Transactions
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     {isMarketHistoryOpen && (
                                                         <div className="mt-3 h-[240px] rounded-xl border border-primary/10 bg-background/50 p-2">
@@ -3483,10 +3555,10 @@ export function PortfolioList() {
                                                                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                                                     <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                                                                     {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
-                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "hsl(var(--primary))" }} />
+                                                                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: "#f97316" }} label={{ value: "Turnover (Cr)", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 10, fill: "#f97316" } }} />
                                                                     )}
                                                                     {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
-                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} />
+                                                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#10b981" }} label={{ value: "Transactions (K)", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 10, fill: "#10b981" } }} />
                                                                     )}
                                                                     <Tooltip
                                                                         content={({ active, payload, label }) => {
@@ -3499,12 +3571,12 @@ export function PortfolioList() {
                                                                                         {marketHistoryView === "yearly" ? `Year ${label}` : label}
                                                                                     </p>
                                                                                     {(historySeriesMode === "both" || historySeriesMode === "turnover") && (
-                                                                                        <p className="text-xs font-bold text-primary">
+                                                                                        <p className="text-xs font-bold" style={{ color: "#f97316" }}>
                                                                                             Turnover: {typeof turnoverValue === "number" ? turnoverValue.toFixed(2) : turnoverValue} Cr
                                                                                         </p>
                                                                                     )}
                                                                                     {(historySeriesMode === "both" || historySeriesMode === "transactions") && (
-                                                                                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                        <p className="text-xs font-bold" style={{ color: "#10b981" }}>
                                                                                             Transactions: {typeof txValue === "number" ? txValue.toFixed(1) : txValue} K
                                                                                         </p>
                                                                                     )}
@@ -3844,26 +3916,7 @@ export function PortfolioList() {
                                 </Card>
                             )}
 
-                            <Card className="bg-card/40 backdrop-blur-sm border-muted/50 flex flex-col text-left">
-                                <CardHeader>
-                                    <CardTitle className="text-lg font-black">Market Sentiment</CardTitle>
-                                    <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Snapshot of current IPO pipeline</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-1 flex flex-col justify-center items-center py-10">
-                                    <div className="w-24 h-24 rounded-full border-8 border-primary/20 flex items-center justify-center mb-6">
-                                        <div className="w-16 h-16 rounded-full border-4 border-primary animate-pulse flex items-center justify-center">
-                                            <TrendingUp className="w-8 h-8 text-primary" />
-                                        </div>
-                                    </div>
-                                    <h4 className={cn("text-xl font-black mb-2", sentiment.toneClass)}>{sentiment.label}</h4>
-                                    <p className="text-xs text-muted-foreground text-center max-w-[240px] font-medium leading-relaxed italic">
-                                        {sentiment.description}
-                                    </p>
-                                </CardContent>
-                                <div className="p-4 bg-muted/10 border-t border-muted/20 flex justify-center">
-                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">Source: Upcoming IPO Feed</Badge>
-                                </div>
-                            </Card>
+                            <PortfolioHeatMap portfolio={portfolio} />
                         </div>
                     </div>
                 </div >
@@ -4066,7 +4119,7 @@ export function PortfolioList() {
                                 </div>
                             </div>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
-                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4076,7 +4129,7 @@ export function PortfolioList() {
                                         {formatUnits(soldPortfolioStats.totalSoldUnits)} Units Sold
                                     </div>
                                     <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-success/10 text-success border border-success/20">
-                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} Reinvested
+                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })} Reinvested
                                     </div>
                                 </div>
                             ) : (
@@ -4084,7 +4137,7 @@ export function PortfolioList() {
                                     "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
                                     totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                                 )}>
-                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString()} ({totalProfitLossPercentage.toFixed(1)}%)
+                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString(getNumberFormatLocale())} ({totalProfitLossPercentage.toFixed(1)}%)
                                 </div>
                             )}
                         </CardContent>
@@ -4098,8 +4151,8 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
                                 <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
                                     {showSoldStocks
-                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`
+                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
                                 </span>
                             </CardTitle>
                         </CardHeader>
@@ -4113,7 +4166,7 @@ export function PortfolioList() {
                                             : "text-success bg-success/10 border-success/20"
                                     )}>
                                         {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
-                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                         {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
                                         {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
                                     </div>
@@ -4146,7 +4199,7 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
                                 {showSoldStocks
                                     ? `${soldPortfolioStats.soldScrips} Scrips`
-                                    : `${currencySymbol}${totalInvestment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                    : `${currencySymbol}${totalInvestment.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4330,7 +4383,7 @@ export function PortfolioList() {
                                                                         <span className="text-[10px] font-black text-right">
                                                                             {chartMetric === "units"
                                                                                 ? formatUnits(data.units || 0)
-                                                                                : `रु${data.value.toLocaleString()}`}
+                                                                                : `रु${data.value.toLocaleString(getNumberFormatLocale())}`}
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex justify-between gap-8">
@@ -4339,7 +4392,7 @@ export function PortfolioList() {
                                                                         </span>
                                                                         <span className="text-[10px] font-black text-right">
                                                                             {chartMetric === "units"
-                                                                                ? `रु${data.value.toLocaleString()}`
+                                                                                ? `रु${data.value.toLocaleString(getNumberFormatLocale())}`
                                                                                 : formatUnits(data.units || 0)}
                                                                         </span>
                                                                     </div>
@@ -4387,14 +4440,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Missed Upside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
-                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <TrendingUp className="w-3.5 h-3.5 text-error" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.missedUpsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.missedUpside.map((row) => (
@@ -4415,7 +4468,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-error">
                                                                 +{row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4428,14 +4481,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Saved Downside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <TrendingDown className="w-3.5 h-3.5 text-success" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.savedDownsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.savedDownside.map((row) => (
@@ -4456,7 +4509,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-success">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4469,14 +4522,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Flat Since Sold</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-muted-foreground bg-muted/40 border border-muted px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
                                                     </span>
                                                     <Activity className="w-3.5 h-3.5 text-muted-foreground" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.flatTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.flat.map((row) => (
@@ -4497,7 +4550,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-muted-foreground">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4516,7 +4569,7 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Top Movers</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
-                                                        +{portfolioMovers.topMoversProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        +{portfolioMovers.topMoversProfit.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </span>
                                                     <TrendingUp className="w-3.5 h-3.5 text-success" />
                                                 </div>
@@ -4555,7 +4608,7 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Top Losers</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
-                                                        -{portfolioMovers.topLosersLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        -{portfolioMovers.topLosersLoss.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </span>
                                                     <TrendingDown className="w-3.5 h-3.5 text-error" />
                                                 </div>
@@ -5244,7 +5297,7 @@ export function PortfolioList() {
                                                         </div>
                                                         {tx.price > 0 && (
                                                             <div className="text-[9px] sm:text-[10px] text-muted-foreground font-bold">
-                                                                @ रु{tx.price.toLocaleString()}
+                                                                @ रु{tx.price.toLocaleString(getNumberFormatLocale())}
                                                             </div>
                                                         )}
                                                     </div>

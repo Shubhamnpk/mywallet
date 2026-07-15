@@ -16,6 +16,7 @@ import { BackupModal } from "./data-settings/backup-modal"
 import { ImportModal } from "./data-settings/import-modal"
 import * as Dropbox from "@/lib/dropbox"
 import type { DropboxAccount } from "@/lib/dropbox"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { SecureKeyManager } from "@/lib/key-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
@@ -145,14 +146,19 @@ export function DataSettings() {
       normalized.includes("invalid_grant") ||
       normalized.includes("401") ||
       normalized.includes("unauthorized") ||
-      normalized.includes("authorization")
+      normalized.includes("authorization") ||
+      normalized.includes("token request failed")
     )
   }
 
   const getDropboxReconnectMessage = (error: unknown, action: "upload" | "download") => {
     const message = error instanceof Error ? error.message : String(error)
-    if (message.toLowerCase().includes("missing_scope")) {
+    const lower = message.toLowerCase()
+    if (lower.includes("missing_scope")) {
       return `Dropbox needs file ${action === "upload" ? "write" : "read"} permission. Enable the Dropbox app permission, then reconnect Dropbox.`
+    }
+    if (lower.includes("token request failed")) {
+      return `${message} Please reconnect or disconnect and reconnect to retry.`
     }
     return `Dropbox access is no longer valid. Reconnect to ${action} backups.`
   }
@@ -222,15 +228,18 @@ export function DataSettings() {
           return nextSession.accessToken
         }
       } catch (error) {
-        markDropboxReconnectRequired("Dropbox session expired. Reconnect to continue backups.")
-
         const message = error instanceof Error ? error.message : "Dropbox session refresh failed"
+        const userMessage = message.toLowerCase().includes("expired") || message.toLowerCase().includes("invalid_grant")
+          ? "Dropbox session expired. Reconnect to continue backups."
+          : message + " Reconnect or disconnect Dropbox to continue."
+        markDropboxReconnectRequired(userMessage)
+
         if (!message.toLowerCase().includes("expired")) {
           console.warn("Dropbox refresh failed:", error)
         }
 
         if (!interactive) {
-          throw new Error("Dropbox session expired. Reconnect Dropbox to continue.")
+          throw new Error(message)
         }
       }
     }
@@ -473,16 +482,24 @@ export function DataSettings() {
   const mergeById = <T extends { id?: string }>(localList: T[], remoteList: T[]) => {
     const map = new Map<string, T>()
     const extras: T[] = []
+    const seenExtras = new Set<string>()
+    const addExtra = (item: T) => {
+      const key = JSON.stringify(item)
+      if (!seenExtras.has(key)) {
+        seenExtras.add(key)
+        extras.push(item)
+      }
+    }
     remoteList.forEach((item) => {
       if (!item?.id) {
-        extras.push(item)
+        addExtra(item)
         return
       }
       map.set(item.id, item)
     })
     localList.forEach((item) => {
       if (!item?.id) {
-        extras.push(item)
+        addExtra(item)
         return
       }
       const existing = map.get(item.id)
@@ -781,7 +798,7 @@ export function DataSettings() {
       return
     }
 
-    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
+    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
       setDropboxLocalPinError(null)
@@ -1012,7 +1029,14 @@ export function DataSettings() {
             </span>
             <div className="flex items-center gap-1">
               <Button
-                onClick={() => setShowDropboxInfo((prev) => !prev)}
+                onClick={() => {
+                  const next = !showDropboxInfo
+                  setShowDropboxInfo(next)
+                  if (next) {
+                    setDropboxError(null)
+                    setDropboxNeedsReconnect(false)
+                  }
+                }}
                 variant="ghost"
                 size="icon"
                 aria-label={showDropboxInfo ? "Hide Dropbox details" : "Show Dropbox details"}
@@ -1043,56 +1067,63 @@ export function DataSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {showDropboxInfo && (
-            <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Info className="h-4 w-4 text-primary" />
-                Dropbox backup details
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+              <div className="flex items-start gap-3">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-medium">Backup details</p>
+                  <p className="text-xs text-muted-foreground">
+                    Encrypted file <span className="font-mono">mywallet-backup.json</span> stored in your Dropbox App folder.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                We store one encrypted file named <span className="font-mono">mywallet-backup.json</span> in your Dropbox App folder.
-              </p>
+
               {!hasDropboxConfig && (
-                <p className="text-xs text-muted-foreground">
-                  Set <span className="font-mono">NEXT_PUBLIC_DROPBOX_APP_KEY</span> to enable Dropbox backups.
-                </p>
-              )}
-              {hasDropboxToken && (
-                <div className="rounded-md border bg-background/70 p-3">
-                  <p className="text-xs font-medium text-foreground">Backup size mode</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Essential skips scan history, drafts, and offline queues.
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Dropbox access now refreshes automatically when the local session is still authorized.
-                  </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant={backupSizeMode === "essential" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setBackupSizeMode("essential")
-                        localStorage.setItem(backupSizeModeKey, "essential")
-                      }}
-                    >
-                      Essential
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={backupSizeMode === "full" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        setBackupSizeMode("full")
-                        localStorage.setItem(backupSizeModeKey, "full")
-                      }}
-                    >
-                      Full
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/20">
+                  <span className="text-xs text-amber-700 dark:text-amber-400">
+                    Set <span className="font-mono">NEXT_PUBLIC_DROPBOX_APP_KEY</span> to enable Dropbox backups.
+                  </span>
                 </div>
               )}
+
+              {hasDropboxToken && (
+                <>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-foreground">Backup size mode</p>
+                    <ToggleGroup
+                      type="single"
+                      value={backupSizeMode}
+                      onValueChange={(v) => {
+                        if (v) {
+                          setBackupSizeMode(v as "essential" | "full")
+                          localStorage.setItem(backupSizeModeKey, v)
+                        }
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                    >
+                      <ToggleGroupItem value="essential" className="flex-1 text-xs">Essential</ToggleGroupItem>
+                      <ToggleGroupItem value="full" className="flex-1 text-xs">Full</ToggleGroupItem>
+                    </ToggleGroup>
+                    <p className="text-xs text-muted-foreground">
+                      {backupSizeMode === "essential"
+                        ? "Skips scan history, drafts, and offline queues."
+                        : "Includes all wallet data."}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Dropbox access refreshes automatically when authorized.
+                  </p>
+                </>
+              )}
+
+              <Button onClick={() => void handleDropboxDisconnect()} variant="outline" size="sm" className="w-full">
+                Disconnect Dropbox
+              </Button>
             </div>
           )}
+
           {!hasDropboxToken ? (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -1114,11 +1145,11 @@ export function DataSettings() {
           ) : (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">Connected Dropbox</p>
-                  <p className="text-xs text-muted-foreground">{dropboxAccount?.email || "Account details unavailable"}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">Connected as</p>
+                  <p className="truncate text-xs text-muted-foreground">{dropboxAccount?.email || "Account details unavailable"}</p>
                 </div>
-                <Badge variant="secondary">Connected</Badge>
+                <Badge variant="secondary" className="shrink-0">Connected</Badge>
               </div>
               {dropboxError && (
                 <Alert variant="destructive">
@@ -1131,7 +1162,7 @@ export function DataSettings() {
                   {isDropboxPushing ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <Cloud className="mr-2 h-4 w-4" />
+                    <Upload className="mr-2 h-4 w-4" />
                   )}
                   {isDropboxPushing ? "Pushing..." : "Push Backup"}
                 </Button>
@@ -1144,16 +1175,6 @@ export function DataSettings() {
                   {isDropboxPulling ? "Pulling..." : "Pull Backup"}
                 </Button>
               </div>
-              {showDropboxInfo && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Push overwrites <span className="font-mono">mywallet-backup.json</span>. Pull downloads it for Import.
-                  </p>
-                  <Button onClick={() => void handleDropboxDisconnect()} variant="ghost" size="sm" className="w-full">
-                    Disconnect Dropbox
-                  </Button>
-                </div>
-              )}
             </div>
           )}
         </CardContent>

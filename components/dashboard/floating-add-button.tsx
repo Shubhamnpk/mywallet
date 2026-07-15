@@ -9,12 +9,20 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
-import ReceiptScanner from "@/components/tools/scanner/receipt-scanner"
+import ReceiptScanner from "@/components/tools/scanner/receipt-dialog"
 import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
 import { CurrencyConverterDialog } from "./currency-converter-dialog"
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog"
 import { appendShiftToStorage } from "@/lib/shift-tracker-storage"
 import { Input } from "@/components/ui/input"
+import {
+  normalizeCalculatorExpression,
+  toEvaluableExpression,
+  formatCalculatorResult,
+  safeEval,
+  calculateExpressionResult,
+  getCalculatorPreview,
+} from "@/lib/calculator-math"
 
 declare global {
   interface Window {
@@ -45,44 +53,6 @@ const calculatorButtons = [
   "1", "2", "3", "+", "%",
   "0", "00", ".", "-", "=",
 ]
-
-const normalizeCalculatorExpression = (value: string) =>
-  value
-    .replace(/[xX]/g, "*")
-    .replace(/,/g, "")
-    .replace(/\s+/g, "")
-    .replace(/[^0-9+\-*/.()%]/g, "")
-
-const toEvaluableExpression = (value: string) =>
-  normalizeCalculatorExpression(value).replace(/(\d+(?:\.\d+)?)%/g, "($1/100)")
-
-const formatCalculatorResult = (value: number) => {
-  if (!Number.isFinite(value)) return "Error"
-  const rounded = Number(value.toFixed(10))
-  return Object.is(rounded, -0) ? "0" : String(rounded)
-}
-
-const calculateExpressionResult = (value: string) => {
-  const expression = toEvaluableExpression(value)
-  if (!expression || /[+\-*/.]$/.test(expression) || !/^[0-9+\-*/.()%]+$/.test(expression)) {
-    return "Error"
-  }
-
-  try {
-    const result = Function(`"use strict"; return (${expression})`)()
-    return formatCalculatorResult(Number(result))
-  } catch {
-    return "Error"
-  }
-}
-
-const getCalculatorPreview = (value: string) => {
-  const normalized = normalizeCalculatorExpression(value)
-  if (!normalized) return "0"
-  if (/[+\-*/.]$/.test(normalized)) return "..."
-  const result = calculateExpressionResult(normalized)
-  return result === "Error" ? "..." : result
-}
 
 const CALCULATOR_PANEL_WIDTH = 384
 const CALCULATOR_PANEL_HEIGHT = 560

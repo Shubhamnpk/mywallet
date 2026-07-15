@@ -39,7 +39,7 @@ type ValuationTimelineModalState = {
     portfolioId?: string | null
 }
 
-export type ValuationTimelineRange = "1m" | "1y" | "5y" | "all"
+export type ValuationTimelineRange = "1m" | "6m" | "1y" | "5y" | "all"
 
 type ValuationTimelineModalProps = {
     calendarSystem: CalendarSystem
@@ -65,6 +65,7 @@ const getRangeLabel = (range: ValuationTimelineRange) => range === "all" ? "All 
 
 const VALUATION_TIMELINE_RANGES: Array<{ value: ValuationTimelineRange; label: string; grouping: "daily" | "weekly" | "monthly" }> = [
     { value: "1m", label: "1M", grouping: "daily" },
+    { value: "6m", label: "6M", grouping: "weekly" },
     { value: "1y", label: "1Y", grouping: "weekly" },
     { value: "5y", label: "5Y", grouping: "monthly" },
     { value: "all", label: "All", grouping: "monthly" },
@@ -85,6 +86,7 @@ const getRangeCutoffTime = (latestDate: string, range: ValuationTimelineRange) =
 
     const cutoffDate = new Date(latestTime)
     if (range === "1m") cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 1)
+    if (range === "6m") cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 6)
     if (range === "1y") cutoffDate.setUTCFullYear(cutoffDate.getUTCFullYear() - 1)
     if (range === "5y") cutoffDate.setUTCFullYear(cutoffDate.getUTCFullYear() - 5)
     return cutoffDate.getTime()

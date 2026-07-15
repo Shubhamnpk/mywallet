@@ -7,6 +7,7 @@ const colorThemes = [
     id: "emerald",
     name: "Emerald",
     primary: "oklch(0.58 0.18 160)",
+    darkPrimary: "oklch(0.45 0.15 160)",
     description: "Fresh and natural",
     gradient: "from-emerald-600 via-emerald-500 to-green-400",
     solid: "bg-emerald-600"
@@ -15,6 +16,7 @@ const colorThemes = [
     id: "blue",
     name: "Ocean Blue",
     primary: "oklch(0.58 0.2 250)",
+    darkPrimary: "oklch(0.45 0.17 250)",
     description: "Professional and trustworthy",
     gradient: "from-blue-600 via-blue-500 to-indigo-400",
     solid: "bg-blue-600"
@@ -23,6 +25,7 @@ const colorThemes = [
     id: "purple",
     name: "Royal Purple",
     primary: "oklch(0.58 0.22 290)",
+    darkPrimary: "oklch(0.45 0.19 290)",
     description: "Creative and modern",
     gradient: "from-purple-600 via-purple-500 to-pink-400",
     solid: "bg-purple-600"
@@ -31,6 +34,7 @@ const colorThemes = [
     id: "orange",
     name: "Sunset Orange",
     primary: "oklch(0.65 0.2 65)",
+    darkPrimary: "oklch(0.5 0.17 65)",
     description: "Energetic and warm",
     gradient: "from-orange-600 via-orange-500 to-red-400",
     solid: "bg-orange-600"
@@ -39,6 +43,7 @@ const colorThemes = [
     id: "rose",
     name: "Rose Pink",
     primary: "oklch(0.6 0.2 0)",
+    darkPrimary: "oklch(0.45 0.17 0)",
     description: "Elegant and sophisticated",
     gradient: "from-rose-600 via-rose-500 to-pink-400",
     solid: "bg-rose-600"
@@ -100,6 +105,7 @@ export function useColorTheme() {
   // Apply color theme to CSS variables (only on client side)
   const applyColorTheme = (themeId: string) => {
     if (typeof window === 'undefined') return
+    const isDark = document.documentElement.classList.contains('dark')
 
     if (themeId === "custom") {
       // For custom theme, convert hex to oklch and use the custom primary color
@@ -116,8 +122,8 @@ export function useColorTheme() {
     } else {
       const selectedTheme = colorThemes.find((t) => t.id === themeId)
       if (selectedTheme) {
-        // Convert HSL to OKLCH for consistency
-        document.documentElement.style.setProperty("--primary", selectedTheme.primary)
+        const color = isDark && selectedTheme.darkPrimary ? selectedTheme.darkPrimary : selectedTheme.primary
+        document.documentElement.style.setProperty("--primary", color)
       }
     }
   }
@@ -178,6 +184,15 @@ export function useColorTheme() {
       document.body.style.fontSize = "16px" // Default font size
     }
   }
+
+  // Set up observer to re-apply color theme when dark/light mode changes
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      applyColorTheme(colorTheme)
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [colorTheme])
 
   // Apply accessibility settings (only on client side)
   const applyAccessibilitySettings = () => {

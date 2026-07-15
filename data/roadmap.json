@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-05-27",
+  "lastUpdated": "2026-07-15",
   "milestones": [
     {
       "id": "m1",
@@ -26,15 +26,15 @@
       "id": "m4",
       "title": "Storage & Sync Architecture",
       "version": "2.2.0 (Planned)",
-      "progress": 15,
-      "description": "Migrate from localStorage to IndexedDB, implement record-level sync, and harden data integrity."
+      "progress": 20,
+      "description": "Migrate from localStorage to IndexedDB, record-level sync, UX overhaul, portfolio heatmap, insights advisor, and data integrity hardening."
     },
     {
       "id": "m5",
       "title": "AI & Insights Engine",
       "version": "3.0.0 (Vision)",
-      "progress": 5,
-      "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, and natural language queries."
+      "progress": 10,
+      "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, natural language queries, and insights engine foundation."
     }
   ],
   "categories": [
@@ -475,7 +475,108 @@
       "status": "in-progress",
       "category": "infra",
       "milestone": "m4",
+      "priority": "high",
+      "progress": 40
+    },
+    {
+      "id": "r45",
+      "title": "Insights Engine Stability & Hooks Compliance",
+      "description": "Fixed React rules-of-hooks violations across Financial Health Score, Spending Trends, Category Dashboard, and Spending Benchmarks. Added Export Report functionality to Insights Panel.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m4",
+      "completedDate": "2026-07-10",
       "priority": "high"
+    },
+    {
+      "id": "r46",
+      "title": "Public Pages Suite",
+      "description": "About page with story, stats, timeline, and creator profile. Features catalog showcasing 45+ capabilities. Shared public layout, glassmorphism nav, and full footer.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "medium"
+    },
+    {
+      "id": "r47",
+      "title": "Settings Module Overhaul",
+      "description": "Replaced monolithic modal with tabbed desktop layout and full-screen mobile settings. Custom theme editor with color picker. Audio feedback system with per-activity sounds and upload. Screen reader, accessibility controls, font size slider, and Nepali/International number formatting.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "high"
+    },
+    {
+      "id": "r48",
+      "title": "Portfolio Heatmap View",
+      "description": "Treemap-based portfolio visualization with squarified layout algorithm. Search, asset/sizing/color mode filters, pin-to-detail, hover tooltip, and info dialog.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "high"
+    },
+    {
+      "id": "r49",
+      "title": "IPO Detail Modal with MeroShare Actions",
+      "description": "Full IPO detail view with timeline, stats, and inline MeroShare apply/check allotment. Smart button adapts to IPO status; credential validation before actions.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "medium"
+    },
+    {
+      "id": "r50",
+      "title": "Debt & Credit Management Redesign",
+      "description": "Tabbed layout (Debt/Lending/Credit/History) with summary cards, collapsible accounts, payoff projections, fast debt auto-classification, and archive support. Transaction history dialog with custom date range picker.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "high"
+    },
+    {
+      "id": "r51",
+      "title": "Insights Smart Advisor & Financial Health",
+      "description": "Financial health hero with score circle, grade, and description. Smart Advisor feed with 10 dynamic insight types, one-click auto-create actions, core metrics grid, and JSON export report.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "high"
+    },
+    {
+      "id": "r52",
+      "title": "Broker Leaderboard with Podium",
+      "description": "Renamed from broker training. Hero podium section with crown/medal/award icons and animated columns. Daily sort option, rank badges, and BS-aware amount formatting.",
+      "status": "completed",
+      "category": "portfolio",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "medium"
+    },
+    {
+      "id": "r53",
+      "title": "Budget & Goal List Enhancements",
+      "description": "Budget sort/filter/bulk operations with history dialog. Goal tabs layout with progress visualization and scenario planning. Custom date range pickers for both budget and goal history.",
+      "status": "completed",
+      "category": "core",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "high"
+    },
+    {
+      "id": "r54",
+      "title": "Balance Card Consolidation & Net Worth Carousel",
+      "description": "Consolidated balance-card-component into balance-card.tsx. Added net worth carousel with swipe/touch support, income/expense monthly vs all-time toggle, and localStorage theme customization.",
+      "status": "completed",
+      "category": "ux",
+      "milestone": "m4",
+      "completedDate": "2026-07-15",
+      "priority": "medium"
     }
   ]
 }

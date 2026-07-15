@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -10,10 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { RotateCcw, Plus, Edit, Trash2 } from "lucide-react"
+import { RotateCcw, Plus, Edit, Trash2, Info } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useColorTheme } from "@/hooks/use-color-theme"
-import { Palette, Sun, Moon, Monitor, Contrast, Type, Scissors, Shrink, Droplet } from "lucide-react"
+import { Palette, Sun, Moon, Monitor, Contrast, Type, Scissors, Shrink, Droplet, Accessibility, Eye, Volume2, Upload, Play } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useToast } from "@/hooks/use-toast"
+import { playSound, PRESET_SOUNDS } from "@/lib/sound-utils"
 
 const themeOptions = [
   {
@@ -172,13 +175,311 @@ export function ThemeSettings() {
     setEditingTheme(null)
   }
 
+  // --- Accessibility state ---
+  const [screenReader, setScreenReader] = useState(false)
+  const [keyboardNav, setKeyboardNav] = useState(false)
+  const [fontSize, setFontSize] = useState([16])
+  const savedFontSizeRef = useRef(16)
+  const savedBorderRadiusRef = useRef(borderRadius)
+  const [soundEffects, setSoundEffects] = useState(true)
+  const [focusIndicators, setFocusIndicators] = useState(false)
+  const [tooltips, setTooltips] = useState(false)
+  const [numberFormat, setNumberFormat] = useState("us")
+  const [transactionSuccessEnabled, setTransactionSuccessEnabled] = useState(true)
+  const [transactionFailedEnabled, setTransactionFailedEnabled] = useState(true)
+  const [budgetWarningEnabled, setBudgetWarningEnabled] = useState(true)
+  const [pinSuccessEnabled, setPinSuccessEnabled] = useState(true)
+  const [pinFailedEnabled, setPinFailedEnabled] = useState(true)
+  const [transactionSuccessSelectedSound, setTransactionSuccessSelectedSound] = useState("success-tone")
+  const [transactionFailedSelectedSound, setTransactionFailedSelectedSound] = useState("notification")
+  const [budgetWarningSelectedSound, setBudgetWarningSelectedSound] = useState("notification")
+  const [pinSuccessSelectedSound, setPinSuccessSelectedSound] = useState("success-tone")
+  const [pinFailedSelectedSound, setPinFailedSelectedSound] = useState("notification")
+  const [transactionSuccessCustomUrl, setTransactionSuccessCustomUrl] = useState("")
+  const [transactionFailedCustomUrl, setTransactionFailedCustomUrl] = useState("")
+  const [budgetWarningCustomUrl, setBudgetWarningCustomUrl] = useState("")
+  const [pinSuccessCustomUrl, setPinSuccessCustomUrl] = useState("")
+  const [pinFailedCustomUrl, setPinFailedCustomUrl] = useState("")
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const transactionSuccessFileInputRef = useRef<HTMLInputElement>(null)
+  const transactionFailedFileInputRef = useRef<HTMLInputElement>(null)
+  const budgetWarningFileInputRef = useRef<HTMLInputElement>(null)
+  const pinSuccessFileInputRef = useRef<HTMLInputElement>(null)
+  const pinFailedFileInputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
+
+  function applyAccessibilitySettings(sr: boolean, kn: boolean, fs: number, fi: boolean) {
+    if (sr) document.documentElement.classList.add("screen-reader-optimized")
+    else document.documentElement.classList.remove("screen-reader-optimized")
+    if (kn) document.documentElement.classList.add("keyboard-nav-enabled")
+    else document.documentElement.classList.remove("keyboard-nav-enabled")
+    if (fi) document.documentElement.classList.add("enhanced-focus")
+    else document.documentElement.classList.remove("enhanced-focus")
+    document.documentElement.style.setProperty("--base-font-size", `${fs}px`)
+  }
+
+  const announceToScreenReader = (message: string) => {
+    if (screenReader) {
+      const announcement = document.createElement("div")
+      announcement.setAttribute("aria-live", "polite")
+      announcement.setAttribute("aria-atomic", "true")
+      announcement.className = "sr-only"
+      announcement.textContent = message
+      document.body.appendChild(announcement)
+      setTimeout(() => document.body.removeChild(announcement), 1000)
+    }
+  }
+
+  // Load saved a11y preferences
+  useEffect(() => {
+    const savedScreenReader = localStorage.getItem("wallet_screen_reader") === "true"
+    const savedKeyboardNav = localStorage.getItem("wallet_keyboard_nav") === "true"
+    const savedFontSize = Number.parseInt(localStorage.getItem("wallet_font_size") || "16")
+    const savedSoundEffects = localStorage.getItem("wallet_sound_effects") !== "false"
+    const savedFocusIndicators = localStorage.getItem("wallet_focus_indicators") === "true"
+    const savedTooltips = localStorage.getItem("wallet_tooltips") === "true"
+    const savedTransactionSuccessEnabled = localStorage.getItem("wallet_transaction_success_enabled") !== "false"
+    const savedTransactionFailedEnabled = localStorage.getItem("wallet_transaction_failed_enabled") !== "false"
+    const savedBudgetWarningEnabled = localStorage.getItem("wallet_budget_warning_enabled") !== "false"
+    const savedPinSuccessEnabled = localStorage.getItem("wallet_pin_success_enabled") !== "false"
+    const savedPinFailedEnabled = localStorage.getItem("wallet_pin_failed_enabled") !== "false"
+    const savedTransactionSuccessSelectedSound = localStorage.getItem("wallet_transaction_success_selected_sound") || "success-tone"
+    const savedTransactionFailedSelectedSound = localStorage.getItem("wallet_transaction_failed_selected_sound") || "notification"
+    const savedBudgetWarningSelectedSound = localStorage.getItem("wallet_budget_warning_selected_sound") || "notification"
+    const savedPinSuccessSelectedSound = localStorage.getItem("wallet_pin_success_selected_sound") || "success-tone"
+    const savedPinFailedSelectedSound = localStorage.getItem("wallet_pin_failed_selected_sound") || "notification"
+    const savedTransactionSuccessCustomUrl = localStorage.getItem("wallet_transaction_success_custom_url") || ""
+    const savedTransactionFailedCustomUrl = localStorage.getItem("wallet_transaction_failed_custom_url") || ""
+    const savedBudgetWarningCustomUrl = localStorage.getItem("wallet_budget_warning_custom_url") || ""
+    const savedPinSuccessCustomUrl = localStorage.getItem("wallet_pin_success_custom_url") || ""
+    const savedPinFailedCustomUrl = localStorage.getItem("wallet_pin_failed_custom_url") || ""
+    const savedNumberFormat = localStorage.getItem("wallet_number_format") || "us"
+
+    setScreenReader(savedScreenReader)
+    setKeyboardNav(savedKeyboardNav)
+    setFontSize([savedFontSize])
+    setSoundEffects(savedSoundEffects)
+    setFocusIndicators(savedFocusIndicators)
+    setTooltips(savedTooltips)
+    setTransactionSuccessEnabled(savedTransactionSuccessEnabled)
+    setTransactionFailedEnabled(savedTransactionFailedEnabled)
+    setBudgetWarningEnabled(savedBudgetWarningEnabled)
+    setPinSuccessEnabled(savedPinSuccessEnabled)
+    setPinFailedEnabled(savedPinFailedEnabled)
+    setTransactionSuccessSelectedSound(savedTransactionSuccessSelectedSound)
+    setTransactionFailedSelectedSound(savedTransactionFailedSelectedSound)
+    setBudgetWarningSelectedSound(savedBudgetWarningSelectedSound)
+    setPinSuccessSelectedSound(savedPinSuccessSelectedSound)
+    setPinFailedSelectedSound(savedPinFailedSelectedSound)
+    setTransactionSuccessCustomUrl(savedTransactionSuccessCustomUrl)
+    setTransactionFailedCustomUrl(savedTransactionFailedCustomUrl)
+    setBudgetWarningCustomUrl(savedBudgetWarningCustomUrl)
+    setPinSuccessCustomUrl(savedPinSuccessCustomUrl)
+    setPinFailedCustomUrl(savedPinFailedCustomUrl)
+    setNumberFormat(savedNumberFormat)
+    applyAccessibilitySettings(savedScreenReader, savedKeyboardNav, savedFontSize, savedFocusIndicators)
+    savedFontSizeRef.current = savedFontSize
+
+    const handleAuthSuccess = () => playSound('pin-success')
+    window.addEventListener('wallet-auth-success', handleAuthSuccess)
+    return () => window.removeEventListener('wallet-auth-success', handleAuthSuccess)
+  }, [])
+
+  useEffect(() => {
+    savedBorderRadiusRef.current = borderRadius
+  }, [])
+
+  // --- Accessibility handlers ---
+  const handleScreenReaderChange = (enabled: boolean) => {
+    setScreenReader(enabled)
+    localStorage.setItem("wallet_screen_reader", enabled.toString())
+    if (enabled) document.documentElement.classList.add("screen-reader-optimized")
+    else document.documentElement.classList.remove("screen-reader-optimized")
+    if (enabled) {
+      announceToScreenReader("Screen reader mode enabled")
+    }
+    playSound("toggle")
+  }
+
+  const handleKeyboardNavChange = (enabled: boolean) => {
+    setKeyboardNav(enabled)
+    localStorage.setItem("wallet_keyboard_nav", enabled.toString())
+    if (enabled) document.documentElement.classList.add("keyboard-nav-enabled")
+    else document.documentElement.classList.remove("keyboard-nav-enabled")
+    playSound("toggle")
+    announceToScreenReader(`Keyboard navigation ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleFontSizeChange = (value: number[]) => {
+    setFontSize(value)
+    localStorage.setItem("wallet_font_size", value[0].toString())
+    document.documentElement.style.setProperty("--base-font-size", `${value[0]}px`)
+    announceToScreenReader(`Font size changed to ${value[0]} pixels`)
+  }
+
+  const handleSoundEffectsChange = (enabled: boolean) => {
+    setSoundEffects(enabled)
+    localStorage.setItem("wallet_sound_effects", enabled.toString())
+    if (enabled) playSound("enable")
+    announceToScreenReader(`Sound effects ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleFocusIndicatorsChange = (enabled: boolean) => {
+    setFocusIndicators(enabled)
+    localStorage.setItem("wallet_focus_indicators", enabled.toString())
+    if (enabled) document.documentElement.classList.add("enhanced-focus")
+    else document.documentElement.classList.remove("enhanced-focus")
+    playSound("toggle")
+    announceToScreenReader(`Enhanced focus indicators ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleTooltipsChange = (enabled: boolean) => {
+    setTooltips(enabled)
+    localStorage.setItem("wallet_tooltips", enabled.toString())
+    playSound("toggle")
+    announceToScreenReader(`Enhanced tooltips ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleActivityToggle = (activity: string) => (enabled: boolean) => {
+    switch (activity) {
+      case "transaction-success":
+        setTransactionSuccessEnabled(enabled)
+        localStorage.setItem("wallet_transaction_success_enabled", enabled.toString())
+        break
+      case "transaction-failed":
+        setTransactionFailedEnabled(enabled)
+        localStorage.setItem("wallet_transaction_failed_enabled", enabled.toString())
+        break
+      case "budget-warning":
+        setBudgetWarningEnabled(enabled)
+        localStorage.setItem("wallet_budget_warning_enabled", enabled.toString())
+        break
+      case "pin-success":
+        setPinSuccessEnabled(enabled)
+        localStorage.setItem("wallet_pin_success_enabled", enabled.toString())
+        break
+      case "pin-failed":
+        setPinFailedEnabled(enabled)
+        localStorage.setItem("wallet_pin_failed_enabled", enabled.toString())
+        break
+    }
+    announceToScreenReader(`${activity.replace("-", " ").replace("pin", "auth")} sound ${enabled ? "enabled" : "disabled"}`)
+  }
+
+  const handleActivitySoundChange = (activity: string) => (value: string) => {
+    switch (activity) {
+      case "transaction-success":
+        setTransactionSuccessSelectedSound(value)
+        localStorage.setItem("wallet_transaction_success_selected_sound", value)
+        break
+      case "transaction-failed":
+        setTransactionFailedSelectedSound(value)
+        localStorage.setItem("wallet_transaction_failed_selected_sound", value)
+        break
+      case "budget-warning":
+        setBudgetWarningSelectedSound(value)
+        localStorage.setItem("wallet_budget_warning_selected_sound", value)
+        break
+      case "pin-success":
+        setPinSuccessSelectedSound(value)
+        localStorage.setItem("wallet_pin_success_selected_sound", value)
+        break
+      case "pin-failed":
+        setPinFailedSelectedSound(value)
+        localStorage.setItem("wallet_pin_failed_selected_sound", value)
+        break
+    }
+    if (value !== "none" && value !== "custom") {
+      const soundConfig = PRESET_SOUNDS[value as keyof typeof PRESET_SOUNDS]
+      if (soundConfig?.generator) soundConfig.generator()
+    }
+  }
+
+  const handleActivityCustomSoundUpload = (activity: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith("audio/")) {
+      toast({ title: "Invalid file type", description: "Please upload an audio file (MP3, WAV, etc.)", variant: "destructive" })
+      return
+    }
+    const url = URL.createObjectURL(file)
+    switch (activity) {
+      case "transaction-success":
+        setTransactionSuccessCustomUrl(url)
+        setTransactionSuccessSelectedSound("custom")
+        localStorage.setItem("wallet_transaction_success_custom_url", url)
+        localStorage.setItem("wallet_transaction_success_selected_sound", "custom")
+        break
+      case "transaction-failed":
+        setTransactionFailedCustomUrl(url)
+        setTransactionFailedSelectedSound("custom")
+        localStorage.setItem("wallet_transaction_failed_custom_url", url)
+        localStorage.setItem("wallet_transaction_failed_selected_sound", "custom")
+        break
+      case "budget-warning":
+        setBudgetWarningCustomUrl(url)
+        setBudgetWarningSelectedSound("custom")
+        localStorage.setItem("wallet_budget_warning_custom_url", url)
+        localStorage.setItem("wallet_budget_warning_selected_sound", "custom")
+        break
+      case "pin-success":
+        setPinSuccessCustomUrl(url)
+        setPinSuccessSelectedSound("custom")
+        localStorage.setItem("wallet_pin_success_custom_url", url)
+        localStorage.setItem("wallet_pin_success_selected_sound", "custom")
+        break
+      case "pin-failed":
+        setPinFailedCustomUrl(url)
+        setPinFailedSelectedSound("custom")
+        localStorage.setItem("wallet_pin_failed_custom_url", url)
+        localStorage.setItem("wallet_pin_failed_selected_sound", "custom")
+        break
+    }
+    toast({ title: "Custom sound uploaded", description: "Your custom sound effect has been set successfully." })
+  }
+
+  const handleA11yReset = () => {
+    const defaults = {
+      screenReader: false, keyboardNav: false, fontSize: 16, soundEffects: true, focusIndicators: false, tooltips: false,
+      transactionSuccessEnabled: true, transactionFailedEnabled: true, budgetWarningEnabled: true, pinSuccessEnabled: true, pinFailedEnabled: true,
+      transactionSuccessSelectedSound: "success-tone", transactionFailedSelectedSound: "notification", budgetWarningSelectedSound: "notification",
+      pinSuccessSelectedSound: "success-tone", pinFailedSelectedSound: "notification",
+      transactionSuccessCustomUrl: "", transactionFailedCustomUrl: "", budgetWarningCustomUrl: "", pinSuccessCustomUrl: "", pinFailedCustomUrl: "",
+      numberFormat: "us",
+    }
+    setScreenReader(defaults.screenReader); setKeyboardNav(defaults.keyboardNav); setFontSize([defaults.fontSize])
+    setSoundEffects(defaults.soundEffects); setFocusIndicators(defaults.focusIndicators); setTooltips(defaults.tooltips)
+    setTransactionSuccessEnabled(defaults.transactionSuccessEnabled); setTransactionFailedEnabled(defaults.transactionFailedEnabled)
+    setBudgetWarningEnabled(defaults.budgetWarningEnabled); setPinSuccessEnabled(defaults.pinSuccessEnabled); setPinFailedEnabled(defaults.pinFailedEnabled)
+    setTransactionSuccessSelectedSound(defaults.transactionSuccessSelectedSound); setTransactionFailedSelectedSound(defaults.transactionFailedSelectedSound)
+    setBudgetWarningSelectedSound(defaults.budgetWarningSelectedSound); setPinSuccessSelectedSound(defaults.pinSuccessSelectedSound)
+    setPinFailedSelectedSound(defaults.pinFailedSelectedSound)
+    setTransactionSuccessCustomUrl(defaults.transactionSuccessCustomUrl); setTransactionFailedCustomUrl(defaults.transactionFailedCustomUrl)
+    setBudgetWarningCustomUrl(defaults.budgetWarningCustomUrl); setPinSuccessCustomUrl(defaults.pinSuccessCustomUrl)
+    setPinFailedCustomUrl(defaults.pinFailedCustomUrl); setNumberFormat(defaults.numberFormat)
+    applyAccessibilitySettings(defaults.screenReader, defaults.keyboardNav, defaults.fontSize, defaults.focusIndicators)
+
+    Object.keys(defaults).forEach((key) => {
+      localStorage.removeItem(`wallet_${key.replace(/([A-Z])/g, "_$1").toLowerCase()}`)
+    })
+    toast({ title: "Settings reset", description: "All accessibility settings have been reset to defaults." })
+    announceToScreenReader("All accessibility settings have been reset to default values")
+  }
+
+  const handleNumberFormatChange = (value: string) => {
+    setNumberFormat(value)
+    localStorage.setItem("wallet_number_format", value)
+    window.dispatchEvent(new CustomEvent('numberFormatChange'))
+    announceToScreenReader(`Number format changed to ${value === 'us' ? 'US style' : 'Nepali style'}`)
+  }
+
   return (
     <div className="space-y-6">
       {/* Reset to Defaults */}
       <div className="flex justify-end ">
         <Button
           variant="outline"
-          onClick={handleResetToDefaults}
+          onClick={() => { handleResetToDefaults(); handleA11yReset() }}
           className="gap-2"
         >
           <RotateCcw className="w-4 h-4" />
@@ -506,9 +807,8 @@ export function ThemeSettings() {
             <Type className="w-5 h-5" />
             Typography
           </CardTitle>
-          <CardDescription>Choose your preferred font family</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="font-family">Font Family</Label>
             <Select value={fontFamily} onValueChange={handleFontFamilyChange}>
@@ -523,6 +823,37 @@ export function ThemeSettings() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="font-size">Font Size: {fontSize[0]}px</Label>
+              {fontSize[0] !== savedFontSizeRef.current && (
+                <button type="button" onClick={() => handleFontSizeChange([savedFontSizeRef.current])} className="inline-flex items-center justify-center rounded-full p-1 hover:bg-muted transition-colors" title="Revert to saved value">
+                  <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+            <Slider
+              id="font-size"
+              min={12}
+              max={24}
+              step={1}
+              value={fontSize}
+              onValueChange={handleFontSizeChange}
+              className="w-full"
+            />
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Small</span>
+              <span>Default</span>
+              <span>Large</span>
+            </div>
+          </div>
+          <div className="p-3 border rounded-lg">
+            <p className="font-medium mb-1 text-sm">Preview Text</p>
+            <p className="text-sm" style={{ fontSize: `${fontSize[0]}px` }}>
+              This is how your text will appear with the selected font size. Transaction amounts and time calculations
+              will scale accordingly.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -540,7 +871,14 @@ export function ThemeSettings() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label htmlFor="border-radius">Border Radius</Label>
-              <span className="text-sm text-muted-foreground">{borderRadius}%</span>
+              <span className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{borderRadius}%</span>
+                {borderRadius !== savedBorderRadiusRef.current && (
+                  <button type="button" onClick={() => handleBorderRadiusChange(savedBorderRadiusRef.current)} className="inline-flex items-center justify-center rounded-full p-1 hover:bg-muted transition-colors" title="Revert to saved value">
+                    <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                )}
+              </span>
             </div>
             <Slider
               id="border-radius"
@@ -604,32 +942,327 @@ export function ThemeSettings() {
         </CardContent>
       </Card>
 
-      {/* Theme Preview */}
+      {/* Screen Reader Support */}
       <Card>
         <CardHeader>
-          <CardTitle>Theme Preview</CardTitle>
-          <CardDescription>See how your theme choices look</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Accessibility className="w-5 h-5" />
+            Screen Reader Support
+          </CardTitle>
+          <CardDescription>Optimize the interface for screen readers</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="screen-reader">Screen Reader Mode</Label>
+              <p className="text-sm text-muted-foreground">Enhanced ARIA labels and live announcements</p>
+            </div>
+            <Switch id="screen-reader" checked={screenReader} onCheckedChange={handleScreenReaderChange} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="tooltips">Enhanced Tooltips</Label>
+              <p className="text-sm text-muted-foreground">Show detailed explanations for time calculations</p>
+            </div>
+            <Switch id="tooltips" checked={tooltips} onCheckedChange={handleTooltipsChange} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Navigation & Focus */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5" />
+            Navigation & Focus
+          </CardTitle>
+          <CardDescription>Keyboard navigation and focus management</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="keyboard-nav">Keyboard Navigation</Label>
+              <p className="text-sm text-muted-foreground">Navigate using Tab, Enter, and arrow keys</p>
+            </div>
+            <Switch id="keyboard-nav" checked={keyboardNav} onCheckedChange={handleKeyboardNavChange} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="focus-indicators">Enhanced Focus Indicators</Label>
+              <p className="text-sm text-muted-foreground">More visible focus outlines for better navigation</p>
+            </div>
+            <Switch id="focus-indicators" checked={focusIndicators} onCheckedChange={handleFocusIndicatorsChange} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Number Formatting */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+          <CardTitle className="flex items-center gap-2 shrink-0">
+            <span className="text-2xl">🔢</span>
+            Number Formatting
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" className="inline-flex items-center justify-center rounded-full p-1 hover:bg-muted transition-colors">
+                  <Info className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 text-sm" side="top">
+                Controls how large numbers appear across the app transaction amounts, balances, budgets, and reports.
+              </PopoverContent>
+            </Popover>
+          </CardTitle>
+          <Select value={numberFormat} onValueChange={handleNumberFormatChange}>
+            <SelectTrigger className="w-auto min-w-[180px]">
+              <SelectValue placeholder="Choose format" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="us">International (1,111,111)</SelectItem>
+              <SelectItem value="ne">Nepali (11,11,111)</SelectItem>
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent>
-          <div className="p-4 border rounded-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium">Sample Transaction</h4>
-              <span className="text-sm text-muted-foreground">2 hours ago</span>
+          <div className="p-3 border rounded-lg bg-muted/50 text-sm space-y-1">
+            <div className="flex justify-between">
+              <span>International:</span>
+              <span className="font-mono">1,111,111.50</span>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Coffee Shop</p>
-                <p className="text-sm text-muted-foreground">Food & Dining</p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium text-red-500">-$4.50</p>
-                <p className="text-xs text-muted-foreground">12 minutes of work</p>
-              </div>
+            <div className="flex justify-between">
+              <span>Nepali:</span>
+              <span className="font-mono">11,11,111.50</span>
             </div>
-            <Button size="sm" className="w-full">
-              View Details
-            </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Audio Feedback */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Volume2 className="w-5 h-5" />
+            Audio Feedback
+          </CardTitle>
+          <CardDescription>Sound effects and audio cues for specific actions</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="sound-effects">Enable Sound Effects</Label>
+              <p className="text-sm text-muted-foreground">Master toggle for all audio feedback</p>
+            </div>
+            <Switch id="sound-effects" checked={soundEffects} onCheckedChange={handleSoundEffectsChange} />
+          </div>
+
+          {soundEffects && (
+            <div className="space-y-6 pt-4 border-t">
+              {/* Transaction Success */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Transaction Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when transaction is added successfully</p>
+                  </div>
+                  <Switch checked={transactionSuccessEnabled} onCheckedChange={handleActivityToggle("transaction-success")} />
+                </div>
+                {transactionSuccessEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select value={transactionSuccessSelectedSound} onValueChange={handleActivitySoundChange("transaction-success")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>{sound.name}</SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="icon" onClick={() => playSound("transaction-success")} disabled={transactionSuccessSelectedSound === "none"}>
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {transactionSuccessSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input ref={transactionSuccessFileInputRef} type="file" accept="audio/*" onChange={handleActivityCustomSoundUpload("transaction-success")} className="flex-1" />
+                          <Button variant="outline" size="icon" onClick={() => transactionSuccessFileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Transaction Failed */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Transaction Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when transaction fails</p>
+                  </div>
+                  <Switch checked={transactionFailedEnabled} onCheckedChange={handleActivityToggle("transaction-failed")} />
+                </div>
+                {transactionFailedEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select value={transactionFailedSelectedSound} onValueChange={handleActivitySoundChange("transaction-failed")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>{sound.name}</SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="icon" onClick={() => playSound("transaction-failed")} disabled={transactionFailedSelectedSound === "none"}>
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {transactionFailedSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input ref={transactionFailedFileInputRef} type="file" accept="audio/*" onChange={handleActivityCustomSoundUpload("transaction-failed")} className="flex-1" />
+                          <Button variant="outline" size="icon" onClick={() => transactionFailedFileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Budget Warning */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Budget Warning Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when budget limits are exceeded</p>
+                  </div>
+                  <Switch checked={budgetWarningEnabled} onCheckedChange={handleActivityToggle("budget-warning")} />
+                </div>
+                {budgetWarningEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select value={budgetWarningSelectedSound} onValueChange={handleActivitySoundChange("budget-warning")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>{sound.name}</SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="icon" onClick={() => playSound("budget-warning")} disabled={budgetWarningSelectedSound === "none"}>
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {budgetWarningSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input ref={budgetWarningFileInputRef} type="file" accept="audio/*" onChange={handleActivityCustomSoundUpload("budget-warning")} className="flex-1" />
+                          <Button variant="outline" size="icon" onClick={() => budgetWarningFileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Auth Success */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Auth Success Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication is successful</p>
+                  </div>
+                  <Switch checked={pinSuccessEnabled} onCheckedChange={handleActivityToggle("pin-success")} />
+                </div>
+                {pinSuccessEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select value={pinSuccessSelectedSound} onValueChange={handleActivitySoundChange("pin-success")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>{sound.name}</SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="icon" onClick={() => playSound("pin-success")} disabled={pinSuccessSelectedSound === "none"}>
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {pinSuccessSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input ref={pinSuccessFileInputRef} type="file" accept="audio/*" onChange={handleActivityCustomSoundUpload("pin-success")} className="flex-1" />
+                          <Button variant="outline" size="icon" onClick={() => pinSuccessFileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Auth Failed */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Auth Failed Sound</Label>
+                    <p className="text-sm text-muted-foreground">Play sound when authentication fails</p>
+                  </div>
+                  <Switch checked={pinFailedEnabled} onCheckedChange={handleActivityToggle("pin-failed")} />
+                </div>
+                {pinFailedEnabled && (
+                  <div className="ml-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Select value={pinFailedSelectedSound} onValueChange={handleActivitySoundChange("pin-failed")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a sound" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PRESET_SOUNDS).map(([key, sound]) => (
+                            <SelectItem key={key} value={key}>{sound.name}</SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="icon" onClick={() => playSound("pin-failed")} disabled={pinFailedSelectedSound === "none"}>
+                        <Play className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {pinFailedSelectedSound === "custom" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input ref={pinFailedFileInputRef} type="file" accept="audio/*" onChange={handleActivityCustomSoundUpload("pin-failed")} className="flex-1" />
+                          <Button variant="outline" size="icon" onClick={() => pinFailedFileInputRef.current?.click()}>
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

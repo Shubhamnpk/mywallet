@@ -5,12 +5,14 @@ import { FloatingAddButton } from "@/components/dashboard/floating-add-button"
 import { MainTabs } from "@/components/dashboard/main-tabs"
 import { BiometricCrossDevicePrompt } from "@/components/security/biometric-cross-device-prompt"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 export function MyWalletPageClient() {
   const router = useRouter()
   const walletData = useWalletData()
   const { userProfile, showOnboarding, updateUserProfile } = walletData
+  const [mobileFullscreenTab, setMobileFullscreenTab] = useState<string | null>(null)
   useEffect(() => {
     if (!userProfile && showOnboarding) {
       router.replace("/welcome")
@@ -18,39 +20,21 @@ export function MyWalletPageClient() {
   }, [userProfile, showOnboarding, router])
 
   if (!userProfile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
+
+  const isFullscreen = !!mobileFullscreenTab
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader userProfile={userProfile} />
+      {!isFullscreen && <DashboardHeader />}
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <CombinedBalanceCard />
-        <FloatingAddButton />
+      <div className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 ${isFullscreen ? "" : "py-6 space-y-6"}`}>
+        {!isFullscreen && <CombinedBalanceCard />}
+        {!isFullscreen && <FloatingAddButton />}
         <MainTabs
-          transactions={walletData.transactions}
-          budgets={walletData.budgets}
-          goals={walletData.goals}
-          categories={walletData.categories}
-          userProfile={userProfile}
-          balance={walletData.balance}
-          debtAccounts={walletData.debtAccounts}
-          onExportData={walletData.exportData}
-          calculateTimeEquivalent={walletData.calculateTimeEquivalent}
-          onDeleteTransaction={walletData.deleteTransaction}
-          onAddBudget={walletData.addBudget}
-          onAddGoal={walletData.addGoal}
-          onDeleteBudget={walletData.deleteBudget}
-          onUpdateBudget={walletData.updateBudget}
-          onAddCategory={walletData.addCategory}
-          onUpdateCategory={walletData.updateCategory}
-          onDeleteCategory={walletData.deleteCategory}
-          onAddTransaction={walletData.addTransaction}
+          mobileFullscreenTab={mobileFullscreenTab}
+          onMobileFullscreenChange={setMobileFullscreenTab}
         />
       </div>
 

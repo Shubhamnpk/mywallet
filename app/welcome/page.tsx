@@ -90,7 +90,7 @@ export default function WelcomePage() {
       />
       <noscript>
         <div className="min-h-screen bg-background text-foreground p-8 max-w-2xl mx-auto space-y-4">
-          <h1 className="text-3xl font-bold tracking-tight">MyWallet — free personal finance app</h1>
+          <h1 className="text-3xl font-bold tracking-tight">MyWallet | free personal finance app</h1>
           <p className="text-muted-foreground leading-relaxed">
             Track expenses and budgets, set goals, and see spending in terms of time worked. Works
             offline as a PWA. No hidden fees.

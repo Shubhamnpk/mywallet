@@ -25,7 +25,7 @@ import {
   CheckCircle2,
   Edit,
   Trash2,
-  MoreHorizontal,
+  MoreVertical,
   PiggyBank,
   Home,
   Car,
@@ -38,10 +38,12 @@ import {
   Receipt,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
-import { useWalletData } from "@/contexts/wallet-data-context"
+import { useGoals } from "@/contexts/goals-context"
+import { useUser } from "@/contexts/user-context"
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getGoalChallengeSummary, getGoalEffectiveProgress, getGoalEffectiveTargetAmount } from "@/lib/goal-challenge"
 import { calculateGoalProgress, getGoalTransactions } from "@/lib/goal-calculations"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -49,24 +51,25 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GoalProgressVisualization } from "./goal-progress-visualization"
 import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
-import { formatAppDate, getCalendarMonthRange, getCalendarSystem } from "@/lib/app-calendar"
-
-interface EnhancedGoalsListProps {
-  goals: Goal[]
-  userProfile: UserProfile
-}
+import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
-export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps) {
-  const { transferToGoal, balance, updateGoal, deleteGoal, useGoalForInvestment, transactions } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+export function EnhancedGoalsList() {
+  const { goals, addGoal, updateGoal, deleteGoal, transferToGoal, useGoalForInvestment } = useGoals()
+  const { userProfile } = useUser()
+  const { balance, transactions } = useWalletData()
+  const calendarSystem = useCalendarSystem()
+  if (!userProfile) return null
 
   // Get currency symbol
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", (userProfile as any)?.customCurrency)
-  }, [userProfile?.currency, (userProfile as any)?.customCurrency])
+  const currencySymbol = useCurrencySymbol()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set())
@@ -89,7 +92,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
     goalId: "",
     goalName: "",
   })
-  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all">("active-month")
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "all" | "custom">("active-month")
+  const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({})
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<FilterType>("all")
@@ -286,14 +290,20 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
   const getGoalHistory = (goalId: string) => getGoalTransactions(goalId, transactions)
 
-  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all") => {
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "all" | "custom") => {
     if (range === "all") return items
 
     const now = new Date()
     let start: Date
     let end: Date
 
-    if (range === "active-month") {
+    if (range === "custom") {
+      if (!customDateRange.from || !customDateRange.to) return items
+      start = new Date(customDateRange.from)
+      start.setHours(0, 0, 0, 0)
+      end = new Date(customDateRange.to)
+      end.setHours(23, 59, 59, 999)
+    } else if (range === "active-month") {
       const activeMonth = getCalendarMonthRange(now, calendarSystem)
       start = activeMonth.start
       end = activeMonth.end
@@ -512,6 +522,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                       <Calendar className="w-3 h-3 md:w-4 md:h-4" />
                                       <span>{daysRemaining} days left</span>
                                     </div>
+                                    <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                                   </div>
                                 </div>
                               </div>
@@ -530,8 +541,8 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-muted">
-                                    <MoreHorizontal className="w-4 h-4" />
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                                    <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
@@ -549,8 +560,9 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuItem
+                                    variant="destructive"
                                     onClick={() => handleDeleteGoal(goal.id)}
-                                    className="text-red-600 focus:text-red-600 cursor-pointer"
+                                    className="cursor-pointer"
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Delete Goal
@@ -558,32 +570,50 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                                 </DropdownMenuContent>
                               </DropdownMenu>
 
-                              <ChevronDown className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-                            </div>
-                          </div>
-
-                          {/* Enhanced Progress Bar */}
-                          <div className="mt-2 md:mt-4 ml-8 md:ml-12">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${getProgressColor(progress)}`} />
-                                <span className="text-xs md:text-sm font-medium">
-                                  {isCompleted ? "Goal Achieved! 🎉" : `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`}
-                                </span>
-                              </div>
-                              <span className="text-xs md:text-sm text-muted-foreground">
-                                {progress.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <Progress value={Math.min(progress, 100)} className="h-2" />
-                              {progress > 100 && (
-                                <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500 rounded-full opacity-75" />
-                              )}
                             </div>
                           </div>
                         </CardHeader>
                       </CollapsibleTrigger>
+
+                      {/* Enhanced Progress Bar - outside trigger so clicking it won't toggle collapse */}
+                      <TooltipProvider delayDuration={1000}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className="mx-3 md:mx-5 cursor-pointer hover:bg-muted/30 rounded-lg p-2 transition-colors"
+                              onClick={() => {
+                                setHistoryRange("active-month")
+                                setHistoryDialog({
+                                  open: true,
+                                  goalId: goal.id,
+                                  goalName: goal.title || goal.name || "Goal",
+                                })
+                              }}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-3 h-3 rounded-full ${getProgressColor(progress)}`} />
+                                  <span className="text-xs md:text-sm font-medium">
+                                    {isCompleted ? "Goal Achieved! 🎉" : `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`}
+                                  </span>
+                                </div>
+                                <span className="text-xs md:text-sm text-muted-foreground">
+                                  {progress.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="relative">
+                                <Progress value={Math.min(progress, 100)} className="h-2" />
+                                {progress > 100 && (
+                                  <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500 rounded-full opacity-75" />
+                                )}
+                              </div>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            Click to view transactions
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
                       <CollapsibleContent>
                         <CardContent className="space-y-4 md:space-y-6">
@@ -856,7 +886,7 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
 
                   <Select
                     value={historyRange}
-                    onValueChange={(value: "active-month" | "this-week" | "all") => setHistoryRange(value)}
+                    onValueChange={(value: "active-month" | "this-week" | "all" | "custom") => setHistoryRange(value)}
                   >
                     <SelectTrigger className="w-[170px] bg-background">
                       <SelectValue />
@@ -865,8 +895,62 @@ export function EnhancedGoalsList({ goals, userProfile }: EnhancedGoalsListProps
                       <SelectItem value="active-month">Active Month</SelectItem>
                       <SelectItem value="this-week">This Week</SelectItem>
                       <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
                     </SelectContent>
                   </Select>
+                  {historyRange === "custom" && (
+                    <div className="w-full pt-3">
+                      <div className="rounded-xl border bg-card p-4 shadow-sm space-y-4">
+                        <div className="flex items-center justify-center gap-2 text-xs font-semibold text-muted-foreground">
+                          <Calendar className="w-3.5 h-3.5 text-primary" />
+                          <span>Custom Date Range</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                >
+                                  <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                  <span className="truncate">{customDateRange.from ? customDateRange.from.toLocaleDateString() : "From"}</span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarPicker
+                                  mode="single"
+                                  selected={customDateRange.from}
+                                  onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, from: date }))}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 shrink-0">
+                            <ArrowRight className="w-4 h-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                >
+                                  <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                  <span className="truncate">{customDateRange.to ? customDateRange.to.toLocaleDateString() : "To"}</span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarPicker
+                                  mode="single"
+                                  selected={customDateRange.to}
+                                  onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, to: date }))}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col pt-2">

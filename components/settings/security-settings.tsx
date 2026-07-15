@@ -15,12 +15,13 @@ import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SessionManager } from "@/lib/session-manager"
 import { SecurityLogger, SecurityEvent } from "@/lib/security-logger"
 import { BiometricAuth } from "../security/biometric-auth"
-import { Shield, Lock, Key, Volume2, AlertTriangle, CheckCircle2, Info } from "lucide-react"
+import { Shield, Lock, Key, AlertTriangle, CheckCircle2, Info } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 
 interface SecuritySettingsProps {
   onLock?: () => void
@@ -28,7 +29,7 @@ interface SecuritySettingsProps {
 
 export function SecuritySettings({ onLock }: SecuritySettingsProps) {
   const { userProfile, updateUserProfile } = useSecurityData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const { isAuthenticated, hasPin, lockApp } = useAuthentication()
 
   const [pinEnabled, setPinEnabled] = useState(!!userProfile?.securityEnabled && !!userProfile?.pin)
@@ -689,30 +690,6 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
       </Card>
 
       {/* Audio Feedback for Authentication */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Volume2 className="w-5 h-5" />
-            Authentication Sounds
-          </CardTitle>
-          <CardDescription>Sound feedback for PIN and biometric authentication</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
-              <Volume2 className="w-4 h-4" />
-              <span className="text-sm font-medium">Sound Settings</span>
-            </div>
-            <p className="text-sm text-blue-600 dark:text-blue-500">
-              Authentication sounds are configured in Accessibility Settings. Both PIN and biometric authentication use the same success and failure sound settings.
-            </p>
-            <p className="text-sm text-blue-600 dark:text-blue-500 mt-2">
-              Go to Settings → Accessibility → Audio Feedback to customize sounds for Auth success, Auth failure, and other activities.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Lock App */}
       {isAuthenticated && hasPin && (
         <Card>

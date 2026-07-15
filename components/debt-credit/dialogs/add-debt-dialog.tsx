@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import { Loader2, Plus, AlertTriangle } from "lucide-react"
 import { getCurrencySymbol } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
@@ -61,27 +60,16 @@ export function AddDebtDialog({
                     </div>
 
                     <div className="space-y-3">
-                        <Label className="text-sm font-medium">
-                            Amount to Add
-                        </Label>
-
-                        <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-lg">
-                                {getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
-                            </span>
-                            <Input
-                                type="number"
-                                required
-                                step="0.01"
-                                min="0"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                placeholder="0.00"
-                                className="h-14 pl-10 text-2xl font-bold shadow-sm focus-visible:ring-destructive"
-                                disabled={isLoading}
-                                autoFocus
-                            />
-                        </div>
+                        <AmountInput
+                            label="Amount to Add"
+                            value={amount}
+                            onChange={setAmount}
+                            currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
+                            required
+                            disabled={isLoading}
+                            autoFocus
+                            className="h-14 text-2xl font-bold shadow-sm focus-visible:ring-destructive"
+                        />
 
                         {error && (
                             <div className="flex items-center gap-2 text-sm text-destructive mt-2 p-2 bg-destructive/5 rounded-md border border-destructive/10">

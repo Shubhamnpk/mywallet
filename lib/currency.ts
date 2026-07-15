@@ -26,16 +26,29 @@ export const ONBOARDING_CURRENCIES = [
   { value: 'NPR', label: 'रु NPR' },
 ]
 
+export function getNumberFormatLocale(): string {
+  if (typeof window === 'undefined') return 'en-US'
+  const format = localStorage.getItem("wallet_number_format") || "us"
+  return format === 'us' ? 'en-US' : format === 'eu' ? 'de-DE' : 'en-IN'
+}
+
 /**
  * Get currency symbol for a given currency code
  */
-export function getCurrencySymbol(currencyCode: string, customCurrency?: { symbol: string }): string {
-  if (currencyCode === "CUSTOM" && customCurrency?.symbol) {
-    return customCurrency.symbol
+export function getCurrencySymbol(
+  currency: string | { code?: string; symbol?: string; name?: string } | undefined | null,
+  custom?: { symbol?: string } | null,
+): string {
+  if (!currency) return "$"
+  if (typeof currency === "object") {
+    if (currency.symbol) return currency.symbol
+    if (currency.code) return currency.code
+    return "$"
   }
 
-  const currency = CURRENCIES.find(c => c.value === currencyCode)
-  return currency?.symbol || "$"
+  if (currency === "CUSTOM" && custom && custom.symbol) return custom.symbol
+  const currencyObj = CURRENCIES.find(c => c.value === currency)
+  return currencyObj?.symbol || currency
 }
 
 /**
@@ -66,8 +79,8 @@ export function getCurrencyLabel(currencyCode: string, customCurrency?: { name: 
  * Format currency amount with symbol
  */
 export function formatCurrency(amount: number, currencyCode: string, customCurrency?: { symbol: string }): string {
+  const locale = getNumberFormatLocale()
   const symbol = getCurrencySymbol(currencyCode, customCurrency)
-  const locale = getLocaleForCurrency(currencyCode)
   return `${symbol}${amount.toLocaleString(locale, { 
     minimumFractionDigits: 0, 
     maximumFractionDigits: 2 
@@ -80,10 +93,10 @@ export function formatCurrency(amount: number, currencyCode: string, customCurre
 export function getLocaleForCurrency(currencyCode: string): string {
   switch (currencyCode) {
     case "NPR":
-      return "ne-NP" // Nepali locale for Indian-style numbering (1,10,000)
+      return "ne-NP"
     case "USD":
     default:
-      return "en-US" // US locale for US-style numbering (110,000)
+      return "en-US"
   }
 }
 

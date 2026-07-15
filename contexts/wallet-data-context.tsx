@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react"
 import { useWalletStore } from "@/hooks/use-wallet-store"
-import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, } from "@/types/wallet"
+import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, NepseIndexItem, NepseIndexGraphPoint, } from "@/types/wallet"
 export type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
@@ -26,6 +26,8 @@ export type WalletDataContextType = {
   marketStatus: MarketStatusData | null
   marketSummary: MarketSummaryMetric[]
   marketSummaryHistory: MarketSummaryHistoryItem[]
+  marketIndices: NepseIndexItem[]
+  marketIndexGraph: NepseIndexGraphPoint[]
   noticesBundle: NepseNoticesBundle | null
   disclosures: NepseDisclosure[]
   exchangeMessages: NepseExchangeMessage[]
@@ -75,6 +77,8 @@ export type WalletDataContextType = {
   ) => Promise<{ success: boolean; transaction?: Transaction; error?: string }>
   addDebtAccount: (debt: Omit<DebtAccount, "id">) => DebtAccount
   addCreditAccount: (credit: Omit<CreditAccount, "id">) => CreditAccount
+  updateDebtAccount: (id: string, updates: Partial<DebtAccount>) => void
+  updateCreditAccount: (id: string, updates: Partial<CreditAccount>) => void
   deleteDebtAccount: (id: string) => void
   deleteCreditAccount: (id: string) => void
   addToEmergencyFund: (amount: number) => void

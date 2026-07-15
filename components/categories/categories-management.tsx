@@ -10,26 +10,17 @@ import { getCurrencySymbol } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
 import { CreateCategoryModal } from "./create-category-modal"
 import { DeleteCategoryDialog } from "./delete-category-dialog"
-import type { Category, Transaction, UserProfile } from "@/types/wallet"
-import { getCalendarMonthKey, getCalendarSystem } from "@/lib/app-calendar"
+import type { Category } from "@/types/wallet"
+import { getCalendarMonthKey } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useCategories } from "@/contexts/categories-context"
+import { useTransactions } from "@/contexts/transactions-context"
+import { useUser } from "@/contexts/user-context"
 
-interface CategoriesManagementProps {
-  categories: Category[]
-  transactions: Transaction[]
-  userProfile: UserProfile
-  onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">) => Category
-  onUpdateCategory?: (id: string, updates: Partial<Category>) => void
-  onDeleteCategory?: (id: string) => void
-}
-
-export function CategoriesManagement({
-  categories,
-  transactions,
-  userProfile,
-  onAddCategory,
-  onUpdateCategory,
-  onDeleteCategory,
-}: CategoriesManagementProps) {
+export function CategoriesManagement() {
+  const { categories, addCategory, updateCategory, deleteCategory } = useCategories()
+  const { transactions } = useTransactions()
+  const { userProfile } = useUser()
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<"all" | "income" | "expense">("all")
   const [sortBy, setSortBy] = useState<"usage" | "amount" | "transactions" | "name">("usage")
@@ -39,13 +30,14 @@ export function CategoriesManagement({
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false)
   const [disabledCategories, setDisabledCategories] = useState<Set<string>>(new Set())
+  if (!userProfile) return null
 
-  const currencySymbol = getCurrencySymbol(userProfile?.currency, (userProfile as any)?.customCurrency)
+  const currencySymbol = getCurrencySymbol(userProfile.currency, (userProfile as any)?.customCurrency)
+  const calendarSystem = useCalendarSystem()
 
   // Calculate enhanced category statistics
   const categoryStats = useMemo(() => {
     const now = new Date()
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     return categories.map((category) => {
@@ -131,8 +123,7 @@ export function CategoriesManagement({
   }
 
   const handleConfirmDelete = (categoryId: string) => {
-    if (!onDeleteCategory) return
-    onDeleteCategory(categoryId)
+    deleteCategory(categoryId)
     setDeletingCategory(null)
   }
 
@@ -185,9 +176,7 @@ export function CategoriesManagement({
 
     if (confirm(`Are you sure you want to delete ${selectedCategories.size} selected categories? This action cannot be undone.`)) {
       selectedCategories.forEach(categoryId => {
-        if (onDeleteCategory) {
-          onDeleteCategory(categoryId)
-        }
+        deleteCategory(categoryId)
       })
       setSelectedCategories(new Set())
       setBulkDeleteMode(false)
@@ -461,9 +450,9 @@ export function CategoriesManagement({
             isOpen={!!editingCategory}
             onClose={() => setEditingCategory(null)}
             onCreateCategory={(categoryData) => {
-              if (!onUpdateCategory || !editingCategory) return
+              if (!editingCategory) return
 
-              onUpdateCategory(editingCategory.id, {
+              updateCategory(editingCategory.id, {
                 name: categoryData.name,
                 color: categoryData.color,
                 icon: categoryData.icon,
@@ -480,8 +469,6 @@ export function CategoriesManagement({
         isOpen={isAddDialogOpen}
         onClose={() => setIsAddDialogOpen(false)}
         onCreateCategory={(categoryData) => {
-          if (!onAddCategory) return
-
           // Check if category already exists
           const exists = categories.some(
             (c) => c.name.toLowerCase() === categoryData.name.toLowerCase() && c.type === categoryData.type,
@@ -492,7 +479,7 @@ export function CategoriesManagement({
             return
           }
 
-          onAddCategory({
+          addCategory({
             name: categoryData.name,
             type: categoryData.type,
             color: categoryData.color,

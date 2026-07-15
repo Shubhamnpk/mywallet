@@ -9,6 +9,10 @@ const emptyCanvasPath = join(__dirname, "lib", "empty-canvas.js");
 /** Set once when Next loads this config (`next dev` vs `next build`), not from `.env.local`. */
 const isNextDevelopment = process.env.NODE_ENV === "development"
 
+const withBundleAnalyzer = process.env.ANALYZE === "true"
+  ? (await import("@next/bundle-analyzer")).default({ enabled: true })
+  : (config) => config;
+
 const withSerwist = withSerwistInit({
   swSrc: "worker/sw.ts",
   swDest: "public/sw.js",
@@ -30,7 +34,7 @@ const nextConfig = {
     /** Inlined at build time so dev-only UI cannot leak into production bundles. */
     NEXT_PUBLIC_APP_DEV_TOOLS: isNextDevelopment ? "1" : "0",
   },
-  images: { unoptimized: true },
+  images: { unoptimized: false },
   // Force webpack as Serwist uses it for SW bundling
   webpack: (config) => {
     config.resolve = config.resolve || {};
@@ -40,12 +44,12 @@ const nextConfig = {
     };
     return config;
   },
-  // Keep turbopack alias for future-proofing
+  // Keep turbopack alias for future-proofing (relative path avoids Windows drive-letter bug)
   turbopack: {
     resolveAlias: {
-      canvas: emptyCanvasPath,
+      canvas: "./lib/empty-canvas.js",
     },
   },
 };
 
-export default withSerwist(nextConfig);
+export default withBundleAnalyzer(withSerwist(nextConfig));

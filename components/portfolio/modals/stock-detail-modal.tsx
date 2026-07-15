@@ -22,7 +22,8 @@ import { EditTransactionModal } from "./edit-transaction-modal"
 import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
-import { adToBsDateKey, formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { adToBsDateKey, formatAppDate } from "@/lib/app-calendar"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
@@ -139,10 +140,11 @@ const getFiscalYearSortValue = (year: string) => {
 
 const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
 
-type PriceHistoryRange = "1M" | "1Y" | "5Y" | "ALL"
+type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
 
 const PRICE_HISTORY_RANGES: Array<{ value: PriceHistoryRange; label: string; months: number; grouping: "daily" | "weekly" | "monthly" }> = [
     { value: "1M", label: "1M", months: 1, grouping: "daily" },
+    { value: "6M", label: "6M", months: 6, grouping: "weekly" },
     { value: "1Y", label: "1Y", months: 12, grouping: "weekly" },
     { value: "5Y", label: "5Y", months: 60, grouping: "monthly" },
     { value: "ALL", label: "All", months: 120, grouping: "monthly" },
@@ -293,7 +295,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
     const zoomPluginInstance = zoomPlugin()
     const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
-    const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
 
     const item = useMemo(() => {
         if (!initialItem) return null
@@ -1368,7 +1370,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted text-muted-foreground transition-all z-50 border border-muted-foreground/10"
+                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted hover:text-muted-foreground text-muted-foreground transition-all z-50 border border-muted-foreground/10"
                             onClick={() => onOpenChange(false)}
                         >
                             <X className="h-4 w-4" />
@@ -2354,7 +2356,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">LTP History</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily"
-                                                            ? "Daily closes · 1M"
+                                                            ? `Daily closes · ${getPriceHistoryRangeConfig(priceHistoryRange).label}`
                                                             : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly"
                                                                 ? "Weekly avg · daily closes"
                                                                 : "Monthly avg · daily closes"}

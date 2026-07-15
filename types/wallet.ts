@@ -256,6 +256,12 @@ export interface DebtAccount {
   payoffDate?: string
   totalInterestPaid?: number
   isFastDebt?: boolean
+  direction?: "borrow" | "lend"
+  source?: "wallet" | "external"
+  contactName?: string
+  contactPhone?: string
+  notes?: string
+  closedAt?: string
 }
 
 export interface CreditAccount {
@@ -389,6 +395,23 @@ export interface MarketStatusData {
   last_checked?: string
   fetched_at?: string
 }
+
+export interface NepseIndexItem {
+  id: number
+  index: string
+  close: number
+  high: number
+  low: number
+  previousClose: number
+  change: number
+  perChange: number
+  currentValue: number
+  fiftyTwoWeekHigh: number
+  fiftyTwoWeekLow: number
+  generatedTime: string
+}
+
+export type NepseIndexGraphPoint = [timestamp: number, value: number]
 
 export interface NepseNoticeGeneral {
   id: number

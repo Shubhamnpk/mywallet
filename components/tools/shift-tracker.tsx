@@ -42,6 +42,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useWalletData } from "@/contexts/wallet-data-context";
+import { useTransactions } from "@/contexts/transactions-context";
+import { useUser } from "@/contexts/user-context";
 import { getCurrencySymbol } from "@/lib/currency";
 import { cn, formatMoney } from "@/lib/utils";
 import { toast } from "sonner";
@@ -62,11 +64,11 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import type { DateRange } from "react-day-picker";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import {
   formatAppDate,
   formatAppMonthKey,
   getCalendarMonthKey,
-  getCalendarSystem,
 } from "@/lib/app-calendar";
 
 /** Dispatched by the main floating + button when the Shift tracker tab is active. */
@@ -148,33 +150,22 @@ function mname(m: string) {
   return MONTHS_FULL[parseInt(m, 10) - 1];
 }
 
-interface ShiftTrackerProps {
-  onAddIncomeTransaction?: (
-    tx: Omit<Transaction, "id" | "createdAt">,
-  ) => void | Promise<unknown>;
-}
-
-export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
-  const { addTransaction, deleteTransaction, categories, userProfile } =
-    useWalletData();
+export function ShiftTracker() {
+  const { addTransaction } = useTransactions();
+  const { userProfile } = useUser();
+  const { deleteTransaction, categories } = useWalletData();
   const isMobile = useIsMobile();
 
   const addIncome = useCallback(
     async (
       partial: Omit<Transaction, "id" | "timeEquivalent" | "createdAt">,
     ) => {
-      if (onAddIncomeTransaction) {
-        return onAddIncomeTransaction({
-          ...partial,
-          type: "income",
-        } as Omit<Transaction, "id" | "createdAt">);
-      }
       return addTransaction({
         ...partial,
         type: "income",
       });
     },
-    [addTransaction, onAddIncomeTransaction],
+    [addTransaction],
   );
 
   const incomeCategory = useMemo(() => {
@@ -191,7 +182,7 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
     userProfile?.currency ?? "USD",
     userProfile?.customCurrency,
   );
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem);
+    const calendarSystem = useCalendarSystem();
   const monthKey = useCallback(
     (date: string) => getCalendarMonthKey(date, calendarSystem),
     [calendarSystem],
@@ -977,10 +968,10 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8 bg-emerald-600 text-xs text-white hover:bg-emerald-700"
+                  className="h-7 bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 text-xs"
                   onClick={handleBulkPay}
                 >
-                  Pay selected
+                  Make paid
                 </Button>
                 <Button
                   type="button"
@@ -989,16 +980,18 @@ export function ShiftTracker({ onAddIncomeTransaction }: ShiftTrackerProps) {
                   className="h-8 text-xs"
                 onClick={() => { setExportSelectedOnly(true); setExportOpen(true); }}
               >
-                Export selected
+                Export
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant="ghost"
-                  className="h-8 text-xs text-muted-foreground"
+                  className="h-8 w-8 text-muted-foreground"
                   onClick={clearSelection}
                 >
-                  Clear
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </Button>
               </div>
             </div>
@@ -2108,7 +2101,7 @@ function PeriodsBody({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {isPaid ? (
+                {selectedShifts.size === 0 && (isPaid ? (
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-300">
                     Paid
                   </span>
@@ -2124,7 +2117,7 @@ function PeriodsBody({
                   >
                     Make paid
                   </Button>
-                )}
+                ))}
                 <span className="font-mono text-sm font-medium text-emerald-600">
                   {formatMoney(d.earn, currencySymbol)}
                 </span>

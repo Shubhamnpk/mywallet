@@ -13,7 +13,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { formatAppDate } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 interface CurrencyConverterDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
@@ -45,7 +46,7 @@ const CURRENCIES = [
 
 export function CurrencyConverterDialog({ isOpen, onOpenChange }: CurrencyConverterDialogProps) {
   const { userProfile } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const [fromCurrency, setFromCurrency] = useState("USD")
   const [toCurrency, setToCurrency] = useState("NPR")
   const [convertAmount, setConvertAmount] = useState("1")

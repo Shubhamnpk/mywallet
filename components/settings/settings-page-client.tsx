@@ -7,23 +7,24 @@ import { UserProfileSettings } from "@/components/settings/user-settings"
 import { SecuritySettings } from "@/components/settings/security-settings"
 import { ThemeSettings } from "@/components/settings/theme-settings"
 import { DataSettings } from "@/components/settings/data-settings"
-import { AccessibilitySettings } from "@/components/settings/accessibility-settings"
 import { AboutSettings } from "@/components/settings/about-settings"
 import { MeroShareSettings } from "@/components/settings/mero-share-settings"
 import { NotificationSettings } from "@/components/settings/notification-settings"
+import { DeveloperSettings } from "@/components/settings/developer-settings"
 import { MobileSettingsPage, type SettingsView } from "@/components/settings/mobile-settings-page"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 
 export function SettingsPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { userProfile, showOnboarding } = useWalletData()
   const isMobile = useIsMobile()
-  const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "accessibility", "about"])
+  const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "about", "developer"])
   const tab = searchParams.get("tab")
   const activeSettingsTab = tab && validTabs.has(tab) ? tab : "profile"
 
@@ -67,14 +68,10 @@ export function SettingsPageClient() {
 
   // Show loading while redirecting
   if (!userProfile || showOnboarding) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
-  // Show mobile settings page — open hub unless URL names a section (e.g. /settings?tab=notifications)
+  // Show mobile settings page,  open hub unless URL names a section (e.g. /settings?tab=notifications)
   if (showMobileSettings) {
     const mobileInitialView: SettingsView =
       tab && validTabs.has(tab) ? (tab as SettingsView) : "main"
@@ -101,45 +98,46 @@ export function SettingsPageClient() {
         <Tabs value={activeSettingsTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
             <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
             <TabsTrigger value="theme">Theme</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
-            <TabsTrigger value="accessibility">A11y</TabsTrigger>
+            <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
             <TabsTrigger value="about">About</TabsTrigger>
+            <TabsTrigger value="developer" className="text-purple-500 data-[state=active]:text-purple-600">
+              Dev
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
             <UserProfileSettings />
           </TabsContent>
 
-          <TabsContent value="security">
-            <SecuritySettings />
+          <TabsContent value="theme">
+            <ThemeSettings />
           </TabsContent>
 
           <TabsContent value="notifications">
             <NotificationSettings />
           </TabsContent>
 
-          <TabsContent value="meroshare">
-            <MeroShareSettings />
-          </TabsContent>
-
-          <TabsContent value="theme">
-            <ThemeSettings />
+          <TabsContent value="security">
+            <SecuritySettings />
           </TabsContent>
 
           <TabsContent value="data">
             <DataSettings />
           </TabsContent>
 
-          <TabsContent value="accessibility">
-            <AccessibilitySettings />
+          <TabsContent value="meroshare">
+            <MeroShareSettings />
           </TabsContent>
 
           <TabsContent value="about">
             <AboutSettings />
+          </TabsContent>
+          <TabsContent value="developer">
+            <DeveloperSettings />
           </TabsContent>
         </Tabs>
       </div>

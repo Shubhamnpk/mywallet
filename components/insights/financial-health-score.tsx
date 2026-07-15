@@ -8,7 +8,8 @@ import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, Sparkle
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
 import { Button } from "../ui/button"
-import { getCalendarMonthRange, getCalendarSystem, isWithinDateRange } from "@/lib/app-calendar"
+import { getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 interface HealthMetric {
   id: string
@@ -32,10 +33,11 @@ export function useFinancialHealthScore(
   debtAccounts: DebtAccount[],
   balance: number = 0
 ) {
+  const calendarSystem = useCalendarSystem()
+
   const healthMetrics = useMemo(() => {
     // Basic Aggregates
     const now = new Date()
-    const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
     const currentMonthRange = getCalendarMonthRange(now, calendarSystem)
     const activeMonthTransactions = transactions.filter(t => {
       return isWithinDateRange(t.date, currentMonthRange.start, currentMonthRange.end)
@@ -203,7 +205,7 @@ export function useFinancialHealthScore(
     ]
 
     return metrics
-  }, [transactions, userProfile, budgets, goals, debtAccounts])
+  }, [transactions, userProfile, budgets, goals, debtAccounts, calendarSystem])
 
   const overallScore = useMemo(() => {
     const totalScore = healthMetrics.reduce((sum, metric) => sum + metric.score, 0)

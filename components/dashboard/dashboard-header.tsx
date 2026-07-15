@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useUser } from "@/contexts/user-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -22,7 +23,8 @@ import {
   readNotificationHistory,
   type NotificationHistoryItem,
 } from "@/lib/notification-history"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
@@ -72,13 +74,10 @@ type HeaderBillRow = {
   reminderDays: number
 }
 
-interface DashboardHeaderProps {
-  userProfile: UserProfile
-}
-
-export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
+export function DashboardHeader() {
+  const { userProfile } = useUser()
   const router = useRouter()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
+  const calendarSystem = useCalendarSystem()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {}
@@ -104,10 +103,10 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
   })
   const { budgets, goals, upcomingIPOs } = useWalletData()
   const isIpoApplyConfigured = Boolean(
-    userProfile.meroShare?.shareFeaturesEnabled &&
-    userProfile.meroShare?.dpId &&
-    userProfile.meroShare?.username &&
-    userProfile.meroShare?.password
+    userProfile?.meroShare?.shareFeaturesEnabled &&
+    userProfile?.meroShare?.dpId &&
+    userProfile?.meroShare?.username &&
+    userProfile?.meroShare?.password
   )
   const [billRows, setBillRows] = useState<HeaderBillRow[]>([])
   const [billDialogOpen, setBillDialogOpen] = useState(false)
@@ -138,6 +137,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
     window.addEventListener(NOTIFICATION_HISTORY_EVENT, sync)
     return () => window.removeEventListener(NOTIFICATION_HISTORY_EVENT, sync)
   }, [])
+  if (!userProfile) return null
 
   const notifications = useMemo<HeaderNotification[]>(() => {
     const items: HeaderNotification[] = []
@@ -202,7 +202,7 @@ export function DashboardHeader({ userProfile }: DashboardHeaderProps) {
           items.push({
             id: `bill-overdue-${bill.id}`,
             title: `Bill overdue: ${name}`,
-            description: "Past due date — mark paid or reschedule.",
+            description: "Past due date , mark paid or reschedule.",
             type: "warning",
             category: "bill",
             actionLabel: "Manage Bill",

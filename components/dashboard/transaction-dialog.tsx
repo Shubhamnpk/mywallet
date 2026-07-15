@@ -13,11 +13,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { TrendingUp, TrendingDown, Clock, CheckCircle, Target, Wallet, Plus, Info, AlertCircle, Receipt, X } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { getCurrencySymbol, getLocaleForCurrency } from "@/lib/currency"
+import { getLocaleForCurrency } from "@/lib/currency"
+import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { getDefaultCategoryNames, AVAILABLE_ICONS } from "@/lib/categories"
 import { toast } from "sonner"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { useAccessibility } from "@/hooks/use-accessibility"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -135,9 +137,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   const amountInputRef = useRef<HTMLInputElement>(null)
   const customCurrency = userProfile?.customCurrency
 
-  const currencySymbol = useMemo(() => {
-    return getCurrencySymbol(userProfile?.currency || "USD", customCurrency)
-  }, [userProfile?.currency, customCurrency])
+  const currencySymbol = useCurrencySymbol()
 
   const [numberFormat, setNumberFormat] = useState(() => {
     return localStorage.getItem("wallet_number_format") || "us"
@@ -1368,14 +1368,14 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
   return (
     <TooltipProvider>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
             <DialogTitle className="flex items-center gap-2">Add New Transaction</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col space-y-6">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             {/* Transaction Type Tabs */}
             {!isExpenseFundingOnlyView && (
-              <Tabs value={type} onValueChange={handleTypeChange}>
+              <Tabs value={type} onValueChange={handleTypeChange} className="shrink-0 px-6">
                 <TabsList className="grid w-full grid-cols-2 h-12">
                   <TabsTrigger
                     value="income"
@@ -1395,9 +1395,9 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
               </Tabs>
             )}
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6">
               {!isExpenseFundingOnlyView && (
-                <div className="space-y-2">
+                <div className="space-y-2 mt-5">
                 <Label htmlFor="amount" className="text-sm font-medium flex items-center gap-1">
                   Amount
                   <span className="text-orange-500">*</span>
@@ -2056,7 +2056,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-4 flex gap-3">
+            <div className="shrink-0 px-6 pb-6 pt-4 flex gap-3">
               <Button
                 type="button"
                 variant="outline"
@@ -2093,7 +2093,7 @@ export function UnifiedTransactionDialog({ isOpen = false, onOpenChange, initial
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <Spinner />
                       Adding...
                     </div>
                   ) : cooldownRemaining > 0 ? (

@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import type { ShareTransaction } from "@/types/wallet"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate } from "@/lib/app-calendar"
 
 interface SellConfirmationModalProps {
   symbol: string
@@ -39,7 +40,7 @@ export function SellConfirmationModal({
   zeroHoldingsEnabled = true,
 }: SellConfirmationModalProps) {
   const { userProfile } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const normalizedSymbol = normalizeStockSymbol(symbol)
 

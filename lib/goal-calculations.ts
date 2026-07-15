@@ -31,15 +31,20 @@ function getGoalTransactionsCached(goalId: string, transactions: Transaction[]):
   )
   
   // Calculate values once and cache them
+  // Contributions: expenses where actual === amount (money sent TO the goal)
   const calculated = goalTransactions
-    .filter(tx => tx.actual === tx.amount)
+    .filter(tx => tx.actual === tx.amount && tx.type !== "income")
     .reduce((total, tx) => total + tx.amount, 0)
     
+  // Withdrawals: actual === 0 (spendFromGoal) OR goal_transfer income (addFromGoal)
+  // Exclude "Goal Investment" — investments are still the user's asset, not spending
   const spent = goalTransactions
     .filter(tx => 
-      tx.actual === 0 || 
-      tx.category === "goal spending" ||
-      tx.description?.toLowerCase().includes("spent from goal")
+      (tx.actual === 0 || 
+       (tx.allocationType === "goal_transfer" && tx.type === "income") ||
+       tx.category === "goal spending" ||
+       tx.description?.toLowerCase().includes("spent from goal")) &&
+      tx.category !== "Goal Investment"
     )
     .reduce((total, tx) => total + tx.amount, 0)
   

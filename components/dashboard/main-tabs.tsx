@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/goals/goals-list"
@@ -12,31 +12,10 @@ import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
 import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
-import { BrokerTraining } from "@/components/tools/broker-training"
-import { ScannerTool } from "@/components/tools/scanner/scanner-tool"
+import { BrokerLeaderboard } from "@/components/tools/broker-leaderboard"
+import { ScannerTool } from "@/components/tools/scanner/scan-tool"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
-import type {UserProfile,Transaction,Budget,Goal,Category} from "@/types/wallet"
-interface MainTabsProps {
-  transactions: Transaction[]
-  budgets: Budget[]
-  goals: Goal[]
-  categories: Category[]
-  userProfile: UserProfile
-  balance: number
-  onExportData: () => void
-  calculateTimeEquivalent: (amount: number) => number
-  onDeleteTransaction?: (id: string) => void
-  onAddBudget: (budget: Omit<Budget, "id">) => void
-  onDeleteBudget: (id: string) => void
-  onUpdateBudget?: (id: string, updates: Partial<Budget>) => void
-  onAddGoal?: (goal: Omit<Goal, "id">) => void
-  onAddCategory?: (category: Omit<Category, "id" | "createdAt" | "totalSpent" | "transactionCount">,) => Category
-  onUpdateCategory?: (id: string, updates: Partial<Category>) => void
-  onDeleteCategory?: (id: string) => void
-  onAddTransaction: (transaction: Omit<Transaction, "id" | "createdAt">) => void | Promise<unknown>
-  debtAccounts?: any[]
-}
 
 type TabDef = {
   value: string
@@ -74,7 +53,6 @@ const DESKTOP_TOOLS_GROUP = [
 
 const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools"])
 
-// Custom hook for delayed tooltip
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -96,26 +74,28 @@ function useDelayedTooltip(delay: number = 3000) {
   return { showTooltip, handleMouseEnter, handleMouseLeave }
 }
 
-export function MainTabs({
-  transactions,
-  budgets,
-  goals,
-  categories,
-  userProfile,
-  balance,
-  onExportData,
-  calculateTimeEquivalent,
-  onDeleteTransaction,
-  onAddBudget,
-  onDeleteBudget,
-  onUpdateBudget,
-  onAddGoal,
-  onAddCategory,
-  onUpdateCategory,
-  onDeleteCategory,
-  onAddTransaction,
-  debtAccounts = [],
-}: MainTabsProps) {
+interface MainTabsProps {
+  mobileFullscreenTab?: string | null
+  onMobileFullscreenChange?: (tab: string | null) => void
+}
+
+function getTabLabel(value: string): string {
+  const labels: Record<string, string> = {
+    transactions: "Transactions",
+    budgets: "Budgets",
+    goals: "Goals",
+    "debt-credit": "Debt & Credit",
+    categories: "Categories",
+    portfolio: "Portfolio",
+    insights: "Insights",
+    "shift-tracker": "Shift Tracker",
+    "broker-training": "Broker leaderboard",
+    scanner: "Scanner",
+  }
+  return labels[value] ?? value
+}
+
+export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: MainTabsProps = {}) {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === "undefined") return "transactions"
     const requestedTab = new URLSearchParams(window.location.search).get("tab")
@@ -142,19 +122,27 @@ export function MainTabs({
     }
   }, [])
 
-  // Scroll to tools content when Tools tab is active (for mobile)
   useEffect(() => {
     if (activeTab === "tools" && toolsContentRef.current) {
       setTimeout(() => {
-        // Scroll down a bit to show the second row of tool cards
         const element = toolsContentRef.current
         if (!element) return
         const rect = element.getBoundingClientRect()
-        const scrollOffset = window.scrollY + rect.top - 100 // Offset to show second row
+        const scrollOffset = window.scrollY + rect.top - 100
         window.scrollTo({ top: scrollOffset, behavior: "smooth" })
       }, 150)
     }
   }, [activeTab])
+
+  useEffect(() => {
+    if (!onMobileFullscreenChange) return
+    const isMobile = window.innerWidth < 1024
+    if (isMobile && MOBILE_TOOLS_GROUP.includes(activeTab as any) && activeTab !== "tools") {
+      onMobileFullscreenChange(activeTab)
+    } else {
+      onMobileFullscreenChange(null)
+    }
+  }, [activeTab, onMobileFullscreenChange])
 
   useEffect(() => {
     const validateSession = () => {
@@ -230,7 +218,7 @@ export function MainTabs({
     },
     {
       value: "broker-training",
-      label: "Broker training",
+      label: "Broker leaderboard",
       icon: Landmark,
       description: "Browse NEPSE brokers by sector & activity",
     },
@@ -265,7 +253,6 @@ export function MainTabs({
     activeTab as (typeof MOBILE_TOOLS_GROUP)[number],
   )
 
-  // Tab trigger component with delayed tooltip
   const TabTriggerWithTooltip = ({ tab }: { tab: TabDef }) => {
     const { showTooltip, handleMouseEnter, handleMouseLeave } = useDelayedTooltip(800)
 
@@ -338,10 +325,11 @@ export function MainTabs({
     pickTab(allTabs, "insights"),
   ]
 
+  const isFullscreen = !!mobileFullscreenTab
+
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className={isFullscreen ? "" : "space-y-6 pb-24 lg:pb-6"}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Desktop: lighter primary bar + Tools hub */}
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-6 gap-1 h-auto p-1.5 bg-muted/15 border border-border/50 rounded-xl">
             {desktopNavTabs.map((tab) => (
@@ -350,7 +338,6 @@ export function MainTabs({
           </TabsList>
         </div>
 
-        {/* Mobile Bottom Navigation */}
         <div className="block lg:hidden">
           <TabsList className="fixed bottom-0 left-0 right-0 w-full bg-background/80 backdrop-blur-xl border-t border-zinc-200/80 dark:border-white/10 shadow-2xl z-50 flex justify-around items-end pb-2 pt-1.5 h-[70px] px-4 safe-area-bottom">
             {desktopNavTabs
@@ -405,42 +392,36 @@ export function MainTabs({
           </TabsList>
         </div>
 
-        <div className="mt-6">
+        <div className={isFullscreen ? "" : "mt-6"}>
+          {isFullscreen && (
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-2 py-2 mb-4">
+              <button
+                onClick={() => setActiveTab("tools")}
+                className="inline-flex items-center gap-1.5 p-2 rounded-lg hover:bg-muted/50 transition-colors text-sm font-medium"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                Back
+              </button>
+            </div>
+          )}
           <TabsContent value="transactions" className="space-y-4">
-            <TransactionsList
-              transactions={transactions}
-              userProfile={userProfile}
-              onDeleteTransaction={onDeleteTransaction}
-            />
+            <TransactionsList />
           </TabsContent>
 
           <TabsContent value="budgets" className="space-y-4">
-            <BudgetsList
-              budgets={budgets}
-              userProfile={userProfile}
-              onAddBudget={onAddBudget}
-              onUpdateBudget={onUpdateBudget}
-              onDeleteBudget={onDeleteBudget}
-            />
+            <BudgetsList />
           </TabsContent>
 
           <TabsContent value="goals" className="space-y-4">
-            <EnhancedGoalsList goals={goals} userProfile={userProfile} />
+            <EnhancedGoalsList />
           </TabsContent>
 
           <TabsContent value="categories" className="space-y-4">
-            <CategoriesManagement
-              categories={categories}
-              transactions={transactions}
-              userProfile={userProfile}
-              onAddCategory={onAddCategory}
-              onUpdateCategory={onUpdateCategory}
-              onDeleteCategory={onDeleteCategory}
-            />
+            <CategoriesManagement />
           </TabsContent>
 
           <TabsContent value="debt-credit" className="space-y-4">
-            <DebtCreditManagement userProfile={userProfile} />
+            <DebtCreditManagement />
           </TabsContent>
 
           <TabsContent value="portfolio" className="space-y-4">
@@ -448,27 +429,15 @@ export function MainTabs({
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">
-            <InsightsPanel
-              transactions={transactions}
-              userProfile={userProfile}
-              budgets={budgets}
-              goals={goals}
-              debtAccounts={debtAccounts}
-              balance={balance}
-              onExportData={onExportData}
-              calculateTimeEquivalent={calculateTimeEquivalent}
-              onNavigate={setActiveTab}
-              onAddGoal={onAddGoal}
-              onAddBudget={onAddBudget}
-            />
+            <InsightsPanel onNavigate={setActiveTab} />
           </TabsContent>
 
           <TabsContent value="shift-tracker" className="space-y-4">
-            <ShiftTracker onAddIncomeTransaction={onAddTransaction} />
+            <ShiftTracker />
           </TabsContent>
 
           <TabsContent value="broker-training" className="space-y-4">
-            <BrokerTraining />
+            <BrokerLeaderboard />
           </TabsContent>
 
           <TabsContent value="scanner" className="space-y-4">
@@ -499,7 +468,6 @@ export function MainTabs({
               ))}
             </div>
 
-            {/* Mobile: 4 compact tool cards in a row */}
             <div className="grid grid-cols-4 gap-2 lg:hidden">
               {mobileHubCards.map((tool) => (
                 <button

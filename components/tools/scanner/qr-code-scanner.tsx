@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Camera, Upload, Scan, X, CheckCircle, Loader2, RotateCcw, Square, QrCode, Copy, ExternalLink, Phone, Mail, Wifi, Repeat, ChevronDown } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDateTime, getCalendarSystem } from "@/lib/app-calendar"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDateTime } from "@/lib/app-calendar"
 type QRContentType = 'url' | 'email' | 'phone' | 'wifi' | 'contact' | 'calendar' | 'bitcoin' | 'text'
 interface QRPoint {
   x: number
@@ -80,7 +81,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
   onSwitchCamera
 }) => {
   const { userProfile } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile?.calendarSystem)
+    const calendarSystem = useCalendarSystem()
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [qrScanResult, setQrScanResult] = useState<QRScanResult | null>(null)
@@ -736,7 +737,7 @@ const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
               )}
             </div>
             <div className="text-center">
-              <div className="font-semibold text-sm">{isInitializingCamera ? 'Starting...' : 'Scan with Camera'}</div>
+              <div className="font-semibold text-sm">{isInitializingCamera ? 'Starting...' : 'Scan'}</div>
               <div className="text-xs text-muted-foreground mt-0.5">Use your device camera</div>
             </div>
           </button>

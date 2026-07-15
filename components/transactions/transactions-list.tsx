@@ -13,12 +13,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
 import { TransactionDetailsModal } from "./transaction-details-modal"
-import type { Transaction, UserProfile } from "@/types/wallet"
+import type { Transaction } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useWalletData } from "@/contexts/wallet-data-context"
-import { formatAppDate, getCalendarSystem } from "@/lib/app-calendar"
+import { useTransactions } from "@/contexts/transactions-context"
+import { useUser } from "@/contexts/user-context"
+import { useCategories } from "@/contexts/categories-context"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { formatAppDate } from "@/lib/app-calendar"
 
 function BadgeRow({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -72,21 +75,18 @@ function BadgeRow({ children }: { children: React.ReactNode }) {
 }
 
 interface TransactionsListProps {
-  transactions: Transaction[]
-  userProfile: UserProfile
-  onDeleteTransaction?: (id: string) => void
   fetchTransactions?: () => Promise<Transaction[]>
 }
 
 export function TransactionsList({
-  transactions: initialTransactions,
-  userProfile,
-  onDeleteTransaction,
   fetchTransactions,
 }: TransactionsListProps) {
-  const { updateTransaction, categories: walletCategories } = useWalletData()
-  const calendarSystem = getCalendarSystem(userProfile.calendarSystem)
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
+  const { transactions: contextTransactions, deleteTransaction: contextDeleteTransaction, updateTransaction, calculateTimeEquivalent } = useTransactions()
+  const { userProfile } = useUser()
+  const { categories: allCategories } = useCategories()
+  const calendarSystem = useCalendarSystem()
+  if (!userProfile) return null
+  const [transactions, setTransactions] = useState<Transaction[]>(contextTransactions)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all")
@@ -113,8 +113,8 @@ export function TransactionsList({
   }, [fetchTransactions])
 
   useEffect(() => {
-    setTransactions(initialTransactions)
-  }, [initialTransactions])
+    setTransactions(contextTransactions)
+  }, [contextTransactions])
 
   useEffect(() => {
     setVisibleCount(7)
@@ -176,7 +176,7 @@ export function TransactionsList({
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              Recent Transactions
+             Transactions
             </CardTitle>
             <div className="flex items-center gap-2">
               <Button
@@ -396,10 +396,10 @@ export function TransactionsList({
         <TransactionDetailsModal
           transaction={selectedTransaction}
           userProfile={userProfile}
-          categories={walletCategories}
+          categories={allCategories}
           isOpen={!!selectedTransaction}
           onClose={() => setSelectedTransaction(null)}
-          onDelete={onDeleteTransaction}
+          onDelete={contextDeleteTransaction}
           updateTransaction={updateTransaction}
           onSaved={(tx) => setSelectedTransaction(tx)}
         />

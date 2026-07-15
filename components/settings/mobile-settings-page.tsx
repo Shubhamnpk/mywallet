@@ -10,10 +10,10 @@ import { UserProfileSettings } from "./user-settings"
 import { SecuritySettings } from "./security-settings"
 import { ThemeSettings } from "./theme-settings"
 import { DataSettings } from "./data-settings"
-import { AccessibilitySettings } from "./accessibility-settings"
 import { AboutSettings } from "./about-settings"
 import { MeroShareSettings } from "./mero-share-settings"
 import { NotificationSettings } from "./notification-settings"
+import { DeveloperSettings } from "./developer-settings"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import InstallButton from "@/components/pwa/install-button"
@@ -26,7 +26,6 @@ import {
   Shield,
   Palette,
   Database,
-  Accessibility,
   Info,
   Wifi,
   Bluetooth,
@@ -38,7 +37,8 @@ import {
   ChevronRight,
   Home,
   Share2,
-  Bell
+  Bell,
+  FlaskConical,
 } from "lucide-react"
 
 interface MobileSettingsPageProps {
@@ -46,7 +46,7 @@ interface MobileSettingsPageProps {
   initialView?: SettingsView
 }
 
-export type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "accessibility" | "about"
+export type SettingsView = "main" | "profile" | "security" | "notifications" | "meroshare" | "theme" | "data" | "about" | "developer"
 
 export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSettingsPageProps) {
   const [currentView, setCurrentView] = useState<SettingsView>(initialView)
@@ -164,13 +164,13 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       keywords: ["profile", "account", "personal", "info", "currency", "name", "avatar"]
     },
     {
-      id: "security",
-      icon: <Shield className="w-6 h-6" />,
-      iconBg: "bg-red-600",
-      title: "Security",
-      subtitle: "PIN • Biometric • Emergency access",
-      category: "account",
-      keywords: ["security", "pin", "biometric", "emergency", "access", "password", "lock"]
+      id: "theme",
+      icon: <Palette className="w-6 h-6" />,
+      iconBg: "bg-pink-600",
+      title: "Theme",
+      subtitle: "Appearance • Colors • Accessibility",
+      category: "personalization",
+      keywords: ["theme", "appearance", "colors", "dark", "light", "accessibility", "visual"]
     },
     {
       id: "notifications",
@@ -182,22 +182,13 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       keywords: ["notifications", "alerts", "reminders", "budget alerts", "goals", "permission"]
     },
     {
-      id: "meroshare",
-      icon: <Share2 className="w-6 h-6" />,
-      iconBg: "bg-indigo-600",
-      title: "MeroShare",
-      subtitle: "IPO Automation • Credentials",
+      id: "security",
+      icon: <Shield className="w-6 h-6" />,
+      iconBg: "bg-red-600",
+      title: "Security",
+      subtitle: "PIN • Biometric • Emergency access",
       category: "account",
-      keywords: ["meroshare", "ipo", "automation", "invest", "share"]
-    },
-    {
-      id: "theme",
-      icon: <Palette className="w-6 h-6" />,
-      iconBg: "bg-pink-600",
-      title: "Theme",
-      subtitle: "Appearance • Colors • Accessibility",
-      category: "personalization",
-      keywords: ["theme", "appearance", "colors", "dark", "light", "accessibility", "visual"]
+      keywords: ["security", "pin", "biometric", "emergency", "access", "password", "lock"]
     },
     {
       id: "data",
@@ -209,13 +200,13 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       keywords: ["data", "backup", "import", "export", "sync", "storage"]
     },
     {
-      id: "accessibility",
-      icon: <Accessibility className="w-6 h-6" />,
-      iconBg: "bg-orange-600",
-      title: "Accessibility",
-      subtitle: "Audio • Visual • Motion",
-      category: "system",
-      keywords: ["accessibility", "audio", "visual", "motion", "screen reader", "keyboard"]
+      id: "meroshare",
+      icon: <Share2 className="w-6 h-6" />,
+      iconBg: "bg-indigo-600",
+      title: "MeroShare",
+      subtitle: "IPO Automation • Credentials",
+      category: "account",
+      keywords: ["meroshare", "ipo", "automation", "invest", "share"]
     },
     {
       id: "about",
@@ -225,6 +216,15 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       subtitle: "Version • Support • Legal",
       category: "system",
       keywords: ["about", "version", "support", "legal", "help", "info"]
+    },
+    {
+      id: "developer",
+      icon: <FlaskConical className="w-6 h-6" />,
+      iconBg: "bg-purple-600",
+      title: "Developer",
+      subtitle: "Demo data • Testing • Debug",
+      category: "system",
+      keywords: ["developer", "demo", "test", "debug", "seed", "data generation"]
     },
 
   ], [])
@@ -325,7 +325,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
                 subtitle={item.subtitle}
                 onClick={() => {
                   if (item.id === "profile" || item.id === "security" || item.id === "meroshare" || item.id === "theme" ||
-                    item.id === "notifications" || item.id === "data" || item.id === "accessibility" || item.id === "about") {
+                    item.id === "notifications" || item.id === "data" || item.id === "about" || item.id === "developer") {
                     setCurrentView(item.id as SettingsView)
                     setHighlightQuery(searchQuery)
                   }
@@ -360,13 +360,13 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
     const getTitle = () => {
       switch (currentView) {
         case "profile": return "Profile"
-        case "security": return "Security"
-        case "notifications": return "Notifications"
-        case "meroshare": return "MeroShare"
         case "theme": return "Theme"
+        case "notifications": return "Notifications"
+        case "security": return "Security"
         case "data": return "Data"
-        case "accessibility": return "Accessibility"
+        case "meroshare": return "MeroShare"
         case "about": return "About"
+        case "developer": return "Developer"
         default: return "Settings"
       }
     }
@@ -374,13 +374,13 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
     const renderContent = () => {
       switch (currentView) {
         case "profile": return <UserProfileSettings highlightQuery={highlightQuery} />
-        case "security": return <SecuritySettings />
-        case "notifications": return <NotificationSettings />
-        case "meroshare": return <MeroShareSettings />
         case "theme": return <ThemeSettings />
+        case "notifications": return <NotificationSettings />
+        case "security": return <SecuritySettings />
         case "data": return <DataSettings />
-        case "accessibility": return <AccessibilitySettings />
+        case "meroshare": return <MeroShareSettings />
         case "about": return <AboutSettings />
+        case "developer": return <DeveloperSettings />
         default: return null
       }
     }

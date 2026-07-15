@@ -14,6 +14,8 @@ export function useDebtCreditData() {
       balance: wallet.balance,
       addDebtAccount: wallet.addDebtAccount,
       addCreditAccount: wallet.addCreditAccount,
+      updateDebtAccount: wallet.updateDebtAccount,
+      updateCreditAccount: wallet.updateCreditAccount,
       deleteDebtAccount: wallet.deleteDebtAccount,
       deleteCreditAccount: wallet.deleteCreditAccount,
       addFromDebt: wallet.addFromDebt,
@@ -22,6 +24,7 @@ export function useDebtCreditData() {
       createDebtForTransaction: wallet.createDebtForTransaction,
       completeTransactionWithDebt: wallet.completeTransactionWithDebt,
       addDebtToAccount: wallet.addDebtToAccount,
+      addTransaction: wallet.addTransaction,
     }),
     [
       wallet.debtAccounts,
@@ -30,6 +33,8 @@ export function useDebtCreditData() {
       wallet.balance,
       wallet.addDebtAccount,
       wallet.addCreditAccount,
+      wallet.updateDebtAccount,
+      wallet.updateCreditAccount,
       wallet.deleteDebtAccount,
       wallet.deleteCreditAccount,
       wallet.addFromDebt,
@@ -38,6 +43,7 @@ export function useDebtCreditData() {
       wallet.createDebtForTransaction,
       wallet.completeTransactionWithDebt,
       wallet.addDebtToAccount,
+      wallet.addTransaction,
     ],
   )
 }

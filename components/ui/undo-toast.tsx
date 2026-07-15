@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Undo2, Trash2, AlertCircle, CheckCircle2, X } from "lucide-react"
+import { Undo2, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface UndoToastProps {
@@ -57,48 +57,39 @@ function UndoToastContent({
   const [progress, setProgress] = useState(100)
   const [isHovered, setIsHovered] = useState(false)
   const [timeLeft, setTimeLeft] = useState(duration / 1000)
+  const progressRef = useRef(100)
   const startTimeRef = useRef(Date.now())
   const pausedProgressRef = useRef(100)
 
   useEffect(() => {
-    let rafId: number
-
-    const updateProgress = () => {
+    const intervalId = setInterval(() => {
       if (isHovered) {
-        // Store current progress when paused
-        pausedProgressRef.current = progress
-        rafId = requestAnimationFrame(updateProgress)
+        pausedProgressRef.current = progressRef.current
         return
       }
 
       const now = Date.now()
       const elapsed = now - startTimeRef.current
-      // Calculate progress based on remaining time from the paused point
       const totalDuration = (pausedProgressRef.current / 100) * duration
       const remaining = Math.max(0, totalDuration - elapsed)
       const newProgress = (remaining / duration) * 100
-      const newTimeLeft = Math.ceil(remaining / 1000)
 
-      setProgress(newProgress)
-      setTimeLeft(newTimeLeft)
-
-      if (remaining > 0) {
-        rafId = requestAnimationFrame(updateProgress)
+      if (newProgress !== progressRef.current) {
+        progressRef.current = newProgress
+        setProgress(newProgress)
+        setTimeLeft(Math.ceil(remaining / 1000))
       }
-    }
 
-    rafId = requestAnimationFrame(updateProgress)
-    return () => cancelAnimationFrame(rafId)
-  }, [duration, isHovered, progress])
+      if (remaining <= 0) clearInterval(intervalId)
+    }, 100)
+
+    return () => clearInterval(intervalId)
+  }, [duration, isHovered])
 
   const handleUndo = useCallback(() => {
     toast.dismiss(toastId)
     onUndo()
   }, [toastId, onUndo])
-
-  const handleDismiss = useCallback(() => {
-    toast.dismiss(toastId)
-  }, [toastId])
 
   const iconConfig = {
     delete: { icon: Trash2, color: "text-[var(--error)]", bg: "bg-[var(--error)]", border: "border-[var(--error)]/20", bgLight: "bg-[var(--error)]/10" },
@@ -122,7 +113,10 @@ function UndoToastContent({
         // Reset start time to account for pause
         startTimeRef.current = Date.now()
       }}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false)
+        startTimeRef.current = Date.now()
+      }}
     >
       {/* Progress bar background */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-[var(--muted)]">
@@ -132,16 +126,7 @@ function UndoToastContent({
         />
       </div>
 
-      {/* Dismiss button */}
-      <button
-        onClick={handleDismiss}
-        className="absolute top-2 right-2 p-1 rounded-full text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
-        aria-label="Dismiss"
-      >
-        <X className="w-3 h-3" />
-      </button>
-
-      <div className="p-4 pt-5 pr-8">
+<div className="p-4 pt-5 pr-8">
         <div className="flex items-start gap-3">
           {/* Icon */}
           <div className={cn("flex-shrink-0 p-2 rounded-full", config.bgLight, config.bg.replace("bg-", "bg-opacity-20"))}>
