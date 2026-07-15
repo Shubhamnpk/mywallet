@@ -2495,6 +2495,22 @@ export function useWalletStore() {
     return { success: true, transaction: merged }
   }
 
+  const updateDebtAccount = (id: string, updates: Partial<DebtAccount>) => {
+    const updatedDebtAccounts = debtAccounts.map((d) =>
+      d.id === id ? { ...d, ...updates } : d
+    )
+    setDebtAccounts(updatedDebtAccounts)
+    saveToLocalStorage("debtAccounts", updatedDebtAccounts, true)
+  }
+
+  const updateCreditAccount = (id: string, updates: Partial<CreditAccount>) => {
+    const updatedCreditAccounts = creditAccounts.map((c) =>
+      c.id === id ? { ...c, ...updates } : c
+    )
+    setCreditAccounts(updatedCreditAccounts)
+    saveToLocalStorage("creditAccounts", updatedCreditAccounts, true)
+  }
+
   const deleteDebtAccount = async (id: string) => {
     const debt = debtAccounts.find((d) => d.id === id)
     if (!debt) return
@@ -4649,6 +4665,8 @@ export function useWalletStore() {
     addDebtAccount,
     addDebtToAccount,
     addCreditAccount,
+    updateDebtAccount,
+    updateCreditAccount,
     deleteDebtAccount,
     deleteCreditAccount,
     addToEmergencyFund,

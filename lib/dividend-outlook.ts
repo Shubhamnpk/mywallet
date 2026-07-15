@@ -390,7 +390,29 @@ export const buildDividendData = ({
     }, new Map<string, ProposedDividendRecord[]>())
 
     const allYearsRowsMap = new Map<string, DividendPortfolioAllYearsRow>()
-    stockTransactionCatalog.forEach((holding) => {
+
+    type AllYearsHolding = {
+        portfolioId: string
+        symbol: string
+        assetName: string
+        sector?: string
+        units: number
+    }
+
+    const allYearsSource: AllYearsHolding[] = dividendViewMode === "current"
+        ? dividendEligibleHoldings.map((item) => ({
+            portfolioId: item.portfolioId,
+            symbol: normalizeStockSymbol(item.symbol) || item.symbol,
+            assetName: scripNamesMap[normalizeStockSymbol(item.symbol)] || item.assetName || item.symbol,
+            sector: item.sector,
+            units: item.units || 0,
+        }))
+        : stockTransactionCatalog.map((item) => ({
+            ...item,
+            units: item.currentUnits,
+        }))
+
+    allYearsSource.forEach((holding) => {
         const yearSummaries: DividendYearSummary[] = []
         let holdingTotalCash = 0
         let holdingTotalBonusUnits = 0
@@ -400,12 +422,14 @@ export const buildDividendData = ({
             const matchedRecord = matchDividendRecordForHolding(holding.symbol, holding.assetName || holding.symbol, yearRecords)
             if (!matchedRecord) return
 
-            const units = getUnitsHeldForDividendDate(
-                transactionHistoryMap,
-                holding.portfolioId,
-                holding.symbol,
-                matchedRecord.announcement_date || matchedRecord.scraped_at,
-            )
+            const units = dividendViewMode === "current"
+                ? holding.units
+                : getUnitsHeldForDividendDate(
+                    transactionHistoryMap,
+                    holding.portfolioId,
+                    holding.symbol,
+                    matchedRecord.announcement_date || matchedRecord.scraped_at,
+                )
             if (units <= 0) return
 
             const cashPercent = parsePositiveNumber(matchedRecord.cash_dividend)
@@ -477,7 +501,7 @@ export const buildDividendData = ({
         a.portfolioName.localeCompare(b.portfolioName),
     )
 
-    const dividendOverviewTotals: DividendOverviewTotals = dividendViewMode === "all"
+    const dividendOverviewTotals: DividendOverviewTotals = selectedDividendYear === "all"
         ? dividendAllYearsRows
             .filter((row) => row.includeInTotals)
             .reduce((sum, row) => ({

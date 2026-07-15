@@ -25,7 +25,7 @@ import {
   CheckCircle2,
   Edit,
   Trash2,
-  MoreHorizontal,
+  MoreVertical,
   PiggyBank,
   Home,
   Car,
@@ -54,6 +54,7 @@ import { ScenarioPlanningCalculator } from "./scenario-planning-calculator"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarPicker } from "@/components/ui/calendar"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { useWalletData } from "@/contexts/wallet-data-context"
 
@@ -521,6 +522,7 @@ export function EnhancedGoalsList() {
                                       <Calendar className="w-3 h-3 md:w-4 md:h-4" />
                                       <span>{daysRemaining} days left</span>
                                     </div>
+                                    <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                                   </div>
                                 </div>
                               </div>
@@ -539,8 +541,8 @@ export function EnhancedGoalsList() {
 
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-muted">
-                                    <MoreHorizontal className="w-4 h-4" />
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                                    <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
@@ -558,8 +560,9 @@ export function EnhancedGoalsList() {
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuItem
+                                    variant="destructive"
                                     onClick={() => handleDeleteGoal(goal.id)}
-                                    className="text-red-600 focus:text-red-600 cursor-pointer"
+                                    className="cursor-pointer"
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Delete Goal
@@ -567,32 +570,50 @@ export function EnhancedGoalsList() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
 
-                              <ChevronDown className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-                            </div>
-                          </div>
-
-                          {/* Enhanced Progress Bar */}
-                          <div className="mt-2 md:mt-4 ml-8 md:ml-12">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-3 h-3 rounded-full ${getProgressColor(progress)}`} />
-                                <span className="text-xs md:text-sm font-medium">
-                                  {isCompleted ? "Goal Achieved! 🎉" : `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`}
-                                </span>
-                              </div>
-                              <span className="text-xs md:text-sm text-muted-foreground">
-                                {progress.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <Progress value={Math.min(progress, 100)} className="h-2" />
-                              {progress > 100 && (
-                                <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500 rounded-full opacity-75" />
-                              )}
                             </div>
                           </div>
                         </CardHeader>
                       </CollapsibleTrigger>
+
+                      {/* Enhanced Progress Bar - outside trigger so clicking it won't toggle collapse */}
+                      <TooltipProvider delayDuration={1000}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className="mx-3 md:mx-5 cursor-pointer hover:bg-muted/30 rounded-lg p-2 transition-colors"
+                              onClick={() => {
+                                setHistoryRange("active-month")
+                                setHistoryDialog({
+                                  open: true,
+                                  goalId: goal.id,
+                                  goalName: goal.title || goal.name || "Goal",
+                                })
+                              }}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-3 h-3 rounded-full ${getProgressColor(progress)}`} />
+                                  <span className="text-xs md:text-sm font-medium">
+                                    {isCompleted ? "Goal Achieved! 🎉" : `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`}
+                                  </span>
+                                </div>
+                                <span className="text-xs md:text-sm text-muted-foreground">
+                                  {progress.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="relative">
+                                <Progress value={Math.min(progress, 100)} className="h-2" />
+                                {progress > 100 && (
+                                  <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500 rounded-full opacity-75" />
+                                )}
+                              </div>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            Click to view transactions
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
                       <CollapsibleContent>
                         <CardContent className="space-y-4 md:space-y-6">

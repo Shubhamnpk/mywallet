@@ -199,7 +199,7 @@ export function PortfolioList() {
     const valuationHistoryCacheRef = useRef<Map<string, Array<{ date: string; ltp: number }>>>(new Map())
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
-    const [dayWindow, setDayWindow] = useState<"30" | "90" | "365">("90")
+    const [dayWindow, setDayWindow] = useState<"30" | "90" | "180" | "365" | "all">("90")
     const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
     const [sellConfirmModal, setSellConfirmModal] = useState<{
@@ -1181,6 +1181,7 @@ export function PortfolioList() {
 
     useEffect(() => {
         if (availableDividendYears.length === 0) return
+        if (selectedDividendYear === "all") return
         if (selectedDividendYear && availableDividendYears.includes(selectedDividendYear)) return
         setSelectedDividendYear(getDefaultDividendYear(availableDividendYears))
     }, [availableDividendYears, selectedDividendYear])
@@ -1926,7 +1927,7 @@ export function PortfolioList() {
             transactionsK: Number(((row.totalTransactions || 0) / 1000).toFixed(1)),
         }))
 
-        return dailySeries.slice(-Number(dayWindow))
+        return dayWindow === "all" ? dailySeries : dailySeries.slice(-Number(dayWindow))
     }, [marketSummaryHistory, marketHistoryView, yearWindow, dayWindow, calendarSystem])
 
     const overviewNotifications = useMemo(() => {
@@ -2571,35 +2572,23 @@ export function PortfolioList() {
                             >
                                 Current
                             </Button>
-                            <Button
-                                type="button"
-                                variant={dividendViewMode === "all" ? "default" : "outline"}
-                                size="sm"
-                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                onClick={() => setDividendViewMode("all")}
-                            >
-                                All
-                            </Button>
                         </div>
                         <Badge variant="outline" className="h-6 rounded-md text-[9px] font-black uppercase">
                             {dividendViewMode === "historical"
                                 ? "Uses units on dividend date"
-                                : dividendViewMode === "current"
-                                    ? "Uses current holdings"
-                                    : "Rolls up all available years"}
+                                : "Uses current holdings"}
                         </Badge>
-                        {dividendViewMode !== "all" && (
-                            <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
-                                <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                    <SelectValue placeholder="Select FY" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableDividendYears.map((year) => (
-                                        <SelectItem key={year} value={year}>{year}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
+                        <Select value={selectedDividendYear} onValueChange={setSelectedDividendYear}>
+                            <SelectTrigger className="h-8 w-[148px] rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                <SelectValue placeholder="Select FY" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All</SelectItem>
+                                {availableDividendYears.map((year) => (
+                                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
 
@@ -2638,13 +2627,13 @@ export function PortfolioList() {
                     </div>
                 )}
 
-                {dividendViewMode !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
+                {selectedDividendYear !== "all" && selectedDividendYear && selectedYearDividendHistory.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
                         <p className="text-xs font-semibold text-muted-foreground">
                             No proposed dividend records were found for {selectedDividendYear}.
                         </p>
                     </div>
-                ) : dividendViewMode === "all" && dividendAllYearsRows.length === 0 ? (
+                ) : selectedDividendYear === "all" && dividendAllYearsRows.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-muted/40 bg-muted/10 p-4 text-center">
                         <p className="text-xs font-semibold text-muted-foreground">
                             No historical dividend rollups are available yet.
@@ -2652,10 +2641,10 @@ export function PortfolioList() {
                     </div>
                 ) : (
                     <div className="space-y-2">
-                        {(dividendViewMode === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
+                        {(selectedDividendYear === "all" ? dividendAllYearsRows : dividendPortfolioRows).map((row) => {
                             const isExpanded = expandedDividendPortfolios.has(row.portfolioId)
-                            const allYearsRow = dividendViewMode === "all" ? row as DividendPortfolioAllYearsRow : null
-                            const yearlyRow = dividendViewMode === "all" ? null : row as DividendPortfolioSummaryRow
+                            const allYearsRow = selectedDividendYear === "all" ? row as DividendPortfolioAllYearsRow : null
+                            const yearlyRow = selectedDividendYear === "all" ? null : row as DividendPortfolioSummaryRow
                             return (
                                 <div key={row.portfolioId} className="rounded-xl border border-muted/30 bg-background/70">
                                     <button
@@ -2673,7 +2662,7 @@ export function PortfolioList() {
                                                 )}
                                             </div>
                                             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                {dividendViewMode === "all"
+                                                {selectedDividendYear === "all"
                                                     ? `${allYearsRow?.years.length || 0} years rolled up across matched history`
                                                     : `${yearlyRow?.matchedCount || 0}/${yearlyRow?.holdingsCount || 0} holdings matched for ${selectedDividendYear}`}
                                             </p>
@@ -2683,13 +2672,13 @@ export function PortfolioList() {
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {currencySymbol}{(dividendViewMode === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
+                                                        {currencySymbol}{(selectedDividendYear === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
                                                     </p>
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Bonus Units</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {(dividendViewMode === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}
+                                                        {(selectedDividendYear === "all" ? allYearsRow?.totalEstimatedBonusUnits || 0 : yearlyRow?.estimatedBonusUnits || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}
                                                     </p>
                                                 </div>
                                             </div>
@@ -2700,7 +2689,7 @@ export function PortfolioList() {
                                     </button>
                                     {isExpanded && (
                                         <div className="border-t border-muted/20 px-3 pb-3 pt-3">
-                                            {dividendViewMode === "all" ? (
+                                            {selectedDividendYear === "all" ? (
                                                 <div className="space-y-3">
                                                     <div className="grid gap-2 md:grid-cols-2">
                                                         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
@@ -3477,80 +3466,87 @@ export function PortfolioList() {
                                             </div>
                                             {marketHistorySeries.length > 0 && (
                                                 <div className="mt-4 border-t border-primary/10 pt-4">
-                                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                                    <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                                                         <Button
                                                             type="button"
                                                             variant="outline"
                                                             size="sm"
-                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20"
+                                                            className="w-full sm:w-auto rounded-lg font-black text-[10px] uppercase tracking-widest border-primary/20 hover:border-primary/40 transition-all"
                                                             onClick={() => setIsMarketHistoryOpen((prev) => !prev)}
                                                         >
                                                             {isMarketHistoryOpen ? "Hide Market History Chart" : "Show Market History Chart"}
                                                             {isMarketHistoryOpen ? <ChevronUp className="ml-2 w-3.5 h-3.5" /> : <ChevronDown className="ml-2 w-3.5 h-3.5" />}
                                                         </Button>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <Select value={marketHistoryView} onValueChange={(value) => setMarketHistoryView(value as "yearly" | "daily")}>
-                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="yearly">Yearly</SelectItem>
-                                                                    <SelectItem value="daily">Daily</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            {marketHistoryView === "yearly" ? (
-                                                            <Select value={yearWindow} onValueChange={(value) => setYearWindow(value as "5" | "10" | "all")}>
-                                                                <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="5">Last 5Y</SelectItem>
-                                                                    <SelectItem value="10">Last 10Y</SelectItem>
-                                                                    <SelectItem value="all">All Years</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            ) : (
-                                                                <Select value={dayWindow} onValueChange={(value) => setDayWindow(value as "30" | "90" | "365")}>
-                                                                    <SelectTrigger className="h-8 w-full rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/20">
+                                                        {isMarketHistoryOpen && (
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <div className="flex items-center rounded-lg border border-border p-0.5 bg-muted/50">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMarketHistoryView("yearly")}
+                                                                        className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${marketHistoryView === "yearly" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                                                    >
+                                                                        Yearly
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMarketHistoryView("daily")}
+                                                                        className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${marketHistoryView === "daily" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                                                    >
+                                                                        Daily
+                                                                    </button>
+                                                                </div>
+                                                                <Select value={marketHistoryView === "yearly" ? yearWindow : dayWindow} onValueChange={(value) => {
+                                                                    if (marketHistoryView === "yearly") setYearWindow(value as "5" | "10" | "all")
+                                                                    else setDayWindow(value as "30" | "90" | "180" | "365" | "all")
+                                                                }}>
+                                                                    <SelectTrigger className="h-8 w-28 rounded-lg text-[10px] font-black uppercase tracking-wider border-border">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        <SelectItem value="30">Last 30D</SelectItem>
-                                                                        <SelectItem value="90">Last 90D</SelectItem>
-                                                                        <SelectItem value="365">Last 1Y</SelectItem>
+                                                                        {marketHistoryView === "yearly" ? (
+                                                                            <>
+                                                                                <SelectItem value="5">Last 5Y</SelectItem>
+                                                                                <SelectItem value="10">Last 10Y</SelectItem>
+                                                                                <SelectItem value="all">All Years</SelectItem>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <SelectItem value="30">Last 30D</SelectItem>
+                                                                                <SelectItem value="90">Last 90D</SelectItem>
+                                                                                <SelectItem value="180">Last 6M</SelectItem>
+                                                                                <SelectItem value="365">Last 1Y</SelectItem>
+                                                                                <SelectItem value="all">All Days</SelectItem>
+                                                                            </>
+                                                                        )}
                                                                     </SelectContent>
                                                                 </Select>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-1 sm:ml-auto">
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "both" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                                                onClick={() => setHistorySeriesMode("both")}
-                                                            >
-                                                                Both
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "turnover" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-primary/30 text-primary"
-                                                                onClick={() => setHistorySeriesMode("turnover")}
-                                                            >
-                                                                Turnover
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                variant={historySeriesMode === "transactions" ? "default" : "outline"}
-                                                                size="sm"
-                                                                className="h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                                                onClick={() => setHistorySeriesMode("transactions")}
-                                                            >
-                                                                Transactions
-                                                            </Button>
-                                                        </div>
+                                                                <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("both")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "both" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Both
+                                                                    </button>
+                                                                    <div className="w-px h-5 bg-border" />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("turnover")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "turnover" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Turnover
+                                                                    </button>
+                                                                    <div className="w-px h-5 bg-border" />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setHistorySeriesMode("transactions")}
+                                                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all ${historySeriesMode === "transactions" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                                                                    >
+                                                                        Transactions
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     {isMarketHistoryOpen && (
                                                         <div className="mt-3 h-[240px] rounded-xl border border-primary/10 bg-background/50 p-2">

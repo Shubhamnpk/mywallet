@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Zap, TrendingDown, CreditCard, HandCoins, Banknote, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, Zap, TrendingDown, CreditCard, HandCoins, Banknote, ChevronDown, ChevronUp, Edit as EditIcon } from "lucide-react"
 import { getCurrencySymbol } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
 
@@ -25,6 +25,8 @@ interface AddAccountDialogProps {
     onAddCredit: () => void
     onAddLend?: () => void
     userProfile: UserProfile
+    editingDebtId?: string | null
+    editingCreditId?: string | null
 }
 
 export function AddAccountDialog({
@@ -41,8 +43,14 @@ export function AddAccountDialog({
     onAddDebt,
     onAddCredit,
     onAddLend,
-    userProfile
+    userProfile,
+    editingDebtId,
+    editingCreditId,
 }: AddAccountDialogProps) {
+    const isEditingDebt = !!editingDebtId
+    const isEditingCredit = !!editingCreditId
+    const isEditingLend = !!editingDebtId && activeTab === "lend"
+    const isEditing = isEditingDebt || isEditingCredit || isEditingLend
     const tabColors: Record<string, { bar: string; iconBg: string; iconText: string; icon: React.ReactNode; label: string }> = {
         debt: { bar: 'bg-destructive', iconBg: 'bg-destructive/10 text-destructive', iconText: 'text-destructive', icon: <TrendingDown className="w-5 h-5" />, label: "Debt" },
         lend: { bar: 'bg-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600', iconText: 'text-emerald-600', icon: <HandCoins className="w-5 h-5" />, label: "Lending" },
@@ -61,31 +69,33 @@ export function AddAccountDialog({
                         <div className={`p-2 rounded-full ${tc.iconBg}`}>
                             {tc.icon}
                         </div>
-                        Add {tc.label} Account
+                        {isEditing ? 'Edit' : 'Add'} {tc.label} Account
                     </DialogTitle>
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={onTabChange} className="mt-2">
-                    <TabsList className="grid w-full grid-cols-3 h-11 p-1 bg-muted/50 rounded-xl">
-                        <TabsTrigger
-                            value="debt"
-                            className="rounded-lg data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground transition-all duration-300"
-                        >
-                            Debt
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="lend"
-                            className="rounded-lg data-[state=active]:bg-emerald-500 data-[state=active]:text-white transition-all duration-300"
-                        >
-                            Lending
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="credit"
-                            className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all duration-300"
-                        >
-                            Credit
-                        </TabsTrigger>
-                    </TabsList>
+                    {!isEditing && (
+                        <TabsList className="grid w-full grid-cols-3 h-11 p-1 bg-muted/50 rounded-xl">
+                            <TabsTrigger
+                                value="debt"
+                                className="rounded-lg data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground transition-all duration-300"
+                            >
+                                Debt
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="lend"
+                                className="rounded-lg data-[state=active]:bg-emerald-500 data-[state=active]:text-white transition-all duration-300"
+                            >
+                                Lending
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="credit"
+                                className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all duration-300"
+                            >
+                                Credit
+                            </TabsTrigger>
+                        </TabsList>
+                    )}
 
                     <TabsContent value="debt" className="space-y-4 mt-4 animate-in fade-in-50 slide-in-from-left-4 duration-300">
                         <form onSubmit={(e) => { e.preventDefault(); onAddDebt(); }} className="space-y-4">
@@ -191,8 +201,8 @@ export function AddAccountDialog({
                                     type="submit"
                                     className="flex-1 h-11 bg-destructive hover:bg-destructive/90 text-white shadow-md hover:shadow-lg transition-all"
                                 >
-                                    <Plus className="w-5 h-5 mr-2" />
-                                    Add Debt Account
+                                    {isEditingDebt ? <EditIcon className="w-5 h-5 mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
+                                    {isEditingDebt ? 'Save Changes' : 'Add Debt Account'}
                                 </Button>
                             </div>
                         </form>
@@ -334,8 +344,8 @@ export function AddAccountDialog({
                                     type="submit"
                                     className="flex-1 h-10 bg-emerald-500 hover:bg-emerald-600 text-white shadow-md hover:shadow-lg transition-all text-sm"
                                 >
-                                    <Plus className="w-4 h-4 mr-1.5" />
-                                    Add
+                                    {isEditingLend ? <EditIcon className="w-4 h-4 mr-1.5" /> : <Plus className="w-4 h-4 mr-1.5" />}
+                                    {isEditingLend ? 'Save Changes' : 'Add'}
                                 </Button>
                             </div>
                         </form>
@@ -440,8 +450,8 @@ export function AddAccountDialog({
                                     type="submit"
                                     className="flex-1 h-11 bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all"
                                 >
-                                    <Plus className="w-5 h-5 mr-2" />
-                                    Add Credit Account
+                                    {isEditingCredit ? <EditIcon className="w-5 h-5 mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
+                                    {isEditingCredit ? 'Save Changes' : 'Add Credit Account'}
                                 </Button>
                             </div>
                         </form>

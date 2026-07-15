@@ -193,8 +193,8 @@ describe("dividend-outlook", () => {
 
         const result = buildDividendData({
             dividendHistory,
-            dividendViewMode: "all",
-            selectedDividendYear: "2025/76",
+            dividendViewMode: "historical",
+            selectedDividendYear: "all",
             portfolios,
             portfolio,
             shareTransactions,

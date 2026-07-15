@@ -19,13 +19,13 @@ import {
   Search,
   Filter,
   ChevronDown,
-  ChevronUp,
   SortAsc,
   SortDesc,
   Calendar,
   Edit,
   Receipt,
   ArrowRight,
+  MoreVertical,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
@@ -40,6 +40,8 @@ import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarPicker } from "@/components/ui/calendar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function BudgetsList() {
   const { budgets, addBudget, updateBudget, deleteBudget } = useBudgets()
@@ -392,87 +394,95 @@ export function BudgetsList() {
                 )}
 
                 <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(budget.id)}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={selectedBudgets.has(budget.id)}
-                          onCheckedChange={(checked) => handleSelectBudget(budget.id, checked as boolean)}
-                        />
-                        <CollapsibleTrigger asChild>
-                          <div className="flex items-center gap-2 cursor-pointer flex-1">
-                            <Target className="w-5 h-5 text-primary" />
-                            <CardTitle className="text-lg">{budget.name}</CardTitle>
-                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </div>
-                        </CollapsibleTrigger>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="pb-1 cursor-pointer hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Checkbox
+                            checked={selectedBudgets.has(budget.id)}
+                            onCheckedChange={(checked) => handleSelectBudget(budget.id, checked as boolean)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <Target className="w-5 h-5 text-primary shrink-0" />
+                          <CardTitle className="text-lg truncate">{budget.name}</CardTitle>
+                          <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge
+                            variant={status === "exceeded" ? "destructive" : status === "warning" ? "secondary" : "default"}
+                            className="flex items-center gap-1"
+                          >
+                            <StatusIcon className="w-3 h-3" />
+                            {status === "exceeded" ? "Over Budget" : status === "warning" ? "Near Limit" : "On Track"}
+                          </Badge>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onClick={() => handleEditBudget(budget)} className="cursor-pointer">
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit Budget
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => deleteBudget(budget.id)}
+                                className="cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Budget
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={status === "exceeded" ? "destructive" : status === "warning" ? "secondary" : "default"}
-                          className="flex items-center gap-1"
-                        >
-                          <StatusIcon className="w-3 h-3" />
-                          {status === "exceeded" ? "Over Budget" : status === "warning" ? "Near Limit" : "On Track"}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleEditBudget(budget)
-                          }}
-                          className="text-muted-foreground hover:text-primary"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteBudget(budget.id)
-                          }}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
 
-                    <div
-                      className="space-y-2 mt-3 cursor-pointer hover:bg-muted/30 rounded-lg p-2 -mx-2 transition-colors"
-                      onClick={() => {
-                        setHistoryRange("active-month")
-                        setHistoryBudget(budget)
-                      }}
-                    >
-                      <div className="flex justify-between text-sm">
-                        <span className="flex items-center gap-1 font-medium">
-                          Spent: {formatCurrency(currentSpent, userProfile.currency, userProfile.customCurrency)}
-                          {isOverBudget && (
-                            <span className="text-destructive text-[10px] ml-1 px-1.5 py-0.5 bg-destructive/10 rounded">
-                              (+{formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)})
+                  {/* Progress bar - outside trigger so clicking opens history without toggling collapse */}
+                  <TooltipProvider delayDuration={1000}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div
+                          className="mx-3 md:mx-5 cursor-pointer hover:bg-muted/30 rounded-lg p-2 transition-colors"
+                          onClick={() => {
+                            setHistoryRange("active-month")
+                            setHistoryBudget(budget)
+                          }}
+                        >
+                          <div className="flex justify-between text-sm mb-2">
+                            <span className="flex items-center gap-1 font-medium">
+                              Spent: {formatCurrency(currentSpent, userProfile.currency, userProfile.customCurrency)}
+                              {isOverBudget && (
+                                <span className="text-destructive text-[10px] ml-1 px-1.5 py-0.5 bg-destructive/10 rounded">
+                                  (+{formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)})
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
-                        <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>
-                      </div>
-                      <Progress 
-                        value={percentage} 
-                        className="h-2 rounded-full" 
-                        indicatorClassName={isOverBudget ? "bg-destructive transition-all duration-500" : ""}
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{percentage.toFixed(1)}% used</span>
-                        <span>
-                          {rawRemaining >= 0
-                            ? `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`
-                            : `${formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)} over`}
-                        </span>
-                      </div>
-                    </div>
-                  </CardHeader>
+                            <span>Budget: {formatCurrency(budget.limit, userProfile.currency, userProfile.customCurrency)}</span>
+                          </div>
+                          <Progress 
+                            value={percentage} 
+                            className="h-2 rounded-full" 
+                            indicatorClassName={isOverBudget ? "bg-destructive transition-all duration-500" : ""}
+                          />
+                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>{percentage.toFixed(1)}% used</span>
+                            <span>
+                              {rawRemaining >= 0
+                                ? `${formatCurrency(remaining, userProfile.currency, userProfile.customCurrency)} remaining`
+                                : `${formatCurrency(overAmount, userProfile.currency, userProfile.customCurrency)} over`}
+                            </span>
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Click to view transactions
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
 
                   <CollapsibleContent>
                     <CardContent className="space-y-4 pt-0">
