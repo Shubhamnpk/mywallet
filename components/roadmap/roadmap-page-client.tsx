@@ -15,7 +15,6 @@ import {
   Compass,
   Database,
   Flag,
-  Home,
   LineChart,
   ListFilter,
   LockKeyhole,
@@ -36,6 +35,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { PublicLayout } from "@/components/public-layout"
 
 type RoadmapStatus = "completed" | "in-progress" | "planned" | "exploring"
 type StatusFilter = RoadmapStatus | "all" | "open"
@@ -248,7 +248,7 @@ export function RoadmapPageClient({ data }: { data: RoadmapData }) {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <PublicLayout>
       <section className="border-b border-border/70 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--muted))_55%,hsl(var(--background))_100%)]">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-8 lg:py-10">
           <div className="flex min-w-0 flex-col justify-between gap-8">
@@ -258,20 +258,6 @@ export function RoadmapPageClient({ data }: { data: RoadmapData }) {
                   <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                   Public Product Roadmap
                 </Badge>
-                <div className="flex gap-2">
-                  <Button asChild variant="outline" size="sm" className="bg-background/70">
-                    <Link href="/">
-                      <Home className="mr-1.5 h-4 w-4" />
-                      Home
-                    </Link>
-                  </Button>
-                  <Button asChild size="sm">
-                    <Link href="/releases">
-                      Releases
-                      <ArrowUpRight className="ml-1.5 h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
               </div>
 
               <div className="mt-8 max-w-3xl">
@@ -556,7 +542,7 @@ export function RoadmapPageClient({ data }: { data: RoadmapData }) {
       </section>
 
       <CurrentFeaturesSection groups={currentFeatureGroups} completedCount={stats.completed} />
-    </main>
+    </PublicLayout>
   )
 }
 

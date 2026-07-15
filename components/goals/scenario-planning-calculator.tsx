@@ -337,7 +337,7 @@ export function ScenarioPlanningCalculator({
                           </div>
                         )) : (
                           <div className="text-xs md:text-[13px] font-bold text-muted-foreground/60 italic">
-                            No adjustments needed — this plan aligns with your current trajectory.
+                            No adjustments needed , this plan aligns with your current trajectory.
                           </div>
                         )}
                       </div>

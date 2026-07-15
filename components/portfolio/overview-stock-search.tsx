@@ -101,7 +101,7 @@ export function OverviewStockSearch({
                     onBlur={() => {
                         window.setTimeout(() => setIsFocused(false), 120)
                     }}
-                    placeholder="Search any NEPSE stock by symbol or company"
+                    placeholder="eg. NABIL, NTC, NIBLPF, etc."
                     className="h-10 rounded-xl border-primary/20 bg-background/80 pl-9"
                 />
 

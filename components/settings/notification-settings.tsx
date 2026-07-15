@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo } from "react"
-import { Bell, BellRing, RefreshCw, Send, ShieldAlert } from "lucide-react"
+import { useMemo, useRef, useState } from "react"
+import { Bell, Info, RotateCcw, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -9,14 +9,10 @@ import { Switch } from "@/components/ui/switch"
 import { useNotificationsData } from "@/hooks/use-notifications-data"
 import {
   getDefaultNotificationSettings,
-  isBrowserNotificationSupported,
   normalizeNotificationSettings,
-  requestBrowserNotificationPermission,
-  REMINDER_CACHE_KEY,
-  showAppNotification,
 } from "@/lib/notifications"
-import { toast } from "@/hooks/use-toast"
 import type { NotificationSettings } from "@/types/wallet"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { WebPushSettings } from "@/components/settings/web-push-settings"
 
 export function NotificationSettings() {
@@ -27,10 +23,6 @@ export function NotificationSettings() {
     [userProfile?.notificationSettings],
   )
 
-  const permission =
-    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "denied"
-  const browserSupported = isBrowserNotificationSupported()
-
   const updateSettings = (updates: Partial<NotificationSettings>) => {
     if (!userProfile) return
 
@@ -39,57 +31,6 @@ export function NotificationSettings() {
         ...settings,
         ...updates,
       },
-    })
-  }
-
-  const handleRequestPermission = async () => {
-    const result = await requestBrowserNotificationPermission()
-    if (result === "granted") {
-      toast({
-        title: "Notifications Enabled",
-        description: "Browser notifications are now enabled for MyWallet.",
-      })
-      updateSettings({ browserNotifications: true })
-      return
-    }
-
-    toast({
-      title: "Permission Not Granted",
-      description: "Please allow notifications from browser site settings.",
-      variant: "destructive",
-    })
-  }
-
-  const handleTestNotification = async () => {
-    const shown = await showAppNotification({
-      title: "MyWallet reminder test",
-      body: "Notifications are active and ready.",
-      tag: "mywallet-test-notification",
-      url: "/settings?tab=notifications",
-    })
-
-    if (!shown) {
-      toast({
-        title: "Test Failed",
-        description: "Notification permission is not granted yet.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    toast({
-      title: "Test Sent",
-      description: "Check your system tray or browser notifications.",
-    })
-  }
-
-  const resetReminderCooldowns = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(REMINDER_CACHE_KEY)
-    }
-    toast({
-      title: "Reminder Cooldowns Reset",
-      description: "MyWallet can send reminders again immediately.",
     })
   }
 
@@ -103,81 +44,38 @@ export function NotificationSettings() {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => updateUserProfile({ notificationSettings: getDefaultNotificationSettings() })}
+          className="gap-2"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Reset to Defaults
+        </Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="w-5 h-5" />
             Notification Control
           </CardTitle>
-          <CardDescription>Manage reminder channels and categories from one place.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground space-y-2">
-            <p>
-              Reminders run while MyWallet is open (browser tab or installed app). In-app messages can repeat for the
-              same item after a few seconds; background system notifications use longer quiet periods so they stay
-              useful instead of noisy.
-            </p>
-            <p>
-              For alerts when the app is fully closed, enable &quot;Remote IPO alerts&quot; below after your deployment
-              is configured on Vercel (VAPID + Redis). Otherwise use browser notifications while the app is in the
-              background.
-            </p>
-          </div>
           <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label htmlFor="notif-enabled">Enable All Reminders</Label>
-              <p className="text-sm text-muted-foreground">
-                Master switch for budget, goal, bill, IPO, and SIP reminders.
-              </p>
+            <div className="flex items-center gap-1">
+              <Label htmlFor="notif-enabled">Enable Notifications</Label>
             </div>
             <Switch
               id="notif-enabled"
               checked={settings.enabled}
-              onCheckedChange={(checked) => updateSettings({ enabled: checked })}
+              onCheckedChange={async (checked) => {
+                updateSettings({ enabled: checked })
+                if (checked && typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted") {
+                  await Notification.requestPermission()
+                }
+              }}
             />
-          </div>
-
-          <div className="rounded-lg border p-3 text-sm">
-            <p className="font-medium">
-              Browser permission:{" "}
-              <span className="capitalize">{browserSupported ? permission : "unsupported"}</span>
-            </p>
-            {!browserSupported && (
-              <p className="text-muted-foreground mt-1">
-                This browser does not support notifications.
-              </p>
-            )}
-            {browserSupported && permission !== "granted" && (
-              <p className="text-muted-foreground mt-1">
-                Enable permission to receive push-style alerts when app is in background.
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleRequestPermission}
-              disabled={!browserSupported || permission === "granted"}
-            >
-              <BellRing className="w-4 h-4 mr-2" />
-              Enable Browser Notifications
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleTestNotification}
-              disabled={!browserSupported || permission !== "granted"}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Send Test Notification
-            </Button>
-            <Button type="button" variant="outline" onClick={resetReminderCooldowns}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Reset Reminder Cooldowns
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -266,15 +164,6 @@ export function NotificationSettings() {
             onCheckedChange={(checked) => updateSettings({ sipReminders: checked })}
             disabled={!settings.enabled}
           />
-          <div className="pt-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => updateUserProfile({ notificationSettings: getDefaultNotificationSettings() })}
-            >
-              Reset Notification Settings
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>
@@ -298,11 +187,38 @@ function SettingToggle({
   onCheckedChange,
   disabled = false,
 }: SettingToggleProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout>>()
+
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="space-y-1">
+      <div className="flex items-center gap-1">
         <Label htmlFor={id}>{label}</Label>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-full p-1 hover:bg-muted transition-colors"
+              onMouseEnter={() => {
+                clearTimeout(hoverTimeout.current)
+                setIsOpen(true)
+              }}
+              onMouseLeave={() => {
+                hoverTimeout.current = setTimeout(() => setIsOpen(false), 200)
+              }}
+            >
+              <Info className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            side="top"
+            className="w-72 text-sm"
+            onMouseEnter={() => clearTimeout(hoverTimeout.current)}
+            onMouseLeave={() => setIsOpen(false)}
+          >
+            {description}
+          </PopoverContent>
+        </Popover>
       </div>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>

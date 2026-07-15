@@ -25,6 +25,7 @@ import {
   Calendar,
   Edit,
   Receipt,
+  ArrowRight,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { BudgetDialog } from "./budget-dialog"
@@ -37,6 +38,8 @@ import { useUser } from "@/contexts/user-context"
 import { useTransactions } from "@/contexts/transactions-context"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 
 export function BudgetsList() {
   const { budgets, addBudget, updateBudget, deleteBudget } = useBudgets()
@@ -48,7 +51,8 @@ export function BudgetsList() {
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [selectedBudgets, setSelectedBudgets] = useState<Set<string>>(new Set())
   const [historyBudget, setHistoryBudget] = useState<Budget | null>(null)
-  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "this-year" | "all">("active-month")
+  const [historyRange, setHistoryRange] = useState<"active-month" | "this-week" | "this-year" | "all" | "custom">("active-month")
+  const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({})
 
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -56,7 +60,7 @@ export function BudgetsList() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set())
 
-  const getPeriodRange = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all") => {
+  const getPeriodRange = (budget: Budget, overrideRange?: "active-month" | "this-week" | "this-year" | "all" | "custom") => {
     const now = new Date()
     let start: Date
     let end: Date
@@ -64,6 +68,17 @@ export function BudgetsList() {
 
     if (range === "all") {
       return { start: new Date(0), end: new Date(8640000000000000) }
+    }
+
+    if (range === "custom") {
+      if (!customDateRange.from || !customDateRange.to) {
+        return { start: new Date(0), end: new Date(8640000000000000) }
+      }
+      const cStart = new Date(customDateRange.from)
+      cStart.setHours(0, 0, 0, 0)
+      const cEnd = new Date(customDateRange.to)
+      cEnd.setHours(23, 59, 59, 999)
+      return { start: cStart, end: cEnd }
     }
 
     if (range === "active-month") {
@@ -224,7 +239,7 @@ export function BudgetsList() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }
 
-  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "this-year" | "all", budget: Budget) => {
+  const filterTransactionsByRange = (items: Transaction[], range: "active-month" | "this-week" | "this-year" | "all" | "custom", budget: Budget) => {
     if (range === "all") return items
     const { start, end } = getPeriodRange(budget, range)
     return items.filter((transaction) => {
@@ -569,7 +584,7 @@ export function BudgetsList() {
 
                       <Select
                         value={historyRange}
-                        onValueChange={(value: "active-month" | "this-week" | "this-year" | "all") => setHistoryRange(value)}
+                        onValueChange={(value: "active-month" | "this-week" | "this-year" | "all" | "custom") => setHistoryRange(value)}
                       >
                         <SelectTrigger className="w-[170px] bg-background">
                           <SelectValue />
@@ -579,8 +594,62 @@ export function BudgetsList() {
                           <SelectItem value="this-week">This Week</SelectItem>
                           <SelectItem value="this-year">This Year</SelectItem>
                           <SelectItem value="all">All Time</SelectItem>
+                          <SelectItem value="custom">Custom Range</SelectItem>
                         </SelectContent>
                       </Select>
+                      {historyRange === "custom" && (
+                        <div className="w-full pt-3">
+                          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-4">
+                            <div className="flex items-center justify-center gap-2 text-xs font-semibold text-muted-foreground">
+                              <Calendar className="w-3.5 h-3.5 text-primary" />
+                              <span>Custom Date Range</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                    >
+                                      <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                      <span className="truncate">{customDateRange.from ? customDateRange.from.toLocaleDateString() : "From"}</span>
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <CalendarPicker
+                                      mode="single"
+                                      selected={customDateRange.from}
+                                      onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, from: date }))}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 shrink-0">
+                                <ArrowRight className="w-4 h-4 text-primary" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                    >
+                                      <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                      <span className="truncate">{customDateRange.to ? customDateRange.to.toLocaleDateString() : "To"}</span>
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <CalendarPicker
+                                      mode="single"
+                                      selected={customDateRange.to}
+                                      onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, to: date }))}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid shrink-0 grid-cols-2 gap-4">

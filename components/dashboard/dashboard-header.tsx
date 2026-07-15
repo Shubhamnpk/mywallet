@@ -202,7 +202,7 @@ export function DashboardHeader() {
           items.push({
             id: `bill-overdue-${bill.id}`,
             title: `Bill overdue: ${name}`,
-            description: "Past due date — mark paid or reschedule.",
+            description: "Past due date , mark paid or reschedule.",
             type: "warning",
             category: "bill",
             actionLabel: "Manage Bill",

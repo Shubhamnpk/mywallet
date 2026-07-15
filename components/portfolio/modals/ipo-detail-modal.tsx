@@ -3,15 +3,14 @@
 import { UpcomingIPO } from "@/types/wallet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Clock, ExternalLink, X, Activity, LayoutGrid, Sparkles, CreditCard, ArrowRight, CheckCircle2, AlertCircle, BellRing, History } from "lucide-react"
+import { Calendar, Clock, ExternalLink, X, Activity, Sparkles, ArrowRight, CheckCircle2, AlertCircle, BellRing, History } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
 import { useCallback, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useCalendarSystem } from "@/hooks/use-calendar-system"
-import { formatAppDate } from "@/lib/app-calendar"
+
 
 interface IPODetailModalProps {
     ipo: UpcomingIPO | null
@@ -22,7 +21,6 @@ interface IPODetailModalProps {
 export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps) {
     const router = useRouter()
     const { userProfile, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
-    const calendarSystem = useCalendarSystem()
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [hasAppliedInSession, setHasAppliedInSession] = useState(false)
@@ -205,7 +203,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-background/50 backdrop-blur-sm hover:bg-muted text-muted-foreground transition-all z-50 border border-muted-foreground/10"
+                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-background/50 backdrop-blur-sm hover:bg-muted/80 hover:text-muted-foreground text-muted-foreground transition-all z-50 border border-muted-foreground/10"
                             onClick={() => onOpenChange(false)}
                         >
                             <X className="h-4 w-4" />
@@ -215,26 +213,19 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-[0.2em] border-primary/30 text-primary bg-primary/5 px-2.5 py-1">
                                 Investment Alert
                             </Badge>
-                            {ipo.scraped_at && (
-                                <div className="hidden sm:flex items-center gap-1.5 opacity-50">
-                                    <Clock className="w-3 h-3" />
-                                    <span className="text-[10px] font-black uppercase tracking-widest">
-                                        Data Sync: {formatAppDate(ipo.scraped_at, calendarSystem)}
-                                    </span>
-                                </div>
-                            )}
+                            <Badge className={cn("text-[10px] font-black uppercase px-3 py-1 border shadow-sm hidden sm:inline-flex", statusColor)}>
+                                {ipo.status === 'open' ? 'Currently Open' : ipo.status}
+                            </Badge>
                         </div>
 
                         <DialogTitle className="text-xl sm:text-2xl font-black tracking-tight leading-tight pr-6 drop-shadow-sm text-left">
                             {ipo.company}
                         </DialogTitle>
+                    </DialogHeader>
 
-                        <div className="flex items-center gap-2 mt-3 sm:mt-4">
-                            {ipo.status && (
-                                <Badge className={cn("text-[10px] font-black uppercase px-3 py-1 border shadow-sm", statusColor)}>
-                                    {ipo.status === 'open' ? 'Currently Open' : ipo.status}
-                                </Badge>
-                            )}
+                    <div className="flex-1 overflow-y-auto show-scrollbars p-4 pt-2 sm:p-6 sm:pt-2 space-y-4 sm:space-y-5 relative z-10">
+                        {/* Status Badges */}
+                        <div className="flex items-center flex-wrap gap-2">
                             {(ipo.is_reserved_share || Boolean(ipo.reserved_for)) && ipo.reserved_for && (
                                 <Badge
                                     variant="outline"
@@ -251,12 +242,10 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                 </Badge>
                             )}
                         </div>
-                    </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto show-scrollbars p-4 pt-2 sm:p-6 sm:pt-2 space-y-4 sm:space-y-5 relative z-10">
                         {/* Advice Card */}
                         {advice && (
-                            <div className={cn("p-3 sm:p-4 rounded-2xl border transition-all duration-300 flex gap-3 sm:gap-4 items-start shadow-sm", advice.bgColor, advice.borderColor)}>
+                            <div className={cn("p-4 rounded-2xl border transition-all duration-300 flex gap-4 items-start shadow-sm", advice.bgColor, advice.borderColor)}>
                                 <div className="shrink-0 mt-0.5">
                                     {advice.icon}
                                 </div>
@@ -271,90 +260,71 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                             </div>
                         )}
 
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            <div className="p-3 sm:p-4 rounded-2xl bg-muted/20 border border-muted/50 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
-                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                                    <LayoutGrid className="w-3 h-3 text-primary/60" /> Issue Size
+                        {/* Key Stats */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-4 rounded-2xl border border-muted/50 bg-muted/20 flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                                    Issue Size
                                 </span>
-                                <span className="text-lg font-black font-mono tracking-tight text-foreground truncate">
+                                <span className="text-xl font-black font-mono tracking-tight text-foreground">
                                     {ipo.units.split(' ')[0]}
                                 </span>
                                 <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">Total Units</span>
                             </div>
-                            <div className="p-3 sm:p-4 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col gap-1.5 relative overflow-hidden group hover:border-primary/30 transition-colors text-left">
-                                <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest flex items-center gap-1.5">
-                                    <CreditCard className="w-3 h-3" /> Min Apply
+                            <div className="p-4 rounded-2xl border border-primary/10 bg-primary/5 flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest">
+                                    Min Apply
                                 </span>
-                                <span className="text-lg font-black font-mono tracking-tight text-primary">
+                                <span className="text-xl font-black font-mono tracking-tight text-primary">
                                     NPR 1,000
                                 </span>
-                                <span className="text-[10px] font-bold text-primary/60 uppercase">10 Units Min</span>
+                                <span className="text-[10px] font-bold text-primary/60 uppercase">10 Units Minimum</span>
                             </div>
                         </div>
 
                         {/* Timeline */}
-                        <div className="space-y-2 sm:space-y-3">
-                            <div className="flex items-center justify-between px-1">
-                                <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Timeline</h4>
-                                <span className="text-[10px] font-black text-muted-foreground/30 uppercase">BS and AD Calendar</span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                                <div className="flex flex-col p-3 rounded-2xl border border-primary/20 bg-primary/5 relative overflow-hidden group hover:border-primary/40 transition-all text-left">
-                                    <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none">
-                                        <Calendar className="w-3 h-3" /> Open Date
+                        <div className="space-y-3">
+                            <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] px-1">Timeline</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="flex flex-col gap-1.5 p-4 rounded-2xl border border-primary/20 bg-primary/5">
+                                    <span className="text-[10px] font-black text-primary/70 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Calendar className="w-3 h-3" /> Open
                                     </span>
-                                    <span className="text-[14px] font-black text-foreground leading-tight truncate">
+                                    <span className="text-sm font-black text-foreground">
                                         {ipo.date_range.split(/ to | - |-|–|—/)[0]?.trim()}
                                     </span>
-                                    <div className="flex flex-wrap items-center gap-x-1.5 mt-1">
-                                        {ipo.openingDay && (
-                                            <span className="text-[10px] font-bold text-primary/60 uppercase">
-                                                {ipo.openingDay}
-                                            </span>
-                                        )}
-                                        {ipo.openingDate && (
-                                            <span className="text-[10px] font-medium text-primary/40 uppercase bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                {formatAppDate(ipo.openingDate, calendarSystem, { month: 'short', day: 'numeric' })}
-                                            </span>
-                                        )}
-                                    </div>
+                                    {ipo.openingDay && (
+                                        <span className="text-[10px] font-bold text-primary/60 uppercase">
+                                            {ipo.openingDay}
+                                        </span>
+                                    )}
                                 </div>
-
-                                <div className="flex flex-col p-3 rounded-2xl border border-muted/50 bg-muted/10 hover:border-muted-foreground/30 transition-all text-left">
-                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-1.5 leading-none text-left">
-                                        <Clock className="w-3 h-3" /> End Date
+                                <div className="flex flex-col gap-1.5 p-4 rounded-2xl border border-muted/50 bg-muted/10">
+                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                        <Clock className="w-3 h-3" /> Close
                                     </span>
-                                    <span className="text-[14px] font-black text-foreground/80 leading-tight truncate text-left">
+                                    <span className="text-sm font-black text-foreground/80">
                                         {ipo.date_range.split(/ to | - |-|–|—/)[1]?.trim() || "N/A"}
                                     </span>
-                                    <div className="flex flex-wrap items-center gap-x-1.5 mt-1">
-                                        {ipo.closingDay && (
-                                            <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">
-                                                Ends {ipo.closingDay}
-                                            </span>
-                                        )}
-                                        {ipo.closingDate && (
-                                            <span className="text-[10px] font-medium text-muted-foreground/40 uppercase bg-muted/20 px-1.5 py-0.5 rounded-md border border-muted/30">
-                                                {formatAppDate(ipo.closingDate, calendarSystem, { month: 'short', day: 'numeric' })}
-                                            </span>
-                                        )}
-                                    </div>
+                                    {ipo.closingDay && (
+                                        <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                            Ends {ipo.closingDay}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Investor Note */}
+                        {/* Investor Insights */}
                         {ipo.full_text && (
-                            <div className="p-3 sm:p-4 rounded-2xl border border-muted/30 bg-muted/5 space-y-2 relative group overflow-hidden text-left">
+                            <div className="p-4 rounded-2xl border border-muted/30 bg-muted/5 space-y-2 relative overflow-hidden">
                                 <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                     <AlertCircle className="w-3.5 h-3.5 text-primary/60" /> Investor Insights
                                 </span>
-                                <p className="text-[11px] font-medium text-foreground/70 leading-relaxed italic border-l-2 border-primary/20 pl-3">
+                                <p className="text-xs font-medium text-foreground/70 leading-relaxed italic border-l-2 border-primary/20 pl-3">
                                     "{ipo.full_text}"
                                 </p>
-                                <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary/40 transition-colors" />
+                                <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
                             </div>
                         )}
                     </div>

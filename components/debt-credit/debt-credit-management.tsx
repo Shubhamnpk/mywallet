@@ -353,12 +353,11 @@ export function DebtCreditManagement() {
   const payoffStrategy = getDebtPayoffStrategy(debtAccounts)
   return (
     <div className="space-y-6">
-      {/* Enhanced Header with Theme Colors */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
             <CreditCard className="w-5 h-5" />
          <h3 className="text-lg font-semibold flex items-center gap-2">
-          Debt & Credit Management
+          Debt & Credit
         </h3>
         </div>
         <Button
@@ -371,11 +370,11 @@ export function DebtCreditManagement() {
       </div>
 
       {/* Summary Cards - Portfolio Style */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Card className="bg-gradient-to-br from-red-500/15 via-red-500/5 to-transparent border-red-500/20 shadow-xl relative overflow-hidden group text-left col-span-2 md:col-span-1">
-          <CardHeader className="pb-2 px-3 sm:px-6">
+          <CardHeader className="pb-1 px-3 sm:px-6">
             <div className="flex items-center justify-between mb-1">
-              <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Gross Liability</CardDescription>
+              <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Total Liability</CardDescription>
               <div className="p-1 sm:p-1.5 bg-red-500/10 rounded-lg text-red-500">
                 <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </div>
@@ -384,24 +383,15 @@ export function DebtCreditManagement() {
               {formatCurrency(totalDebt + totalCreditUsed, userProfile.currency, userProfile.customCurrency)}
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-3 sm:px-6">
+          <CardContent className="px-3 sm:px-6 pb-2 sm:pb-3">
             <div className="flex items-center gap-2">
-              <div className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm bg-red-500/10 text-red-600 border border-red-500/20">
-                {debtAccounts.length + creditAccounts.length} Account{(debtAccounts.length + creditAccounts.length) !== 1 ? "s" : ""}
+              <div className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-red-500/10 text-red-600 border border-red-500/20">
+                High Priority
               </div>
+              <span className="text-[10px] sm:text-[11px] font-bold text-muted-foreground">
+                {debtAccounts.length + creditAccounts.length} account{(debtAccounts.length + creditAccounts.length) !== 1 ? "s" : ""}
+              </span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
-          <CardHeader className="pb-2 px-3 sm:px-6">
-            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Credit Health</CardDescription>
-            <CardTitle className={`text-xl sm:text-2xl font-black font-mono ${utilizationStatus.color}`}>
-              {overallUtilization.toFixed(1)}%
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6">
-            <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Avg Utilization</span>
           </CardContent>
         </Card>
 
@@ -419,6 +409,29 @@ export function DebtCreditManagement() {
           </CardContent>
         </Card>
 
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Credit Health</CardDescription>
+            <CardTitle className={`text-xl sm:text-2xl font-black font-mono ${utilizationStatus.color}`}>
+              {overallUtilization.toFixed(1)}%
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Avg Utilization</span>
+          </CardContent>
+        </Card>
+
+        <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+          <CardHeader className="pb-2 px-3 sm:px-6">
+            <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Accrued Interest</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-black font-mono">
+              {formatCurrency(totalAccruedInterest, userProfile.currency, userProfile.customCurrency)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6">
+            <Badge variant="outline" className="text-[8px] sm:text-[9px] font-black text-amber-600 bg-amber-50/50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">PROJECTED</Badge>
+          </CardContent>
+        </Card>
       </div>
       {/* Debt and Credit Management */}
       <Card>
@@ -751,7 +764,7 @@ export function DebtCreditManagement() {
                   </div>
                   <h3 className="text-lg font-semibold mb-2">No Lending Records</h3>
                   <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">Track money you've lent to friends and family.</p>
-                  <Button onClick={() => { setActiveTab("debt"); setShowAddDialog(true) }} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                  <Button onClick={() => setShowAddDialog(true)} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Lending Record
                   </Button>

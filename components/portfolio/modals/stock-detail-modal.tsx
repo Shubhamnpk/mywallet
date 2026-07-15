@@ -1370,7 +1370,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted text-muted-foreground transition-all z-50 border border-muted-foreground/10"
+                            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted hover:text-muted-foreground text-muted-foreground transition-all z-50 border border-muted-foreground/10"
                             onClick={() => onOpenChange(false)}
                         >
                             <X className="h-4 w-4" />

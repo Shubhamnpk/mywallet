@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { LayoutGrid, X, Search, Palette, Filter } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { LayoutGrid, X, Search, Info, Filter, PieChart, Eye, Activity } from "lucide-react"
 import type { PortfolioItem } from "@/types/wallet"
 
 type SizeMode = "allocation" | "units" | "return"
 type ColorMode = "daily" | "total"
-type ColorScheme = "classic" | "accessible"
 type AssetFilter = "all" | "stock" | "crypto"
 
 interface HeatMapItem {
@@ -27,6 +27,7 @@ interface HeatMapItem {
   hasValidCost: boolean
   returnAmount: number
   returnPercent: number
+  ltp: number
 }
 
 interface PortfolioHeatMapProps {
@@ -40,7 +41,6 @@ function HeatMapContent({
   items,
   sizeMode,
   colorMode,
-  colorScheme,
   searchQuery,
   selectedItem,
   setSelectedItem,
@@ -49,7 +49,6 @@ function HeatMapContent({
   items: HeatMapItem[]
   sizeMode: SizeMode
   colorMode: ColorMode
-  colorScheme: ColorScheme
   searchQuery: string
   selectedItem: HeatMapItem | null
   setSelectedItem: (item: HeatMapItem | null) => void
@@ -165,18 +164,25 @@ function HeatMapContent({
         if (!r || r.w <= 0 || r.h <= 0) return null
 
         const displayPct = colorMode === "daily" ? item.changePercent : item.returnPercent
-        const displayAbsChange = Math.abs(displayPct)
-        const isDisplayPositive = displayPct >= 0
+        const noCostData = colorMode === "total" && !item.hasValidCost
 
         const modeMaxAbsChange = colorMode === "daily" ? maxAbsChange : maxReturnPercent
-        const intensity = Math.min(displayAbsChange / (modeMaxAbsChange || 1), 1)
+        const intensity = Math.min(Math.abs(displayPct) / (modeMaxAbsChange || 1), 1)
 
-        // Color Palette definitions
-        const positiveRGB = colorScheme === "classic" ? "34, 197, 94" : "37, 99, 235"  // Green-500 vs Blue-600
-        const negativeRGB = colorScheme === "classic" ? "239, 68, 68" : "249, 115, 22" // Red-500 vs Orange-500
+        const grayRGB = "148, 163, 184"
+        const isNeutral = noCostData || (colorMode === "total" && displayPct === 0)
 
-        const rgb = isDisplayPositive ? positiveRGB : negativeRGB
-        const alpha = 0.15 + intensity * 0.75
+        let rgb: string, alpha: number, sign: string
+        if (isNeutral) {
+          rgb = grayRGB
+          alpha = 0.12
+          sign = ""
+        } else {
+          const isPositive = displayPct > 0
+          rgb = isPositive ? "34, 197, 94" : "239, 68, 68"
+          alpha = 0.15 + intensity * 0.75
+          sign = isPositive ? "+" : ""
+        }
         const bgColor = `rgba(${rgb}, ${alpha})`
 
         // Sizing & visibility logic
@@ -201,9 +207,9 @@ function HeatMapContent({
 
         // Contrast/Accessibility handling for light/dark modes
         const isDarkText = intensity <= 0.6
-        const textClass = isDarkText ? "text-zinc-950 dark:text-white" : "text-white"
-        const subtextClass = isDarkText ? "text-zinc-700 dark:text-white/80" : "text-white/90"
-        const textShadowStyle = isDarkText ? undefined : { textShadow: "0 1px 2px rgba(0,0,0,0.5)" }
+        const textClass = isNeutral ? "text-zinc-400 dark:text-zinc-600" : isDarkText ? "text-zinc-950 dark:text-white" : "text-white"
+        const subtextClass = isNeutral ? "text-zinc-400 dark:text-zinc-600" : isDarkText ? "text-zinc-700 dark:text-white/80" : "text-white/90"
+        const textShadowStyle = isNeutral ? undefined : isDarkText ? undefined : { textShadow: "0 1px 2px rgba(0,0,0,0.5)" }
 
         const cellContent = (
           <div
@@ -231,7 +237,7 @@ function HeatMapContent({
                     className={`font-bold mt-1 transition-colors duration-200 ${subtextClass}`}
                     style={{ fontSize: `${Math.max(7, fontSize * 0.72)}px`, ...textShadowStyle }}
                   >
-                    {isDisplayPositive ? '+' : ''}{displayPct.toFixed(1)}%
+                    {sign}{displayPct.toFixed(1)}%
                   </span>
                 )}
               </div>
@@ -289,6 +295,10 @@ function HeatMapContent({
                       {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
                     </span>
                   </div>
+                  <div className="flex justify-between gap-6">
+                    <span>LTP:</span>
+                    <span className="font-bold text-foreground">रु {item.ltp.toFixed(2)}</span>
+                  </div>
                   {item.hasValidCost ? (
                     <div className="flex justify-between gap-6">
                       <span>Total Return:</span>
@@ -316,8 +326,8 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
   const [sizeMode, setSizeMode] = useState<SizeMode>("allocation")
   const [colorMode, setColorMode] = useState<ColorMode>("daily")
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all")
-  const [colorScheme, setColorScheme] = useState<ColorScheme>("classic")
   const [searchQuery, setSearchQuery] = useState("")
+  const [showInfo, setShowInfo] = useState(false)
   const [selectedItem, setSelectedItem] = useState<HeatMapItem | null>(null)
 
   const rawHeatMapItems = useMemo(() => {
@@ -329,6 +339,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
       totalCurrentValue: number
       weightedPctChangeSum: number
       weightedPctChangeUnits: number
+      ltp: number
       assetType?: string
       assetName?: string
     }>()
@@ -349,6 +360,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
         existing.totalCost += cost
         if (hasBuyPrice) existing.costUnitCount += item.units
         existing.totalCurrentValue += currentValue
+        existing.ltp = price
         // Weighted by current value so larger holdings drive the daily % more
         if (isFiniteNumber(item.percentChange)) {
           existing.weightedPctChangeSum += item.percentChange! * currentValue
@@ -365,6 +377,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
           totalCurrentValue: currentValue,
           weightedPctChangeSum: isFiniteNumber(item.percentChange) ? item.percentChange! * currentValue : 0,
           weightedPctChangeUnits: isFiniteNumber(item.percentChange) ? currentValue : 0,
+          ltp: price,
           assetType: item.assetType,
           assetName: item.assetName,
         })
@@ -393,6 +406,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
         hasValidCost,
         returnAmount,
         returnPercent,
+        ltp: data.ltp,
       }
     }).sort((a, b) => b.currentValue - a.currentValue)
   }, [portfolio])
@@ -428,8 +442,8 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
   return (
     <Card className="bg-card/45 backdrop-blur-md border border-border/40 overflow-hidden text-left shadow-xl flex flex-col h-full rounded-2xl">
       <CardHeader className="pb-0.5 px-4 pt-2 border-b border-border/10 space-y-2">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1 min-w-0">
             <CardTitle className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
               <LayoutGrid className="w-3.5 h-3.5 text-primary" /> Portfolio Heat Map
             </CardTitle>
@@ -437,37 +451,36 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
               {heatMapItems.length} holdings · Sized by <span className="text-primary">{sizeModeLabel}</span> · Colored by <span className="text-primary">{colorModeLabel}</span>
             </CardDescription>
           </div>
+          <Button
+            variant="outline"
+            size="icon"
+            title="What do these options mean?"
+            onClick={() => setShowInfo(true)}
+            className="h-7 w-7 shrink-0 rounded-lg border-border/35 bg-card/60 hover:bg-muted/30 transition-all text-muted-foreground"
+          >
+            <Info className="w-3.5 h-3.5" />
+          </Button>
+        </div>
 
-          {/* Search bar and settings buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full sm:w-40">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search symbol..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-7 pr-7 h-7 text-[10px] rounded-lg border-border/30 bg-muted/10 w-full font-medium focus:ring-primary/20"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              )}
-            </div>
-
-            <Button
-              variant="outline"
-              size="icon"
-              title="Toggle Color Scheme"
-              onClick={() => setColorScheme(prev => prev === "classic" ? "accessible" : "classic")}
-              className={`h-7 w-7 rounded-lg border-border/35 bg-card/60 hover:bg-muted/30 transition-all ${colorScheme === "accessible" ? "text-primary border-primary/30" : "text-muted-foreground"}`}
-            >
-              <Palette className="w-3.5 h-3.5" />
-            </Button>
+        {/* Search bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-40">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search symbol..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-7 pr-7 h-7 text-[10px] rounded-lg border-border/30 bg-muted/10 w-full font-medium focus:ring-primary/20"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -551,7 +564,6 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
               items={heatMapItems}
               sizeMode={sizeMode}
               colorMode={colorMode}
-              colorScheme={colorScheme}
               searchQuery={searchQuery}
               selectedItem={selectedItem}
               setSelectedItem={setSelectedItem}
@@ -562,7 +574,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-border/20 px-3 py-2 bg-muted/10 rounded-xl text-[10px] font-bold text-muted-foreground gap-2">
               <div className="flex items-center gap-2">
                 <span>Loss</span>
-                <div className={`h-2.5 w-28 rounded-md bg-gradient-to-r ${colorScheme === 'classic' ? 'from-red-500/80 via-muted/30 to-emerald-500/80' : 'from-orange-500/80 via-muted/30 to-blue-600/80'}`} />
+                <div className="h-2.5 w-28 rounded-md bg-gradient-to-r from-red-500/80 via-muted/30 to-emerald-500/80" />
                 <span>Gain</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -643,6 +655,58 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
           </>
         )}
       </CardContent>
+
+      <Dialog open={showInfo} onOpenChange={setShowInfo}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider">
+              <Info className="w-4 h-4 text-primary" /> How the Heat Map works
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <div className="space-y-2">
+              <p className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <PieChart className="w-3.5 h-3.5" /> Tile Size
+              </p>
+              <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
+                <p><span className="font-semibold text-foreground">Value Allocation</span> — Each tile&apos;s area represents its share of your total portfolio value. Larger tiles = bigger holdings.</p>
+                <p><span className="font-semibold text-foreground">Units Count</span> — Tile size reflects the number of shares/coins held, regardless of price.</p>
+                <p><span className="font-semibold text-foreground">Net Returns</span> — Tile size reflects the absolute profit or loss amount. Larger tiles = bigger gains or losses.</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5" /> Tile Color
+              </p>
+              <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
+                <p><span className="font-semibold text-foreground">Daily %</span> — Colors show today&apos;s price change. Green = up, Red = down. Intensity reflects how big the move was.</p>
+                <p><span className="font-semibold text-foreground">Total %</span> — Colors show your total return since purchase. Green = profit, Red = loss. Intensity reflects the return magnitude.</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5" /> Filters
+              </p>
+              <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
+                <p><span className="font-semibold text-foreground">All / Stocks / Crypto</span> — Show every asset type, or narrow down to just stocks or cryptocurrencies.</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-muted/20 p-3 space-y-1">
+              <p className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5" /> Interacting
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 pl-5 list-disc">
+                <li>Hover any tile to see detailed info in a tooltip.</li>
+                <li>Tap or click a tile to pin its details below the map.</li>
+                <li>Use the search bar to highlight a specific symbol.</li>
+              </ul>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

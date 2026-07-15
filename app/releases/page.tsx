@@ -1,11 +1,11 @@
 import releasesData from "@/data/releases.json"
 import packageJson from "@/package.json"
-import { CalendarDays, CheckCircle2, Globe, History, Home, Map, Rocket, Settings2, Tag } from "lucide-react"
+import { CalendarDays, CheckCircle2, Globe, History, Rocket, Tag } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatAppDate } from "@/lib/app-calendar"
+import { PublicLayout } from "@/components/public-layout"
 
 type ReleaseStatus = "current" | "stable"
 type ReleaseCategory = "Feature" | "Bugfix" | "Improvement" | "Major" | "UX" | "Security" | "Performance"
@@ -73,35 +73,13 @@ export default function ReleasesPage() {
   const releaseSpan = getReleaseSpanLabel(releases)
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <PublicLayout>
       <section className="border-b border-border/70 bg-[linear-gradient(135deg,hsl(var(--background))_0%,hsl(var(--muted))_58%,hsl(var(--background))_100%)]">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Badge className="rounded-full border border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
-              <Globe className="mr-1.5 h-3.5 w-3.5" />
-              Public Release Page
-            </Badge>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm" className="bg-background/70">
-                <Link href="/">
-                  <Home className="mr-1.5 h-4 w-4" />
-                  Home
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="sm" className="bg-background/70">
-                <Link href="/roadmap">
-                  <Map className="mr-1.5 h-4 w-4" />
-                  Roadmap
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="sm" className="bg-background/70">
-                <Link href="/settings?tab=about">
-                  <Settings2 className="mr-1.5 h-4 w-4" />
-                  About
-                </Link>
-              </Button>
-            </div>
-          </div>
+          <Badge className="rounded-full border border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
+            <Globe className="mr-1.5 h-3.5 w-3.5" />
+            Public Release Page
+          </Badge>
 
           <div className="mt-7 grid gap-6 lg:grid-cols-[1fr_420px] lg:items-end">
             <div className="max-w-3xl">
@@ -246,7 +224,7 @@ export default function ReleasesPage() {
           </Card>
         </div>
       </section>
-    </main>
+    </PublicLayout>
   )
 }
 

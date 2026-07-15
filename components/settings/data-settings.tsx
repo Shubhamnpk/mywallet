@@ -798,7 +798,7 @@ export function DataSettings() {
       return
     }
 
-    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
+    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
       setDropboxLocalPinError(null)

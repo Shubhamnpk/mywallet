@@ -4,10 +4,12 @@ import { useState, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 import { formatCurrency } from "@/lib/utils"
 import { getTimeSinceCreation, calculateInterest } from "../debt-credit-utils"
 import type { UserProfile } from "@/types/wallet"
-import { Receipt, TrendingDown, TrendingUp, CreditCard, FileText } from "lucide-react"
+import { Receipt, TrendingDown, TrendingUp, CreditCard, FileText, ArrowRight, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
@@ -21,7 +23,7 @@ interface DebtDetailsDialogProps {
     userProfile: UserProfile
 }
 
-type HistoryRange = "active-month" | "this-week" | "all"
+type HistoryRange = "active-month" | "this-week" | "all" | "custom"
 
 export function DebtDetailsDialog({
     open,
@@ -32,10 +34,21 @@ export function DebtDetailsDialog({
     userProfile
 }: DebtDetailsDialogProps) {
     const [historyRange, setHistoryRange] = useState<HistoryRange>("active-month")
+    const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({})
     const calendarSystem = useCalendarSystem()
 
     const getPeriodRange = (range: HistoryRange) => {
         const now = new Date()
+        if (range === "custom") {
+            if (!customDateRange.from || !customDateRange.to) {
+                return { start: new Date(0), end: new Date(8640000000000000) }
+            }
+            const cStart = new Date(customDateRange.from)
+            cStart.setHours(0, 0, 0, 0)
+            const cEnd = new Date(customDateRange.to)
+            cEnd.setHours(23, 59, 59, 999)
+            return { start: cStart, end: cEnd }
+        }
         if (range === "this-week") {
             const day = now.getDay()
             const diff = now.getDate() - day + (day === 0 ? -6 : 1)
@@ -165,8 +178,62 @@ export function DebtDetailsDialog({
                                     <SelectItem value="active-month">Active Month</SelectItem>
                                     <SelectItem value="this-week">This Week</SelectItem>
                                     <SelectItem value="all">All Time</SelectItem>
+                                    <SelectItem value="custom">Custom Range</SelectItem>
                                 </SelectContent>
                             </Select>
+                            {historyRange === "custom" && (
+                                <div className="w-full pt-3">
+                                    <div className="rounded-xl border bg-card p-4 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-center gap-2 text-xs font-semibold text-muted-foreground">
+                                            <Calendar className="w-3.5 h-3.5 text-primary" />
+                                            <span>Custom Date Range</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                                        >
+                                                            <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                                            <span className="truncate">{customDateRange.from ? customDateRange.from.toLocaleDateString() : "From"}</span>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0" align="start">
+                                                        <CalendarPicker
+                                                            mode="single"
+                                                            selected={customDateRange.from}
+                                                            onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, from: date }))}
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 shrink-0">
+                                                <ArrowRight className="w-4 h-4 text-primary" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button
+                                                            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&:not(:disabled)]:cursor-pointer"
+                                                        >
+                                                            <Calendar className="w-4 h-4 text-primary shrink-0" />
+                                                            <span className="truncate">{customDateRange.to ? customDateRange.to.toLocaleDateString() : "To"}</span>
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0" align="start">
+                                                        <CalendarPicker
+                                                            mode="single"
+                                                            selected={customDateRange.to}
+                                                            onSelect={(date) => setCustomDateRange((prev) => ({ ...prev, to: date }))}
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Account Info Card */}

@@ -26,7 +26,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Download,
+  Send,
+  RefreshCw,
+  BellRing,
 } from "lucide-react"
+import { showAppNotification, REMINDER_CACHE_KEY } from "@/lib/notifications"
 import { useDeveloperMode } from "@/hooks/use-developer-mode"
 
 export function DeveloperSettings() {
@@ -116,6 +120,51 @@ export function DeveloperSettings() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BellRing className="h-5 w-5 text-purple-500" />
+            Notification Tools
+          </CardTitle>
+          <CardDescription>Test notification delivery and reset reminder cooldowns.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                const shown = await showAppNotification({
+                  title: "MyWallet reminder test",
+                  body: "Notifications are active and ready.",
+                  tag: "mywallet-test-notification",
+                  url: "/settings?tab=notifications",
+                })
+                if (!shown) {
+                  toast.error("Test Failed", { description: "Notification permission is not granted yet." })
+                  return
+                }
+                toast.success("Test Sent", { description: "Check your system tray or browser notifications." })
+              }}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send Test Notification
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                localStorage.removeItem(REMINDER_CACHE_KEY)
+                toast.success("Reminder Cooldowns Reset", { description: "MyWallet can send reminders again immediately." })
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reset Reminder Cooldowns
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

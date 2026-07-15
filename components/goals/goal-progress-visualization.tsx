@@ -191,7 +191,7 @@ export function GoalProgressVisualization({ goals, userProfile }: GoalProgressVi
               <p className="text-[11px] leading-relaxed text-muted-foreground italic">
                 {behindCount > 0
                   ? "Focus on lagging goals to maintain overall momentum."
-                  : "All active goals are on track — keep it up!"}
+                  : "All active goals are on track  keep it up!"}
               </p>
             </div>
           </CardContent>

@@ -470,57 +470,68 @@ export function InsightsPanel({
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-10">
       {/* Hero Section: Financial Health Advisor */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-background to-primary/5 border border-primary/20 p-6 md:p-8 shadow-2xl">
-        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-          <Sparkles className="w-32 h-32 text-primary" />
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary/10 via-background to-primary/5 border border-primary/20 p-4 sm:p-6 md:p-8 shadow-2xl">
+        <div className="absolute top-0 right-0 p-4 sm:p-8 opacity-10 pointer-events-none">
+          <Sparkles className="w-20 h-20 sm:w-32 sm:h-32 text-primary" />
         </div>
 
-        <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-          <div className="flex-1 space-y-4 text-center md:text-left">
-            <Badge variant="outline" className="px-3 py-1 bg-white/50 dark:bg-black/20 border-primary/30 text-primary font-bold tracking-wider rounded-full">
-              FINANCIAL PERFORMANCE
-            </Badge>
-            <h2 className="text-xl sm:text-3xl md:text-5xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent leading-tight">
-              {overallScore.description}
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-xl">
+        <div className="flex flex-col md:flex-row md:items-center gap-4 sm:gap-6 md:gap-8 relative z-10">
+          <div className="flex-1 space-y-3 sm:space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0 space-y-2 sm:space-y-3">
+                <Badge variant="outline" className="px-2.5 py-0.5 sm:px-3 sm:py-1 bg-white/50 dark:bg-black/20 border-primary/30 text-primary font-bold tracking-wider rounded-full text-[10px] sm:text-xs w-fit">
+                  FINANCIAL PERFORMANCE
+                </Badge>
+                <h2 className="text-lg sm:text-2xl md:text-4xl lg:text-5xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent leading-tight">
+                  {overallScore.description}
+                </h2>
+              </div>
+
+              {/* Mobile score circle — inline with heading */}
+              <div
+                className="md:hidden w-14 h-14 rounded-full flex items-center justify-center relative cursor-pointer group shrink-0"
+                onClick={() => setIsModalOpen(true)}
+              >
+                <div className="absolute inset-0 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors"></div>
+                <div className="text-center relative z-10">
+                  <span className="block text-base font-black text-primary leading-none">{overallScore.score.toFixed(0)}</span>
+                  <span className="text-[7px] font-black text-primary/50 leading-none">{overallScore.grade}</span>
+                </div>
+                <svg className="absolute inset-0 -rotate-90 w-full h-full drop-shadow-[0_0_3px_oklch(var(--primary)/0.3)]">
+                  <circle cx="50%" cy="50%" r="44%" fill="none" stroke="oklch(var(--primary)/0.12)" strokeWidth="6" />
+                  <circle cx="50%" cy="50%" r="44%" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeDasharray={276} strokeDashoffset={276 - (276 * (Number.isNaN(overallScore.score) ? 0 : overallScore.score) / 100)} className="text-primary transition-all duration-1000 ease-out" />
+                </svg>
+              </div>
+            </div>
+
+            <p className="text-sm sm:text-base md:text-lg text-muted-foreground max-w-xl">
               {thisMonthIncome > thisMonthExpenses
                 ? `You're on track to save ${formatCurrency(potentialSavings, userProfile.currency, userProfile.customCurrency)} in ${activeMonthLabel}. Keep your daily spending below ${formatCurrency(dailySafetyBudget, userProfile.currency, userProfile.customCurrency)}.`
                 : `Your expenses currently exceed your income. Let's look for ways to optimize your spending for the rest of ${activeMonthLabel}.`}
             </p>
-            <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-              <Button onClick={() => setIsModalOpen(true)} className="rounded-full px-6 font-bold shadow-lg shadow-primary/20">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <Button onClick={() => setIsModalOpen(true)} className="rounded-full px-4 sm:px-6 text-xs sm:text-sm font-bold shadow-lg shadow-primary/20 h-9 sm:h-10">
                 View Score Breakdown
               </Button>
-              <Button variant="outline" className="rounded-full px-6 font-bold bg-white/50 dark:bg-black/20" onClick={exportInsightsReport}>
-                <Download className="w-4 h-4 mr-2" />
+              <Button variant="outline" className="rounded-full px-4 sm:px-6 text-xs sm:text-sm font-bold bg-white/50 dark:bg-black/20 h-9 sm:h-10" onClick={exportInsightsReport}>
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                 Export Report
               </Button>
             </div>
           </div>
 
+          {/* Desktop score circle — alongside full content */}
           <div
-            className="w-48 h-48 md:w-56 md:h-56 rounded-full border-[12px] border-primary/10 flex items-center justify-center relative cursor-pointer group"
+            className="hidden md:flex w-40 h-40 lg:w-48 lg:h-48 rounded-full border-[10px] lg:border-[12px] border-primary/10 items-center justify-center relative cursor-pointer group shrink-0"
             onClick={() => setIsModalOpen(true)}
           >
             <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="text-center relative z-10">
-              <span className="block text-5xl md:text-7xl font-black text-primary leading-none">{overallScore.score.toFixed(0)}</span>
-              <span className="text-xl md:text-2xl font-black text-primary/60">{overallScore.grade}</span>
+              <span className="block text-5xl lg:text-7xl font-black text-primary leading-none">{overallScore.score.toFixed(0)}</span>
+              <span className="text-xl lg:text-2xl font-black text-primary/60">{overallScore.grade}</span>
             </div>
-            {/* Simple Animated Ring */}
             <svg className="absolute inset-0 -rotate-90 w-full h-full">
-              <circle
-                cx="50%"
-                cy="50%"
-                r="46%"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="12"
-                strokeDasharray="290"
-                strokeDashoffset={290 - (290 * (Number.isNaN(overallScore.score) ? 0 : overallScore.score) / 100)}
-                className="text-primary transition-all duration-1000 ease-out"
-              />
+              <circle cx="50%" cy="50%" r="46%" fill="none" stroke="currentColor" strokeWidth="12" strokeDasharray="290" strokeDashoffset={290 - (290 * (Number.isNaN(overallScore.score) ? 0 : overallScore.score) / 100)} className="text-primary transition-all duration-1000 ease-out" />
             </svg>
           </div>
         </div>

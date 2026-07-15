@@ -12,7 +12,7 @@ import { InsightsPanel } from "@/components/insights/insights-panel"
 import { CategoriesManagement } from "@/components/categories/categories-management"
 import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
-import { BrokerTraining } from "@/components/tools/broker-training"
+import { BrokerLeaderboard } from "@/components/tools/broker-leaderboard"
 import { ScannerTool } from "@/components/tools/scanner/scan-tool"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
@@ -89,7 +89,7 @@ function getTabLabel(value: string): string {
     portfolio: "Portfolio",
     insights: "Insights",
     "shift-tracker": "Shift Tracker",
-    "broker-training": "Broker Training",
+    "broker-training": "Broker leaderboard",
     scanner: "Scanner",
   }
   return labels[value] ?? value
@@ -218,7 +218,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     },
     {
       value: "broker-training",
-      label: "Broker training",
+      label: "Broker leaderboard",
       icon: Landmark,
       description: "Browse NEPSE brokers by sector & activity",
     },
@@ -394,20 +394,14 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
 
         <div className={isFullscreen ? "" : "mt-6"}>
           {isFullscreen && (
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-4 py-3 flex items-center gap-3">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-2 py-2 mb-4">
               <button
                 onClick={() => setActiveTab("tools")}
-                className="p-2 -ml-2 rounded-lg hover:bg-muted/50 transition-colors"
+                className="inline-flex items-center gap-1.5 p-2 rounded-lg hover:bg-muted/50 transition-colors text-sm font-medium"
               >
                 <ArrowLeft className="w-5 h-5" />
+                Back
               </button>
-              {(() => {
-                const tab = allTabs.find((t) => t.value === activeTab)
-                return tab ? <tab.icon className="w-5 h-5 text-muted-foreground" /> : null
-              })()}
-              <span className="font-semibold text-sm">
-                {getTabLabel(activeTab)}
-              </span>
             </div>
           )}
           <TabsContent value="transactions" className="space-y-4">
@@ -443,7 +437,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           </TabsContent>
 
           <TabsContent value="broker-training" className="space-y-4">
-            <BrokerTraining />
+            <BrokerLeaderboard />
           </TabsContent>
 
           <TabsContent value="scanner" className="space-y-4">
