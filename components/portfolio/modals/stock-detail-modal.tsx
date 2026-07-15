@@ -251,9 +251,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [pdfUrl, setPdfUrl] = useState<string | null>(null)
     const [pdfSourceUrl, setPdfSourceUrl] = useState<string | null>(null)
     const [isPdfOpen, setIsPdfOpen] = useState(false)
-    const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
-    const [isPdfLoading, setIsPdfLoading] = useState(false)
-    const [pdfError, setPdfError] = useState<string | null>(null)
     const [isSipModalOpen, setIsSipModalOpen] = useState(false)
     const [initialEnrollmentTransactionId, setInitialEnrollmentTransactionId] = useState<string | null>(null)
     const [isCompletingSip, setIsCompletingSip] = useState(false)
@@ -337,9 +334,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setWhatIfUnits("")
             setIsWhatIfSearchFocused(false)
             setIsPdfOpen(false)
-            if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
-            setPdfBlobUrl(null)
-            setPdfError(null)
             setIsSipModalOpen(false)
             setActiveTab(mode === "sold" ? "sold" : "overview")
             setPdfUrl(null)
@@ -391,39 +385,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             description: "",
         })
     }, [open, mode, initialItem?.id])
-
-    useEffect(() => {
-        if (!pdfUrl) {
-            setPdfBlobUrl(null)
-            setPdfError(null)
-            return
-        }
-
-        let cancelled = false
-        setIsPdfLoading(true)
-        setPdfError(null)
-
-        fetch(pdfUrl)
-            .then((res) => {
-                if (!res.ok) throw new Error(`Server returned ${res.status}`)
-                return res.blob()
-            })
-            .then((blob) => {
-                if (cancelled) return
-                const url = URL.createObjectURL(blob)
-                setPdfBlobUrl(url)
-                setIsPdfLoading(false)
-            })
-            .catch((err) => {
-                if (cancelled) return
-                setPdfError(err.message || "Failed to load PDF")
-                setIsPdfLoading(false)
-            })
-
-        return () => {
-            cancelled = true
-        }
-    }, [pdfUrl])
 
     const isCrypto = Boolean(item && (item.assetType === "crypto" || item.cryptoId))
     const isMarketLookupItem = Boolean(item && isMarketSearchDetailItem(item))
@@ -698,13 +659,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }
 
     const handleOpenDocument = (url: string) => {
-        if (isPdfLink(url)) {
-            setPdfSourceUrl(url)
-            setPdfUrl(`/api/proxy/pdf?url=${encodeURIComponent(url)}`)
-            setIsPdfOpen(true)
-            return
-        }
-        window.open(url, "_blank", "noopener,noreferrer")
+        setPdfSourceUrl(url)
+        setPdfUrl(`/api/proxy/pdf?url=${encodeURIComponent(url)}`)
+        setIsPdfOpen(true)
     }
 
     const loadBtcNews = useCallback(async () => {
@@ -3287,9 +3244,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                     if (!next) {
                         setPdfUrl(null)
                         setPdfSourceUrl(null)
-                        if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
-                        setPdfBlobUrl(null)
-                        setPdfError(null)
                     }
                 }}
             >
@@ -3321,9 +3275,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         setIsPdfOpen(false)
                                         setPdfUrl(null)
                                         setPdfSourceUrl(null)
-                                        if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
-                                        setPdfBlobUrl(null)
-                                        setPdfError(null)
                                     }}
                                 >
                                     <X className="w-3 h-3" />
@@ -3353,33 +3304,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         <ZoomIn className="h-4 w-4" />
                                     </button>
                                 </div>
-                                {isPdfLoading ? (
-                                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                                        Loading document...
-                                    </div>
-                                ) : pdfError ? (
-                                    <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
-                                        <p className="text-sm text-destructive font-medium">Failed to load document</p>
-                                        <p className="text-xs text-muted-foreground max-w-md">{pdfError}</p>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
-                                        >
-                                            <ExternalLink className="w-4 h-4 mr-2" />
-                                            Open directly in new tab
-                                        </Button>
-                                    </div>
-                                ) : pdfBlobUrl ? (
-                                    <div className="flex-1 overflow-auto">
-                                        <iframe
-                                            src={pdfBlobUrl}
-                                            className="w-full h-full border-0"
-                                            style={{ transform: `scale(${pdfZoom})`, transformOrigin: "top left", width: `${100 / pdfZoom}%`, height: `${100 / pdfZoom}%` }}
-                                            title="PDF Document"
-                                        />
-                                    </div>
-                                ) : null}
+                                <iframe
+                                    src={pdfUrl}
+                                    className="w-full h-full border-0"
+                                    style={{ transform: `scale(${pdfZoom})`, transformOrigin: "top left", width: `${100 / pdfZoom}%`, height: `${100 / pdfZoom}%` }}
+                                    title="PDF Document"
+                                />
                             </div>
                         ) : (
                             <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
