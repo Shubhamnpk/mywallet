@@ -16,6 +16,7 @@ import { NotificationSettings } from "./notification-settings"
 import { DeveloperSettings } from "./developer-settings"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { useWalletData } from "@/contexts/wallet-data-context"
+import { useDeveloperMode } from "@/hooks/use-developer-mode"
 import InstallButton from "@/components/pwa/install-button"
 import { getCurrencySymbol } from "@/lib/currency"
 import { useRouter } from "next/navigation"
@@ -53,6 +54,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
   const [searchQuery, setSearchQuery] = useState("")
   const [highlightQuery, setHighlightQuery] = useState("")
   const { userProfile } = useWalletData()
+  const { isDeveloperMode } = useDeveloperMode()
   const router = useRouter()
 
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([])
@@ -229,19 +231,22 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
 
   ], [])
 
-  // Filter settings items based on search query
+  // Filter settings items based on search query and developer mode
   const filteredSettingsItems = useMemo(() => {
+    const visible = allSettingsItems.filter(item =>
+      item.id !== "developer" || isDeveloperMode
+    )
     if (!searchQuery.trim()) {
-      return allSettingsItems
+      return visible
     }
 
     const query = searchQuery.toLowerCase()
-    return allSettingsItems.filter(item =>
+    return visible.filter(item =>
       item.title.toLowerCase().includes(query) ||
       item.subtitle.toLowerCase().includes(query) ||
       item.keywords.some(keyword => keyword.toLowerCase().includes(query))
     )
-  }, [allSettingsItems, searchQuery])
+  }, [allSettingsItems, searchQuery, isDeveloperMode])
 
   const renderMainView = () => (
     <div className="flex flex-col h-full">

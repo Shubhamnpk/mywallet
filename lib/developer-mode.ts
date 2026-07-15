@@ -16,6 +16,12 @@ export function isDeveloperModeEnvEnabled() {
   return values.some((value) => DEV_VALUES.has((value || "").toLowerCase()))
 }
 
+export function isLocalhost() {
+  if (typeof window === "undefined") return false
+  const hostname = window.location.hostname
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]"
+}
+
 export function getStoredDeveloperMode() {
   if (typeof window === "undefined") return false
   return localStorage.getItem(DEVELOPER_MODE_STORAGE_KEY) === "true"
@@ -37,5 +43,5 @@ export function setStoredDeveloperMode(enabled: boolean) {
 
 export function getDeveloperModeSnapshot() {
   const override = getDeveloperModeOverride()
-  return override ?? isDeveloperModeEnvEnabled()
+  return override ?? (isDeveloperModeEnvEnabled() || isLocalhost())
 }

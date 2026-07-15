@@ -17,6 +17,7 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { useEffect } from "react"
 import { SessionManager } from "@/lib/session-manager"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useDeveloperMode } from "@/hooks/use-developer-mode"
 import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 
 export function SettingsPageClient() {
@@ -24,6 +25,7 @@ export function SettingsPageClient() {
   const searchParams = useSearchParams()
   const { userProfile, showOnboarding } = useWalletData()
   const isMobile = useIsMobile()
+  const { isDeveloperMode } = useDeveloperMode()
   const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "about", "developer"])
   const tab = searchParams.get("tab")
   const activeSettingsTab = tab && validTabs.has(tab) ? tab : "profile"
@@ -104,9 +106,11 @@ export function SettingsPageClient() {
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="meroshare">MeroShare</TabsTrigger>
             <TabsTrigger value="about">About</TabsTrigger>
-            <TabsTrigger value="developer" className="text-purple-500 data-[state=active]:text-purple-600">
-              Dev
-            </TabsTrigger>
+            {isDeveloperMode && (
+              <TabsTrigger value="developer" className="text-purple-500 data-[state=active]:text-purple-600">
+                Dev
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="profile">
@@ -136,9 +140,11 @@ export function SettingsPageClient() {
           <TabsContent value="about">
             <AboutSettings />
           </TabsContent>
-          <TabsContent value="developer">
-            <DeveloperSettings />
-          </TabsContent>
+          {isDeveloperMode && (
+            <TabsContent value="developer">
+              <DeveloperSettings />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>
