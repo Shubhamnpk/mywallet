@@ -15,8 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip as UITooltip, TooltipContent as UITooltipContent, TooltipProvider as UITooltipProvider, TooltipTrigger as UITooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Viewer, Worker } from "@react-pdf-viewer/core"
-import { zoomPlugin } from "@react-pdf-viewer/zoom"
+import { ZoomIn, ZoomOut } from "lucide-react"
 import { SIPSetupModal } from "./sip-setup-modal"
 import { EditTransactionModal } from "./edit-transaction-modal"
 import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
@@ -137,8 +136,6 @@ const getFiscalYearSortValue = (year: string) => {
     const match = year.match(/(\d{4})/)
     return match ? Number(match[1]) : 0
 }
-
-const PDF_WORKER_URL = "https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
 
 type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
 
@@ -293,8 +290,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [financialMetadata, setFinancialMetadata] = useState<CompanyFinancialMetadata | null>(null)
     const [isFinancialReportsLoading, setIsFinancialReportsLoading] = useState(false)
     const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
-    const zoomPluginInstance = zoomPlugin()
-    const { ZoomInButton, ZoomOutButton, ZoomPopover } = zoomPluginInstance
+    const [pdfZoom, setPdfZoom] = useState(1)
     const calendarSystem = useCalendarSystem()
 
     const item = useMemo(() => {
@@ -3292,18 +3288,35 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                     </DialogHeader>
                     <div className="flex-1 min-h-0 bg-muted/10 relative">
                         {pdfUrl ? (
-                            <>
-                                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-muted/50 bg-card/90 backdrop-blur px-1 py-1 shadow-lg
-                                    [&_.rpv-core__minimal-button]:text-foreground [&_.rpv-core__minimal-button]:h-7 [&_.rpv-core__minimal-button]:w-7
-                                    [&_.rpv-core__minimal-button:hover]:bg-muted/40 [&_.rpv-zoom__popover-target]:text-foreground">
-                                    <ZoomOutButton />
-                                    <ZoomPopover />
-                                    <ZoomInButton />
+                            <div className="h-full w-full flex flex-col">
+                                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-muted/50 bg-card/90 backdrop-blur px-1 py-1 shadow-lg">
+                                    <button
+                                        onClick={() => setPdfZoom((z) => Math.max(0.25, z - 0.25))}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-foreground hover:bg-muted/40 transition-colors"
+                                        title="Zoom out"
+                                    >
+                                        <ZoomOut className="h-4 w-4" />
+                                    </button>
+                                    <span className="min-w-[3rem] text-center text-xs font-medium text-foreground">
+                                        {Math.round(pdfZoom * 100)}%
+                                    </span>
+                                    <button
+                                        onClick={() => setPdfZoom((z) => Math.min(3, z + 0.25))}
+                                        className="flex h-7 w-7 items-center justify-center rounded-md text-foreground hover:bg-muted/40 transition-colors"
+                                        title="Zoom in"
+                                    >
+                                        <ZoomIn className="h-4 w-4" />
+                                    </button>
                                 </div>
-                                <Worker workerUrl={PDF_WORKER_URL}>
-                                    <Viewer fileUrl={pdfUrl} plugins={[zoomPluginInstance]} />
-                                </Worker>
-                            </>
+                                <div className="flex-1 overflow-auto">
+                                    <iframe
+                                        src={pdfUrl}
+                                        className="w-full h-full border-0"
+                                        style={{ transform: `scale(${pdfZoom})`, transformOrigin: "top left", width: `${100 / pdfZoom}%`, height: `${100 / pdfZoom}%` }}
+                                        title="PDF Document"
+                                    />
+                                </div>
+                            </div>
                         ) : (
                             <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
                                 No document selected.
