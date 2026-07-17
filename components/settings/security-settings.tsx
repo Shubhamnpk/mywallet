@@ -127,6 +127,10 @@ export function SecuritySettings({ onLock }: SecuritySettingsProps) {
 
         if (isValid) {
           if (pinEnabled) {
+            // Disabling PIN - re-encrypt stored data from the PIN master key
+            // back to the default key BEFORE deleting the master key, otherwise
+            // all encrypted data becomes permanently unreadable.
+            await SecureKeyManager.migrateFromMasterKeyToDefaultKey(currentPin)
             // Disabling PIN - clear ALL security data completely
             SecureKeyManager.clearAllKeys()
             SecurePinManager.clearAllSecurityData() // Comprehensive security data cleanup

@@ -15,8 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip as UITooltip, TooltipContent as UITooltipContent, TooltipProvider as UITooltipProvider, TooltipTrigger as UITooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ZoomIn, ZoomOut } from "lucide-react"
 import { SIPSetupModal } from "./sip-setup-modal"
+import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
 import { EditTransactionModal } from "./edit-transaction-modal"
 import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
@@ -290,7 +290,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [financialMetadata, setFinancialMetadata] = useState<CompanyFinancialMetadata | null>(null)
     const [isFinancialReportsLoading, setIsFinancialReportsLoading] = useState(false)
     const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
-    const [pdfZoom, setPdfZoom] = useState(1)
     const calendarSystem = useCalendarSystem()
 
     const item = useMemo(() => {
@@ -2480,7 +2479,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     name="LTP"
                                                                     stroke="#f97316"
                                                                     strokeWidth={3}
-                                                                    dot={getPriceHistoryRangeConfig(priceHistoryRange).grouping !== "daily" || priceHistory.length <= 30}
+                                                                    dot={getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" || priceHistory.length <= 30}
                                                                     activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
                                                                 />
                                                             </LineChart>
@@ -3237,7 +3236,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                     .map((p) => ({ id: p.cryptoId, symbol: p.symbol, name: scripNamesMap[p.symbol] || p.symbol }))}
                 currencySymbol={currencySymbol}
             />
-            <Dialog
+            <DocumentPreviewModal
                 open={isPdfOpen}
                 onOpenChange={(next) => {
                     setIsPdfOpen(next)
@@ -3246,79 +3245,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                         setPdfSourceUrl(null)
                     }
                 }}
-            >
-                <DialogContent className="max-w-4xl w-[95vw] h-[85vh] p-0 overflow-hidden bg-card/95 border-primary/20 shadow-2xl flex flex-col [&>button]:hidden">
-                    <DialogHeader className="px-5 pt-5 pb-3 border-b border-muted/20">
-                        <div className="flex items-center justify-between gap-3">
-                            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
-                                Document Preview
-                            </DialogTitle>
-                            <div className="flex items-center gap-2">
-                                {(pdfSourceUrl || pdfUrl) && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-8 text-[10px] font-black uppercase tracking-wider"
-                                        onClick={() => window.open(pdfSourceUrl || pdfUrl || "", "_blank", "noopener,noreferrer")}
-                                    >
-                                        <ExternalLink className="w-3 h-3 mr-2" />
-                                        Open in New Tab
-                                    </Button>
-                                )}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-[10px] font-black uppercase tracking-wider"
-                                    aria-label="Close preview"
-                                    title="Close preview"
-                                    onClick={() => {
-                                        setIsPdfOpen(false)
-                                        setPdfUrl(null)
-                                        setPdfSourceUrl(null)
-                                    }}
-                                >
-                                    <X className="w-3 h-3" />
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogHeader>
-                    <div className="flex-1 min-h-0 bg-muted/10 relative">
-                        {pdfUrl ? (
-                            <div className="h-full w-full flex flex-col">
-                                <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-muted/50 bg-card/90 backdrop-blur px-1 py-1 shadow-lg">
-                                    <button
-                                        onClick={() => setPdfZoom((z) => Math.max(0.25, z - 0.25))}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-foreground hover:bg-muted/40 transition-colors"
-                                        title="Zoom out"
-                                    >
-                                        <ZoomOut className="h-4 w-4" />
-                                    </button>
-                                    <span className="min-w-[3rem] text-center text-xs font-medium text-foreground">
-                                        {Math.round(pdfZoom * 100)}%
-                                    </span>
-                                    <button
-                                        onClick={() => setPdfZoom((z) => Math.min(3, z + 0.25))}
-                                        className="flex h-7 w-7 items-center justify-center rounded-md text-foreground hover:bg-muted/40 transition-colors"
-                                        title="Zoom in"
-                                    >
-                                        <ZoomIn className="h-4 w-4" />
-                                    </button>
-                                </div>
-                                <iframe
-                                    src={pdfUrl}
-                                    className="w-full h-full border-0"
-                                    style={{ transform: `scale(${pdfZoom})`, transformOrigin: "top left", width: `${100 / pdfZoom}%`, height: `${100 / pdfZoom}%` }}
-                                    title="PDF Document"
-                                />
-                            </div>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-                                No document selected.
-                            </div>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
+                url={pdfUrl}
+                sourceUrl={pdfSourceUrl}
+            />
         </>
     )
 }

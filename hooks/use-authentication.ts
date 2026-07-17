@@ -88,6 +88,7 @@ export function useAuthentication(): AuthState & AuthActions {
 
     // Listen for session expiry events
 	    const handleSessionExpiry = () => {
+	      if (SessionManager.isSessionValid()) return
 	      SecureKeyManager.expireKeyCache()
 	      setAuthState(prev => ({
 	        ...prev,

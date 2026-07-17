@@ -1,11 +1,10 @@
 "use client"
 
-import React, { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { RotateCcw, Play, Cpu, Users } from "lucide-react"
-import { toast } from "sonner"
+import { Play, RotateCcw, Cpu, Users, X, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TicTacToeGameProps {
@@ -13,372 +12,315 @@ interface TicTacToeGameProps {
   onClose: () => void
 }
 
-type Player = 'X' | 'O' | null
+type Player = "X" | "O" | null
 type Board = Player[]
-type GameMode = 'human' | 'ai'
-type Difficulty = 'normal' | 'infinity'
-
-interface GameState {
-  board: Board
-  currentPlayer: Player
-  winner: Player
-  isDraw: boolean
-  gameMode: GameMode
-  difficulty: Difficulty
-  isPlaying: boolean
-  scores: { X: number; O: number; draws: number }
-}
+type GameMode = "human" | "ai"
+type Phase = "menu" | "playing"
 
 const WINNING_COMBINATIONS = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-  [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-  [0, 4, 8], [2, 4, 6] // diagonals
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6],
 ]
 
 export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
-  const [gameState, setGameState] = useState<GameState>({
-    board: Array(9).fill(null),
-    currentPlayer: 'X',
-    winner: null,
-    isDraw: false,
-    gameMode: 'human',
-    difficulty: 'normal',
-    isPlaying: false,
-    scores: { X: 0, O: 0, draws: 0 }
-  })
+  const [phase, setPhase] = useState<Phase>("menu")
+  const [board, setBoard] = useState<Board>(Array(9).fill(null))
+  const [currentPlayer, setCurrentPlayer] = useState<Player>("X")
+  const [winner, setWinner] = useState<Player>(null)
+  const [isDraw, setIsDraw] = useState(false)
+  const [gameMode, setGameMode] = useState<GameMode>("human")
+  const [scores, setScores] = useState({ X: 0, O: 0, draws: 0 })
+  const [isAiThinking, setIsAiThinking] = useState(false)
 
-  const checkWinner = useCallback((board: Board): Player => {
-    for (const combination of WINNING_COMBINATIONS) {
-      const [a, b, c] = combination
-      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-        return board[a]
-      }
+  const checkWinner = useCallback((b: Board): Player => {
+    for (const [a, c, d] of WINNING_COMBINATIONS) {
+      if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a]
     }
     return null
   }, [])
 
-  const isBoardFull = useCallback((board: Board): boolean => {
-    return board.every(cell => cell !== null)
-  }, [])
+  const isBoardFull = useCallback((b: Board) => b.every((cell) => cell !== null), [])
 
-  const getBestMove = useCallback((board: Board): number => {
-    // Simple AI: try to win, block opponent, or take center/corners
-    const opponent = gameState.currentPlayer === 'X' ? 'O' : 'X'
+  const getBestMove = useCallback((b: Board, player: Player): number => {
+    const opponent = player === "X" ? "O" : "X"
 
-    // Check if AI can win
     for (let i = 0; i < 9; i++) {
-      if (board[i] === null) {
-        const testBoard = [...board]
-        testBoard[i] = gameState.currentPlayer
-        if (checkWinner(testBoard) === gameState.currentPlayer) {
-          return i
-        }
+      if (!b[i]) {
+        const test = [...b]
+        test[i] = player
+        if (checkWinner(test) === player) return i
       }
     }
 
-    // Check if AI needs to block opponent
     for (let i = 0; i < 9; i++) {
-      if (board[i] === null) {
-        const testBoard = [...board]
-        testBoard[i] = opponent
-        if (checkWinner(testBoard) === opponent) {
-          return i
-        }
+      if (!b[i]) {
+        const test = [...b]
+        test[i] = opponent
+        if (checkWinner(test) === opponent) return i
       }
     }
 
-    // Take center if available
-    if (board[4] === null) return 4
-
-    // Take corners
-    const corners = [0, 2, 6, 8]
-    for (const corner of corners) {
-      if (board[corner] === null) return corner
-    }
-
-    // Take any available spot
-    for (let i = 0; i < 9; i++) {
-      if (board[i] === null) return i
-    }
-
+    if (!b[4]) return 4
+    const corners = [0, 2, 6, 8].filter((i) => !b[i])
+    if (corners.length) return corners[Math.floor(Math.random() * corners.length)]
+    const edges = [1, 3, 5, 7].filter((i) => !b[i])
+    if (edges.length) return edges[Math.floor(Math.random() * edges.length)]
     return -1
-  }, [gameState.currentPlayer, checkWinner])
+  }, [checkWinner])
 
   const makeMove = useCallback((index: number) => {
-    if (gameState.board[index] || gameState.winner || gameState.isDraw) return
+    if (board[index] || winner || isDraw || isAiThinking) return
 
-    const newBoard = [...gameState.board]
-    newBoard[index] = gameState.currentPlayer
+    const newBoard = [...board]
+    newBoard[index] = currentPlayer
+    const newWinner = checkWinner(newBoard)
+    const newIsDraw = !newWinner && isBoardFull(newBoard)
 
-    const winner = checkWinner(newBoard)
-    const isDraw = !winner && isBoardFull(newBoard)
-
-    setGameState(prev => ({
-      ...prev,
-      board: newBoard,
-      currentPlayer: prev.currentPlayer === 'X' ? 'O' : 'X',
-      winner,
-      isDraw
-    }))
-
-    // AI move for human vs AI mode
-    if (gameState.gameMode === 'ai' && !winner && !isDraw && gameState.currentPlayer === 'X') {
-      setTimeout(() => {
-        const aiMove = getBestMove(newBoard)
-        if (aiMove !== -1) {
-          const aiBoard = [...newBoard]
-          aiBoard[aiMove] = 'O'
-
-          const aiWinner = checkWinner(aiBoard)
-          const aiIsDraw = !aiWinner && isBoardFull(aiBoard)
-
-          setGameState(prev => ({
-            ...prev,
-            board: aiBoard,
-            currentPlayer: 'X',
-            winner: aiWinner,
-            isDraw: aiIsDraw
-          }))
-        }
-      }, 500)
+    if (newWinner || newIsDraw) {
+      setBoard(newBoard)
+      setWinner(newWinner)
+      setIsDraw(newIsDraw)
+      setScores((prev) => ({
+        ...prev,
+        [newWinner || "draws"]: prev[newWinner || "draws"] + 1,
+      }))
+      return
     }
-  }, [gameState.board, gameState.currentPlayer, gameState.winner, gameState.isDraw, gameState.gameMode, checkWinner, isBoardFull, getBestMove])
 
-  const startGame = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      board: Array(9).fill(null),
-      currentPlayer: 'X',
-      winner: null,
-      isDraw: false,
-      isPlaying: true
-    }))
-  }, [])
+    setBoard(newBoard)
+    setCurrentPlayer(currentPlayer === "X" ? "O" : "X")
+  }, [board, currentPlayer, winner, isDraw, isAiThinking, checkWinner, isBoardFull])
+
+  useEffect(() => {
+    if (gameMode === "ai" && currentPlayer === "O" && !winner && !isDraw) {
+      setIsAiThinking(true)
+      const timer = setTimeout(() => {
+        const move = getBestMove(board, "O")
+        if (move !== -1) {
+          const newBoard = [...board]
+          newBoard[move] = "O"
+          const newWinner = checkWinner(newBoard)
+          const newIsDraw = !newWinner && isBoardFull(newBoard)
+
+          if (newWinner || newIsDraw) {
+            setBoard(newBoard)
+            setWinner(newWinner)
+            setIsDraw(newIsDraw)
+            setScores((prev) => ({
+              ...prev,
+              [newWinner || "draws"]: prev[newWinner || "draws"] + 1,
+            }))
+          } else {
+            setBoard(newBoard)
+            setCurrentPlayer("X")
+          }
+        }
+        setIsAiThinking(false)
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+  }, [gameMode, currentPlayer, winner, isDraw, board, getBestMove, checkWinner, isBoardFull])
 
   const resetGame = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      board: Array(9).fill(null),
-      currentPlayer: 'X',
-      winner: null,
-      isDraw: false,
-      isPlaying: false
-    }))
+    setBoard(Array(9).fill(null))
+    setCurrentPlayer("X")
+    setWinner(null)
+    setIsDraw(false)
+    setIsAiThinking(false)
   }, [])
 
   const resetScores = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      scores: { X: 0, O: 0, draws: 0 }
-    }))
+    setScores({ X: 0, O: 0, draws: 0 })
+    resetGame()
+  }, [resetGame])
+
+  const startGame = useCallback(() => {
+    setBoard(Array(9).fill(null))
+    setCurrentPlayer("X")
+    setWinner(null)
+    setIsDraw(false)
+    setIsAiThinking(false)
+    setPhase("playing")
   }, [])
 
-  const toggleGameMode = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      gameMode: prev.gameMode === 'human' ? 'ai' : 'human'
-    }))
+  const toggleMode = useCallback(() => {
+    setGameMode((prev) => (prev === "human" ? "ai" : "human"))
   }, [])
-
-  const toggleDifficulty = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      difficulty: prev.difficulty === 'normal' ? 'infinity' : 'normal'
-    }))
-  }, [])
-
-  // Update scores when game ends
-  React.useEffect(() => {
-    if (gameState.winner || gameState.isDraw) {
-      setGameState(prev => ({
-        ...prev,
-        scores: {
-          ...prev.scores,
-          [gameState.winner || 'draws']: prev.scores[gameState.winner || 'draws'] + 1
-        }
-      }))
-
-      if (gameState.winner) {
-        toast.success(`${gameState.winner} wins!`)
-      } else if (gameState.isDraw) {
-        toast.info("It's a draw!")
-      }
-    }
-  }, [gameState.winner, gameState.isDraw])
 
   if (!isOpen) return null
 
-  return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Users className="w-5 h-5 text-success" />
-            Tic Tac Toe
+  const statusText = winner
+    ? `${winner === "X" ? "Player X" : gameMode === "ai" ? "AI" : "Player O"} Wins!`
+    : isDraw
+      ? "It's a Draw!"
+      : isAiThinking
+        ? "AI is thinking..."
+        : `Player ${currentPlayer}'s Turn`
+
+  if (phase === "menu") {
+    return (
+      <Card className="w-full max-w-md mx-auto border-border/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <X className="w-4 h-4 text-info" />
+            <span className="text-info font-black">Tic</span>
+            <span className="text-muted-foreground font-black">Tac</span>
+            <Circle className="w-4 h-4 text-error" />
+            <span className="text-error font-black">Toe</span>
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            ✕
+          <CardAction>
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-7 w-7 p-0">
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-6 pt-6">
+          <div className="text-center space-y-2">
+            <div className="text-3xl">❌⭕</div>
+            <h3 className="text-lg font-bold">Tic Tac Toe</h3>
+            <p className="text-xs text-muted-foreground">Choose your mode and start playing!</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Game Mode</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setGameMode("human")}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center",
+                    gameMode === "human"
+                      ? "border-primary/40 bg-primary/5 text-foreground"
+                      : "border-border/40 bg-muted/10 text-muted-foreground hover:border-border/60"
+                  )}
+                >
+                  <Users className="w-5 h-5" />
+                  <span className="font-bold text-xs">Human vs Human</span>
+                  <span className="text-[9px] text-muted-foreground">Play with a friend</span>
+                </button>
+                <button
+                  onClick={() => setGameMode("ai")}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center",
+                    gameMode === "ai"
+                      ? "border-primary/40 bg-primary/5 text-foreground"
+                      : "border-border/40 bg-muted/10 text-muted-foreground hover:border-border/60"
+                  )}
+                >
+                  <Cpu className="w-5 h-5" />
+                  <span className="font-bold text-xs">Human vs AI</span>
+                  <span className="text-[9px] text-muted-foreground">Challenge the computer</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <Button onClick={startGame} className="w-full h-11 rounded-xl font-bold" size="lg">
+            <Play className="w-4 h-4 mr-2" /> Start Game
           </Button>
-        </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="w-full max-w-md mx-auto border-border/40">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <X className="w-4 h-4 text-info" />
+          <span className="text-info font-black">Tic</span>
+          <span className="text-muted-foreground font-black">Tac</span>
+          <Circle className="w-4 h-4 text-error" />
+          <span className="text-error font-black">Toe</span>
+        </CardTitle>
+        <CardAction>
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-7 w-7 p-0">
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Game Settings */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Mode:</span>
-            <Badge
-              variant={gameState.gameMode === 'human' ? 'default' : 'secondary'}
-              className="cursor-pointer"
-              onClick={toggleGameMode}
-            >
-              {gameState.gameMode === 'human' ? (
-                <>
-                  <Users className="w-3 h-3 mr-1" />
-                  Human vs Human
-                </>
-              ) : (
-                <>
-                  <Cpu className="w-3 h-3 mr-1" />
-                  Human vs AI
-                </>
-              )}
-            </Badge>
+          <Badge
+            variant="secondary"
+            className="text-[10px] h-6"
+          >
+            {gameMode === "human" ? (
+              <><Users className="w-3 h-3 mr-1" /> Human vs Human</>
+            ) : (
+              <><Cpu className="w-3 h-3 mr-1" /> Human vs AI</>
+            )}
+          </Badge>
+          <button
+            onClick={() => setPhase("menu")}
+            className="text-[10px] font-bold text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            Change mode
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
+          <div className="p-2 rounded-lg bg-info/5">
+            <div className="text-lg font-black text-info">{scores.X}</div>
+            <div className="text-muted-foreground">Player X</div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Type:</span>
-            <Badge
-              variant={gameState.difficulty === 'normal' ? 'default' : 'secondary'}
-              className="cursor-pointer"
-              onClick={toggleDifficulty}
-            >
-              {gameState.difficulty === 'normal' ? 'Normal' : 'Infinity'}
-            </Badge>
+          <div className="p-2 rounded-lg bg-muted/20">
+            <div className="text-lg font-black text-muted-foreground">{scores.draws}</div>
+            <div className="text-muted-foreground">Draws</div>
+          </div>
+          <div className="p-2 rounded-lg bg-error/5">
+            <div className="text-lg font-black text-error">{scores.O}</div>
+            <div className="text-muted-foreground">{gameMode === "ai" ? "AI" : "Player O"}</div>
           </div>
         </div>
 
-        {/* Scores */}
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <div className="text-lg font-bold text-info">{gameState.scores.X}</div>
-            <div className="text-xs text-muted-foreground">Player X</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold text-muted-foreground">{gameState.scores.draws}</div>
-            <div className="text-xs text-muted-foreground">Draws</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold text-error">{gameState.scores.O}</div>
-            <div className="text-xs text-muted-foreground">
-              {gameState.gameMode === 'ai' ? 'AI' : 'Player O'}
-            </div>
-          </div>
-        </div>
-
-        {/* Game Board */}
         <div className="flex justify-center">
-          <div className="grid grid-cols-3 gap-2 w-full max-w-64 h-auto mx-auto bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 p-4 rounded-2xl border-2 border-border">
-            {gameState.board.map((cell, index) => (
-              <Button
+          <div className="grid grid-cols-3 gap-1.5 w-full max-w-64 bg-muted/10 p-2 rounded-xl border border-border/30">
+            {board.map((cell, index) => (
+              <button
                 key={index}
-                variant="ghost"
-                className={cn(
-                  "aspect-square text-4xl font-bold h-full rounded-xl transition-all duration-200",
-                  "hover:bg-white/80 hover:scale-105 active:scale-95",
-                  "border-2 border-border/80 hover:border-primary/20",
-                  cell === 'X' && "text-info hover:text-info/90",
-                  cell === 'O' && "text-error hover:text-error/90",
-                  "disabled:cursor-not-allowed disabled:hover:scale-100"
-                )}
                 onClick={() => makeMove(index)}
-                disabled={!!cell || !!gameState.winner || gameState.isDraw || (gameState.gameMode === 'ai' && gameState.currentPlayer === 'O')}
-              >
-                {cell && (
-                  <span className={cn(
-                    "drop-shadow-sm",
-                    cell === 'X' && "text-info",
-                    cell === 'O' && "text-error"
-                  )}>
-                    {cell}
-                  </span>
+                disabled={!!cell || !!winner || isDraw || isAiThinking}
+                className={cn(
+                  "aspect-square text-3xl font-black rounded-lg transition-all duration-150",
+                  "border border-border/40 hover:border-primary/30 active:scale-95",
+                  "disabled:cursor-not-allowed disabled:opacity-80",
+                  cell === "X" && "text-info bg-info/5 border-info/20",
+                  cell === "O" && "text-error bg-error/5 border-error/20",
+                  !cell && !winner && !isDraw && !isAiThinking && "hover:bg-muted/30 hover:shadow-sm",
+                  isAiThinking && "cursor-wait",
                 )}
-              </Button>
+              >
+                {cell || ""}
+              </button>
             ))}
           </div>
         </div>
 
-        {/* Game Status */}
-        <div className="text-center space-y-2">
-          {gameState.winner ? (
-            <div className="space-y-2">
-              <div className="text-2xl">🎉</div>
-              <div className="text-xl font-bold text-success">
-                {gameState.winner === 'X' ? 'Player X' : gameState.gameMode === 'ai' && gameState.winner === 'O' ? 'AI' : 'Player O'} Wins!
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Great game! 🎮
-              </div>
-            </div>
-          ) : gameState.isDraw ? (
-            <div className="space-y-2">
-              <div className="text-2xl">🤝</div>
-              <div className="text-xl font-bold text-warning">
-                It's a Draw!
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Well played both sides! ⚖️
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {gameState.gameMode === 'ai' && gameState.currentPlayer === 'O' ? (
-                <div className="flex items-center justify-center gap-2 text-lg font-medium">
-                  <Cpu className="w-5 h-5 animate-pulse" />
-                  AI is thinking...
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="text-lg font-medium">
-                    Player {gameState.currentPlayer}'s Turn
-                  </div>
-                  <div className={cn(
-                    "inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium",
-                    gameState.currentPlayer === 'X' ? "bg-info/10 text-info" : "bg-error/10 text-error"
-                  )}>
-                    <span className="text-lg">{gameState.currentPlayer}</span>
-                    <span>Turn</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="text-center">
+          <div className={cn(
+            "text-sm font-bold py-1.5 px-3 rounded-lg inline-block",
+            winner && "text-success bg-success/5",
+            isDraw && "text-warning bg-warning/5",
+            isAiThinking && "text-muted-foreground bg-muted/20 animate-pulse",
+            !winner && !isDraw && !isAiThinking && "text-foreground bg-muted/10",
+          )}>
+            {winner ? `🎉 ${statusText}` : statusText}
+          </div>
         </div>
 
-        {/* Controls */}
         <div className="flex gap-2">
-          {!gameState.isPlaying && (
-            <Button onClick={startGame} className="flex-1">
-              <Play className="w-4 h-4 mr-2" />
-              Start Game
+          {(winner || isDraw) && (
+            <Button onClick={startGame} size="sm" className="flex-1 h-8 text-xs">
+              <RotateCcw className="w-3 h-3 mr-1" /> Play Again
             </Button>
           )}
-
-          {(gameState.winner || gameState.isDraw) && gameState.difficulty === 'normal' && (
-            <Button onClick={startGame} className="flex-1">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Next Round
-            </Button>
-          )}
-
-          <Button onClick={resetGame} variant="outline">
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset Board
+          <Button onClick={resetScores} variant="outline" size="sm" className="h-8 text-xs">
+            <RotateCcw className="w-3 h-3 mr-1" /> Reset All
           </Button>
         </div>
-
-        <Button onClick={resetScores} variant="outline" size="sm" className="w-full">
-          Reset Scores
-        </Button>
       </CardContent>
     </Card>
   )

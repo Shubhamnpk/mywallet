@@ -136,7 +136,7 @@ export function AddAccountDialog({
                             />
 
                             {!debtForm.isFastDebt && (
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-3 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="debt-rate" className="text-sm font-medium">Interest (%)</Label>
                                         <Input
@@ -148,8 +148,7 @@ export function AddAccountDialog({
                                             max="100"
                                             value={debtForm.interestRate}
                                             onChange={(e) => setDebtForm({ ...debtForm, interestRate: e.target.value })}
-                                            placeholder="0.00"
-                                            className="h-11 shadow-sm focus-visible:ring-destructive"
+                                                        className="h-11 shadow-sm focus-visible:ring-destructive"
                                         />
                                     </div>
 
@@ -365,7 +364,7 @@ export function AddAccountDialog({
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <AmountInput
                                     id="credit-balance"
                                     label="Current Balance"
@@ -373,7 +372,7 @@ export function AddAccountDialog({
                                     onChange={(value) => setCreditForm({ ...creditForm, balance: value })}
                                     currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                     required
-                                    className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
+                                        className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
                                 />
                                 <AmountInput
                                     id="credit-limit"
@@ -382,11 +381,11 @@ export function AddAccountDialog({
                                     onChange={(value) => setCreditForm({ ...creditForm, creditLimit: value })}
                                     currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                     required
-                                    className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
+                                        className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="credit-rate" className="text-sm font-medium">Interest (%)</Label>
                                     <Input
@@ -398,8 +397,7 @@ export function AddAccountDialog({
                                         max="100"
                                         value={creditForm.interestRate}
                                         onChange={(e) => setCreditForm({ ...creditForm, interestRate: e.target.value })}
-                                        placeholder="0.00"
-                                        className="h-11 shadow-sm focus-visible:ring-primary"
+                                                className="h-11 shadow-sm focus-visible:ring-primary"
                                     />
                                 </div>
 

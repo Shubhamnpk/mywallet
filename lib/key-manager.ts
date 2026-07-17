@@ -198,6 +198,49 @@ export class SecureKeyManager {
     }
   }
 
+  // Re-encrypt existing encrypted payloads from the PIN-derived master key back
+  // to the default key. Called when the user DISABLES their PIN so that stored
+  // data remains decryptable afterwards (the master key is about to be deleted).
+  static async migrateFromMasterKeyToDefaultKey(pin: string): Promise<void> {
+    try {
+      const masterKey = await this.getMasterKey(pin)
+      const defaultKey = await this.getDefaultEncryptionKey()
+      if (!masterKey || !defaultKey) return
+
+      const keys: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key) keys.push(key)
+      }
+
+      for (const key of keys) {
+        const value = localStorage.getItem(key)
+        if (!value || !value.startsWith("encrypted:")) continue
+
+        const encryptedPayload = value.substring(10)
+
+        // Already encrypted with the default key — nothing to do.
+        try {
+          await SecureWallet.decryptData(encryptedPayload, defaultKey)
+          continue
+        } catch {
+          // Expected when the payload is encrypted with the master key.
+        }
+
+        // Decrypt with the master (PIN) key, then re-encrypt with the default key.
+        try {
+          const decrypted = await SecureWallet.decryptData(encryptedPayload, masterKey)
+          const reEncrypted = await SecureWallet.encryptData(decrypted, defaultKey)
+          localStorage.setItem(key, `encrypted:${reEncrypted}`)
+        } catch {
+          // Failed to migrate this item; leave it untouched.
+        }
+      }
+    } catch {
+      // Migration failed; data remains encrypted with the master key.
+    }
+  }
+
   // Cache key with expiration
   private static cacheKey(keyId: string, key: CryptoKey): void {
     const expires = Date.now() + this.SESSION_TIMEOUT

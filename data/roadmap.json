@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-07-15",
+  "lastUpdated": "2026-07-18",
   "milestones": [
     {
       "id": "m1",
@@ -47,7 +47,8 @@
     { "id": "extension", "label": "Extension & Bridge", "color": "cyan" },
     { "id": "crypto", "label": "Crypto & Exchange", "color": "cyan" },
     { "id": "tools", "label": "Financial Tools", "color": "pink" },
-    { "id": "ai", "label": "AI & Insights", "color": "orange" }
+    { "id": "ai", "label": "AI & Insights", "color": "orange" },
+    { "id": "documents", "label": "Documents & Files", "color": "indigo" }
   ],
   "items": [
     {
@@ -576,6 +577,33 @@
       "category": "ux",
       "milestone": "m4",
       "completedDate": "2026-07-15",
+      "priority": "medium"
+    },
+    {
+      "id": "r55",
+      "title": "Personal Document Vault",
+      "description": "Upload, store, view, and manage important personal documents (passports, IDs, contracts, certificates). Secure encrypted storage with per-document access control and expiry alerts.",
+      "status": "planned",
+      "category": "documents",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r56",
+      "title": "Document Viewer & Preview",
+      "description": "In-app viewer for uploaded documents with zoom, page navigation, and full-screen mode. Supports PDF, images, and common document formats with fast, native-like rendering.",
+      "status": "planned",
+      "category": "documents",
+      "milestone": "m4",
+      "priority": "high"
+    },
+    {
+      "id": "r57",
+      "title": "Document Expiry & Renewal Reminders",
+      "description": "Track passport, ID, license, and certificate expiry dates with push notifications and calendar alerts before renewal deadlines.",
+      "status": "planned",
+      "category": "documents",
+      "milestone": "m4",
       "priority": "medium"
     }
   ]

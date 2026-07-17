@@ -77,9 +77,6 @@ export async function GET(request: Request) {
   }
 
   const contentType = upstream.headers["content-type"]
-  if (typeof contentType === "string" && !contentType.startsWith("application/pdf") && !contentType.startsWith("application/octet-stream")) {
-    return NextResponse.json({ error: "Response is not a PDF" }, { status: 400 })
-  }
 
   const headers = new Headers()
   const passthroughHeaders = [

@@ -440,8 +440,8 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
   const colorModeLabel = colorMode === "daily" ? "Daily Change" : "Total Return"
 
   return (
-    <Card className="bg-card/45 backdrop-blur-md border border-border/40 overflow-hidden text-left shadow-xl flex flex-col h-full rounded-2xl">
-      <CardHeader className="pb-0.5 px-4 pt-2 border-b border-border/10 space-y-2">
+    <Card className="bg-card/45 backdrop-blur-md border border-border/40 overflow-hidden text-left shadow-xl flex flex-col h-full rounded-2xl gap-0">
+      <CardHeader className="pb-0 px-4 pt-2 border-b border-border/10 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-1 min-w-0">
             <CardTitle className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
@@ -485,7 +485,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
         </div>
 
         {/* Filter controls row */}
-        <div className="flex flex-wrap items-center gap-0.5 pt-0.5 border-t border-border/5">
+        <div className="flex flex-wrap items-center gap-0.5 border-t border-border/5">
           {/* Asset filter */}
           <div className="flex items-center gap-1 bg-muted/20 p-0.5 rounded-lg border border-border/20">
             <span className="text-[9px] font-black uppercase text-muted-foreground px-1.5 flex items-center gap-0.5">
@@ -553,7 +553,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="p-1 pt-0.5 flex flex-col flex-1 gap-0.5">
+      <CardContent className="p-1 pt-0 flex flex-col flex-1 gap-0.5">
         {heatMapItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 border border-dashed border-border/30 rounded-xl min-h-[300px] text-center">
             <span className="text-[11px] text-muted-foreground font-semibold">No assets found for the selected filter.</span>

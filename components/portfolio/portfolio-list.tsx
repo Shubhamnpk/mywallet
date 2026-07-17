@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
@@ -170,7 +171,9 @@ export function PortfolioList() {
     const [showSoldStocks, setShowSoldStocks] = useState(false)
     const [isOverviewFeedOpen, setIsOverviewFeedOpen] = useState(false)
     const [selectedOverviewNotificationId, setSelectedOverviewNotificationId] = useState<string | null>(null)
-    const [selectedOverviewNotificationDocUrl, setSelectedOverviewNotificationDocUrl] = useState<string | null>(null)
+    const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null)
+    const [previewModalSourceUrl, setPreviewModalSourceUrl] = useState<string | null>(null)
+    const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -2051,7 +2054,6 @@ export function PortfolioList() {
         () => overviewNotificationsWithMeta.find((item) => item.id === selectedOverviewNotificationId) || null,
         [overviewNotificationsWithMeta, selectedOverviewNotificationId],
     )
-    const isOverviewNotificationDocPreviewOpen = Boolean(selectedOverviewNotificationDocUrl)
 
     const overviewNotificationStats = useMemo(() => ({
         total: overviewNotificationsWithMeta.length,
@@ -2201,20 +2203,20 @@ export function PortfolioList() {
             }
         }
         setSelectedOverviewNotificationId(id)
-        setSelectedOverviewNotificationDocUrl(null)
     }
 
     const closeOverviewNotificationDetails = (open: boolean) => {
         if (open) return
         setSelectedOverviewNotificationId(null)
-        setSelectedOverviewNotificationDocUrl(null)
     }
 
     const openOverviewNotificationDocument = (url: string) => {
         const previewUrl = isPdfLikeUrl(url)
             ? `/api/proxy/pdf?url=${encodeURIComponent(url)}`
             : url
-        setSelectedOverviewNotificationDocUrl(previewUrl)
+        setPreviewModalSourceUrl(url)
+        setPreviewModalUrl(previewUrl)
+        setIsPreviewModalOpen(true)
     }
 
     const investmentBreakdown = useMemo(
@@ -2842,20 +2844,6 @@ export function PortfolioList() {
                         </div>
                         <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary relative z-10"
-                                title="Edit Portfolio Details"
-                                onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    handleEditPortfolioDetails(p)
-                                }}
-                            >
-                                <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
@@ -2867,23 +2855,45 @@ export function PortfolioList() {
                             >
                                 {isIncludedInTotals ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                             </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-lg text-red-500 hover:bg-red-500/10"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    showConfirm(
-                                        "Delete Portfolio",
-                                        `Are you sure you want to delete "${p.name}"? This action cannot be undone.`,
-                                        () => deletePortfolio(p.id),
-                                        "Delete",
-                                        true
-                                    );
-                                }}
-                            >
-                                <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <MoreVertical className="w-3.5 h-3.5" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40 bg-popover border-border shadow-lg">
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleEditPortfolioDetails(p)
+                                        }}
+                                    >
+                                        <Pencil className="w-3.5 h-3.5 mr-2 text-primary" />
+                                        Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        variant="destructive"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            showConfirm(
+                                                "Delete Portfolio",
+                                                `Are you sure you want to delete "${p.name}"? This action cannot be undone.`,
+                                                () => deletePortfolio(p.id),
+                                                "Delete",
+                                                true
+                                            );
+                                        }}
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                        Delete
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                     <CardTitle className="text-xl sm:text-2xl font-black group-hover:text-primary transition-colors">{p.name}</CardTitle>
@@ -3056,7 +3066,7 @@ export function PortfolioList() {
                     open={Boolean(selectedOverviewNotification)}
                     onOpenChange={closeOverviewNotificationDetails}
                 >
-                    <DialogContent className="max-w-3xl w-[95vw] max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
+                    <DialogContent className="w-full sm:w-[95vw] sm:max-w-3xl! h-[88dvh] sm:h-[85vh] overflow-hidden flex flex-col gap-0 p-0">
                         <DialogHeader className="border-b border-muted/30 px-5 py-4">
                             <div className="flex items-start gap-3">
                                 <div className={cn(
@@ -3065,46 +3075,23 @@ export function PortfolioList() {
                                     selectedOverviewNotification?.tone === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-600",
                                     selectedOverviewNotification?.tone === "info" && "border-info/20 bg-info/10 text-info",
                                 )}>
-                                    {isOverviewNotificationDocPreviewOpen ? <FileText className="w-4 h-4" /> : selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
+                                    {selectedOverviewNotification ? getOverviewNotificationIcon(selectedOverviewNotification.category) : <BellRing className="w-4 h-4" />}
                                 </div>
                                 <div className="min-w-0">
                                     <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-widest">
-                                        {isOverviewNotificationDocPreviewOpen ? "Filing Preview" : selectedOverviewNotification?.title || "Notification"}
+                                        {selectedOverviewNotification?.title || "Notification"}
                                     </DialogTitle>
-                                    {selectedOverviewNotification && !isOverviewNotificationDocPreviewOpen ? (
+                                    {selectedOverviewNotification && (
                                         <p className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                                     {selectedOverviewNotification.category} • {selectedOverviewNotification.dateLabel}
                                 </p>
-                                    ) : null}
+                                    )}
                                 </div>
                             </div>
                         </DialogHeader>
                         {selectedOverviewNotification && (
                             <ScrollArea className="flex-1 px-5 py-4">
-                                {selectedOverviewNotificationDocUrl && (
-                                    <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
-                                        <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                Document
-                                            </p>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-7 text-[10px] font-black uppercase tracking-wider"
-                                                onClick={() => setSelectedOverviewNotificationDocUrl(null)}
-                                            >
-                                                Close Preview
-                                            </Button>
-                                        </div>
-                                        <iframe
-                                            src={selectedOverviewNotificationDocUrl}
-                                            title="Filing Preview"
-                                            className="w-full h-[68vh] bg-background"
-                                        />
-                                    </div>
-                                )}
-                                <div className={cn("space-y-4", selectedOverviewNotificationDocUrl && "hidden")}>
+                                <div className="space-y-4">
                                     <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
                                         <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">
                                             Headline
@@ -3146,57 +3133,42 @@ export function PortfolioList() {
                                         </div>
                                     )}
                                     {selectedOverviewNotification.category === "sip" && (
-                                    <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
-                                        {selectedOverviewNotification.category === "sip" && "planId" in selectedOverviewNotification && "symbol" in selectedOverviewNotification && (
-                                            <Button
-                                                type="button"
-                                                variant="destructive"
-                                                className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
-                                                onClick={() => {
-                                                    showConfirm(
-                                                        "Delete Invalid SIP Plan",
-                                                        `Are you sure you want to delete the invalid SIP plan for ${selectedOverviewNotification.symbol} in ${selectedOverviewNotification.portfolioName || 'the portfolio'}?`,
-                                                        () => handleDeleteSipPlan(selectedOverviewNotification.planId, selectedOverviewNotification.symbol),
-                                                        "Delete",
-                                                        true
-                                                    )
-                                                    closeOverviewNotificationDetails(false)
-                                                }}
-                                            >
-                                                <Trash2 className="mr-2 w-3.5 h-3.5" />
-                                                Delete SIP Plan
-                                            </Button>
-                                        )}
-                                    </div>
-                                    )}
-                                    {selectedOverviewNotificationDocUrl && (
-                                        <div className="rounded-xl border border-muted/30 overflow-hidden bg-card">
-                                            <div className="flex items-center justify-between border-b border-muted/20 px-3 py-2">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                                    Filing Preview
-                                                </p>
+                                        <div className="flex flex-col gap-2 border-t border-muted/20 pt-3 sm:flex-row">
+                                            {selectedOverviewNotification.category === "sip" && "planId" in selectedOverviewNotification && "symbol" in selectedOverviewNotification && (
                                                 <Button
                                                     type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-7 text-[10px] font-black uppercase tracking-wider"
-                                                    onClick={() => setSelectedOverviewNotificationDocUrl(null)}
+                                                    variant="destructive"
+                                                    className="h-9 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                                                    onClick={() => {
+                                                        showConfirm(
+                                                            "Delete Invalid SIP Plan",
+                                                            `Are you sure you want to delete the invalid SIP plan for ${selectedOverviewNotification.symbol} in ${selectedOverviewNotification.portfolioName || 'the portfolio'}?`,
+                                                            () => handleDeleteSipPlan(selectedOverviewNotification.planId, selectedOverviewNotification.symbol),
+                                                            "Delete",
+                                                            true
+                                                        )
+                                                        closeOverviewNotificationDetails(false)
+                                                    }}
                                                 >
-                                                    Close Preview
+                                                    <Trash2 className="mr-2 w-3.5 h-3.5" />
+                                                    Delete SIP Plan
                                                 </Button>
-                                            </div>
-                                            <iframe
-                                                src={selectedOverviewNotificationDocUrl}
-                                                title="Filing Preview"
-                                                className="w-full h-[60vh] bg-background"
-                                            />
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </ScrollArea>
-                        )}
+                                        )}
+                                    </div>
+                                </ScrollArea>
+                            )}
                     </DialogContent>
                 </Dialog>
+
+                <DocumentPreviewModal
+                    url={previewModalUrl}
+                    sourceUrl={previewModalSourceUrl}
+                    open={isPreviewModalOpen}
+                    onOpenChange={setIsPreviewModalOpen}
+                    title="Filing Preview"
+                />
 
                 <div className="space-y-8 animate-in fade-in duration-500 text-left">
                     <div className="flex items-center justify-between">

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Camera, Mic, Calculator, Lock, Gamepad2, ArrowLeftRight, Clock, GripHorizontal, X, Minimize2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, History } from "lucide-react"
+import { Plus, Camera, Mic, Calculator, Lock, ArrowLeftRight, Clock, GripHorizontal, X, Minimize2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, History } from "lucide-react"
 import { UnifiedTransactionDialog } from "./transaction-dialog"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getDefaultCategories } from "@/lib/categories"
 import ReceiptScanner from "@/components/tools/scanner/receipt-dialog"
-import { GamingPlaceModal } from "@/components/ui/gaming-place-modal"
 import { CurrencyConverterDialog } from "./currency-converter-dialog"
 import { LogShiftDialog } from "@/components/tools/log-shift-dialog"
 import { appendShiftToStorage } from "@/lib/shift-tracker-storage"
@@ -43,7 +42,6 @@ const quickActions = [
   { id: "calc", icon: Calculator, label: "Calc", color: "bg-amber-500" },
   { id: "convert", icon: ArrowLeftRight, label: "Convert", color: "bg-cyan-500" },
   { id: "shift", icon: Clock, label: "Shift", color: "bg-indigo-500" },
-  { id: "game", icon: Gamepad2, label: "Game", color: "bg-purple-500" },
   { id: "lock", icon: Lock, label: "Lock", color: "bg-red-500" },
 ]
 
@@ -96,7 +94,6 @@ export function FloatingAddButton({
   const [prefilledCategory, setPrefilledCategory] = useState("")
   const [prefilledReceiptImage, setPrefilledReceiptImage] = useState("")
   const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false)
-  const [isGamingPlaceOpen, setIsGamingPlaceOpen] = useState(false)
   const [isCurrencyConverterOpen, setIsCurrencyConverterOpen] = useState(false)
   const [isLogShiftOpen, setIsLogShiftOpen] = useState(false)
 
@@ -220,9 +217,6 @@ export function FloatingAddButton({
           break
         case "convert":
           setIsCurrencyConverterOpen(true)
-          break
-        case "game":
-          setIsGamingPlaceOpen(true)
           break
         case "shift":
           setIsLogShiftOpen(true)
@@ -971,12 +965,6 @@ export function FloatingAddButton({
         isOpen={isReceiptScannerOpen}
         onOpenChange={setIsReceiptScannerOpen}
         onTransactionData={handleReceiptData}
-      />
-
-      {/* Gaming Place Modal */}
-      <GamingPlaceModal
-        isOpen={isGamingPlaceOpen}
-        onClose={() => setIsGamingPlaceOpen(false)}
       />
 
       <LogShiftDialog

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/goals/goals-list"
@@ -14,6 +14,10 @@ import { PortfolioList } from "@/components/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
 import { BrokerLeaderboard } from "@/components/tools/broker-leaderboard"
 import { ScannerTool } from "@/components/tools/scanner/scan-tool"
+import { CalculatorTool } from "@/components/tools/calculator-tool"
+import { CurrencyConverterTool } from "@/components/tools/currency-converter-tool"
+import { GamesTool } from "@/components/tools/games-tool"
+import { DocumentTools } from "@/components/tools/document-tools"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
 
@@ -40,6 +44,10 @@ const MOBILE_TOOLS_GROUP = [
   "shift-tracker",
   "broker-training",
   "scanner",
+  "calculator",
+  "currency-converter",
+  "games",
+  "document-tools",
 ] as const
 
 const DESKTOP_TOOLS_GROUP = [
@@ -49,9 +57,13 @@ const DESKTOP_TOOLS_GROUP = [
   "shift-tracker",
   "broker-training",
   "scanner",
+  "calculator",
+  "currency-converter",
+  "games",
+  "document-tools",
 ] as const
 
-const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools"])
+const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools", "calculator", "currency-converter", "games", "document-tools"])
 
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -145,23 +157,8 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
   }, [activeTab, onMobileFullscreenChange])
 
   useEffect(() => {
-    const validateSession = () => {
-      if (!SessionManager.isSessionValid()) {
-        const event = new CustomEvent("wallet-session-expired")
-        window.dispatchEvent(event)
-      }
-    }
-
-    validateSession()
-
-    const handleClick = () => {
-      setTimeout(validateSession, 100)
-    }
-
-    document.addEventListener("click", handleClick)
-
-    return () => {
-      document.removeEventListener("click", handleClick)
+    if (!SessionManager.isSessionValid()) {
+      window.dispatchEvent(new CustomEvent("wallet-session-expired"))
     }
   }, [])
 
@@ -227,6 +224,30 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
       label: "Scanner",
       icon: Scan,
       description: "Scan receipts and QR codes",
+    },
+    {
+      value: "calculator",
+      label: "Calculator",
+      icon: Calculator,
+      description: "Perform quick financial calculations",
+    },
+    {
+      value: "currency-converter",
+      label: "Converter",
+      icon: ArrowLeftRight,
+      description: "Convert between currencies with live rates",
+    },
+    {
+      value: "games",
+      label: "Games",
+      icon: Gamepad2,
+      description: "Play Ping Pong & Tic Tac Toe",
+    },
+    {
+      value: "document-tools",
+      label: "Documents",
+      icon: FileText,
+      description: "Store and manage important documents",
     },
   ]
 
@@ -313,6 +334,10 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "shift-tracker"),
     pickTab(allTabs, "broker-training"),
     pickTab(allTabs, "scanner"),
+    pickTab(allTabs, "calculator"),
+    pickTab(allTabs, "currency-converter"),
+    pickTab(allTabs, "games"),
+    pickTab(allTabs, "document-tools"),
   ]
 
   const mobileHubCards: TabDef[] = [
@@ -323,12 +348,16 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "broker-training"),
     pickTab(allTabs, "scanner"),
     pickTab(allTabs, "insights"),
+    pickTab(allTabs, "calculator"),
+    pickTab(allTabs, "currency-converter"),
+    pickTab(allTabs, "games"),
+    pickTab(allTabs, "document-tools"),
   ]
 
   const isFullscreen = !!mobileFullscreenTab
 
   return (
-    <div className={isFullscreen ? "" : "space-y-6 pb-24 lg:pb-6"}>
+    <div className={(isFullscreen ? "" : "space-y-6 ") + "pb-28 lg:pb-6"}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="hidden lg:block">
           <TabsList className="grid w-full grid-cols-6 gap-1 h-auto p-1.5 bg-muted/15 border border-border/50 rounded-xl">
@@ -442,6 +471,22 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
 
           <TabsContent value="scanner" className="space-y-4">
             <ScannerTool />
+          </TabsContent>
+
+          <TabsContent value="calculator" className="space-y-4">
+            <CalculatorTool />
+          </TabsContent>
+
+          <TabsContent value="currency-converter" className="space-y-4">
+            <CurrencyConverterTool />
+          </TabsContent>
+
+          <TabsContent value="games" className="space-y-4">
+            <GamesTool />
+          </TabsContent>
+
+          <TabsContent value="document-tools" className="space-y-4">
+            <DocumentTools />
           </TabsContent>
 
           <TabsContent

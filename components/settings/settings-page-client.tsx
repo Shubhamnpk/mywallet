@@ -60,7 +60,7 @@ export function SettingsPageClient() {
       const event = new CustomEvent('wallet-session-expired')
       window.dispatchEvent(event)
     }
-  }, [userProfile, showOnboarding, router])
+  }, [userProfile, showOnboarding])
 
   const showMobileSettings = Boolean(isMobile && userProfile && !showOnboarding)
   const handleTabChange = (value: string) => {

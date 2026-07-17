@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { forwardRef, useEffect, useRef, useState } from "react"
+import { forwardRef, useEffect, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 
 interface AmountInputProps extends Omit<ComponentPropsWithoutRef<typeof Input>, "value" | "onChange" | "type"> {
@@ -73,25 +73,6 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
       setDisplayAmount(formatDisplayAmount(stringValue))
     }, [value, locale])
 
-    // Listen for number format changes from localStorage
-    useEffect(() => {
-      const updateFormat = () => {
-        const newFormat = localStorage.getItem("wallet_number_format") || "us"
-        // Re-render display amount with new format
-        const stringValue = typeof value === "number" ? value.toString() : value
-        setDisplayAmount(formatDisplayAmount(stringValue))
-      }
-
-      window.addEventListener('storage', updateFormat)
-      window.addEventListener('numberFormatChange', updateFormat)
-      updateFormat()
-
-      return () => {
-        window.removeEventListener('storage', updateFormat)
-        window.removeEventListener('numberFormatChange', updateFormat)
-      }
-    }, [value])
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value
 
@@ -135,6 +116,7 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
             ref={ref}
             type="text"
             inputMode="decimal"
+            placeholder="0.00"
             value={displayAmount}
             onChange={handleChange}
             onBlur={handleBlur}

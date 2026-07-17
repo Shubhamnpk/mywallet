@@ -786,9 +786,8 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                     onClick={handleCancelChanges}
                     variant="ghost"
                     size="sm"
-                    className="h-9 px-4 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-all"
+                    className="h-9 px-4 rounded-full text-xs font-semibold text-slate-500 hover:text-white hover:bg-slate-500 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-all"
                   >
-                    <X className="w-3.5 h-3.5 mr-1.5" />
                     Cancel
                   </Button>
                   <Button
@@ -796,7 +795,6 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                     size="sm"
                     className="h-9 px-5 rounded-full text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
                   >
-                    <Save className="w-3.5 h-3.5 mr-1.5" />
                     Save
                   </Button>
                 </div>
