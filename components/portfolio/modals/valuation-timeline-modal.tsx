@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Activity, Eye, X } from "lucide-react"
+import { Activity, X } from "lucide-react"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { CalendarSystem, formatAppDate } from "@/lib/app-calendar"
 import type { Portfolio } from "@/types/wallet"
@@ -40,11 +41,13 @@ type ValuationTimelineModalState = {
 }
 
 export type ValuationTimelineRange = "1m" | "6m" | "1y" | "5y" | "all"
+export type AggregationFrequency = "daily" | "weekly" | "monthly" | "yearly"
 
 type ValuationTimelineModalProps = {
     calendarSystem: CalendarSystem
     currencySymbol: string
     isLoading: boolean
+    progress: { loaded: number; total: number; currentSymbol: string } | null
     meta: PortfolioValuationMeta | null
     mode: "transactions" | "current"
     modal: ValuationTimelineModalState
@@ -69,6 +72,13 @@ const VALUATION_TIMELINE_RANGES: Array<{ value: ValuationTimelineRange; label: s
     { value: "1y", label: "1Y", grouping: "weekly" },
     { value: "5y", label: "5Y", grouping: "monthly" },
     { value: "all", label: "All", grouping: "monthly" },
+]
+
+const FREQUENCY_OPTIONS: Array<{ value: AggregationFrequency; label: string }> = [
+    { value: "daily", label: "1D" },
+    { value: "weekly", label: "1W" },
+    { value: "monthly", label: "1M" },
+    { value: "yearly", label: "1Y" },
 ]
 
 const getRangeConfig = (range: ValuationTimelineRange) =>
@@ -98,7 +108,7 @@ const getWeekKey = (date: Date) => {
     return `${date.getUTCFullYear()}-W${Math.floor(dayOfYear / 7) + 1}`
 }
 
-const aggregateTimelinePoints = (points: PortfolioValuationPoint[], grouping: "daily" | "weekly" | "monthly") => {
+const aggregateTimelinePoints = (points: PortfolioValuationPoint[], grouping: AggregationFrequency) => {
     if (grouping === "daily") return points
 
     const buckets = new Map<string, {
@@ -112,7 +122,7 @@ const aggregateTimelinePoints = (points: PortfolioValuationPoint[], grouping: "d
     points.forEach((point) => {
         const parsed = new Date(`${point.date}T00:00:00Z`)
         if (Number.isNaN(parsed.getTime())) return
-        const key = grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+        const key = grouping === "yearly" ? point.date.slice(0, 4) : grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
         const existing = buckets.get(key) || {
             date: point.date,
             valueTotal: 0,
@@ -145,6 +155,7 @@ export function ValuationTimelineModal({
     calendarSystem,
     currencySymbol,
     isLoading,
+    progress,
     meta,
     mode,
     modal,
@@ -161,6 +172,7 @@ export function ValuationTimelineModal({
     onViewPortfolio,
 }: ValuationTimelineModalProps) {
     const [selectedSnapshotDate, setSelectedSnapshotDate] = useState<string | null>(null)
+    const [frequency, setFrequency] = useState<AggregationFrequency>("daily")
 
     const rangeStats = useMemo(() => {
         const orderedTimeline = [...timeline].sort((a, b) => a.date.localeCompare(b.date))
@@ -175,7 +187,7 @@ export function ValuationTimelineModal({
                 return pointTime !== null && pointTime >= cutoffTime
             })
         const filteredPoints = rangedPoints.length > 0 ? rangedPoints : [latestPoint]
-        const points = aggregateTimelinePoints(filteredPoints, getRangeConfig(range).grouping)
+        const points = aggregateTimelinePoints(filteredPoints, frequency)
 
         const first = points[0]
         const latest = points[points.length - 1]
@@ -210,9 +222,9 @@ export function ValuationTimelineModal({
             bestMove,
             worstMove,
             points,
-            chartKey: `${range}-${first.date}-${latest.date}-${points.length}-${getRangeConfig(range).grouping}`,
+            chartKey: `${range}-${frequency}-${first.date}-${latest.date}-${points.length}`,
         }
-    }, [range, timeline])
+    }, [range, timeline, frequency])
 
     const selectedSnapshot = useMemo(() => {
         if (!rangeStats) return null
@@ -267,12 +279,12 @@ export function ValuationTimelineModal({
 
     return (
         <div
-            className="fixed inset-0 z-[80] flex h-[100dvh] w-screen flex-col overflow-hidden bg-background text-foreground"
+            className="fixed inset-0 z-[80] flex h-[100dvh] flex-col overflow-x-hidden bg-background text-foreground"
             role="dialog"
             aria-modal="true"
             aria-labelledby="valuation-timeline-title"
         >
-            <div className="border-b border-muted/20 bg-background/95 px-4 pt-4 pb-3 backdrop-blur sm:px-6">
+            <div className="border-b border-muted/20 bg-background/95 px-4 pt-4 pb-3 backdrop-blur sm:px-6 lg:px-8 shrink-0">
                 <button
                     type="button"
                     className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-muted-foreground/15 bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -301,6 +313,18 @@ export function ValuationTimelineModal({
                                 Current
                             </Button>
                         </div>
+                        <Select value={frequency} onValueChange={(v) => setFrequency(v as AggregationFrequency)}>
+                            <SelectTrigger size="sm" className="h-7 w-[62px] rounded-lg border-muted/30 text-[10px] font-black uppercase tracking-widest">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {FREQUENCY_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value} className="text-[10px] font-black uppercase tracking-widest">
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <div className="flex rounded-lg border border-muted/30 bg-muted/10 p-1">
                             {VALUATION_TIMELINE_RANGES.map((rangeOption) => (
                                 <Button key={rangeOption.value} type="button" size="sm" variant={range === rangeOption.value ? "default" : "ghost"} className="h-7 rounded-md px-2 text-[10px] font-black uppercase tracking-widest" onClick={() => onRangeChange(rangeOption.value)}>
@@ -360,12 +384,31 @@ export function ValuationTimelineModal({
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-                <div className="space-y-4 p-5 sm:p-6">
+                <div className="w-full space-y-3 p-3 sm:space-y-4 sm:p-6 lg:px-8">
                     {isLoading ? (
-                        <div className="flex h-[55vh] min-h-[360px] items-center justify-center rounded-xl border border-muted/30 bg-muted/10">
-                            <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
-                                <Activity className="h-4 w-4 animate-spin" />
-                                Building valuation timeline...
+                        <div className="flex h-[clamp(220px,40vh,550px)] items-center justify-center rounded-xl border border-muted/30 bg-muted/10">
+                            <div className="flex flex-col items-center gap-3 text-sm font-bold text-muted-foreground">
+                                <Activity className="h-5 w-5 animate-spin" />
+                                <div className="text-center">
+                                    {progress && progress.total > 0 ? (
+                                        <>
+                                            <p>Loading {progress.total} symbols...</p>
+                                            {progress.currentSymbol && (
+                                                <p className="mt-1 text-[11px] font-mono font-normal text-muted-foreground/70">
+                                                    {progress.loaded} / {progress.total} &middot; {progress.currentSymbol}
+                                                </p>
+                                            )}
+                                            <div className="mx-auto mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-muted/30">
+                                                <div
+                                                    className="h-full rounded-full bg-primary transition-all duration-300"
+                                                    style={{ width: `${(progress.loaded / progress.total) * 100}%` }}
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p>Building valuation timeline...</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ) : error ? (
@@ -374,33 +417,33 @@ export function ValuationTimelineModal({
                         </div>
                     ) : rangeStats ? (
                         <>
-                            <div className="overflow-x-auto pb-1">
-                                <div className="grid min-w-[1120px] grid-cols-8 gap-2">
+                            <div className="pb-1">
+                                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-8 lg:gap-2">
                                     <StatusMetric label="Latest" value={money(rangeStats.latest.value)} detail={formatAppDate(rangeStats.latest.date, calendarSystem)} tone="primary" />
                                     <StatusMetric label="Move" value={signedMoney(rangeStats.change)} detail={`${rangeStats.change >= 0 ? "+" : ""}${rangeStats.changePercent.toFixed(2)}%`} tone={rangeStats.change >= 0 ? "success" : "error"} />
                                     <StatusMetric label="Average" value={money(rangeStats.averageValue)} detail={`${rangeStats.points.length} point${rangeStats.points.length === 1 ? "" : "s"}`} />
                                     <StatusMetric label="Range High" value={money(rangeStats.high.value)} detail={formatAppDate(rangeStats.high.date, calendarSystem)} tone="success" />
                                     <StatusMetric label="Range Low" value={money(rangeStats.low.value)} detail={formatAppDate(rangeStats.low.date, calendarSystem)} tone="error" />
                                     <StatusMetric label="Drawdown" value={`${rangeStats.drawdownFromHigh.toFixed(2)}%`} detail="From range high" tone="warning" />
-                                    <StatusMetric label={`Best ${getRangeConfig(range).grouping === "daily" ? "Day" : "Move"}`} value={signedMoney(Math.max(rangeStats.bestMove.valueChange, 0))} detail={rangeStats.bestMove.percentChange.toFixed(2) + "%"} tone="success" />
-                                    <StatusMetric label={`Worst ${getRangeConfig(range).grouping === "daily" ? "Day" : "Move"}`} value={signedMoney(rangeStats.worstMove.valueChange)} detail={rangeStats.worstMove.percentChange.toFixed(2) + "%"} tone="error" />
+                                    <StatusMetric label={`Best ${frequency === "daily" ? "Day" : "Move"}`} value={signedMoney(Math.max(rangeStats.bestMove.valueChange, 0))} detail={rangeStats.bestMove.percentChange.toFixed(2) + "%"} tone="success" />
+                                    <StatusMetric label={`Worst ${frequency === "daily" ? "Day" : "Move"}`} value={signedMoney(rangeStats.worstMove.valueChange)} detail={rangeStats.worstMove.percentChange.toFixed(2) + "%"} tone="error" />
                                 </div>
                             </div>
 
                             {allTimeStats && (
-                                <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-4">
-                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-3 sm:p-4">
+                                    <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
                                         <div>
                                             <p className="text-[10px] font-black uppercase tracking-widest text-primary">Business Read</p>
-                                            <p className="mt-1 text-sm font-semibold text-foreground">
+                                            <p className="mt-1 text-xs font-semibold text-foreground sm:text-sm">
                                                 {allTimeStats.drawdownFromHigh >= -1
-                                                    ? "Portfolio is trading near its recorded valuation high."
+                                                    ? "Near recorded valuation high."
                                                     : allTimeStats.drawdownFromHigh <= -15
-                                                        ? "Portfolio is meaningfully below its recorded valuation high."
-                                                        : "Portfolio is below its recorded high but still within a moderate range."}
+                                                        ? "Meaningfully below recorded valuation high."
+                                                        : "Below recorded high but within moderate range."}
                                             </p>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:items-center">
+                                        <div className="flex items-center gap-2 self-end sm:self-auto">
                                             <MiniReadout label="ATH Gap" value={`${allTimeStats.drawdownFromHigh.toFixed(2)}%`} />
                                             <MiniReadout label="Range" value={getRangeLabel(range)} />
                                         </div>
@@ -408,24 +451,26 @@ export function ValuationTimelineModal({
                                 </div>
                             )}
 
-                            <div className="h-[52vh] min-h-[360px] rounded-xl border border-primary/10 bg-background/60 p-2">
+                            <div className="h-[clamp(220px,40vh,550px)] shrink-0 rounded-xl border border-primary/10 bg-background/60 p-2">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart key={rangeStats.chartKey} data={rangeStats.points} margin={{ top: 12, right: 12, left: 0, bottom: 0 }} onClick={handleChartClick}>
+                                    <LineChart key={rangeStats.chartKey} data={rangeStats.points} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} onClick={handleChartClick}>
                                         <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                         <XAxis
                                             dataKey="date"
                                             tick={{ fontSize: 10 }}
-                                            minTickGap={28}
+                                            minTickGap={24}
                                             tickFormatter={(value) => {
                                                 const parsed = new Date(`${value}T00:00:00Z`)
                                                 return Number.isNaN(parsed.getTime())
                                                     ? String(value)
-                                                    : getRangeConfig(range).grouping === "monthly"
-                                                        ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
-                                                        : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
+                                                    : frequency === "yearly"
+                                                        ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
+                                                        : frequency === "monthly"
+                                                            ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
+                                                            : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
                                             }}
                                         />
-                                        <YAxis tick={{ fontSize: 10 }} width={64} domain={["auto", "auto"]} tickFormatter={(value) => `${Number(value) >= 100000 ? `${(Number(value) / 100000).toFixed(1)}L` : Number(value).toFixed(0)}`} />
+                                        <YAxis tick={{ fontSize: 10 }} width={48} domain={["auto", "auto"]} tickFormatter={(value) => `${Number(value) >= 100000 ? `${(Number(value) / 100000).toFixed(1)}L` : Number(value).toFixed(0)}`} />
                                         <Tooltip
                                             content={({ active, payload, label }) => {
                                                 if (!active || !payload || payload.length === 0) return null
@@ -433,21 +478,32 @@ export function ValuationTimelineModal({
                                                 const value = Number(payload[0]?.value || 0)
                                                 return (
                                                     <div className="rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-lg">
-                                                        <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">{formatAppDate(String(label), calendarSystem)}</p>
-                                                        <p className="text-xs font-bold text-primary">{getRangeConfig(range).grouping === "daily" ? "Value" : "Avg Value"}: {money(value)}</p>
+                                                        <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                            {(() => {
+                                                                const parsed = new Date(`${label}T00:00:00Z`)
+                                                                return Number.isNaN(parsed.getTime())
+                                                                    ? String(label)
+                                                                    : frequency === "yearly"
+                                                                        ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
+                                                                        : frequency === "monthly"
+                                                                            ? formatAppDate(parsed, calendarSystem, { month: "long", year: "numeric", timeZone: "UTC" })
+                                                                            : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" })
+                                                            })()}
+                                                        </p>
+                                                        <p className="text-xs font-bold text-primary">{frequency === "daily" ? "Value" : "Avg Value"}: {money(value)}</p>
                                                         {row?.points && row.points > 1 && <p className="text-[10px] font-bold text-muted-foreground">Averaged from {row.points} daily valuation{row.points === 1 ? "" : "s"}</p>}
                                                         {row && <p className="text-[10px] font-bold text-muted-foreground">{row.coveredSymbols} symbol{row.coveredSymbols === 1 ? "" : "s"} priced</p>}
                                                     </div>
                                                 )
                                             }}
                                         />
-                                        <Line type="monotone" dataKey="value" name="Valuation" stroke="#f97316" strokeWidth={3} dot={getRangeConfig(range).grouping !== "daily"} activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }} />
+                                        <Line type="monotone" dataKey="value" name="Valuation" stroke="#f97316" strokeWidth={3} dot={frequency !== "daily"} activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
 
                             {selectedSnapshot?.snapshot?.length ? (
-                                <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-4">
+                                <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-3 sm:p-4">
                                     <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                                         <div>
                                             <p className="text-[10px] font-black uppercase tracking-widest text-primary">Time Snapshot</p>
@@ -459,21 +515,19 @@ export function ValuationTimelineModal({
                                             {selectedSnapshot.snapshot.length} priced symbol{selectedSnapshot.snapshot.length === 1 ? "" : "s"}
                                         </p>
                                     </div>
-                                    <div className="mt-3 overflow-x-auto">
-                                        <div className="min-w-[560px] divide-y divide-muted/20 rounded-lg border border-muted/30 bg-background/70">
-                                            {selectedSnapshot.snapshot.map((entry) => (
-                                                <div key={entry.symbol} className="grid grid-cols-[1fr_1fr_1fr_1.2fr] items-center gap-3 px-3 py-2 text-xs">
-                                                    <p className="font-black uppercase tracking-wider text-foreground">{entry.symbol}</p>
-                                                    <p className="font-mono font-bold text-muted-foreground">{entry.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
-                                                    <p className="font-mono font-bold text-muted-foreground">LTP {money(entry.ltp)}</p>
-                                                    <p className="text-right font-mono font-black text-primary">{money(entry.value)}</p>
-                                                </div>
-                                            ))}
-                                        </div>
+                                    <div className="mt-3 divide-y divide-muted/20 rounded-lg border border-muted/30 bg-background/70">
+                                        {selectedSnapshot.snapshot.map((entry) => (
+                                            <div key={entry.symbol} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs sm:grid sm:grid-cols-[1fr_1fr_1fr_1.2fr] sm:gap-3">
+                                                <p className="w-full font-black uppercase tracking-wider text-foreground sm:w-auto">{entry.symbol}</p>
+                                                <p className="font-mono font-bold text-muted-foreground">{entry.units.toLocaleString(undefined, { maximumFractionDigits: 4 })} units</p>
+                                                <p className="font-mono font-bold text-muted-foreground">LTP {money(entry.ltp)}</p>
+                                                <p className="font-mono font-black text-primary sm:text-right">{money(entry.value)}</p>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             ) : selectedSnapshot ? (
-                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-4">
+                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-3 sm:p-4">
                                     <p className="text-xs font-bold text-muted-foreground">No symbol-level price snapshot is available for this point.</p>
                                 </div>
                             ) : null}
@@ -489,7 +543,7 @@ export function ValuationTimelineModal({
                             {meta?.missingSymbols.length ? (
                                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Missing LTP History</p>
-                                    <p className="mt-1 text-xs font-medium text-muted-foreground">
+                                    <p className="mt-1 break-words text-xs font-medium text-muted-foreground">
                                         {meta.missingSymbols.slice(0, 12).join(", ")}
                                         {meta.missingSymbols.length > 12 ? ` +${meta.missingSymbols.length - 12} more` : ""}
                                     </p>
@@ -513,19 +567,19 @@ function StatusMetric({ label, value, detail, tone = "muted" }: { label: string;
     }[tone]
 
     return (
-        <div className={cn("min-w-0 rounded-lg border px-3 py-2", toneClass)}>
-            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-            <p className="mt-1 truncate font-mono text-sm font-black" title={value}>{value}</p>
-            <p className="mt-0.5 truncate text-[10px] font-bold text-muted-foreground" title={detail}>{detail}</p>
+        <div className={cn("min-w-0 rounded-lg border px-1.5 py-1 sm:px-3 sm:py-2", toneClass)}>
+            <p className="text-[7px] font-black uppercase tracking-widest text-muted-foreground sm:text-[9px]">{label}</p>
+            <p className="mt-0.5 truncate font-mono text-[10px] font-black sm:mt-1 sm:text-sm" title={value}>{value}</p>
+            <p className="mt-0 truncate text-[8px] font-bold text-muted-foreground sm:mt-0.5 sm:text-[10px]" title={detail}>{detail}</p>
         </div>
     )
 }
 
 function MiniReadout({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-lg border border-muted/30 bg-background/60 px-3 py-2">
-            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-            <p className="text-sm font-black font-mono">{value}</p>
+        <div className="rounded-lg border border-muted/30 bg-background/60 px-2 py-1 sm:px-3 sm:py-2">
+            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground sm:text-[9px]">{label}</p>
+            <p className="text-[11px] font-black font-mono sm:text-sm">{value}</p>
         </div>
     )
 }

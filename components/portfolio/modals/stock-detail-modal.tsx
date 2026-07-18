@@ -14,6 +14,7 @@ import { useEffect, useState, useMemo, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip as UITooltip, TooltipContent as UITooltipContent, TooltipProvider as UITooltipProvider, TooltipTrigger as UITooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SIPSetupModal } from "./sip-setup-modal"
 import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
@@ -138,6 +139,14 @@ const getFiscalYearSortValue = (year: string) => {
 }
 
 type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
+type PriceHistoryFrequency = "daily" | "weekly" | "monthly" | "yearly"
+
+const PRICE_HISTORY_FREQUENCIES: Array<{ value: PriceHistoryFrequency; label: string }> = [
+    { value: "daily", label: "1D" },
+    { value: "weekly", label: "1W" },
+    { value: "monthly", label: "1M" },
+    { value: "yearly", label: "1Y" },
+]
 
 const PRICE_HISTORY_RANGES: Array<{ value: PriceHistoryRange; label: string; months: number; grouping: "daily" | "weekly" | "monthly" }> = [
     { value: "1M", label: "1M", months: 1, grouping: "daily" },
@@ -156,7 +165,7 @@ const getWeekKey = (date: Date) => {
     return `${date.getUTCFullYear()}-W${Math.floor(dayOfYear / 7) + 1}`
 }
 
-const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: "daily" | "weekly" | "monthly") => {
+const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: PriceHistoryFrequency) => {
     if (grouping === "daily") return points
 
     const buckets = new Map<string, {
@@ -174,7 +183,7 @@ const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: "daily" | "w
     points.forEach((point) => {
         const parsed = new Date(`${point.date}T00:00:00Z`)
         if (Number.isNaN(parsed.getTime())) return
-        const key = grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+        const key = grouping === "yearly" ? point.date.slice(0, 4) : grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
         const existing = buckets.get(key) || {
             date: point.date,
             ltpTotal: 0,
@@ -275,6 +284,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [isBtcNewsLoading, setIsBtcNewsLoading] = useState(false)
     const [btcNewsError, setBtcNewsError] = useState<string | null>(null)
     const [priceHistory, setPriceHistory] = useState<LtpHistoryPoint[]>([])
+    const [priceHistoryRaw, setPriceHistoryRaw] = useState<LtpHistoryPoint[]>([])
+    const [priceHistoryFrequency, setPriceHistoryFrequency] = useState<PriceHistoryFrequency>("daily")
     const [priceHistoryRange, setPriceHistoryRange] = useState<PriceHistoryRange>("1M")
     const [priceHistoryCache, setPriceHistoryCache] = useState<Partial<Record<PriceHistoryRange, LtpHistoryPoint[]>>>({})
     const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false)
@@ -683,6 +694,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }, [btcNews.length, isBtcNewsLoading])
 
     useEffect(() => {
+        if (priceHistoryRaw.length > 0) {
+            setPriceHistory(aggregatePriceHistory(priceHistoryRaw, priceHistoryFrequency))
+        }
+    }, [priceHistoryRaw, priceHistoryFrequency])
+
+    useEffect(() => {
         if (!open || !isBitcoin) return
         loadBtcNews()
     }, [open, isBitcoin, loadBtcNews])
@@ -691,7 +708,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         if (!item || isCrypto || isPriceHistoryLoading) return
         const cachedPoints = priceHistoryCache[range]
         if (!force && cachedPoints) {
-            setPriceHistory(cachedPoints)
+            setPriceHistoryRaw(cachedPoints)
             setPriceHistoryError(null)
             return
         }
@@ -707,11 +724,10 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                 throw new Error(data?.error?.message || data?.message || "Failed to fetch price history")
             }
             const points = Array.isArray(data?.points) ? data.points : []
-            const aggregatedPoints = aggregatePriceHistory(points as LtpHistoryPoint[], rangeConfig.grouping)
-            setPriceHistory(aggregatedPoints)
+            setPriceHistoryRaw(points as LtpHistoryPoint[])
             setPriceHistoryCache((current) => ({
                 ...current,
-                [range]: aggregatedPoints,
+                [range]: points as LtpHistoryPoint[],
             }))
         } catch (error: any) {
             setPriceHistoryError(error?.message || "Could not load price history right now.")
@@ -2346,14 +2362,28 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">LTP History</p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily"
+                                                        {priceHistoryFrequency === "daily"
                                                             ? `Daily closes · ${getPriceHistoryRangeConfig(priceHistoryRange).label}`
-                                                            : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly"
-                                                                ? "Weekly avg · daily closes"
-                                                                : "Monthly avg · daily closes"}
+                                                            : priceHistoryFrequency === "weekly"
+                                                                ? "Weekly avg"
+                                                                : priceHistoryFrequency === "monthly"
+                                                                    ? "Monthly avg"
+                                                                    : "Yearly avg"}
                                                     </p>
                                                 </div>
                                                 <div className="flex flex-wrap items-center gap-2">
+                                                    <Select value={priceHistoryFrequency} onValueChange={(v) => setPriceHistoryFrequency(v as PriceHistoryFrequency)}>
+                                                        <SelectTrigger size="sm" className="h-7 w-[62px] rounded-lg border-muted/30 text-[10px] font-black uppercase tracking-widest">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {PRICE_HISTORY_FREQUENCIES.map((option) => (
+                                                                <SelectItem key={option.value} value={option.value} className="text-[10px] font-black uppercase tracking-widest">
+                                                                    {option.label}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                     <div className="flex rounded-lg border border-muted/40 bg-muted/10 p-1">
                                                         {PRICE_HISTORY_RANGES.map((rangeOption) => (
                                                             <Button
@@ -2441,9 +2471,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         const parsed = new Date(`${value}T00:00:00Z`)
                                                                         return Number.isNaN(parsed.getTime())
                                                                             ? String(value)
-                                                                            : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "monthly"
-                                                                                ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
-                                                                                : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
+                                                                            : priceHistoryFrequency === "yearly"
+                                                                                ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
+                                                                                : priceHistoryFrequency === "monthly"
+                                                                                    ? formatAppDate(parsed, calendarSystem, { month: "short", year: "2-digit", timeZone: "UTC" })
+                                                                                    : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", timeZone: "UTC" })
                                                                     }}
                                                                 />
                                                                 <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={48} />
@@ -2454,10 +2486,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         return (
                                                                             <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-lg px-3 py-2">
                                                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
-                                                                                    {formatAppDate(String(label), calendarSystem)}
+                                                                                    {(() => {
+                                                                                        const parsed = new Date(`${label}T00:00:00Z`)
+                                                                                        return Number.isNaN(parsed.getTime())
+                                                                                            ? String(label)
+                                                                                            : priceHistoryFrequency === "yearly"
+                                                                                                ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
+                                                                                                : priceHistoryFrequency === "monthly"
+                                                                                                    ? formatAppDate(parsed, calendarSystem, { month: "long", year: "numeric", timeZone: "UTC" })
+                                                                                                    : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" })
+                                                                                    })()}
                                                                                 </p>
                                                                                 <p className="text-xs font-bold text-primary">
-                                                                                    {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" ? "LTP" : "Avg LTP"}: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}
+                                                                                    {priceHistoryFrequency === "daily" ? "LTP" : "Avg LTP"}: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}
                                                                                 </p>
                                                                                 {row?.points && row.points > 1 && (
                                                                                     <p className="text-[10px] font-bold text-muted-foreground">
@@ -2479,7 +2520,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     name="LTP"
                                                                     stroke="#f97316"
                                                                     strokeWidth={3}
-                                                                    dot={getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" || priceHistory.length <= 30}
+                                                                    dot={false}
                                                                     activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
                                                                 />
                                                             </LineChart>
@@ -2544,7 +2585,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             </div>
 
                                                             <p className="text-[10px] font-bold text-muted-foreground">
-                                                                Showing {priceHistory.length} {getPriceHistoryRangeConfig(priceHistoryRange).grouping === "daily" ? "daily" : getPriceHistoryRangeConfig(priceHistoryRange).grouping === "weekly" ? "weekly average" : "monthly average"} point{priceHistory.length === 1 ? "" : "s"} from {formatAppDate(priceHistoryStats.first.date, calendarSystem)} to {formatAppDate(priceHistoryStats.latest.date, calendarSystem)}.
+                                                                Showing {priceHistory.length} {priceHistoryFrequency === "daily" ? "daily" : priceHistoryFrequency === "weekly" ? "weekly average" : priceHistoryFrequency === "monthly" ? "monthly average" : "yearly average"} point{priceHistory.length === 1 ? "" : "s"} from {formatAppDate(priceHistoryStats.first.date, calendarSystem)} to {formatAppDate(priceHistoryStats.latest.date, calendarSystem)}.
                                                             </p>
                                                         </>
                                                     )}

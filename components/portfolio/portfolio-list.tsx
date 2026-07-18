@@ -26,6 +26,7 @@ import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDate, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { getLtpCache, setLtpCache } from "@/lib/ltp-cache"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
 import { buildDividendData, DividendHoldingSummary, DividendPortfolioAllYearsRow, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
@@ -200,6 +201,11 @@ export function PortfolioList() {
     const [valuationTimelineRange, setValuationTimelineRange] = useState<ValuationTimelineRange>("1m")
     const [valuationPortfolioIds, setValuationPortfolioIds] = useState<string[]>([])
     const valuationHistoryCacheRef = useRef<Map<string, Array<{ date: string; ltp: number }>>>(new Map())
+    const [valuationTimelineProgress, setValuationTimelineProgress] = useState<{
+        loaded: number
+        total: number
+        currentSymbol: string
+    } | null>(null)
     const [marketHistoryView, setMarketHistoryView] = useState<"yearly" | "daily">("yearly")
     const [yearWindow, setYearWindow] = useState<"5" | "10" | "all">("10")
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "180" | "365" | "all">("90")
@@ -1312,43 +1318,57 @@ export function PortfolioList() {
                 ...transactionRows.map((tx) => tx.symbol),
             ])).sort()
             const historyMonths = getValuationTimelineMonths(range)
-            const historyResults = await Promise.allSettled(
-                symbols.map(async (symbol) => {
-                    const cacheKey = `${symbol}:${historyMonths}`
-                    const cached = valuationHistoryCacheRef.current.get(cacheKey)
-                    if (cached) return [symbol, cached] as const
 
-                    const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=${historyMonths}`)
-                    const data = await response.json()
-                    if (!response.ok) {
-                        throw new Error(data?.error?.message || data?.message || `Could not load ${symbol}`)
-                    }
-                    const points = (Array.isArray(data?.points) ? data.points : [])
+            const cachedResults: Array<[string, Array<{ date: string; ltp: number }>]> = []
+            const uncachedSymbols: string[] = []
+            for (const symbol of symbols) {
+                const cacheKey = `${symbol}:${historyMonths}`
+                const inMem = valuationHistoryCacheRef.current.get(cacheKey)
+                if (inMem) {
+                    cachedResults.push([symbol, inMem])
+                    continue
+                }
+                const persisted = getLtpCache(cacheKey)
+                if (persisted) {
+                    valuationHistoryCacheRef.current.set(cacheKey, persisted)
+                    cachedResults.push([symbol, persisted])
+                } else {
+                    uncachedSymbols.push(symbol)
+                }
+            }
+
+            if (uncachedSymbols.length > 0) {
+                setValuationTimelineProgress({ loaded: 0, total: symbols.length, currentSymbol: "" })
+                const bulkUrl = `/api/nepse/ltp/history/bulk?symbols=${uncachedSymbols.map((s) => encodeURIComponent(s)).join(",")}&months=${historyMonths}`
+                const response = await fetch(bulkUrl)
+                const data = await response.json()
+                if (!response.ok) {
+                    throw new Error(data?.error?.message || data?.message || "Could not load LTP history")
+                }
+                for (const symbol of uncachedSymbols) {
+                    const points: Array<{ date: string; ltp: number }> = (Array.isArray(data?.points?.[symbol]) ? data.points[symbol] : [])
                         .map((point: unknown) => {
-                            const row = point as { date?: unknown; ltp?: unknown }
-                            return {
-                                date: String(row.date || ""),
-                                ltp: Number(row.ltp),
-                            }
+                            const row = point as { date?: unknown; ltp?: number }
+                            return { date: String(row.date || ""), ltp: Number(row.ltp) }
                         })
                         .filter((point: { date: string; ltp: number }) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.ltp) && point.ltp > 0)
                         .sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date))
-
-                    valuationHistoryCacheRef.current.set(cacheKey, points)
-                    return [symbol, points] as const
-                }),
-            )
+                    valuationHistoryCacheRef.current.set(`${symbol}:${historyMonths}`, points)
+                    setLtpCache(`${symbol}:${historyMonths}`, points)
+                    cachedResults.push([symbol, points])
+                    setValuationTimelineProgress({ loaded: cachedResults.length, total: symbols.length, currentSymbol: symbol })
+                }
+            }
 
             const historyBySymbol = new Map<string, Array<{ date: string; ltp: number }>>()
             const missingSymbols: string[] = []
-            historyResults.forEach((result, index) => {
-                const symbol = symbols[index]
-                if (result.status !== "fulfilled" || result.value[1].length === 0) {
+            for (const [symbol, points] of cachedResults) {
+                if (points.length === 0) {
                     missingSymbols.push(symbol)
-                    return
+                } else {
+                    historyBySymbol.set(symbol, points)
                 }
-                historyBySymbol.set(result.value[0], result.value[1])
-            })
+            }
 
             const dateKeys = Array.from(
                 new Set(Array.from(historyBySymbol.values()).flatMap((points) => points.map((point) => point.date))),
@@ -1435,6 +1455,7 @@ export function PortfolioList() {
             setValuationTimelineError(error instanceof Error ? error.message : "Could not load valuation timeline right now.")
         } finally {
             setIsValuationTimelineLoading(false)
+            setValuationTimelineProgress(null)
         }
     }, [getValuationTimelineMonths, includedPortfolioIds, portfolio, portfolios, safeNumber, shareTransactions, valuationTimelineMode])
 
@@ -3045,6 +3066,7 @@ export function PortfolioList() {
                     error={valuationTimelineError}
                     formatAmount={formatHoldingAmount}
                     isLoading={isValuationTimelineLoading}
+                    progress={valuationTimelineProgress}
                     meta={valuationTimelineMeta}
                     mode={valuationTimelineMode}
                     modal={valuationTimelineModal}
@@ -4029,6 +4051,7 @@ export function PortfolioList() {
                 error={valuationTimelineError}
                 formatAmount={formatHoldingAmount}
                 isLoading={isValuationTimelineLoading}
+                progress={valuationTimelineProgress}
                 meta={valuationTimelineMeta}
                 mode={valuationTimelineMode}
                 modal={valuationTimelineModal}
