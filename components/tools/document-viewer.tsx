@@ -157,6 +157,7 @@ function useZoomPan(
     const el = containerRef.current
     if (!el || !enabled) return
     let dragging = false
+    let pointerId = -1
     let startX = 0
     let startY = 0
     let startPanX = 0
@@ -166,35 +167,35 @@ function useZoomPan(
       // Only left button, ignore if it's a touch (handled separately)
       if (e.button !== 0 || e.pointerType === "touch") return
       dragging = true
+      pointerId = e.pointerId
       startX = e.clientX
       startY = e.clientY
       startPanX = stateRef.current.panX
       startPanY = stateRef.current.panY
-      el.setPointerCapture(e.pointerId)
       el.style.cursor = "grabbing"
       e.preventDefault()
     }
     const onMove = (e: PointerEvent) => {
-      if (!dragging) return
+      if (!dragging || e.pointerId !== pointerId) return
       const dx = e.clientX - startX
       const dy = e.clientY - startY
       setState(s => ({ ...s, panX: startPanX + dx, panY: startPanY + dy }))
     }
     const onUp = (e: PointerEvent) => {
-      if (!dragging) return
+      if (!dragging || e.pointerId !== pointerId) return
       dragging = false
-      el.releasePointerCapture(e.pointerId)
+      pointerId = -1
       el.style.cursor = ""
     }
     el.addEventListener("pointerdown", onDown)
-    el.addEventListener("pointermove", onMove)
-    el.addEventListener("pointerup", onUp)
-    el.addEventListener("pointercancel", onUp)
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
     return () => {
       el.removeEventListener("pointerdown", onDown)
-      el.removeEventListener("pointermove", onMove)
-      el.removeEventListener("pointerup", onUp)
-      el.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
     }
   }, [containerRef, enabled])
 
@@ -369,7 +370,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
 
   // ─── Flip viewer state ─────────────────────────────────────────────────────
   const flipContainerRef = useRef<HTMLDivElement>(null)
-  const [flipNatural, setFlipNatural] = useState<{ w: number; h: number } | null>(null)
+  const [face0Natural, setFace0Natural] = useState<{ w: number; h: number } | null>(null)
+  const [face1Natural, setFace1Natural] = useState<{ w: number; h: number } | null>(null)
   const [flipContainerSize, setFlipContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
 
   // ─── PDF viewer state ──────────────────────────────────────────────────────
@@ -414,10 +416,11 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   }, [imgNatural, imgContainerSize.w, imgContainerSize.h])
 
   const flipFit = useMemo(() => {
-    return flipNatural && flipContainerSize.w && flipContainerSize.h
-      ? computeFitSize(flipNatural.w, flipNatural.h, flipContainerSize.w, flipContainerSize.h, 0.85)
+    const nat = flip ? (face1Natural ?? face0Natural) : face0Natural
+    return nat && flipContainerSize.w && flipContainerSize.h
+      ? computeFitSize(nat.w, nat.h, flipContainerSize.w, flipContainerSize.h, 0.85)
       : null
-  }, [flipNatural, flipContainerSize.w, flipContainerSize.h])
+  }, [flip, face0Natural, face1Natural, flipContainerSize.w, flipContainerSize.h])
 
   const pdfFitScale = pdfPageSize && pdfContainerSize.w
     ? Math.min((pdfContainerSize.w - 32) / pdfPageSize.w, 1)
@@ -499,7 +502,10 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   // ─── Display percentage for toolbar ─────────────────────────────────────────
   const displayPercent = (() => {
     if (isPdf && pdfFitScale) return Math.round(pdfFitScale * pdfZP.zoom * 100)
-    if (isTwoSided && flipFit && flipNatural) return Math.round((flipFit.w * flipZP.zoom / flipNatural.w) * 100)
+    if (isTwoSided && flipFit) {
+      const nat = flip ? face1Natural : face0Natural
+      if (nat) return Math.round((flipFit.w * flipZP.zoom / nat.w) * 100)
+    }
     if (!isTwoSided && imgFit && imgNatural) return Math.round((imgFit.w * imgZP.zoom / imgNatural.w) * 100)
     return Math.round(activeImgZP.zoom * 100)
   })()
@@ -537,7 +543,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
       setPageBlobs(blobs)
       pdfFitDoneRef.current = false
       setImgNatural(null)
-      setFlipNatural(null)
+      setFace0Natural(null)
+      setFace1Natural(null)
       setPdfPageSize(null)
       resetImgZoom()
       pdfZP.setState({ zoom: 1, panX: 0, panY: 0 })
@@ -549,11 +556,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     return () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); urlsRef.current = [] }
   }, [docId])
 
-  // Reset image natural size when blob changes
-  useEffect(() => {
-    setImgNatural(null)
-    setFlipNatural(null)
-  }, [blobUrl])
+  // goToPage resets dimensions explicitly; no effect on blobUrl because toggleFlip
+  // changes blobUrl and we must not destroy face dimensions mid-flip.
 
   // ─── Page navigation ──────────────────────────────────────────────────────
   const goToPage = (id: string) => {
@@ -562,7 +566,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     setPageNum(1)
     setNumPages(0)
     setImgNatural(null)
-    setFlipNatural(null)
+    setFace0Natural(null)
+    setFace1Natural(null)
     setPdfPageSize(null)
     pdfFitDoneRef.current = false
     setRenderedZoom(1)
@@ -766,51 +771,53 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
             </div>
           ) : isImage && blobUrl && isTwoSided ? (
             /* ─── Two-sided / Flip Viewer (translate-based, unified zoom) ───── */
-            <div
-              ref={flipContainerRef}
-              className="relative h-full w-full overflow-hidden select-none"
-              style={{ cursor: "grab", touchAction: "none" }}
-            >
               <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  transformOrigin: "0 0",
-                  transform: `translate(${flipZP.panX}px, ${flipZP.panY}px) scale(${flipZP.zoom})`,
-                  willChange: "transform",
-                }}
-                onPointerDown={handleFlipPointerDown}
-                onPointerUp={handleFlipPointerUp}
+                ref={flipContainerRef}
+                className="relative h-full w-full overflow-hidden select-none"
+                style={{ cursor: "grab", touchAction: "none" }}
               >
                 <div
-                  className="relative [transform-style:preserve-3d] transition-transform duration-500 [will-change:transform]"
                   style={{
-                    transform: `rotateY(${flip ? 180 : 0}deg)`,
-                    width: flipFit?.w ?? 0,
-                    height: flipFit?.h ?? 0,
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    transformOrigin: "0 0",
+                    transform: `translate(${flipZP.panX}px, ${flipZP.panY}px) scale(${flipZP.zoom})`,
+                    willChange: "transform",
                   }}
+                  className="[perspective:1000px]"
+                  onPointerDown={handleFlipPointerDown}
+                  onPointerUp={handleFlipPointerUp}
                 >
-                  <div className="[backface-visibility:hidden] flex items-center justify-center">
-                    <img
-                      src={pageUrls[face0!.id]}
-                      alt={`${doc.name} - ${face0!.label}`}
-                      draggable={false}
-                      onLoad={(e) => setFlipNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-                      className="select-none rounded-lg shadow-lg touch-none"
-                      style={{ width: flipFit?.w ?? 0, height: flipFit?.h ?? 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
-                    />
-                  </div>
-                  <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] flex items-center justify-center">
-                    {face1 && pageUrls[face1.id] ? (
+                  <div
+                    className="relative [transform-style:preserve-3d] transition-[transform,width,height] duration-500 [will-change:transform]"
+                    style={{
+                      transform: `rotateY(${flip ? 180 : 0}deg)`,
+                      width: flipFit?.w ?? 0,
+                      height: flipFit?.h ?? 0,
+                    }}
+                  >
+                    <div className="[backface-visibility:hidden] flex items-center justify-center">
                       <img
-                        src={pageUrls[face1.id]}
-                        alt={`${doc.name} - ${face1.label}`}
+                        src={pageUrls[face0!.id]}
+                        alt={`${doc.name} - ${face0!.label}`}
                         draggable={false}
+                        onLoad={(e) => setFace0Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                         className="select-none rounded-lg shadow-lg touch-none"
                         style={{ width: flipFit?.w ?? 0, height: flipFit?.h ?? 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
                       />
-                    ) : (
+                    </div>
+                    <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] flex items-center justify-center">
+                      {face1 && pageUrls[face1.id] ? (
+                        <img
+                          src={pageUrls[face1.id]}
+                          alt={`${doc.name} - ${face1.label}`}
+                          draggable={false}
+                          onLoad={(e) => { if (!face1Natural) setFace1Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }) }}
+                          className="select-none rounded-lg shadow-lg touch-none"
+                          style={{ width: flipFit?.w ?? 0, height: flipFit?.h ?? 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
+                        />
+                      ) : (
                       <div
                         onClick={(e) => { e.stopPropagation(); toggleFlip() }}
                         onPointerUp={(e) => e.stopPropagation()}

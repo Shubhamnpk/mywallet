@@ -45,6 +45,33 @@ interface BalanceCardProps {
   isMobile?: boolean
 }
 
+function RhododendronFlower({ className, strokeColor = "white" }: { className?: string; strokeColor?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Five petals radiating from center */}
+      <path d="M100 100 C100 60, 60 30, 55 55 C50 80, 80 100, 100 100Z" fill={strokeColor} />
+      <path d="M100 100 C140 100, 170 60, 145 55 C120 50, 100 80, 100 100Z" fill={strokeColor} />
+      <path d="M100 100 C100 140, 140 170, 145 145 C150 120, 120 100, 100 100Z" fill={strokeColor} />
+      <path d="M100 100 C60 100, 30 140, 55 145 C80 150, 100 120, 100 100Z" fill={strokeColor} />
+      <path d="M100 100 C130 70, 170 30, 170 60 C170 90, 130 100, 100 100Z" fill={strokeColor} />
+      {/* Center pistil */}
+      <circle cx="100" cy="100" r="8" fill={strokeColor} opacity="0.4" />
+      <circle cx="100" cy="100" r="4" fill={strokeColor} opacity="0.6" />
+    </svg>
+  )
+}
+
+function RhododendronEmblem({ isPositive }: { isPositive: boolean }) {
+  const color = isPositive ? "white" : "white"
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+      <RhododendronFlower strokeColor={color} className="absolute -top-8 -right-8 w-36 h-36 opacity-[0.07]" />
+      <RhododendronFlower strokeColor={color} className="absolute -bottom-6 -left-6 w-24 h-24 opacity-[0.05] scale-x-[-1]" />
+      <RhododendronFlower strokeColor={color} className="absolute top-1/3 right-2 w-10 h-10 opacity-[0.04]" />
+    </div>
+  )
+}
+
 function BalanceCard({
   balanceChange,
   balance,
@@ -71,6 +98,7 @@ function BalanceCard({
       <div className="absolute inset-0 rounded-xl overflow-hidden">
         <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
         <div className="absolute inset-0 bg-black/10" />
+        <RhododendronEmblem isPositive={isPositive} />
       </div>
 
       <CardContent className={`relative ${compactClass} text-white`}>
@@ -369,11 +397,15 @@ export function CombinedBalanceCard() {
 
           {/* Net Worth Card */}
           <div data-carousel-card="1" className="flex-shrink-0 md:min-h-[150px] ml-4" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
-            <Card className={`border-2 transition-all duration-200 h-full md:min-h-[150px] ${netWorth >= 0
+            <Card className={`relative border-2 transition-all duration-200 h-full md:min-h-[150px] ${netWorth >= 0
               ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
               : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
               }`}>
-              <CardContent className="p-4 text-center">
+              <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
+                <RhododendronFlower strokeColor={netWorth >= 0 ? "#059669" : "#dc2626"} className="absolute -top-5 -right-5 w-28 h-28 opacity-[0.07]" />
+                <RhododendronFlower strokeColor={netWorth >= 0 ? "#059669" : "#dc2626"} className="absolute -bottom-4 -left-4 w-16 h-16 opacity-[0.05] scale-x-[-1]" />
+              </div>
+              <CardContent className="relative p-4 text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
@@ -497,8 +529,11 @@ export function CombinedBalanceCard() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
-        <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
-          <CardContent className="p-3 sm:p-5">
+        <Card className="relative group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
+          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
+            <RhododendronFlower strokeColor="#059669" className="absolute -top-3 -right-3 w-16 h-16 opacity-[0.06]" />
+          </div>
+          <CardContent className="relative p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
                 <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
@@ -518,8 +553,11 @@ export function CombinedBalanceCard() {
           </CardContent>
         </Card>
 
-        <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50">
-          <CardContent className="p-3 sm:p-5">
+        <Card className="relative group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50">
+          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
+            <RhododendronFlower strokeColor="#dc2626" className="absolute -top-3 -right-3 w-16 h-16 opacity-[0.06]" />
+          </div>
+          <CardContent className="relative p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">
                 <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6 text-white" />

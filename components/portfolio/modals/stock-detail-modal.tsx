@@ -1950,32 +1950,40 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         </div>
 
                                         {/* Market Data */}
+                                        {(Number.isFinite(item?.high) && (item?.high ?? 0) > 0) || (Number.isFinite(item?.low) && (item?.low ?? 0) > 0) || (Number.isFinite(item?.volume) && (item?.volume ?? 0) > 0) ? (
                                         <div className="grid grid-cols-3 gap-2 -mt-2">
+                                            {Number.isFinite(item?.high) && (item?.high ?? 0) > 0 && (
                                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
                                                 <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
                                                     <TrendingUp className="w-2.5 h-2.5 text-green-500" /> High
                                                 </span>
                                                 <span className="text-xs font-bold font-mono">
-                                                    {currencySymbol} {formatValue(item.high ?? current)}
+                                                    {currencySymbol} {formatValue(item!.high!)}
                                                 </span>
                                             </div>
+                                            )}
+                                            {Number.isFinite(item?.low) && (item?.low ?? 0) > 0 && (
                                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
                                                 <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
                                                     <TrendingDown className="w-2.5 h-2.5 text-red-500" /> Low
                                                 </span>
                                                 <span className="text-xs font-bold font-mono">
-                                                    {currencySymbol} {formatValue(item.low ?? current)}
+                                                    {currencySymbol} {formatValue(item!.low!)}
                                                 </span>
                                             </div>
+                                            )}
+                                            {Number.isFinite(item?.volume) && (item?.volume ?? 0) > 0 && (
                                             <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/20 border border-muted/50">
                                                 <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1">
                                                     <BarChart3 className="w-2.5 h-2.5 text-blue-500" /> Volume
                                                 </span>
                                                 <span className="text-xs font-bold font-mono">
-                                                    {(item.volume ?? 0).toLocaleString()}
+                                                    {(item!.volume!).toLocaleString()}
                                                 </span>
                                             </div>
+                                            )}
                                         </div>
+                                        ) : null}
                                         {!isCrypto && (
                                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
                                                 <Button
