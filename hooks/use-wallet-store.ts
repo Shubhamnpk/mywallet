@@ -57,7 +57,7 @@ import {
   wasRecentlyDelivered,
   type NotificationHistorySource,
 } from "@/lib/notification-history"
-import { buildSipExecutionPlan, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans } from "@/lib/sip"
+import { buildSipExecutionPlan, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans, resolveSipProviderQuote } from "@/lib/sip"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { getCalendarSystem } from "@/lib/app-calendar"
 import { toast } from "sonner"
@@ -3747,6 +3747,55 @@ export function useWalletStore() {
     return { newTx, updatedPortfolio, zeroUnitHoldings }
   }
 
+  const importSipPlanFromProvider = async (
+    planId: string,
+    options?: { price?: number; notes?: string },
+  ) => {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) {
+      throw new Error("User profile is not available")
+    }
+
+    const sipPlans = normalizeSipPlans(currentProfile.sipPlans)
+    const plan = sipPlans.find((entry) => entry.id === planId)
+    if (!plan) {
+      throw new Error("SIP plan not found")
+    }
+
+    const latestQuote = resolveSipProviderQuote(globalPortfolioCache?.stockPriceData, plan.symbol)
+    const resolvedPrice = Number.isFinite(options?.price) && (options?.price ?? 0) > 0
+      ? Number(options?.price)
+      : (latestQuote?.price ?? plan.referencePrice ?? 0)
+
+    if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
+      throw new Error("No latest price was available for this SIP plan")
+    }
+
+    const updatedPlans = sipPlans.map((entry) =>
+      entry.id === planId
+        ? {
+            ...entry,
+            referencePrice: resolvedPrice,
+            updatedAt: new Date().toISOString(),
+            notes: options?.notes?.trim() || entry.notes || `Imported latest quote from provider (${resolvedPrice.toFixed(2)})`,
+          }
+        : entry,
+    )
+
+    updateUserProfile({ sipPlans: updatedPlans })
+
+    toast.success("SIP data refreshed", {
+      description: `${plan.symbol} now uses the latest provider quote of ${resolvedPrice.toFixed(2)}.`,
+    })
+
+    return {
+      planId,
+      price: resolvedPrice,
+      source: latestQuote?.source ?? "fallback",
+      updatedPlan: updatedPlans.find((entry) => entry.id === planId),
+    }
+  }
+
   const completeSipInstallment = async (
     planId: string,
     options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string },
@@ -4713,6 +4762,7 @@ export function useWalletStore() {
     },
     addShareTransaction,
     completeSipInstallment,
+    importSipPlanFromProvider,
     deleteShareTransaction,
     deleteMultipleShareTransactions,
     updateShareTransaction,

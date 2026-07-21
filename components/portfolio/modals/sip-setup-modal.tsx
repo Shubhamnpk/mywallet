@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { PiggyBank } from "lucide-react"
+import { useEffect, useMemo, useState, useRef } from "react"
+import { PiggyBank, RefreshCw, Upload } from "lucide-react"
 import type { PortfolioItem, ShareTransaction, SIPPlan } from "@/types/wallet"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { SIP_DEFAULT_DPS_CHARGE, SIP_REMINDER_DAY_OPTIONS, calculateSipNetInvestment, formatSipDate, getSipDueDateAtIndex, getSipNextInstallmentDate } from "@/lib/sip"
+import { SIP_DEFAULT_DPS_CHARGE, SIP_REMINDER_DAY_OPTIONS, calculateSipNetInvestment, formatSipDate, getSipDueDateAtIndex, getSipNextInstallmentDate, parseSipHistoryImportCsvRows, parseSipHistoryImportFileToCsv } from "@/lib/sip"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -72,7 +72,7 @@ export function SIPSetupModal({
   onOpenChange,
   onPlanSaved,
 }: SIPSetupModalProps) {
-  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, userProfile } = useWalletData()
+  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, userProfile, importSipPlanFromProvider, addShareTransaction, deleteMultipleShareTransactions, shareTransactions } = useWalletData()
     const calendarSystem = useCalendarSystem()
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
@@ -86,6 +86,16 @@ export function SIPSetupModal({
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set())
   const [isAdvancedSelectOpen, setIsAdvancedSelectOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isRefreshingFromProvider, setIsRefreshingFromProvider] = useState(false)
+  const [isImportingFile, setIsImportingFile] = useState(false)
+  const [importReview, setImportReview] = useState<{
+    fileName: string
+    totalRows: number
+    matchedCount: number
+    unmatchedRows: Record<string, string>[]
+    existingToDelete: { id: string }[]
+  } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const selectedEnrollmentTx = useMemo(
     () => selectedEnrollmentId === NO_ENROLLMENT_VALUE
@@ -318,12 +328,232 @@ export function SIPSetupModal({
     }
   }
 
+  const handleImportFromProvider = async () => {
+    if (!existingPlan) return
+
+    setIsRefreshingFromProvider(true)
+    try {
+      await importSipPlanFromProvider(existingPlan.id)
+      onPlanSaved?.("updated")
+    } catch (error: any) {
+      toast.error("Could not refresh SIP data", {
+        description: error?.message || "Please try again.",
+      })
+    } finally {
+      setIsRefreshingFromProvider(false)
+    }
+  }
+
+  const handleFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsImportingFile(true)
+    try {
+      const csvContent = await parseSipHistoryImportFileToCsv(file)
+      const rows = parseSipHistoryImportCsvRows(csvContent)
+      if (rows.length === 0) {
+        throw new Error("The selected file did not contain any transaction rows")
+      }
+
+      const header = Object.keys(rows[0] || {})
+      const isTransactionHistory = header.some((column) => /date|type|scheme|units|nav|total amount/.test(column))
+      if (!isTransactionHistory) {
+        throw new Error("Please choose a transaction-history export instead of a price file")
+      }
+
+      const existingForSymbol = shareTransactions.filter(
+        (tx) => tx.symbol === item?.symbol && tx.portfolioId === item?.portfolioId
+      )
+
+      const existingKeySet = new Set(
+        existingForSymbol.map((tx) =>
+          `${tx.date}|${tx.type}|${tx.description}|${Number(tx.quantity).toFixed(6)}|${Number(tx.price).toFixed(6)}`
+        )
+      )
+
+      const unmatchedRows: Record<string, string>[] = []
+      let matchedCount = 0
+
+      for (const row of rows) {
+        const units = Number(row.units || 0)
+        const nav = Number(row.nav || row.price || 0)
+        const rawDate = (row.date || "").toString().trim()
+        if (!rawDate || !Number.isFinite(units) || units <= 0 || !Number.isFinite(nav) || nav <= 0) {
+          unmatchedRows.push(row)
+          continue
+        }
+        const parts = rawDate.split("-")
+        const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
+        const typeVal = (row.type || "").toString().toUpperCase()
+        const scheme = (row.scheme || "").toString().trim()
+        const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+        const txType = isReinvestment ? "reinvestment" : "buy"
+        const desc = isReinvestment
+          ? typeVal.includes("FRACTIONAL")
+            ? `Fractional Allotment - ${scheme}`
+            : `DiRP - ${scheme}`
+          : `SIP Installment - ${scheme}`
+
+        const key = `${isoDate}|${txType}|${desc}|${units.toFixed(6)}|${nav.toFixed(6)}`
+        if (existingKeySet.has(key)) {
+          matchedCount++
+        } else {
+          unmatchedRows.push(row)
+        }
+      }
+
+      const matchedIds = new Set<string>()
+      for (const row of rows) {
+        const units = Number(row.units || 0)
+        const nav = Number(row.nav || row.price || 0)
+        const rawDate = (row.date || "").toString().trim()
+        if (!rawDate || !Number.isFinite(units) || units <= 0 || !Number.isFinite(nav) || nav <= 0) continue
+        const parts = rawDate.split("-")
+        const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
+        const typeVal = (row.type || "").toString().toUpperCase()
+        const scheme = (row.scheme || "").toString().trim()
+        const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+        const txType = isReinvestment ? "reinvestment" : "buy"
+        const desc = isReinvestment
+          ? typeVal.includes("FRACTIONAL")
+            ? `Fractional Allotment - ${scheme}`
+            : `DiRP - ${scheme}`
+          : `SIP Installment - ${scheme}`
+        const key = `${isoDate}|${txType}|${desc}|${units.toFixed(6)}|${nav.toFixed(6)}`
+        if (existingKeySet.has(key)) {
+          const match = existingForSymbol.find((tx) =>
+            tx.date === isoDate && tx.type === txType && tx.description === desc &&
+            Number(tx.quantity).toFixed(6) === units.toFixed(6) &&
+            Number(tx.price).toFixed(6) === nav.toFixed(6)
+          )
+          if (match) matchedIds.add(match.id)
+        }
+      }
+
+      const existingToDelete = existingForSymbol.filter((tx) => !matchedIds.has(tx.id))
+
+      setImportReview({
+        fileName: file.name,
+        totalRows: rows.length,
+        matchedCount,
+        unmatchedRows,
+        existingToDelete: existingToDelete.map((tx) => ({ id: tx.id })),
+      })
+    } catch (error: any) {
+      toast.error("Could not import transaction history from the selected file", {
+        description: error?.message || "Please try again.",
+      })
+    } finally {
+      setIsImportingFile(false)
+      if (event.target) event.target.value = ""
+    }
+  }
+
+  const confirmImport = async () => {
+    if (!importReview || !item) return
+
+    setIsImportingFile(true)
+    try {
+      if (importReview.existingToDelete.length > 0) {
+        await deleteMultipleShareTransactions(importReview.existingToDelete.map((tx) => tx.id))
+      }
+
+      let createdCount = 0
+      const errors: string[] = []
+
+      for (const row of importReview.unmatchedRows) {
+        try {
+          const units = Number(row.units || 0)
+          const nav = Number(row.nav || row.price || 0)
+          const rawDate = (row.date || "").toString().trim()
+          const typeVal = (row.type || "").toString().toUpperCase()
+          const scheme = (row.scheme || "").toString().trim()
+          const totalWithNav = Number(row["total with nav"] || row.totalWithNav || row["nav amount"] || 0)
+          const dpFee = Number(row["dp fee"] || row.dpFee || row.dpsCharge || 0)
+          const sebonFee = Number(row["sebon fee"] || row.sebonFee || 0)
+          const entryLoad = Number(row["entry load"] || row.entryLoad || 0)
+          const exitLoad = Number(row["exit load"] || row.exitLoad || 0)
+          const cgt = Number(row.cgt || 0)
+
+          if (!rawDate || !Number.isFinite(units) || units <= 0 || !Number.isFinite(nav) || nav <= 0) continue
+
+          const parts = rawDate.split("-")
+          const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
+
+          const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+          const txType = isReinvestment ? "reinvestment" as const : "buy" as const
+          const desc = isReinvestment
+            ? typeVal.includes("FRACTIONAL")
+              ? `Fractional Allotment - ${scheme}`
+              : `DiRP - ${scheme}`
+            : `SIP Installment - ${scheme}`
+
+          await addShareTransaction({
+            portfolioId: item.portfolioId,
+            symbol: item.symbol,
+            assetType: "stock",
+            type: txType,
+            quantity: units,
+            price: nav,
+            date: isoDate,
+            description: desc,
+            ...(txType === "buy" && existingPlan ? {
+              sipPlanId: existingPlan.id,
+              sipDueDate: isoDate,
+              sipGrossAmount: totalWithNav,
+              sipDpsCharge: dpFee,
+              sipNetAmount: totalWithNav + dpFee - sebonFee - entryLoad - exitLoad - cgt,
+            } : {}),
+          })
+          createdCount++
+        } catch (err: any) {
+          errors.push(err?.message || "Unknown error")
+        }
+      }
+
+      if (createdCount > 0 || importReview.existingToDelete.length > 0) {
+        if (createdCount > 0 && existingPlan) {
+          await importSipPlanFromProvider(existingPlan.id, { notes: `Imported ${createdCount} transactions from ${importReview.fileName}` })
+        }
+        toast.success(
+          createdCount > 0
+            ? `${createdCount} transaction${createdCount > 1 ? "s" : ""} imported from ${importReview.fileName}`
+            : `All ${importReview.matchedCount} transaction${importReview.matchedCount !== 1 ? "s" : ""} already up-to-date`,
+          {
+            description: `Removed ${importReview.existingToDelete.length} stale, kept ${importReview.matchedCount} up-to-date` +
+              (errors.length > 0 ? `. ${errors.length} row${errors.length > 1 ? "s" : ""} failed` : ""),
+          }
+        )
+        onPlanSaved?.("updated")
+      } else {
+        throw new Error(errors[0] || "No valid transaction rows could be imported")
+      }
+    } catch (error: any) {
+      toast.error("Could not import transaction history from the selected file", {
+        description: error?.message || "Please try again.",
+      })
+    } finally {
+      setIsImportingFile(false)
+      setImportReview(null)
+    }
+  }
+
+  const cancelImport = () => {
+    setImportReview(null)
+  }
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click()
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         overlayClassName="bg-black/45"
         className="sm:max-w-[500px] rounded-3xl border-primary/20 bg-card shadow-2xl sm:top-24 sm:translate-x-[-50%] sm:translate-y-0 sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
+        onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="pb-3">
           <div className="flex items-center gap-2">
@@ -334,9 +564,6 @@ export function SIPSetupModal({
             <Badge variant="outline">{item?.sector || "Equity"}</Badge>
           </div>
           <DialogTitle>{assetLabel}</DialogTitle>
-          <DialogDescription>
-            Set a recurring investment plan from the amount you want to contribute each cycle.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -387,6 +614,68 @@ export function SIPSetupModal({
             </div>
           </div>
 
+          <div className="flex items-center justify-between rounded-xl border border-primary/15 bg-primary/5 px-3 py-2">
+            <div>
+              <p className="text-xs font-medium">Import latest data</p>
+              <p className="text-[11px] text-muted-foreground">Choose a provider export file to load the latest quote for this SIP.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={triggerFileUpload} disabled={isImportingFile}>
+                <Upload className="mr-2 h-3.5 w-3.5" />
+                {isImportingFile ? "Importing..." : "Select file"}
+              </Button>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".csv,.json,.xlsx,.xls,.xlsm,.txt"
+            onChange={handleFileSelection}
+          />
+
+          {importReview ? (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Upload className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">{importReview.fileName}</span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">
+                  <strong>{importReview.matchedCount}</strong> row{importReview.matchedCount !== 1 ? "s" : ""} already up-to-date - skipped.
+                  {importReview.existingToDelete.length > 0 && (
+                    <> <strong>{importReview.existingToDelete.length}</strong> existing will be removed.</>
+                  )}
+                  {importReview.unmatchedRows.length > 0 && (
+                    <> <strong>{importReview.unmatchedRows.length}</strong> new will be created.</>
+                  )}
+                </p>
+                <div className="grid grid-cols-3 gap-3 pt-1">
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-green-600">{importReview.matchedCount}</p>
+                    <p className="text-[10px] text-muted-foreground">up-to-date</p>
+                  </div>
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-destructive">{importReview.existingToDelete.length}</p>
+                    <p className="text-[10px] text-muted-foreground">to delete</p>
+                  </div>
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-center">
+                    <p className="text-lg font-bold text-primary">{importReview.unmatchedRows.length}</p>
+                    <p className="text-[10px] text-muted-foreground">to create</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="flex-1" onClick={cancelImport} disabled={isImportingFile}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="default" size="sm" className="flex-1" onClick={confirmImport} disabled={isImportingFile}>
+                  {isImportingFile ? "Importing..." : "Confirm Replace"}
+                </Button>
+              </div>
+            </div>
+          ) : (<>
           <div className="space-y-2">
             <Label htmlFor="sip-amount" className="text-xs">Contribution amount</Label>
             <Input
@@ -481,8 +770,10 @@ export function SIPSetupModal({
               </Select>
             </div>
           </div>
+          </>)}
         </div>
 
+        {!importReview && (
         <DialogFooter className="mt-2 flex-col-reverse gap-2 sm:flex-row sm:justify-between">
           {existingPlan ? (
             <Button type="button" variant="outline" onClick={handleDelete}>
@@ -500,6 +791,7 @@ export function SIPSetupModal({
             </Button>
           </div>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
 

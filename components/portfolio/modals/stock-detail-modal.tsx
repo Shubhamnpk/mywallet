@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SIPSetupModal } from "./sip-setup-modal"
 import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { EditTransactionModal } from "./edit-transaction-modal"
 import { AddTransactionModal, type TransactionDraft } from "./add-transaction-modal"
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
@@ -1318,6 +1319,22 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         !currentSipInstallment &&
         canAffordNextSipUnit
     )
+
+    const sipCurrentValue = useMemo(() =>
+        totalSipUnits * safeCurrent,
+    [totalSipUnits, safeCurrent])
+
+    const sipReturn = useMemo(() =>
+        sipCurrentValue - totalSipNet,
+    [sipCurrentValue, totalSipNet])
+
+    const sipReturnPct = useMemo(() =>
+        totalSipNet > 0 ? (sipReturn / totalSipNet) * 100 : 0,
+    [sipReturn, totalSipNet])
+
+    const totalSipCashInvestment = useMemo(() =>
+        existingSipPlan ? (existingSipPlan.installmentAmount ?? 0) * sipTransactions.length : 0,
+    [existingSipPlan, sipTransactions.length])
 
     const holdingStartDate = useMemo(() => {
         if (matchedTransactions.length === 0) return null
@@ -2924,7 +2941,17 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         <TabsContent value="sip" className="m-0 space-y-4">
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Next installment</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                                                        Next installment
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
+                                                            </PopoverTrigger>
+                                                            <PopoverContent side="top" className="max-w-[220px] text-xs p-3">
+                                                                The next scheduled SIP due date based on your plan's frequency and start date.
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    </p>
                                                     <p className="mt-1 text-sm font-black">
                                                         {sipSchedule?.nextDate ? formatSipDate(sipSchedule.nextDate.toISOString(), calendarSystem) : "Not scheduled"}
                                                     </p>
@@ -2939,43 +2966,63 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     </p>
                                                 </div>
                                                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment split</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                                                        Monthly SIP
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
+                                                            </PopoverTrigger>
+                                                            <PopoverContent side="top" className="max-w-[260px] text-xs p-3">
+                                                                <div className="space-y-1">
+                                                                    <p>Your set contribution amount per cycle.</p>
+                                                                    <p>DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net invests {currencySymbol} {formatValue(nextSipBaseOnlyAmounts.netAmount)}</p>
+                                                                    {nextSipRemainder > 0 && (
+                                                                        <p>+ Carryover {currencySymbol} {formatValue(nextSipRemainder)} • Total this cycle {currencySymbol} {formatValue(nextSipNetAmount)}</p>
+                                                                    )}
+                                                                    {nextSipRemainder <= 0 && (
+                                                                        <p>Total this cycle {currencySymbol} {formatValue(nextSipNetAmount)}</p>
+                                                                    )}
+                                                                </div>
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    </p>
                                                     <p className="mt-1 text-sm font-black">
                                                         {currencySymbol} {formatValue(nextSipBaseAmount)}
                                                     </p>
-                                                    <p className="mt-1 text-[10px] text-muted-foreground">
-                                                        DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Base invests {currencySymbol} {formatValue(nextSipBaseOnlyAmounts.netAmount)}
-                                                    </p>
-                                                    {nextSipRemainder > 0 && (
-                                                        <p className="mt-1 text-[10px] text-green-600">
-                                                            + Carryover {currencySymbol} {formatValue(nextSipRemainder)} • Total this cycle invests {currencySymbol} {formatValue(nextSipNetAmount)}
-                                                        </p>
-                                                    )}
-                                                    {nextSipRemainder <= 0 && (
-                                                        <p className="mt-1 text-[10px] text-muted-foreground">
-                                                            Total this cycle invests {currencySymbol} {formatValue(nextSipNetAmount)}
-                                                        </p>
-                                                    )}
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-3 gap-2">
+                                            <div className="grid grid-cols-2 gap-2">
                                                 <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Completed</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                                                        Completed
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
+                                                            </PopoverTrigger>
+                                                            <PopoverContent side="top" className="max-w-[200px] text-xs p-3">
+                                                                Number of SIP cycles you have completed so far.
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    </p>
                                                     <p className="mt-1 text-sm font-black">{sipTransactions.length}</p>
                                                 </div>
                                                 <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Gross total</p>
-                                                    <p className="mt-1 text-sm font-black">{currencySymbol} {formatValue(totalSipGross)}</p>
-                                                    {existingSipPlan?.lastRemainder && existingSipPlan.lastRemainder > 0 && (
-                                                        <p className="mt-1 text-[10px] text-green-600">
-                                                            + {currencySymbol} {formatValue(existingSipPlan.lastRemainder)} remainder
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Units from SIP</p>
-                                                    <p className="mt-1 text-sm font-black">{formatUnits(totalSipUnits)}</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                                                        Total invested
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
+                                                            </PopoverTrigger>
+                                                                <PopoverContent side="top" className="max-w-[280px] text-xs p-3 space-y-1.5">
+                                                                    <p><strong>Total cash in:</strong> the full amount you put in (रु {formatValue(totalSipCashInvestment)}) रु {formatValue(existingSipPlan?.installmentAmount ?? 0)} × {sipTransactions.length} installments.</p>
+                                                                    <p><strong>Net invested:</strong> what actually bought units after DPS charges (रु {formatValue(totalSipNet)}).</p>
+                                                                    <p>The difference (रु {formatValue(totalSipCashInvestment - totalSipNet)}) went to DPS fees and reminder over {sipTransactions.length} cycle{sipTransactions.length !== 1 ? "s" : ""}.</p>
+                                                                </PopoverContent>
+                                                        </Popover>
+                                                    </p>
+                                                    <p className="mt-1 text-sm font-black">{currencySymbol} {formatValue(totalSipCashInvestment)}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{currencySymbol} {formatValue(totalSipNet)} net</p>
                                                 </div>
                                             </div>
 
@@ -2985,18 +3032,30 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                                             <Wallet className="w-3.5 h-3.5 text-primary" />
                                                             SIP Action
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
+                                                                </PopoverTrigger>
+                                                                <PopoverContent side="top" className="max-w-[300px] text-xs p-3 space-y-1.5">
+                                                                    <p>When you mark this cycle done, a buy transaction is recorded automatically:</p>
+                                                                    <p>• Your contribution (रु {formatValue(nextSipBaseAmount)}) is deducted by DPS (रु {formatValue(existingSipPlan?.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)})</p>
+                                                                    <p>• The net amount (रु {formatValue(nextSipNetAmount)}) buys units at the current price (रु {formatValue(safeCurrent)})</p>
+                                                                    <p>• Any leftover cash carries over to the next cycle</p>
+                                                                    <p className="text-[10px] text-muted-foreground pt-1">You can change the contribution amount anytime from Manage SIP.</p>
+                                                                </PopoverContent>
+                                                            </Popover>
                                                         </p>
                                                         <p className="mt-1 text-[12.5px] font-semibold">
                                                             {currentSipInstallment
                                                                 ? "This cycle is already completed."
                                                                 : canCompleteSipNow
-                                                                    ? "Mark this cycle done to buy shares at the current price after the DPS charge."
+                                                                    ? "Due ready to buy"
                                                                     : (sipSchedule?.isDueToday || sipSchedule?.isOverdue)
-                                                                        ? "This cycle is due, but the net SIP amount still cannot buy one full unit at the current price."
-                                                                        : "The next SIP cycle is not due yet."}
+                                                                        ? "Due not enough for 1 unit"
+                                                                        : "Next cycle not due yet"}
                                                         </p>
                                                         <p className="mt-1 text-[10px] text-muted-foreground">
-                                                            Current execution price: {currencySymbol} {formatValue(safeCurrent)} • Net buy amount: {currencySymbol} {formatValue(nextSipNetAmount)}
+                                                            {currencySymbol} {formatValue(safeCurrent)} per unit • Net {currencySymbol} {formatValue(nextSipNetAmount)}
                                                         </p>
                                                     </div>
                                                     <div className="flex flex-col gap-2">
@@ -3023,8 +3082,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             <div className="rounded-xl border border-muted/30 overflow-hidden">
                                                 <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-muted/20">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment ledger</p>
-                                                    <p className="text-[10px] font-bold text-muted-foreground">
-                                                        Net invested {currencySymbol} {formatValue(totalSipNet)}
+                                                    <p className="flex items-center gap-3 text-[10px] font-bold text-muted-foreground">
+                                                        <span>Net invested {currencySymbol} {formatValue(totalSipNet)}</span>
+                                                        {totalSipUnits > 0 && (
+                                                            <span>{formatUnits(totalSipUnits)} units</span>
+                                                        )}
                                                     </p>
                                                 </div>
                                                 {sipTransactions.length > 0 ? (
@@ -3061,42 +3123,6 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     </div>
                                                 ) : (
                                                     <p className="px-3 py-6 text-xs text-center text-muted-foreground">No SIP installments completed yet.</p>
-                                                )}
-                                            </div>
-
-                                            <div className="rounded-xl border border-muted/30 overflow-hidden">
-                                                <div className="px-3 py-2 bg-muted/50 border-b border-muted/20">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">SIP buy transactions</p>
-                                                </div>
-                                                {sipTransactions.length > 0 ? (
-                                                    <div className="divide-y divide-muted/10">
-                                                        {sipTransactions.map((tx) => (
-                                                            <div key={tx.id} className="px-3 py-3 flex items-center justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-[11px] font-black uppercase">{tx.type}</p>
-                                                                    <p className="text-[10px] text-muted-foreground">{formatAppDate(tx.date, calendarSystem)}</p>
-                                                                    <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="text-right">
-                                                                        <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity)} Units</p>
-                                                                        <p className="text-[10px] text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
-                                                                    </div>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
-                                                                        onClick={() => void handleDeleteTransaction(tx.id)}
-                                                                        disabled={deletingTransactionId === tx.id}
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="px-3 py-6 text-xs text-center text-muted-foreground">No SIP buy transactions yet.</p>
                                                 )}
                                             </div>
                                         </TabsContent>

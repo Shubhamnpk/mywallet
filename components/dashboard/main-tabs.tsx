@@ -485,7 +485,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
             <GamesTool />
           </TabsContent>
 
-          <TabsContent value="document-tools" className="space-y-4">
+          <TabsContent value="document-tools" className="space-y-4 px-3 sm:px-0">
             <DocumentTools />
           </TabsContent>
 

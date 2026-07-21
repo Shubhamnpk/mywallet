@@ -1262,6 +1262,7 @@ export function ShiftTracker() {
         }}
         defaultRateInput={rateInput}
         initialShift={editShift}
+        institutions={uniqueInstitutions}
         onSave={(shift) => {
           if (editShift) {
             // Update existing shift
@@ -1410,21 +1411,6 @@ export function ShiftTracker() {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex gap-3 p-6 pt-0 border-t border-border/40 bg-muted/10">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 h-12 rounded-2xl font-semibold border-muted/60"
-              onClick={() => {
-                const v = parseFloat(settingsRate);
-                if (!Number.isNaN(v)) setRateInput(settingsRate);
-                setSettingsOpen(false);
-              }}
-            >
-              Done
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

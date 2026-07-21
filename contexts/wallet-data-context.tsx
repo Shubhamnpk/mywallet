@@ -59,6 +59,7 @@ export type WalletDataContextType = {
     planId: string,
     options?: { dueDate?: string; price?: number; grossAmount?: number; notes?: string }
   ) => Promise<any>
+  importSipPlanFromProvider: (planId: string, options?: { price?: number; notes?: string }) => Promise<any>
   addBudget: (budget: Omit<Budget, "id">) => void
   updateBudget: (id: string, updates: Partial<Budget>) => void
   deleteBudget: (id: string) => void

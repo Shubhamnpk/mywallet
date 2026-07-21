@@ -1,6 +1,7 @@
 import type { ShareTransaction, SIPPlan } from "@/types/wallet"
 import type { CalendarSystem } from "@/lib/app-calendar"
 import { formatAppDate } from "@/lib/app-calendar"
+import * as XLSX from "xlsx"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 export const SIP_DEFAULT_DPS_CHARGE = 5
@@ -215,6 +216,350 @@ export const getSipDueDateAtIndex = (
     cursor += 1
   }
   return next
+}
+
+export const resolveSipProviderQuote = (
+  payload: Array<Record<string, any>> | null | undefined,
+  symbol: string,
+): { symbol: string; price: number; source: "provider" | "fallback" } | null => {
+  const normalizedSymbol = (symbol || "").trim().toUpperCase()
+  if (!normalizedSymbol) return null
+
+  const entry = Array.isArray(payload)
+    ? payload.find((item) => {
+        const candidate = (item?.symbol ?? item?.scrip ?? item?.name ?? "").toString().trim().toUpperCase()
+        return candidate === normalizedSymbol
+      })
+    : null
+
+  if (!entry) return null
+
+  const price = Number(entry?.ltp ?? entry?.close ?? entry?.price ?? entry?.last_traded_price ?? entry?.currentPrice ?? entry?.nav ?? entry?.latestNav)
+  if (!Number.isFinite(price) || price <= 0) return null
+
+  return {
+    symbol: normalizedSymbol,
+    price,
+    source: "provider",
+  }
+}
+
+const parseDelimitedRows = (text: string) => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  return lines.map((line) =>
+    line
+      .split(/\t|,/)
+      .map((cell) => cell.replace(/^['"]|['"]$/g, "").trim())
+  )
+}
+
+export const extractSipProviderQuoteFromText = (
+  text: string,
+  symbol: string,
+): { symbol: string; price: number; source: "provider" } | null => {
+  const normalizedSymbol = (symbol || "").trim().toUpperCase()
+  if (!normalizedSymbol) return null
+
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return resolveSipProviderQuote(parsed as Array<Record<string, any>>, normalizedSymbol)
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const candidates: Array<Record<string, any>> = []
+      if (Array.isArray((parsed as any).data)) {
+        candidates.push(...((parsed as any).data as Array<Record<string, any>>))
+      }
+      candidates.push(parsed as Record<string, any>)
+      return resolveSipProviderQuote(candidates, normalizedSymbol)
+    }
+  } catch {
+    // fall through to delimited parsing
+  }
+
+  const rows = parseDelimitedRows(trimmed)
+  if (rows.length === 0) return null
+
+  const headerRow = rows[0].map((cell) => cell.toLowerCase())
+  const records = rows.slice(1).map((row) => {
+    if (row.length === 0) return null
+
+    if (headerRow.some((cell) => /symbol|scrip|name/.test(cell))) {
+      const record: Record<string, string> = {}
+      headerRow.forEach((header, index) => {
+        record[header] = row[index] || ""
+      })
+      return record
+    }
+
+    return {
+      symbol: row[0] || "",
+      ltp: row[1] || row[2] || row[3] || "",
+      price: row[1] || row[2] || row[3] || "",
+      close: row[1] || row[2] || row[3] || "",
+    }
+  }).filter(Boolean) as Array<Record<string, any>>
+
+  return resolveSipProviderQuote(records, normalizedSymbol)
+}
+
+const toCsvValue = (value: unknown) => {
+  const stringValue = value == null ? "" : String(value)
+  return stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")
+    ? `"${stringValue.replace(/"/g, '""')}"`
+    : stringValue
+}
+
+const getRowValue = (row: Record<string, any>, aliases: Array<string>) => {
+  for (const alias of aliases) {
+    const direct = row?.[alias]
+    if (direct !== undefined && direct !== null && direct !== "") return direct
+
+    const fallback = row?.[alias.toLowerCase()]
+    if (fallback !== undefined && fallback !== null && fallback !== "") return fallback
+
+    const camelCase = alias.replace(/\s+(.)/g, (_, letter) => letter.toUpperCase())
+    const camelValue = row?.[camelCase]
+    if (camelValue !== undefined && camelValue !== null && camelValue !== "") return camelValue
+  }
+
+  return ""
+}
+
+export const convertSipHistoryImportRowsToCsv = (rows: Array<Record<string, any>>) => {
+  if (!Array.isArray(rows) || rows.length === 0) return ""
+
+  const headerRow = [
+    "Date",
+    "Type",
+    "Scheme",
+    "BOID",
+    "Name",
+    "Units",
+    "NAV Date",
+    "NAV",
+    "Total With NAV",
+    "DP Fee",
+    "SEBON Fee",
+    "Entry Load",
+    "Exit Load",
+    "CGT",
+    "Total Amount",
+    "Gain",
+    "Remainder",
+    "Bal. Remainder",
+  ]
+
+  const csvRows = rows.map((row) => {
+    const values = [
+      getRowValue(row, ["Date", "date", "Transaction Date", "transactionDate", "transaction_date"]),
+      getRowValue(row, ["Type", "type", "Transaction Type", "transactionType", "transaction_type", "History Description", "historyDescription", "history_description"]),
+      getRowValue(row, ["Scheme", "scheme"]),
+      getRowValue(row, ["BOID", "boid"]),
+      getRowValue(row, ["Name", "name"]),
+      getRowValue(row, ["Units", "units", "Credit Quantity", "creditQuantity", "credit_quantity", "Debit Quantity", "debitQuantity", "debit_quantity", "Balance After Transaction", "balanceAfterTransaction", "balance_after_transaction"]),
+      getRowValue(row, ["NAV Date", "navDate", "nav_date", "NAV Date"]),
+      getRowValue(row, ["NAV", "nav"]),
+      getRowValue(row, ["Total With NAV", "totalWithNav", "total_with_nav"]),
+      getRowValue(row, ["DP Fee", "dpFee", "dp_fee"]),
+      getRowValue(row, ["SEBON Fee", "sebonFee", "sebon_fee"]),
+      getRowValue(row, ["Entry Load", "entryLoad", "entry_load"]),
+      getRowValue(row, ["Exit Load", "exitLoad", "exit_load"]),
+      getRowValue(row, ["CGT", "cgt"]),
+      getRowValue(row, ["Total Amount", "totalAmount", "total_amount"]),
+      getRowValue(row, ["Gain", "gain"]),
+      getRowValue(row, ["Remainder", "remainder"]),
+      getRowValue(row, ["Bal. Remainder", "balRemainder", "balanceRemainder", "balance_remainder"]),
+    ].map(toCsvValue)
+
+    return values.join(",")
+  })
+
+  return [headerRow.join(","), ...csvRows].join("\n")
+}
+
+export const parseSipHistoryImportCsvRows = (csvContent: string) => {
+  const lines = csvContent
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return []
+
+  const parseCsvLine = (line: string) => {
+    const cells: string[] = []
+    let current = ""
+    let inQuotes = false
+
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index]
+      if (char === '"') {
+        if (inQuotes && line[index + 1] === '"') {
+          current += '"'
+          index += 1
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === "," && !inQuotes) {
+        cells.push(current)
+        current = ""
+      } else {
+        current += char
+      }
+    }
+
+    cells.push(current)
+    return cells.map((cell) => cell.trim())
+  }
+
+  const headerRow = parseCsvLine(lines[0]).map((cell) => cell.toLowerCase())
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line)
+    return Object.fromEntries(headerRow.map((header, index) => [header, values[index] ?? ""]))
+  })
+}
+
+export const parseSipHistoryImportFileToCsv = async (file: File | Blob | ArrayBuffer | Uint8Array | Buffer | { name?: string; arrayBuffer?: () => Promise<ArrayBuffer>; buffer?: ArrayBuffer | Uint8Array | Buffer; text?: () => Promise<string> }): Promise<string> => {
+  const name = typeof file === "object" && file && "name" in file && typeof (file as any).name === "string" ? (file as any).name : ""
+  const extension = (name.split(".").pop() || "").toLowerCase()
+
+  const readArrayBuffer = async () => {
+    const tryRead = async (reader: () => Promise<ArrayBuffer | null | undefined>) => {
+      try {
+        const result = await reader()
+        if (result && typeof result === "object" && typeof (result as any).byteLength === "number") {
+          if (result instanceof ArrayBuffer) return result
+          if (ArrayBuffer.isView(result)) {
+            const view = result as Uint8Array
+            return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+          }
+          if (typeof (result as any).slice === "function") {
+            return (result as any).slice(0, (result as any).byteLength)
+          }
+        }
+      } catch {
+        // Continue to the next fallback.
+      }
+
+      return null
+    }
+
+    const directReaders = [
+      async () => {
+        if (typeof (file as any).arrayBuffer === "function") {
+          return (file as any).arrayBuffer()
+        }
+        return null
+      },
+      async () => {
+        if (typeof FileReader !== "undefined" && typeof Blob !== "undefined" && (file instanceof Blob || (typeof (file as any).size === "number" && typeof (file as any).type === "string"))) {
+          return await new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as ArrayBuffer)
+            reader.onerror = () => reject(reader.error)
+            reader.readAsArrayBuffer(file as Blob)
+          })
+        }
+        return null
+      },
+      async () => {
+        if (typeof Response !== "undefined" && (file instanceof Blob || (typeof (file as any).size === "number" && typeof (file as any).type === "string"))) {
+          return new Response(file as Blob).arrayBuffer()
+        }
+        return null
+      },
+      async () => {
+        if (typeof Buffer !== "undefined" && (file as any) instanceof Buffer) {
+          const buffer = file as Buffer
+          return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+        }
+        return null
+      },
+      async () => {
+        if (file instanceof ArrayBuffer) return file
+        return null
+      },
+      async () => {
+        if (ArrayBuffer.isView(file)) {
+          const view = file as Uint8Array
+          return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+        }
+        return null
+      },
+      async () => {
+        if (typeof (file as any).buffer !== "undefined") {
+          const source = (file as any).buffer
+          if (source && typeof source === "object" && typeof (source as any).byteLength === "number") {
+            if (source instanceof ArrayBuffer) return source
+            if (ArrayBuffer.isView(source)) {
+              const view = source as Uint8Array
+              return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+            }
+            if (typeof (source as any).slice === "function") {
+              return (source as any).slice(0, (source as any).byteLength)
+            }
+          }
+        }
+        return null
+      },
+    ]
+
+    for (const reader of directReaders) {
+      const result = await tryRead(reader)
+      if (result) return result
+    }
+
+    return null
+  }
+
+  const arrayBuffer = await readArrayBuffer()
+  if (arrayBuffer) {
+    try {
+      const workbook = XLSX.read(arrayBuffer, { type: "array" })
+      const rows: Array<Record<string, any>> = workbook.SheetNames.flatMap((sheetName) => {
+        const sheet = workbook.Sheets[sheetName]
+        if (!sheet) return []
+        return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true }) as Array<Record<string, any>>
+      })
+
+      if (rows.length > 0) {
+        return convertSipHistoryImportRowsToCsv(rows)
+      }
+    } catch {
+      try {
+        const workbook = XLSX.read(arrayBuffer, { type: "buffer" as any })
+        const rows: Array<Record<string, any>> = workbook.SheetNames.flatMap((sheetName) => {
+          const sheet = workbook.Sheets[sheetName]
+          if (!sheet) return []
+          return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true }) as Array<Record<string, any>>
+        })
+
+        if (rows.length > 0) {
+          return convertSipHistoryImportRowsToCsv(rows)
+        }
+      } catch {
+        // Fall back to text-based parsing for non-spreadsheet content.
+      }
+    }
+  }
+
+  if (extension === "xlsx" || extension === "xls" || extension === "xlsm") {
+    throw new Error("The selected file could not be read as a spreadsheet")
+  }
+
+  if (typeof (file as any).text === "function") {
+    return (file as any).text()
+  }
+
+  return ""
 }
 
 export const normalizeSipPlans = (plans?: SIPPlan[] | null): SIPPlan[] => {
