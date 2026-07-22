@@ -619,6 +619,11 @@ export const getSipDisplayTransactionsForPlan = (
         return false
       }
 
+      // Exclude one-time purchases that aren't SIP installments
+      if (tx.description?.toUpperCase().startsWith("ONE TIME PURCHASE")) {
+        return false
+      }
+
       const txTime = parseDateOnly(tx.date)?.getTime() ?? Number.NEGATIVE_INFINITY
       return txTime >= planStartTime
     })

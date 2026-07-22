@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles } from "lucide-react"
+import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download } from "lucide-react"
 import { toast } from "sonner"
 import { Check, ChevronsUpDown } from "lucide-react"
 import {
@@ -86,7 +86,7 @@ const getPrimaryAccount = (accounts: MeroShareAccount[]) =>
     accounts.find((account) => account.role === "primary") || accounts[0]
 
 export function MeroShareSettings() {
-    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, syncMeroShareTransactionHistory, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO } = useWalletData()
+    const { userProfile, updateUserProfile, upcomingIPOs, syncMeroSharePortfolio, syncMeroShareTransactionHistory, portfolios, activePortfolioId, checkIPOAllotment, applyMeroShareIPO, deletePortfolio, portfolio, shareTransactions } = useWalletData()
     const calendarSystem = useCalendarSystem()
     const [showPassword, setShowPassword] = useState(false)
     const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
@@ -108,6 +108,8 @@ export function MeroShareSettings() {
     const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
     const [accountForm, setAccountForm] = useState<MeroShareAccount>(emptyAccountForm)
+    const [showDisableDialog, setShowDisableDialog] = useState(false)
+    const [isDisablingShare, setIsDisablingShare] = useState(false)
 
     const [formData, setFormData] = useState({
         dpId: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.dpId || "",
@@ -334,17 +336,19 @@ export function MeroShareSettings() {
     }
 
     const toggleShareFeatures = (enabled: boolean) => {
-        const nextForm = {
-            ...formData,
-            shareFeaturesEnabled: enabled,
-            shareNotificationsEnabled: enabled,
-            isAutomatedEnabled: true,
+        if (enabled) {
+            const nextForm = {
+                ...formData,
+                shareFeaturesEnabled: true,
+                shareNotificationsEnabled: true,
+                isAutomatedEnabled: true,
+            }
+            setFormData(nextForm)
+            persistMeroShareSettings(nextForm, accounts)
+            toast.success("Share features enabled", { description: "MeroShare options are now available." })
+        } else {
+            setShowDisableDialog(true)
         }
-        setFormData(nextForm)
-        persistMeroShareSettings(nextForm, accounts)
-        toast(enabled ? "Share features enabled" : "Share features disabled", {
-            description: enabled ? "MeroShare options are now available." : "MeroShare options are hidden.",
-        })
     }
 
     const updatePreferredKitta = (value: number) => {
@@ -1167,6 +1171,88 @@ export function MeroShareSettings() {
                     )}
                 </CardContent>
             </Card>
+            <Dialog open={showDisableDialog} onOpenChange={(v) => { if (!v && !isDisablingShare) setShowDisableDialog(false) }}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider">
+                            <AlertCircle className="h-4 w-4 text-destructive" /> Disable Share Features?
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                            What would you like to do with your portfolio data?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-2 py-2">
+                        <Button variant="outline" className="h-9 text-xs justify-start gap-2 font-bold"
+                            disabled={isDisablingShare}
+                            onClick={async () => {
+                                setIsDisablingShare(true)
+                                try {
+                                    const data = {
+                                        exportedAt: new Date().toISOString(),
+                                        portfolio,
+                                        shareTransactions,
+                                        sipPlans: userProfile?.sipPlans || [],
+                                    }
+                                    const json = JSON.stringify(data, null, 2)
+                                    const blob = new Blob([json], { type: "application/json" })
+                                    const url = URL.createObjectURL(blob)
+                                    const a = document.createElement("a")
+                                    a.href = url
+                                    a.download = `mero-share-data-${new Date().toISOString().slice(0, 10)}.json`
+                                    a.click()
+                                    URL.revokeObjectURL(url)
+                                    for (const p of portfolios) {
+                                        await deletePortfolio(p.id)
+                                    }
+                                    updateUserProfile({
+                                        meroShare: undefined,
+                                        sipPlans: [],
+                                    })
+                                    setFormData((prev) => ({ ...prev, shareFeaturesEnabled: false, shareNotificationsEnabled: false }))
+                                    toast.success("Data exported. Share features disabled.")
+                                } catch {
+                                    toast.error("Failed to export data")
+                                }
+                                setShowDisableDialog(false)
+                                setIsDisablingShare(false)
+                            }}>
+                            <Download className="h-4 w-4" />
+                            {isDisablingShare ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                            Export data & disable
+                        </Button>
+                        <Button variant="destructive" className="h-9 text-xs justify-start gap-2 font-bold"
+                            disabled={isDisablingShare}
+                            onClick={async () => {
+                                setIsDisablingShare(true)
+                                try {
+                                    for (const p of portfolios) {
+                                        await deletePortfolio(p.id)
+                                    }
+                                    updateUserProfile({
+                                        meroShare: undefined,
+                                        sipPlans: [],
+                                    })
+                                    setFormData((prev) => ({ ...prev, shareFeaturesEnabled: false, shareNotificationsEnabled: false }))
+                                    toast.success("Share features disabled. All related data removed.")
+                                } catch {
+                                    toast.error("Failed to disable share features")
+                                }
+                                setShowDisableDialog(false)
+                                setIsDisablingShare(false)
+                            }}>
+                            <Trash2 className="h-4 w-4" />
+                            {isDisablingShare ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                            Delete all data & disable
+                        </Button>
+                    </div>
+                    <div className="flex justify-end">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" disabled={isDisablingShare}
+                            onClick={() => setShowDisableDialog(false)}>
+                            Cancel
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
             </>
             )}
         </div>

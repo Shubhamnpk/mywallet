@@ -8,6 +8,7 @@ export function usePortfolioData() {
 
   return useMemo(
     () => ({
+      isLoaded: wallet.isLoaded,
       portfolio: wallet.portfolio,
       shareTransactions: wallet.shareTransactions,
       portfolios: wallet.portfolios,
@@ -41,6 +42,7 @@ export function usePortfolioData() {
       importShareData: wallet.importShareData,
     }),
     [
+      wallet.isLoaded,
       wallet.portfolio,
       wallet.shareTransactions,
       wallet.portfolios,

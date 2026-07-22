@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-07-18",
+  "lastUpdated": "2026-07-22",
   "milestones": [
     {
       "id": "m1",
@@ -26,14 +26,14 @@
       "id": "m4",
       "title": "Storage & Sync Architecture",
       "version": "2.2.0 (Planned)",
-      "progress": 20,
+      "progress": 65,
       "description": "Migrate from localStorage to IndexedDB, record-level sync, UX overhaul, portfolio heatmap, insights advisor, and data integrity hardening."
     },
     {
       "id": "m5",
       "title": "AI & Insights Engine",
       "version": "3.0.0 (Vision)",
-      "progress": 10,
+      "progress": 25,
       "description": "Smart spending predictions, AI-powered budget suggestions, anomaly detection, natural language queries, and insights engine foundation."
     }
   ],
@@ -433,15 +433,6 @@
       "priority": "medium"
     },
     {
-      "id": "r32",
-      "title": "Anomaly Detection in Transactions",
-      "description": "Automatically flag unusual transactions based on historical patterns, amounts, and category deviations.",
-      "status": "exploring",
-      "category": "ai",
-      "milestone": "m5",
-      "priority": "medium"
-    },
-    {
       "id": "r33",
       "title": "Natural Language Financial Queries",
       "description": "Ask questions like 'How much did I spend on food last month?' and get instant answers from your wallet data.",
@@ -477,7 +468,7 @@
       "category": "infra",
       "milestone": "m4",
       "priority": "high",
-      "progress": 40
+      "progress": 85
     },
     {
       "id": "r45",
@@ -583,18 +574,20 @@
       "id": "r55",
       "title": "Personal Document Vault",
       "description": "Upload, store, view, and manage important personal documents (passports, IDs, contracts, certificates). Secure encrypted storage with per-document access control and expiry alerts.",
-      "status": "planned",
+      "status": "completed",
       "category": "documents",
       "milestone": "m4",
+      "completedDate": "2026-07-22",
       "priority": "high"
     },
     {
       "id": "r56",
       "title": "Document Viewer & Preview",
       "description": "In-app viewer for uploaded documents with zoom, page navigation, and full-screen mode. Supports PDF, images, and common document formats with fast, native-like rendering.",
-      "status": "planned",
+      "status": "completed",
       "category": "documents",
       "milestone": "m4",
+      "completedDate": "2026-07-22",
       "priority": "high"
     },
     {

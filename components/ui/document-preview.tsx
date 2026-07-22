@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Document, Page, pdfjs } from "react-pdf"
 import "react-pdf/dist/Page/AnnotationLayer.css"
 import "react-pdf/dist/Page/TextLayer.css"
@@ -23,6 +23,8 @@ type DocumentPreviewProps = {
     sourceUrl?: string | null
 }
 
+const clampZoom = (z: number) => Number(Math.max(0.25, Math.min(3, z)).toFixed(2))
+
 export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
     const [pdfZoom, setPdfZoom] = useState(1)
     const [pdfPageNumber, setPdfPageNumber] = useState(1)
@@ -30,12 +32,16 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
     const [docType, setDocType] = useState<"pdf" | "image" | null>(null)
     const [containerWidth, setContainerWidth] = useState(0)
     const containerRef = useRef<HTMLDivElement | null>(null)
+    const lastPinchDist = useRef(0)
+    const pinchZoomRef = useRef(1)
 
     useEffect(() => {
         setPdfZoom(1)
         setPdfPageNumber(1)
         setPdfTotalPages(0)
         setDocType(isImageUrl(url) ? "image" : "pdf")
+        lastPinchDist.current = 0
+        pinchZoomRef.current = 1
     }, [url])
 
     useEffect(() => {
@@ -46,6 +52,34 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
         const observer = new ResizeObserver(update)
         observer.observe(el)
         return () => observer.disconnect()
+    }, [])
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX
+            const dy = e.touches[0].clientY - e.touches[1].clientY
+            lastPinchDist.current = Math.hypot(dx, dy)
+            pinchZoomRef.current = pdfZoom
+        }
+    }, [pdfZoom])
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+        if (e.touches.length === 2) {
+            e.preventDefault()
+            const dx = e.touches[0].clientX - e.touches[1].clientX
+            const dy = e.touches[0].clientY - e.touches[1].clientY
+            const dist = Math.hypot(dx, dy)
+            if (lastPinchDist.current > 0) {
+                const scale = dist / lastPinchDist.current
+                setPdfZoom(clampZoom(pinchZoomRef.current * scale))
+            }
+        }
+    }, [])
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        if (e.touches.length < 2) {
+            lastPinchDist.current = 0
+        }
     }, [])
 
     if (!url) {
@@ -105,7 +139,12 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                     </button>
                 </div>
             </div>
-            <div className="h-full w-full overflow-auto flex justify-center p-2">
+            <div
+                className="h-full w-full overflow-auto flex justify-center p-2 touch-pan-x touch-pan-y"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
                 {isImage ? (
                     <div style={{ zoom: cssZoom }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}

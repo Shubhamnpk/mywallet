@@ -71,7 +71,7 @@ function DialogContent({
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-          "data-[state=open]:duration-350 data-[state=closed]:duration-250",
+          "data-[state=open]:duration-300 data-[state=closed]:duration-200",
           "ease-[cubic-bezier(0.16,1,0.3,1)]",
           "sm:inset-auto sm:top-[50%] sm:left-[50%] sm:max-h-[90vh] sm:max-w-[calc(100%-2rem)] sm:translate-x-[-50%] sm:translate-y-[-50%]",
           "sm:rounded-lg sm:border sm:bg-background",

@@ -11,6 +11,7 @@ import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
 import packageJson from '../../package.json'
 import releasesData from "@/data/releases.json"
+import Image from "next/image"
 import Link from "next/link"
 
 export function AboutSettings() {
@@ -301,15 +302,13 @@ export function AboutSettings() {
             <User className="w-5 h-5" />
             Developer
           </CardTitle>
-          <CardDescription>Built and maintained by Shubham Niraual</CardDescription>
+          <CardDescription>Built and maintained by Shubham Niraula</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <User className="w-6 h-6 text-primary" />
-            </div>
+            <Image src="https://avatars.githubusercontent.com/u/150024127" alt="Shubham Niraula" width={48} height={48} className="rounded-full" />
             <div>
-              <p className="font-medium">Shubham Niraual</p>
+              <p className="font-medium">Shubham Niraula</p>
               <p className="text-sm text-muted-foreground">Full-stack developer from Nepal</p>
             </div>
           </div>

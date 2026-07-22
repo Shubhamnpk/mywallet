@@ -36,6 +36,7 @@ export interface UserProfile {
   }
   settings?: {
     zeroHoldingsEnabled?: boolean
+    documentVaultEnabled?: boolean
   }
   /** IDs of achievements whose celebration modal has been seen */
   celebratedAchievements?: string[]
@@ -169,6 +170,7 @@ export interface Goal {
   currentAmount: number
   targetDate: string
   category: string
+  icon?: string
   priority: "low" | "medium" | "high"
   createdAt: string
   updatedAt?: string

@@ -246,7 +246,7 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
-    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction } = useWalletData()
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction, clearShareTransactionSipFields, deleteMultipleShareTransactions } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -1133,6 +1133,83 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             .filter((tx) => isEligibleForSipEnrollment(tx))
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
     [isEligibleForSipEnrollment, matchedTransactions])
+
+    const orphanedSipTransactions = useMemo(() => {
+        const allPlanIds = new Set(normalizeSipPlans(userProfile?.sipPlans).map((p) => p.id))
+        return matchedTransactions.filter((tx) => tx.sipPlanId && !allPlanIds.has(tx.sipPlanId))
+    }, [matchedTransactions, userProfile?.sipPlans])
+
+    const [isClearingOrphanedSip, setIsClearingOrphanedSip] = useState(false)
+    const [clearingSipTxId, setClearingSipTxId] = useState<string | null>(null)
+    const [isSelectionMode, setIsSelectionMode] = useState(false)
+    const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+    const [isBatchClearingSip, setIsBatchClearingSip] = useState(false)
+
+    const handleClearSipFields = async (txId: string) => {
+        setClearingSipTxId(txId)
+        try {
+            await clearShareTransactionSipFields(txId)
+            toast.success("SIP link cleared")
+        } catch {
+            toast.error("Failed to clear SIP link")
+        } finally {
+            setClearingSipTxId(null)
+        }
+    }
+
+    const handleClearAllOrphanedSip = async () => {
+        setIsClearingOrphanedSip(true)
+        try {
+            await Promise.all(orphanedSipTransactions.map((tx) => clearShareTransactionSipFields(tx.id)))
+            toast.success(`Cleared ${orphanedSipTransactions.length} orphaned SIP ${orphanedSipTransactions.length === 1 ? "entry" : "entries"}`)
+        } catch {
+            toast.error("Failed to clear some orphaned SIP entries")
+        } finally {
+            setIsClearingOrphanedSip(false)
+        }
+    }
+
+    const toggleTxSelection = (txId: string) => {
+        setSelectedTxIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(txId)) next.delete(txId)
+            else next.add(txId)
+            return next
+        })
+    }
+
+    const handleBatchDelete = async () => {
+        const ids = Array.from(selectedTxIds)
+        if (ids.length === 0) return
+        setIsBatchDeleting(true)
+        try {
+            await deleteMultipleShareTransactions(ids)
+            toast.success(`Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}`)
+            setSelectedTxIds(new Set())
+            setIsSelectionMode(false)
+        } catch {
+            toast.error("Failed to delete some transactions")
+        } finally {
+            setIsBatchDeleting(false)
+        }
+    }
+
+    const handleBatchClearSip = async () => {
+        const ids = Array.from(selectedTxIds)
+        if (ids.length === 0) return
+        setIsBatchClearingSip(true)
+        try {
+            await Promise.all(ids.map((id) => clearShareTransactionSipFields(id)))
+            toast.success(`Cleared SIP link${ids.length === 1 ? "" : "s"} for ${ids.length} transaction${ids.length === 1 ? "" : "s"}`)
+            setSelectedTxIds(new Set())
+            setIsSelectionMode(false)
+        } catch {
+            toast.error("Failed to clear SIP links for some transactions")
+        } finally {
+            setIsBatchClearingSip(false)
+        }
+    }
 
     const handleCompleteSipInstallment = async () => {
         if (!existingSipPlan || !sipSchedule?.nextDate || currentSipInstallment) return
@@ -2620,12 +2697,153 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     )}
 
                                     <TabsContent value="history" className="m-0 space-y-3">
+                                        {isSelectionMode && selectedTxIds.size > 0 && (
+                                            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-primary/30 bg-primary/5">
+                                                <p className="text-[10px] font-bold text-primary">
+                                                    {selectedTxIds.size} selected
+                                                </p>
+                                                <div className="flex items-center gap-1.5">
+                                                    {selectedTxIds.size === 1 && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 px-3 text-[10px] font-black uppercase tracking-widest text-foreground hover:text-primary hover:bg-primary/10"
+                                                            onClick={() => {
+                                                                const txId = Array.from(selectedTxIds)[0]
+                                                                const tx = matchedTransactions.find((t) => t.id === txId)
+                                                                if (tx) {
+                                                                    handleEditClick(tx)
+                                                                    setSelectedTxIds(new Set())
+                                                                    setIsSelectionMode(false)
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Edit3 className="w-3 h-3 mr-1" />
+                                                            Edit
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={isBatchClearingSip}
+                                                        className="h-7 px-3 text-[10px] font-black uppercase tracking-widest text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                                        onClick={() => void handleBatchClearSip()}
+                                                    >
+                                                        <PiggyBank className="w-3 h-3 mr-1" />
+                                                        {isBatchClearingSip ? "Clearing..." : "Clear SIP"}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={isBatchDeleting}
+                                                        className="h-7 px-3 text-[10px] font-black uppercase tracking-widest text-destructive hover:bg-destructive/10"
+                                                        onClick={() => void handleBatchDelete()}
+                                                    >
+                                                        <Trash2 className="w-3 h-3 mr-1" />
+                                                        {isBatchDeleting ? "Deleting..." : "Delete"}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {orphanedSipTransactions.length > 0 && !isSelectionMode && (
+                                            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                                                <p className="text-[10px] font-bold text-amber-600">
+                                                    {orphanedSipTransactions.length} orphaned SIP {orphanedSipTransactions.length === 1 ? "entry" : "entries"} found
+                                                </p>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    disabled={isClearingOrphanedSip}
+                                                    className="h-7 px-3 text-[10px] font-black uppercase tracking-widest text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                                    onClick={() => void handleClearAllOrphanedSip()}
+                                                >
+                                                    {isClearingOrphanedSip ? "Clearing..." : "Clear all"}
+                                                </Button>
+                                            </div>
+                                        )}
+                                        <div className={cn(
+                                            "flex items-center justify-between",
+                                            isSelectionMode && "px-1"
+                                        )}>
+                                            <div className="flex items-center gap-2">
+                                                {isSelectionMode && (
+                                                    <div
+                                                        className={cn(
+                                                            "w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-colors",
+                                                            selectedTxIds.size === matchedTransactions.length
+                                                                ? "border-primary bg-primary text-primary-foreground"
+                                                                : "border-muted-foreground/30"
+                                                        )}
+                                                        onClick={() => {
+                                                            if (selectedTxIds.size === matchedTransactions.length) {
+                                                                setSelectedTxIds(new Set())
+                                                            } else {
+                                                                setSelectedTxIds(new Set(matchedTransactions.map((t) => t.id)))
+                                                            }
+                                                        }}
+                                                    >
+                                                        {selectedTxIds.size === matchedTransactions.length && <CheckCircle2 className="w-3 h-3" />}
+                                                        {selectedTxIds.size > 0 && selectedTxIds.size < matchedTransactions.length && (
+                                                            <div className="w-2 h-0.5 rounded bg-muted-foreground/50" />
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                    {matchedTransactions.length} transaction{matchedTransactions.length === 1 ? "" : "s"}
+                                                </p>
+                                            </div>
+                                            {matchedTransactions.length > 1 && (
+                                                <Button
+                                                    type="button"
+                                                    variant={isSelectionMode ? "default" : "ghost"}
+                                                    size="sm"
+                                                    className={cn(
+                                                        "h-7 px-3 text-[10px] font-black uppercase tracking-widest",
+                                                        isSelectionMode && "bg-primary/10 text-primary hover:bg-primary/20"
+                                                    )}
+                                                    onClick={() => {
+                                                        setIsSelectionMode(!isSelectionMode)
+                                                        if (isSelectionMode) setSelectedTxIds(new Set())
+                                                    }}
+                                                >
+                                                    <SlidersHorizontal className="w-3 h-3 mr-1" />
+                                                    {isSelectionMode ? "Done" : "Select"}
+                                                </Button>
+                                            )}
+                                        </div>
                                         {matchedTransactions.length > 0 ? (
-                                            matchedTransactions.map((tx) => (
-                                                <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 flex items-center justify-between">
-                                                    <div className="flex items-center gap-3">
+                                            matchedTransactions.map((tx) => {
+                                                const isOrphanedSip = tx.sipPlanId && orphanedSipTransactions.some((o) => o.id === tx.id)
+                                                const isSelected = selectedTxIds.has(tx.id)
+                                                return (
+                                                <div key={tx.id} className={cn(
+                                                    "p-3 rounded-xl border flex items-center justify-between transition-colors",
+                                                    isSelectionMode && "cursor-pointer",
+                                                    isSelected
+                                                        ? "border-primary/50 bg-primary/5"
+                                                        : isOrphanedSip
+                                                            ? "border-amber-500/30 bg-amber-500/[0.03]"
+                                                            : "border-muted/30 bg-muted/5"
+                                                )}
+                                                    onClick={isSelectionMode ? () => toggleTxSelection(tx.id) : undefined}
+                                                >
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        {isSelectionMode && (
+                                                            <div className={cn(
+                                                                "w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors",
+                                                                isSelected
+                                                                    ? "border-primary bg-primary text-primary-foreground"
+                                                                    : "border-muted-foreground/30"
+                                                            )}>
+                                                                {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                                                            </div>
+                                                        )}
                                                         <div className={cn(
-                                                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                            "w-8 h-8 rounded-lg flex items-center justify-center relative shrink-0",
                                                             tx.type === "buy" || tx.type === "ipo" ? "bg-green-500/10 text-green-600" :
                                                                 tx.type === "reinvestment" ? "bg-cyan-500/10 text-cyan-600" :
                                                                 tx.type === "sell" ? "bg-red-500/10 text-red-600" :
@@ -2636,8 +2854,21 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 tx.type === "sell" ? <ArrowUpRight className="w-4 h-4" /> :
                                                                     <Gift className="w-4 h-4" />}
                                                         </div>
-                                                        <div>
-                                                            <p className="text-[11px] font-black uppercase">{tx.type}</p>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <p className="text-[11px] font-black uppercase">{tx.type}</p>
+                                                                {tx.sipPlanId && (
+                                                                    <span className={cn(
+                                                                        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                                                                        isOrphanedSip
+                                                                            ? "bg-amber-500/15 text-amber-600"
+                                                                            : "bg-emerald-500/15 text-emerald-600"
+                                                                    )}>
+                                                                        <PiggyBank className="w-2.5 h-2.5" />
+                                                                        SIP
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <p className="text-[9px] font-bold text-muted-foreground">{formatAppDate(tx.date, calendarSystem)}</p>
                                                             {tx.description && (
                                                                 <p className="text-[10px] text-muted-foreground line-clamp-2">{tx.description}</p>
@@ -2657,11 +2888,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 shrink-0">
                                                         <div className="text-right">
                                                             <p className="text-[11px] font-black font-mono">{tx.quantity} Units</p>
                                                             <p className="text-[9px] font-bold text-muted-foreground">@ {currencySymbol}{formatValue(tx.price)}</p>
                                                         </div>
+                                                        {!isSelectionMode && (
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button
@@ -2672,7 +2904,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     <MoreVertical className="w-4 h-4" />
                                                                 </Button>
                                                             </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="w-40 bg-popover border-border shadow-lg">
+                                                            <DropdownMenuContent align="end" className="w-44 bg-popover border-border shadow-lg">
                                                                 <DropdownMenuItem
                                                                     onClick={() => handleEditClick(tx)}
                                                                     className="cursor-pointer text-foreground hover:bg-primary/10 hover:text-primary focus:bg-primary/10 focus:text-primary rounded-sm"
@@ -2680,6 +2912,16 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     <Edit3 className="w-4 h-4 mr-2 text-primary" />
                                                                     Edit
                                                                 </DropdownMenuItem>
+                                                                {isOrphanedSip && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => void handleClearSipFields(tx.id)}
+                                                                        disabled={clearingSipTxId === tx.id}
+                                                                        className="cursor-pointer text-amber-600 hover:bg-amber-500/10 focus:bg-amber-500/10 focus:text-amber-600 rounded-sm"
+                                                                    >
+                                                                        <PiggyBank className="w-4 h-4 mr-2" />
+                                                                        Clear SIP link
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                                 <DropdownMenuItem
                                                                     onClick={() => void handleDeleteTransaction(tx.id)}
                                                                     disabled={deletingTransactionId === tx.id}
@@ -2690,9 +2932,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            ))
+                                                )
+                                            })
                                         ) : (
                                             <p className="text-xs text-center text-muted-foreground py-8">No transaction history found.</p>
                                         )}

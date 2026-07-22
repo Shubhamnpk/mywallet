@@ -57,8 +57,10 @@ import { UploadDialog } from "./upload-dialog"
 import { DocumentViewer } from "./document-viewer"
 import { PersonDialog } from "./person-dialog"
 import { FileIcon, DOCUMENT_TYPES } from "./document-utils"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 export function DocumentTools() {
+  const { userProfile, updateUserProfile } = useWalletData()
   const [persons, setPersons] = useState<Person[]>([])
   const [currentPersonId, setCurrentPersonId] = useState<string | null>(null)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
@@ -164,7 +166,24 @@ export function DocumentTools() {
 
   return (
     <>
-      {isLoading ? (
+      {!userProfile?.settings?.documentVaultEnabled ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+          <div className="relative mb-6">
+            <div className="absolute -inset-4 rounded-full bg-primary/5 blur-xl" />
+            <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/5 shadow-lg shadow-primary/5">
+              <FileText className="h-9 w-9 text-primary" />
+            </div>
+          </div>
+          <h3 className="text-lg font-black uppercase tracking-widest mb-2">Document Vault</h3>
+          <p className="text-sm text-muted-foreground max-w-md mb-2">
+            Store, view, and manage important documents which are encrypted and secure.
+          </p>
+          <Button onClick={() => updateUserProfile({ settings: { ...(userProfile?.settings || {}), documentVaultEnabled: true } })}>
+            <Shield className="h-4 w-4 mr-2" />
+            Enable Document Vault
+          </Button>
+        </div>
+      ) : isLoading ? (
         <CardContent className="flex items-center justify-center py-20">
           <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -181,7 +200,7 @@ export function DocumentTools() {
           </div>
           <h3 className="text-lg font-black uppercase tracking-widest mb-2">Welcome to Document Vault</h3>
           <p className="text-sm text-muted-foreground max-w-md mb-8">
-            Store, view, and manage documents for yourself and others — encrypted and secure.
+            Store, view, and manage documents for yourself and others.
           </p>
           <Button onClick={() => { setEditingPerson(null); setShowPersonDialog(true) }}>
             <Plus className="h-4 w-4 mr-2" />

@@ -6,6 +6,7 @@ import {
   Code2, Coffee, ExternalLink, Star, Clock, Quote, MapPin, ArrowRight,
   Download, CheckCircle, Users, TrendingUp, Smartphone, Eye
 } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 
 const values = [
@@ -150,11 +151,9 @@ export function AboutPageClient() {
                   that make money management feel natural not overwhelming.&rdquo;
                 </blockquote>
                 <div className="mt-6 flex items-center gap-4 pt-6 border-t border-border/60">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold text-lg">
-                    SN
-                  </div>
+                  <Image src="https://avatars.githubusercontent.com/u/150024127" alt="Shubham Niraula" width={48} height={48} className="rounded-full" />
                   <div>
-                    <p className="font-semibold text-card-foreground">Shubham Niraual</p>
+                    <p className="font-semibold text-card-foreground">Shubham Niraula</p>
                     <p className="text-sm text-muted-foreground">Creator of MyWallet</p>
                   </div>
                 </div>
@@ -276,14 +275,12 @@ export function AboutPageClient() {
             {/* Profile card */}
             <div className="md:col-span-2 bg-card/60 backdrop-blur-sm rounded-2xl p-8 border border-border/60 hover:border-primary/30 transition-all duration-300 hover:shadow-xl text-center">
               <div className="relative inline-block mb-5">
-                <div className="w-28 h-28 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto shadow-xl ring-4 ring-background">
-                  <Code2 className="w-14 h-14 text-primary-foreground" />
-                </div>
+                <Image src="https://avatars.githubusercontent.com/u/150024127" alt="Shubham Niraula" width={112} height={112} className="rounded-full mx-auto shadow-xl ring-4 ring-background" />
                 <div className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-emerald-500 border-[3px] border-background flex items-center justify-center shadow-lg">
                   <Heart className="w-4 h-4 text-white" />
                 </div>
               </div>
-              <h3 className="text-2xl font-bold text-card-foreground">Shubham Niraual</h3>
+              <h3 className="text-2xl font-bold text-card-foreground">Shubham Niraula</h3>
               <div className="flex items-center justify-center gap-1.5 mt-1.5">
                 <MapPin className="w-4 h-4 text-muted-foreground" />
                 <p className="text-muted-foreground">Nepal</p>

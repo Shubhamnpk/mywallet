@@ -120,6 +120,7 @@ export type WalletDataContextType = {
   updateShareTransaction: (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   deleteShareTransaction: (id: string) => Promise<PortfolioItem[] | undefined>
   deleteMultipleShareTransactions: (ids: string[]) => Promise<PortfolioItem[] | undefined>
+  clearShareTransactionSipFields: (id: string) => Promise<void>
   recomputePortfolio: (transactionsToUse?: ShareTransaction[]) => Promise<{ newPortfolio: PortfolioItem[]; zeroUnitHoldings: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   importShareData: (type: 'portfolio' | 'history' | 'auto', csvData: string, resolvedPrices?: Record<string, number>) => Promise<PortfolioItem[] | undefined>
   refreshData: () => void

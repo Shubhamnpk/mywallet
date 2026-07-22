@@ -3,15 +3,16 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   TrendingUp,
   TrendingDown,
-  PiggyBank,
   Clock,
   Wallet,
   AlertTriangle,
   Eye,
-  EyeOff
+  EyeOff,
+  X
 } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { TimeTooltip } from "@/components/ui/time-tooltip"
@@ -21,6 +22,7 @@ import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import type { Transaction } from "@/types/wallet"
 import { formatAppMonthKey, getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
+import Image from "next/image"
 
 interface BalanceChange {
   type: "income" | "expense"
@@ -48,13 +50,11 @@ interface BalanceCardProps {
 function RhododendronFlower({ className, strokeColor = "white" }: { className?: string; strokeColor?: string }) {
   return (
     <svg className={className} viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Five petals radiating from center */}
       <path d="M100 100 C100 60, 60 30, 55 55 C50 80, 80 100, 100 100Z" fill={strokeColor} />
       <path d="M100 100 C140 100, 170 60, 145 55 C120 50, 100 80, 100 100Z" fill={strokeColor} />
       <path d="M100 100 C100 140, 140 170, 145 145 C150 120, 120 100, 100 100Z" fill={strokeColor} />
       <path d="M100 100 C60 100, 30 140, 55 145 C80 150, 100 120, 100 100Z" fill={strokeColor} />
       <path d="M100 100 C130 70, 170 30, 170 60 C170 90, 130 100, 100 100Z" fill={strokeColor} />
-      {/* Center pistil */}
       <circle cx="100" cy="100" r="8" fill={strokeColor} opacity="0.4" />
       <circle cx="100" cy="100" r="4" fill={strokeColor} opacity="0.6" />
     </svg>
@@ -62,12 +62,29 @@ function RhododendronFlower({ className, strokeColor = "white" }: { className?: 
 }
 
 function RhododendronEmblem({ isPositive }: { isPositive: boolean }) {
-  const color = isPositive ? "white" : "white"
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-      <RhododendronFlower strokeColor={color} className="absolute -top-8 -right-8 w-36 h-36 opacity-[0.07]" />
-      <RhododendronFlower strokeColor={color} className="absolute -bottom-6 -left-6 w-24 h-24 opacity-[0.05] scale-x-[-1]" />
-      <RhododendronFlower strokeColor={color} className="absolute top-1/3 right-2 w-10 h-10 opacity-[0.04]" />
+      <div className="absolute -top-8 -right-8 w-40 h-40 opacity-[0.22]">
+        <Image
+          src="/embed/tok.png"
+          alt=""
+          fill
+          className="object-contain"
+          sizes="160px"
+          priority={false}
+        />
+      </div>
+      <div className="absolute -bottom-8 -left-8 w-32 h-32 opacity-[0.15] scale-x-[-1]">
+        <Image
+          src="/embed/tok.png"
+          alt=""
+          fill
+          className="object-contain"
+          sizes="128px"
+          priority={false}
+        />
+      </div>
+      <RhododendronFlower strokeColor="white" className="absolute top-1/3 right-3 w-14 h-14 opacity-[0.08]" />
     </div>
   )
 }
@@ -187,6 +204,7 @@ export function CombinedBalanceCard() {
   const [showBalance, setShowBalance] = useState(true)
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [incomeExpenseRange, setIncomeExpenseRange] = useState<"monthly" | "all-time">("monthly")
+  const [netWorthDialogOpen, setNetWorthDialogOpen] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const calendarSystem = useCalendarSystem()
   const activeMonthLabel = formatAppMonthKey(getCalendarMonthRange(new Date(), calendarSystem).key, calendarSystem)
@@ -246,7 +264,6 @@ export function CombinedBalanceCard() {
   }, [creditAccounts])
 
   const availableCredit = totalCreditLimit - totalCreditUsed
-  const netWorth = balance + availableCredit - totalDebt
 
   // Calculate total share valuation from portfolio
   const totalShareValuation = useMemo(() => {
@@ -256,8 +273,42 @@ export function CombinedBalanceCard() {
     }, 0) || 0
   }, [portfolio])
   const hasShareHoldings = totalShareValuation > 0
+  const netWorth = balance + availableCredit + totalShareValuation - totalDebt
   const creditUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
   const currencySymbol = useCurrencySymbol()
+
+  const portfolioGain = useMemo(() => {
+    return portfolio?.reduce((sum, item) => {
+      const current = item.currentPrice || item.buyPrice || 0
+      return sum + (item.units * (current - item.buyPrice))
+    }, 0) || 0
+  }, [portfolio])
+
+  const dailyPortfolioChange = useMemo(() => {
+    return portfolio?.reduce((sum, item) => {
+      if (item.currentPrice != null && item.previousClose != null) {
+        return sum + (item.units * (item.currentPrice - item.previousClose))
+      }
+      return sum
+    }, 0) || 0
+  }, [portfolio])
+
+  const formatAbbreviated = (amount: number) => {
+    const abs = Math.abs(amount)
+    const sign = amount < 0 ? "-" : ""
+    const numberFormat = typeof window !== 'undefined' ? (localStorage.getItem("wallet_number_format") || "us") : "us"
+    if (numberFormat === "in") {
+      if (abs >= 10000000) return `${sign}${(abs / 10000000).toFixed(1)} cr`
+      if (abs >= 100000) return `${sign}${(abs / 100000).toFixed(1)} lac`
+      if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1)}k`
+      return `${sign}${abs.toFixed(0)}`
+    }
+    if (abs >= 1000000000) return `${sign}${(abs / 1000000000).toFixed(1)}B`
+    if (abs >= 10000000) return `${sign}${(abs / 10000000).toFixed(1)}Cr`
+    if (abs >= 1000000) return `${sign}${(abs / 1000000).toFixed(1)}M`
+    if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1)}k`
+    return `${sign}${abs.toFixed(0)}`
+  }
 
   const isPositive = balance >= 0
   const absoluteBalance = Math.abs(balance)
@@ -395,53 +446,122 @@ export function CombinedBalanceCard() {
             />
           </div>
 
-          {/* Net Worth Card */}
-          <div data-carousel-card="1" className="flex-shrink-0 md:min-h-[150px] ml-4" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
-            <Card className={`relative border-2 transition-all duration-200 h-full md:min-h-[150px] ${netWorth >= 0
-              ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20"
-              : "border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20"
-              }`}>
-              <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
-                <RhododendronFlower strokeColor={netWorth >= 0 ? "#059669" : "#dc2626"} className="absolute -top-5 -right-5 w-28 h-28 opacity-[0.07]" />
-                <RhododendronFlower strokeColor={netWorth >= 0 ? "#059669" : "#dc2626"} className="absolute -bottom-4 -left-4 w-16 h-16 opacity-[0.05] scale-x-[-1]" />
-              </div>
-              <CardContent className="relative p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <PiggyBank className={`w-5 h-5 ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} />
-                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Net Worth</p>
+          {/* Net Worth Card — Credit Card Style */}
+          <div data-carousel-card="1" className="flex-shrink-0 ml-4" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
+            <div className={`relative rounded-xl overflow-hidden h-full md:min-h-[170px] shadow-lg hover:shadow-xl transition-all duration-300 select-none ${
+              netWorth >= 0
+                ? "bg-gradient-to-br from-zinc-900 via-slate-800 to-zinc-800 text-white"
+                : "bg-gradient-to-br from-rose-950 via-red-900 to-rose-900 text-white"
+            }`}>
+              {/* Subtle grid pattern */}
+              <div className="absolute inset-0 opacity-[0.03]" style={{
+                backgroundImage: `radial-gradient(circle at 25% 25%, white 1px, transparent 1px)`,
+                backgroundSize: '32px 32px'
+              }} />
+
+              {/* tok.png watermark + geometric accents */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+                {/* Geometric halo */}
+                <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full border border-white/[0.04]" />
+                <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full border border-white/[0.025]" />
+
+                <div className="absolute -top-8 -right-8 w-40 h-40 opacity-[0.18]">
+                  <Image src="/embed/tok.png" alt="" fill className="object-contain" sizes="160px" priority={false} />
                 </div>
-                <p className={`text-3xl font-bold mb-2 text-center ${netWorth >= 0
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
-                  }`}>
-                  {netWorth < 0 && "-"}
-                  {showBalance ? formatCurrency(Math.abs(netWorth)) : "••••••"}
-                </p>
-                {/* Total Share Valuation */}
-                {showBalance && hasShareHoldings && (
-                  <div className="flex items-center justify-center gap-1 text-xs bg-blue-50/80 dark:bg-blue-950/50 backdrop-blur-sm rounded-lg px-2 py-1 mt-2">
-                    <TrendingUp className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                    <span className="font-medium text-blue-700 dark:text-blue-300">
-                      Shares: {formatCurrency(totalShareValuation)}
-                    </span>
+                <div className="absolute -bottom-6 -left-6 w-24 h-24 opacity-[0.12] scale-x-[-1]">
+                  <Image src="/embed/tok.png" alt="" fill className="object-contain" sizes="96px" priority={false} />
+                </div>
+                <RhododendronFlower strokeColor="white" className="absolute top-1/3 right-3 w-14 h-14 opacity-[0.08]" />
+              </div>
+
+              <div className="relative p-4 sm:p-5 flex flex-col justify-between h-full min-h-[170px]">
+                {/* Top row: chip + NET WORTH label */}
+                <div className="flex items-start justify-between">
+                  <svg className="w-10 h-8 shrink-0" viewBox="0 0 50 36" fill="none">
+                    <rect x="1" y="1" width="48" height="34" rx="5" fill="url(#chipGrad)" stroke="#c9a84c" strokeWidth="1.5" />
+                    <rect x="6" y="6" width="38" height="24" rx="2" fill="none" stroke="#c9a84c" strokeWidth="0.6" opacity="0.5" />
+                    <path d="M25 7 L25 29" stroke="#c9a84c" strokeWidth="0.8" opacity="0.5" />
+                    <path d="M7 14 L43 14" stroke="#c9a84c" strokeWidth="0.8" opacity="0.5" />
+                    <path d="M7 22 L43 22" stroke="#c9a84c" strokeWidth="0.8" opacity="0.5" />
+                    <rect x="16" y="11" width="18" height="14" rx="1.5" fill="none" stroke="#c9a84c" strokeWidth="0.5" opacity="0.3" />
+                    <defs>
+                      <linearGradient id="chipGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#e8c84a" />
+                        <stop offset="40%" stopColor="#f5e58a" />
+                        <stop offset="60%" stopColor="#d4a830" />
+                        <stop offset="100%" stopColor="#b8922a" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="text-right">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/50">Net Worth</p>
+                    <button
+                      onClick={() => setNetWorthDialogOpen(true)}
+                      className={`text-lg sm:text-xl font-bold tracking-tight cursor-pointer hover:brightness-110 transition-all ${netWorth >= 0 ? "text-white" : "text-red-200"}`}
+                    >
+                      {netWorth < 0 && "-"}
+                      {showBalance ? formatAbbreviated(Math.abs(netWorth)) : "••••••"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Share valuation + daily change */}
+                {showBalance && (hasShareHoldings || portfolioGain !== 0) && (
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    {hasShareHoldings && (
+                      <span className="flex items-center gap-1 text-[10px] text-white/50">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        <span className="text-white/40 mr-0.5">Shares</span>
+                        {formatAbbreviated(totalShareValuation)}
+                        {dailyPortfolioChange !== 0 && (
+                          <span className={`ml-1 ${dailyPortfolioChange >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                            {dailyPortfolioChange >= 0 ? "+" : ""}{formatAbbreviated(dailyPortfolioChange)} today
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {!hasShareHoldings && portfolioGain !== 0 && (
+                      <span className={`flex items-center gap-0.5 text-[10px] font-medium ${
+                        portfolioGain >= 0 ? "text-emerald-300" : "text-red-300"
+                      }`}>
+                        {portfolioGain >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                        {portfolioGain >= 0 ? "+" : ""}{formatAbbreviated(portfolioGain)}
+                      </span>
+                    )}
+
+                    {netWorth > 0 && timeEquivalentBreakdown && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-white/40">
+                        <Clock className="w-2.5 h-2.5" />
+                        {(() => {
+                          const nw = userProfile ? getTimeEquivalentBreakdown(netWorth, userProfile) : null
+                          return nw?.formatted?.userFriendly || timeEquivalentBreakdown.formatted.userFriendly
+                        })()}
+                      </span>
+                    )}
                   </div>
                 )}
 
-                {/* Time Equivalent for Net Worth */}
-                {showBalance && netWorth > 0 && timeEquivalentBreakdown && (
-                  <div className="flex items-center justify-center gap-1 text-xs bg-emerald-50/80 dark:bg-emerald-950/50 backdrop-blur-sm rounded-lg px-2 py-1 mt-2">
-                    <Clock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                    <span className="font-medium text-emerald-700 dark:text-emerald-300">
-                      {(() => {
-                        // Calculate time equivalent for net worth
-                        const netWorthTimeBreakdown = userProfile ? getTimeEquivalentBreakdown(netWorth, userProfile) : null
-                        return netWorthTimeBreakdown?.formatted?.userFriendly || timeEquivalentBreakdown.formatted.userFriendly
-                      })()}
-                    </span>
+                {/* Bottom row: cardholder + mywallet branding */}
+                <div className="flex items-end justify-between border-t border-white/10 pt-2">
+                  <div className="min-w-0 max-w-[60%]">
+                    <p className="text-[9px] uppercase tracking-[0.1em] text-white/35 font-medium">Card Holder</p>
+                    <p className="text-xs sm:text-sm font-medium text-white/80 truncate tracking-wide">
+                      {showBalance ? (userProfile?.name || "Card Holder").toUpperCase() : "••••••"}
+                    </p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-white/30">mywallet</span>
+                    <svg className="w-4 h-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <rect x="1" y="4" width="22" height="16" rx="2" />
+                      <path d="M1 10h22" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -529,11 +649,8 @@ export function CombinedBalanceCard() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
-        <Card className="relative group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50">
-          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
-            <RhododendronFlower strokeColor="#059669" className="absolute -top-3 -right-3 w-16 h-16 opacity-[0.06]" />
-          </div>
-          <CardContent className="relative p-3 sm:p-5">
+        <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50 relative">
+          <CardContent className="p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
                 <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
@@ -553,11 +670,8 @@ export function CombinedBalanceCard() {
           </CardContent>
         </Card>
 
-        <Card className="relative group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50">
-          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl" aria-hidden="true">
-            <RhododendronFlower strokeColor="#dc2626" className="absolute -top-3 -right-3 w-16 h-16 opacity-[0.06]" />
-          </div>
-          <CardContent className="relative p-3 sm:p-5">
+        <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50 relative">
+          <CardContent className="p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">
                 <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
@@ -577,6 +691,57 @@ export function CombinedBalanceCard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Net Worth Breakdown Dialog */}
+      <Dialog open={netWorthDialogOpen} onOpenChange={setNetWorthDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Net Worth Breakdown</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/50 dark:border-emerald-800/50">
+              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Cash Balance</span>
+              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                {showBalance ? formatCurrency(balance) : "••••••"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/50">
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Available Credit</span>
+              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                {showBalance ? formatCurrency(availableCredit) : "••••••"}
+              </span>
+            </div>
+            {hasShareHoldings && (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200/50 dark:border-purple-800/50">
+                <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Share Portfolio</span>
+                <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                  {showBalance ? formatCurrency(totalShareValuation) : "••••••"}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200/50 dark:border-red-800/50">
+              <span className="text-sm font-medium text-red-700 dark:text-red-300">Total Debt</span>
+              <span className="text-sm font-bold text-red-600 dark:text-red-400">
+                {showBalance ? formatCurrency(totalDebt) : "••••••"}
+              </span>
+            </div>
+            <div className="border-t pt-3 mt-4">
+              <div className="flex items-center justify-between">
+                <span className="text-base font-semibold">Net Worth</span>
+                <span className={`text-base font-extrabold ${netWorth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {showBalance ? formatCurrency(netWorth) : "••••••"}
+                </span>
+              </div>
+              {showBalance && netWorth > 0 && timeEquivalentBreakdown && (
+                <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  <span>{timeEquivalentBreakdown.formatted.userFriendly} of work time</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

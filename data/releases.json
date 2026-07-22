@@ -1,10 +1,45 @@
 {
-  "currentBuild": "2026.05.27",
+  "currentBuild": "2026.07.22",
   "releases": [
+    {
+      "version": "2.1.1.1",
+      "date": "2026-07-22",
+      "status": "current",
+      "category": "Feature",
+      "title": "Document Vault, SIP History Import, Bulk LTP, and PDF Preview System",
+      "highlights": [
+        "Personal Document Vault: Encrypted document storage with AES-GCM, person-based organization, auto-detection of document types (citizenship, passport, license), and full CRUD via IndexedDB.",
+        "Document Viewer & Preview: In-app viewer with zoom, page navigation, full-screen mode, PDF/blob URL rendering, and thumbnail generation via pdfjs.",
+        "SIP History Import: Upload XLSX/XLS/CSV files to import SIP transaction history directly into portfolio tracking.",
+        "Bulk LTP History API: New endpoint fetching historical price data for multiple symbols simultaneously with configurable month range (up to 120 months).",
+        "Rhododendron Emblem: Decorative Lali Gurans flower watermark on balance cards as a Nepali brand touch.",
+        "Stock Exchange PDF Preview: Replaced broken @react-pdf-viewer with iframe-based blob URL rendering for reliable document viewing, with domain-whitelist security.",
+        "Dev Settings Protection: Development configuration tab hidden from normal users — only visible in dev mode or localhost.",
+        "Version Bump: Transitioned to 2.1.1.1 with continued IndexedDB migration and record-level sync engine work."
+      ]
+    },
+    {
+      "version": "2.1.1.0",
+      "date": "2026-07-15",
+      "status": "stable",
+      "category": "Major",
+      "title": "Public Pages, Settings Overhaul, Portfolio Heatmap, Debt Redesign, and Insights Smart Advisor",
+      "highlights": [
+        "Public Pages Suite: About page with story, stats, timeline, and creator profile. Features catalog showcasing 45+ capabilities with shared glassmorphism layout and navigation.",
+        "Settings Module Overhaul: Replaced monolithic modal with tabbed desktop layout and full-screen mobile settings. Custom theme editor with color picker, audio feedback system with per-activity sounds and upload, screen reader and accessibility controls, font size slider, and Nepali/International number formatting.",
+        "Portfolio Heatmap View: Treemap-based portfolio visualization with squarified layout algorithm, search, asset/sizing/color mode filters, pin-to-detail, hover tooltip, and info dialog.",
+        "IPO Detail Modal: Full IPO detail view with timeline, stats, and inline MeroShare apply/check allotment. Smart button adapts to IPO status with credential validation before actions.",
+        "Debt & Credit Management Redesign: Tabbed layout (Debt/Lending/Credit/History) with summary cards, collapsible accounts, payoff projections, fast debt auto-classification, archive support, and custom date range picker.",
+        "Insights Smart Advisor: Financial health hero with score circle, grade, and description. Smart Advisor feed with 10 dynamic insight types, one-click auto-create actions, core metrics grid, and JSON export report.",
+        "Broker Leaderboard with Podium: Hero podium section with crown/medal/award icons and animated columns. Daily sort option, rank badges, and BS-aware amount formatting.",
+        "Budget & Goal List Enhancements: Budget sort/filter/bulk operations with history dialog. Goal tabs layout with progress visualization and scenario planning. Custom date range pickers.",
+        "Balance Card Consolidation: Consolidated balance card component with net worth carousel, swipe/touch support, income/expense monthly vs all-time toggle, and localStorage theme customization."
+      ]
+    },
     {
       "version": "2.1.0.0",
       "date": "2026-05-27",
-      "status": "current",
+      "status": "stable",
       "category": "Feature",
       "title": "Public Roadmap, Returning User Recovery, Portfolio Snapshots, MeroShare Automation, and Budget Refinements",
       "highlights": [

@@ -26,18 +26,11 @@ import {
   Edit,
   Trash2,
   MoreVertical,
-  PiggyBank,
-  Home,
-  Car,
-  GraduationCap,
-  Heart,
-  Plane,
-  ShoppingBag,
-  Briefcase,
   Sparkles,
   Receipt,
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
+import { getGoalIcon } from "@/lib/goal-icons"
 import { useGoals } from "@/contexts/goals-context"
 import { useUser } from "@/contexts/user-context"
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
@@ -100,12 +93,11 @@ export function EnhancedGoalsList() {
   const [sortType, setSortType] = useState<SortType>("progress")
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set())
 
-  const filteredAndSortedGoals = useMemo(() => {
+    const filteredAndSortedGoals = useMemo(() => {
 
     const filtered = goals.filter((goal) => {
       const matchesSearch =
-        goal.name?.toLowerCase()?.includes(searchQuery.toLowerCase()) ||
-        (goal.category?.toLowerCase()?.includes(searchQuery.toLowerCase()) ?? false)
+        (goal.title || goal.name)?.toLowerCase()?.includes(searchQuery.toLowerCase())
 
       const progress = getGoalEffectiveProgress(goal)
       const isCompleted = progress >= 100
@@ -254,21 +246,6 @@ export function EnhancedGoalsList() {
     if (isOverdue) return { status: "overdue", color: "bg-red-600", icon: AlertCircle }
     if (progress > 75) return { status: "near-completion", color: "bg-amber-600", icon: TrendingUp }
     return { status: "active", color: "bg-blue-600", icon: Target }
-  }
-
-  const getCategoryIcon = (category?: string) => {
-    switch (category) {
-      case "emergency": return AlertTriangle
-      case "savings": return PiggyBank
-      case "house": return Home
-      case "car": return Car
-      case "education": return GraduationCap
-      case "health": return Heart
-      case "travel": return Plane
-      case "shopping": return ShoppingBag
-      case "business": return Briefcase
-      default: return Target
-    }
   }
 
   const getPriorityColor = (priority?: string) => {
@@ -464,7 +441,6 @@ export function EnhancedGoalsList() {
                 const isExpanded = expandedGoals.has(goal.id)
                 const goalStatus = getGoalStatus(goal)
                 const StatusIcon = goalStatus.icon
-                const CategoryIcon = getCategoryIcon(goal.category)
                 const isSelected = selectedGoals.has(goal.id)
                 const activeDeadline = challengeSummary?.currentDeadline || new Date(goal.targetDate)
                 const daysRemaining = Math.max(0, Math.ceil((new Date(activeDeadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
@@ -498,7 +474,7 @@ export function EnhancedGoalsList() {
 
                               <div className="flex items-center gap-2 md:gap-3 flex-1">
                                 <div className={`p-1 md:p-2 rounded-lg ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-muted'}`}>
-                                  <CategoryIcon className="w-4 h-4 md:w-5 md:h-5" />
+                                  {(() => { const Icon = getGoalIcon(goal); return <Icon className="w-4 h-4 md:w-5 md:h-5" /> })()}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
@@ -693,9 +669,9 @@ export function EnhancedGoalsList() {
                             
                             <div className="flex flex-wrap items-center gap-2">
                               {goal.category && (
-                                <Badge variant="secondary" className="bg-background text-[11px] font-medium py-0.5">
-                                  <CategoryIcon className="w-3 h-3 mr-1.5 opacity-60" />
-                                  {goal.category}
+                                <Badge variant="secondary" className="bg-background text-[11px] font-medium py-0.5 flex items-center gap-1">
+                                  {(() => { const Icon = getGoalIcon(goal); return <Icon className="w-3 h-3" /> })()}
+                                  {goal.category.charAt(0).toUpperCase() + goal.category.slice(1)}
                                 </Badge>
                               )}
                               <Badge variant="outline" className="text-[11px] font-medium py-0.5 opacity-70">
@@ -793,15 +769,15 @@ export function EnhancedGoalsList() {
                               )}
                             </div>
                           )}
-                           {/* Goal Metadata */}
-                          <div className="flex flex-wrap items-center gap-1 md:gap-2 pt-2 border-t">
-                            {goal.category && (
-                              <Badge variant="outline" className="flex items-center gap-1 text-xs md:text-sm">
-                                <CategoryIcon className="w-3 h-3" />
-                                {goal.category.charAt(0).toUpperCase() + goal.category.slice(1)}
-                              </Badge>
-                            )}
-                            {goal.priority && (
+                            {/* Goal Metadata */}
+                             <div className="flex flex-wrap items-center gap-1 md:gap-2 pt-2 border-t">
+                              {goal.category && (
+                                <Badge variant="outline" className="text-xs md:text-sm flex items-center gap-1">
+                                  {(() => { const Icon = getGoalIcon(goal); return <Icon className="w-3 h-3" /> })()}
+                                  {goal.category.charAt(0).toUpperCase() + goal.category.slice(1)}
+                                </Badge>
+                              )}
+                              {goal.priority && (
                               <Badge className={`${getPriorityColor(goal.priority)} text-xs md:text-sm`}>
                                 {goal.priority.toUpperCase()} Priority
                               </Badge>

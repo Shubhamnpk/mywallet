@@ -163,7 +163,13 @@ export function SIPSetupModal({
     if (!open) return
 
     if (!existingPlan) {
-      setSelectedEnrollmentId(initialEnrollmentTransactionId || NO_ENROLLMENT_VALUE)
+      const initialId = initialEnrollmentTransactionId || undefined
+      const initialExists = initialId ? enrollableTransactions.some((tx) => tx.id === initialId) : false
+      setSelectedEnrollmentId(
+        initialExists && initialId ? initialId
+          : enrollableTransactions.length > 0 ? enrollableTransactions[0].id
+          : NO_ENROLLMENT_VALUE
+      )
     }
 
     if (existingPlan) {
@@ -183,7 +189,7 @@ export function SIPSetupModal({
       : null
     if (enrollmentTx) {
       setForm({
-        installmentAmount: "1000",
+        installmentAmount: "",
         frequency: "monthly",
         startDate: enrollmentTx.date?.slice(0, 10) || getDefaultStartDate(),
         reminderDays: "3",
@@ -193,9 +199,8 @@ export function SIPSetupModal({
       return
     }
 
-    const defaultAmount = 1000
     setForm({
-      installmentAmount: String(Number(defaultAmount.toFixed(2))),
+      installmentAmount: "",
       frequency: "monthly",
       startDate: getDefaultStartDate(),
       reminderDays: "3",
@@ -387,13 +392,17 @@ export function SIPSetupModal({
         const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
         const typeVal = (row.type || "").toString().toUpperCase()
         const scheme = (row.scheme || "").toString().trim()
-        const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
-        const txType = isReinvestment ? "reinvestment" : "buy"
-        const desc = isReinvestment
-          ? typeVal.includes("FRACTIONAL")
-            ? `Fractional Allotment - ${scheme}`
-            : `DiRP - ${scheme}`
-          : `SIP Installment - ${scheme}`
+        const isFractional = typeVal.includes("FRACTIONAL")
+        const isDirp = typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+        const isOneTime = typeVal.includes("ONE TIME")
+        const txType = isFractional ? "reinvestment" : isDirp ? "bonus" : "buy"
+        const desc = isFractional
+          ? `Fractional Allotment - ${scheme}`
+          : isDirp
+            ? `DiRP - ${scheme}`
+            : isOneTime
+              ? `One Time Purchase - ${scheme}`
+              : `SIP Installment - ${scheme}`
 
         const key = `${isoDate}|${txType}|${desc}|${units.toFixed(6)}|${nav.toFixed(6)}`
         if (existingKeySet.has(key)) {
@@ -413,13 +422,17 @@ export function SIPSetupModal({
         const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
         const typeVal = (row.type || "").toString().toUpperCase()
         const scheme = (row.scheme || "").toString().trim()
-        const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
-        const txType = isReinvestment ? "reinvestment" : "buy"
-        const desc = isReinvestment
-          ? typeVal.includes("FRACTIONAL")
-            ? `Fractional Allotment - ${scheme}`
-            : `DiRP - ${scheme}`
-          : `SIP Installment - ${scheme}`
+        const isFractional = typeVal.includes("FRACTIONAL")
+        const isDirp = typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+        const isOneTime = typeVal.includes("ONE TIME")
+        const txType = isFractional ? "reinvestment" : isDirp ? "bonus" : "buy"
+        const desc = isFractional
+          ? `Fractional Allotment - ${scheme}`
+          : isDirp
+            ? `DiRP - ${scheme}`
+            : isOneTime
+              ? `One Time Purchase - ${scheme}`
+              : `SIP Installment - ${scheme}`
         const key = `${isoDate}|${txType}|${desc}|${units.toFixed(6)}|${nav.toFixed(6)}`
         if (existingKeySet.has(key)) {
           const match = existingForSymbol.find((tx) =>
@@ -481,13 +494,17 @@ export function SIPSetupModal({
           const parts = rawDate.split("-")
           const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : rawDate
 
-          const isReinvestment = typeVal.includes("FRACTIONAL") || typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
-          const txType = isReinvestment ? "reinvestment" as const : "buy" as const
-          const desc = isReinvestment
-            ? typeVal.includes("FRACTIONAL")
-              ? `Fractional Allotment - ${scheme}`
-              : `DiRP - ${scheme}`
-            : `SIP Installment - ${scheme}`
+          const isFractional = typeVal.includes("FRACTIONAL")
+          const isDirp = typeVal.includes("DIRP") || typeVal.includes("DRIP") || typeVal.includes("DIVIDEND REINVESTMENT")
+          const isOneTime = typeVal.includes("ONE TIME")
+          const txType = isFractional ? "reinvestment" as const : isDirp ? "bonus" as const : "buy" as const
+          const desc = isFractional
+            ? `Fractional Allotment - ${scheme}`
+            : isDirp
+              ? `DiRP - ${scheme}`
+              : isOneTime
+                ? `One Time Purchase - ${scheme}`
+                : `SIP Installment - ${scheme}`
 
           await addShareTransaction({
             portfolioId: item.portfolioId,
@@ -498,7 +515,7 @@ export function SIPSetupModal({
             price: nav,
             date: isoDate,
             description: desc,
-            ...(txType === "buy" && existingPlan ? {
+            ...(txType === "buy" && !isOneTime && existingPlan ? {
               sipPlanId: existingPlan.id,
               sipDueDate: isoDate,
               sipGrossAmount: totalWithNav,
@@ -513,6 +530,8 @@ export function SIPSetupModal({
       }
 
       if (createdCount > 0 || importReview.existingToDelete.length > 0) {
+        // Clear stale custom selections — the old transaction IDs may have been deleted
+        setSelectedTransactionIds(new Set())
         if (createdCount > 0 && existingPlan) {
           await importSipPlanFromProvider(existingPlan.id, { notes: `Imported ${createdCount} transactions from ${importReview.fileName}` })
         }

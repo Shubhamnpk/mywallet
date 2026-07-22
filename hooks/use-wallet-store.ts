@@ -1679,13 +1679,15 @@ export function useWalletStore() {
     if (!currentProfile) return
 
     const previousProfile = currentProfile
-    const nextMeroShare = updates.meroShare
-      ? {
-        ...(currentProfile.meroShare || {}),
-        ...updates.meroShare,
-        applicationLogs: updates.meroShare.applicationLogs ?? currentProfile.meroShare?.applicationLogs,
-      }
-      : currentProfile.meroShare
+    const nextMeroShare = !("meroShare" in updates)
+      ? currentProfile.meroShare
+      : updates.meroShare === undefined
+        ? undefined
+        : {
+          ...(currentProfile.meroShare || {}),
+          ...updates.meroShare,
+          applicationLogs: updates.meroShare.applicationLogs ?? currentProfile.meroShare?.applicationLogs,
+        }
 
     const updatedProfile = {
       ...currentProfile,
@@ -1752,7 +1754,6 @@ export function useWalletStore() {
     if (!currentProfile) return
 
     const updatedPlans = normalizeSipPlans(currentProfile.sipPlans).filter((plan) => plan.id !== id)
-    updateUserProfile({ sipPlans: updatedPlans })
 
     const currentTransactions = shareTransactionsRef.current
     const updatedTransactions = currentTransactions.map((tx) => {
@@ -1768,9 +1769,22 @@ export function useWalletStore() {
       }
     })
 
+    // Save cleared transactions to persistent storage FIRST.
+    // Only update React state if persistence confirms — otherwise on reload
+    // the old sipPlanId values would reappear and the transactions would be
+    // "stuck" (hidden from re-enrollment because !tx.sipPlanId would be false).
+    const saved = await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    if (!saved) {
+      toast.error("Failed to delete SIP plan", {
+        description: "Could not save changes to storage. Please try again.",
+      })
+      return
+    }
+
+    // Persistence confirmed — safe to update React state and profile
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
-    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+    updateUserProfile({ sipPlans: updatedPlans })
   }
 
   // calculateTimeEquivalent is provided by lib/wallet-utils
@@ -4044,6 +4058,31 @@ export function useWalletStore() {
     return { updatedTransactions: orderedUpdatedTransactions, updatedPortfolio }
   }
 
+  const clearShareTransactionSipFields = async (id: string) => {
+    const currentTransactions = shareTransactionsRef.current
+    const transactionIndex = currentTransactions.findIndex((t) => t.id === id)
+    if (transactionIndex === -1) return
+
+    const existingTx = currentTransactions[transactionIndex]
+    if (!existingTx.sipPlanId) return // not a SIP-linked transaction
+
+    const updatedTransaction: ShareTransaction = {
+      ...existingTx,
+      sipPlanId: undefined,
+      sipDueDate: undefined,
+      sipNetAmount: undefined,
+      sipDpsCharge: undefined,
+      sipGrossAmount: undefined,
+    }
+
+    const updatedTransactions = [...currentTransactions]
+    updatedTransactions[transactionIndex] = updatedTransaction
+
+    shareTransactionsRef.current = updatedTransactions
+    setShareTransactions(updatedTransactions)
+    await saveDataWithIntegrity("shareTransactions", updatedTransactions)
+  }
+
   const deleteShareTransaction = async (id: string) => {
     return await deleteMultipleShareTransactions([id])
   }
@@ -4765,6 +4804,7 @@ export function useWalletStore() {
     importSipPlanFromProvider,
     deleteShareTransaction,
     deleteMultipleShareTransactions,
+    clearShareTransactionSipFields,
     updateShareTransaction,
     recomputePortfolio,
     importShareData,

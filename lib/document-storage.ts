@@ -513,3 +513,37 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 export function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
+
+export async function deleteAllDocuments(): Promise<void> {
+  await putStored(PERSONS_KEY, [])
+  await putStored(MANIFEST_KEY, [])
+  const db = await openDB()
+  const tx = db.transaction([BLOB_STORE, THUMB_STORE], "readwrite")
+  tx.objectStore(BLOB_STORE).clear()
+  tx.objectStore(THUMB_STORE).clear()
+  await txDone(tx)
+}
+
+export async function downloadAllDocumentsAsZip(): Promise<Blob> {
+  const JSZip = (await import("jszip")).default
+  const zip = new JSZip()
+  const docs = await getDocuments()
+  for (const doc of docs) {
+    const all = doc.pages?.length
+      ? doc.pages
+      : [{ id: doc.id, label: "Document", mimeType: doc.mimeType, size: doc.size, hasThumbnail: false }]
+    for (const p of all) {
+      const blob = await getDocumentBlob(doc.id, p.id)
+      if (!blob) continue
+      const ext = p.mimeType.includes("pdf") ? "pdf" : p.mimeType.includes("png") ? "png" : p.mimeType === "text/plain" ? "txt" : "jpg"
+      const name = `${doc.name}${all.length > 1 ? ` - ${p.label}` : ""}.${ext}`
+      zip.file(name, blob)
+    }
+  }
+  return zip.generateAsync({ type: "blob" })
+}
+
+export async function getDocumentCount(): Promise<number> {
+  const docs = await getDocuments()
+  return docs.length
+}

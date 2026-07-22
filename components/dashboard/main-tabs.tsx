@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
@@ -114,6 +115,9 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     return requestedTab && KNOWN_TAB_VALUES.has(requestedTab) ? requestedTab : "transactions"
   })
   const toolsContentRef = useRef<HTMLDivElement>(null)
+  const [desktopToolModal, setDesktopToolModal] = useState<string | null>(null)
+
+  const DIALOG_TOOLS = new Set(["calculator", "currency-converter", "games", "scanner"])
 
   useEffect(() => {
     const syncFromLocation = () => {
@@ -157,8 +161,18 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
   }, [activeTab, onMobileFullscreenChange])
 
   useEffect(() => {
-    if (!SessionManager.isSessionValid()) {
-      window.dispatchEvent(new CustomEvent("wallet-session-expired"))
+    const validateSession = () => {
+      if (!SessionManager.isSessionValid()) {
+        window.dispatchEvent(new CustomEvent("wallet-session-expired"))
+      }
+    }
+    validateSession()
+    const handleClick = () => {
+      setTimeout(validateSession, 100)
+    }
+    document.addEventListener("click", handleClick)
+    return () => {
+      document.removeEventListener("click", handleClick)
     }
   }, [])
 
@@ -499,7 +513,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
                 <button
                   key={tool.value}
                   type="button"
-                  onClick={() => setActiveTab(tool.value)}
+                  onClick={() => DIALOG_TOOLS.has(tool.value) ? setDesktopToolModal(tool.value) : setActiveTab(tool.value)}
                   className="flex flex-col items-center justify-center p-6 bg-card/80 border border-border/60 rounded-xl shadow-sm hover:bg-muted/30 transition-all active:scale-[0.99] text-center"
                 >
                   <div className="p-3 bg-primary/10 rounded-full mb-3 text-primary">
@@ -531,6 +545,18 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           </TabsContent>
         </div>
       </Tabs>
-    </div>
+
+      <Dialog open={!!desktopToolModal} onOpenChange={(open) => { if (!open) setDesktopToolModal(null) }}>
+        <DialogContent className="w-auto min-w-[320px] max-w-[95vw] lg:max-w-[85vw] max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg">{desktopToolModal ? getTabLabel(desktopToolModal) : ""}</DialogTitle>
+          </DialogHeader>
+          {desktopToolModal === "calculator" && <CalculatorTool />}
+          {desktopToolModal === "currency-converter" && <CurrencyConverterTool />}
+          {desktopToolModal === "games" && <GamesTool />}
+          {desktopToolModal === "scanner" && <ScannerTool />}
+        </DialogContent>
+      </Dialog>
+    </div>  
   )
 }

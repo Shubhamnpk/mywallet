@@ -499,6 +499,8 @@ export function SessionGuard({ children }: SessionGuardProps) {
     pathname === "/welcome" ||
     pathname === "/releases" ||
     pathname === "/roadmap" ||
+    pathname === "/features" ||
+    pathname === "/about" ||
     pathname === "/dropbox-callback" ||
     pathname === "/onboarding"
 

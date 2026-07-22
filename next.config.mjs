@@ -35,7 +35,12 @@ const nextConfig = {
     /** Inlined at build time so dev-only UI cannot leak into production bundles. */
     NEXT_PUBLIC_APP_DEV_TOOLS: isNextDevelopment ? "1" : "0",
   },
-  images: { unoptimized: false },
+  images: {
+    unoptimized: false,
+    remotePatterns: [
+      { protocol: "https", hostname: "avatars.githubusercontent.com" },
+    ],
+  },
   // Force webpack as Serwist uses it for SW bundling
   webpack: (config) => {
     config.resolve = config.resolve || {};

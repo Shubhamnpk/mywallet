@@ -84,6 +84,43 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
+function parseCsvLine(line: string): string[] {
+    const fields: string[] = []
+    let current = ""
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i]
+        if (inQuotes) {
+            if (ch === '"') {
+                if (i + 1 < line.length && line[i + 1] === '"') {
+                    current += '"'
+                    i++
+                } else {
+                    inQuotes = false
+                }
+            } else {
+                current += ch
+            }
+        } else if (ch === '"') {
+            inQuotes = true
+        } else if (ch === ',') {
+            fields.push(current.trim())
+            current = ""
+        } else {
+            current += ch
+        }
+    }
+    fields.push(current.trim())
+    return fields
+}
+
+function parseCsvRows(content: string): string[][] {
+    const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    return lines.map(parseCsvLine)
+}
+
+const HISTORY_CSV_KEYWORDS = ["Transaction Date", "History Description", "Credit Quantity", "Debit Quantity"]
+
 type ImportQueueItem = {
     id: string
     symbol: string
@@ -119,7 +156,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
 export function PortfolioList() {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
-    const {portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
+    const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
@@ -145,6 +182,9 @@ export function PortfolioList() {
     const [importPrices, setImportPrices] = useState<Record<string, string>>({})
     const [importTransactionPrices, setImportTransactionPrices] = useState<Record<string, string>>({})
     const [pendingImport, setPendingImport] = useState<{ type: string, data: string } | null>(null)
+    const [isImporting, setIsImporting] = useState(false)
+    const [importProgress, setImportProgress] = useState("")
+    const importAbortRef = useRef<AbortController | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [isCreatingMeroSharePortfolio, setIsCreatingMeroSharePortfolio] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
@@ -954,40 +994,69 @@ export function PortfolioList() {
         }
     }
 
+    const clearImportState = () => {
+        setIsImportModalOpen(false)
+        setPendingImport(null)
+        setImportQueue([])
+        setImportPrices({})
+        setImportTransactionPrices({})
+        setIsImporting(false)
+        setImportProgress("")
+        importAbortRef.current?.abort()
+        importAbortRef.current = null
+    }
+
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (!file) return
 
+        setIsImporting(true)
+        setImportProgress("Reading file...")
+
         const reader = new FileReader()
         reader.onload = async (e) => {
             const content = e.target?.result as string
-            if (!content) return
+            if (!content) {
+                setIsImporting(false)
+                setImportProgress("")
+                return
+            }
 
             try {
-                const rows = content.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()))
-                if (rows.length < 2) return
-
-                const header = rows[0].join(',')
-                let type: 'portfolio' | 'history' = 'portfolio'
-                if (header.includes('Transaction Date') || header.includes('History Description')) {
-                    type = 'history'
+                const rows = parseCsvRows(content)
+                if (rows.length < 2) {
+                    toast.error("File appears empty or corrupted", {
+                        description: "Expected at least a header row and one data row."
+                    })
+                    setIsImporting(false)
+                    setImportProgress("")
+                    return
                 }
+
+                const header = rows[0]
+                const headerJoined = header.join(" ")
+                const isHistoryFormat = HISTORY_CSV_KEYWORDS.some((kw) => headerJoined.includes(kw))
+                let type: 'portfolio' | 'history' = isHistoryFormat ? 'history' : 'portfolio'
+
+                setImportProgress("Analysing rows...")
 
                 const symbolsToPrice = new Map<string, ImportQueueItem>()
                 const transactionPriceQueue: ImportQueueItem[] = []
 
                 if (type === 'portfolio') {
-                    rows.slice(1).forEach(row => {
-                        if (row.length < 7 || row[0].toLowerCase().includes('total')) return
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i]
+                        if (row.length < 7 || row[0].toLowerCase().includes('total')) continue
                         const symbol = row[1]
                         const ltp = parseFloat(row[5]) || parseFloat(row[3]) || 100
                         if (symbol) {
                             symbolsToPrice.set(symbol, { id: symbol, symbol, defaultPrice: ltp, type: 'Holding' })
                         }
-                    })
+                    }
                 } else {
-                    rows.slice(1).forEach((row, rowIndex) => {
-                        if (row.length < 7) return
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i]
+                        if (row.length < 7) continue
                         const symbol = row[1]
                         const date = row[2]
                         const desc = row[6]
@@ -1008,7 +1077,7 @@ export function PortfolioList() {
                             }
                             if (isBuy) {
                                 transactionPriceQueue.push({
-                                    id: `${symbol}__row_${rowIndex + 1}`,
+                                    id: `${symbol}__row_${i}`,
                                     symbol,
                                     defaultPrice: def,
                                     type: typeStr,
@@ -1019,7 +1088,7 @@ export function PortfolioList() {
                                 })
                             }
                         }
-                    })
+                    }
                 }
 
                 if (symbolsToPrice.size > 0) {
@@ -1040,22 +1109,37 @@ export function PortfolioList() {
                         setImportQueue(queue)
                     }
                     setPendingImport({ type, data: content })
+                    setIsImporting(false)
+                    setImportProgress("")
                     setIsImportModalOpen(true)
                 } else {
+                    setImportProgress("Saving data...")
                     const updated = await importShareData(type, content)
+                    setIsImporting(false)
+                    setImportProgress("")
                     toast.success("Data imported successfully")
                     if (updated) fetchPortfolioPrices(updated)
                 }
             } catch (error: any) {
+                setIsImporting(false)
+                setImportProgress("")
                 toast.error(error.message || "Failed to parse CSV")
             }
         }
+        reader.onerror = () => {
+            setIsImporting(false)
+            setImportProgress("")
+            toast.error("Failed to read file")
+        }
         reader.readAsText(file)
-        if (event.target) event.target.value = '' // Clear input
+        if (event.target) event.target.value = ''
     }
 
     const handleConfirmImport = async () => {
         if (!pendingImport) return
+
+        setIsImporting(true)
+        setImportProgress("Saving data...")
 
         try {
             const resolved: Record<string, number> = {}
@@ -1070,13 +1154,12 @@ export function PortfolioList() {
             })
 
             const updated = await importShareData(pendingImport.type as any, pendingImport.data, resolved)
-            setIsImportModalOpen(false)
-            setPendingImport(null)
-            setImportTransactionPrices({})
+            clearImportState()
             toast.success("Data imported with cost prices")
-            // Refresh with the newly imported data
             if (updated) fetchPortfolioPrices(updated)
         } catch (error: any) {
+            setIsImporting(false)
+            setImportProgress("")
             toast.error(error.message)
         }
     }
@@ -1374,40 +1457,51 @@ export function PortfolioList() {
                 new Set(Array.from(historyBySymbol.values()).flatMap((points) => points.map((point) => point.date))),
             ).sort()
 
-            const priceIndices = new Map<string, number>()
-            const transactionIndices = new Map<string, number>()
-            const transactionUnitsBySymbol = new Map<string, number>()
+            const transactionsBySymbol = mode === "transactions"
+                ? new Map(symbols.map((symbol) => [symbol, transactionRows.filter((tx) => tx.symbol === symbol)]))
+                : null
+
+            const unitsAtDate = mode === "transactions" ? new Map<string, number[]>() : null
+            if (mode === "transactions" && transactionsBySymbol) {
+                for (const [symbol, txs] of transactionsBySymbol) {
+                    const schedule: number[] = []
+                    let units = 0
+                    let txIndex = 0
+                    for (const date of dateKeys) {
+                        while (txIndex < txs.length && txs[txIndex].date <= date) {
+                            units += txs[txIndex].quantityDelta
+                            txIndex += 1
+                        }
+                        schedule.push(Math.max(units, 0))
+                    }
+                    unitsAtDate!.set(symbol, schedule)
+                }
+            }
+
+            const priceIndexAtDate = new Map<string, number[]>()
+            for (const [symbol, points] of historyBySymbol) {
+                const indices: number[] = []
+                let pointIndex = 0
+                for (const date of dateKeys) {
+                    while (pointIndex + 1 < points.length && points[pointIndex + 1].date <= date) {
+                        pointIndex += 1
+                    }
+                    indices.push(pointIndex)
+                }
+                priceIndexAtDate.set(symbol, indices)
+            }
+
             const series = dateKeys
-                .map((date) => {
+                .map((date, dateIndex) => {
                     let value = 0
                     let coveredSymbols = 0
                     const snapshot: NonNullable<PortfolioValuationPoint["snapshot"]> = []
 
-                    if (mode === "transactions") {
-                        symbols.forEach((symbol) => {
-                            const symbolTransactions = transactionRows.filter((tx) => tx.symbol === symbol)
-                            let index = transactionIndices.get(symbol) || 0
-                            let units = transactionUnitsBySymbol.get(symbol) || 0
-                            while (index < symbolTransactions.length && symbolTransactions[index].date <= date) {
-                                units += symbolTransactions[index].quantityDelta
-                                index += 1
-                            }
-                            transactionIndices.set(symbol, index)
-                            transactionUnitsBySymbol.set(symbol, Math.max(units, 0))
-                        })
-                    }
-
                     historyBySymbol.forEach((points, symbol) => {
-                        let index = priceIndices.get(symbol) || 0
-                        while (index + 1 < points.length && points[index + 1].date <= date) {
-                            index += 1
-                        }
-                        priceIndices.set(symbol, index)
-
-                        const point = points[index]
+                        const point = points[priceIndexAtDate.get(symbol)?.[dateIndex] ?? 0]
                         const units = mode === "current"
                             ? (currentUnitsBySymbol.get(symbol) || 0)
-                            : (transactionUnitsBySymbol.get(symbol) || 0)
+                            : (unitsAtDate?.get(symbol)?.[dateIndex] ?? 0)
                         if (point && point.date <= date && units > 0) {
                             const symbolValue = units * point.ltp
                             value += symbolValue
@@ -4073,7 +4167,10 @@ export function PortfolioList() {
             {/* Import Price Modal */}
             <ImportVerificationModal
                 open={isImportModalOpen}
-                onOpenChange={setIsImportModalOpen}
+                onOpenChange={(open) => {
+                    if (!open) clearImportState()
+                    else setIsImportModalOpen(true)
+                }}
                 importQueue={importQueue}
                 importPrices={importPrices}
                 setImportPrices={setImportPrices}
@@ -4804,10 +4901,11 @@ export function PortfolioList() {
                                     size="sm"
                                     className="h-8 font-medium bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
                                     onClick={triggerFileUpload}
+                                    disabled={isImporting}
                                     title="Import Data"
                                 >
-                                    <Upload className="w-3.5 h-3.5 sm:mr-2" />
-                                    <span className="hidden sm:inline">Import Data</span>
+                                    {isImporting ? <RefreshCcw className="w-3.5 h-3.5 sm:mr-2 animate-spin" /> : <Upload className="w-3.5 h-3.5 sm:mr-2" />}
+                                    <span className="hidden sm:inline">{importProgress || "Import Data"}</span>
                                 </Button>
                             </div>
                         </div>
@@ -4821,7 +4919,7 @@ export function PortfolioList() {
                                         : "space-y-3"
                                 )}
                             >
-                                {!showSoldStocks && portfolio.length === 0 && activePortfolioId ? (
+                                {!showSoldStocks && portfolio.length === 0 && activePortfolioId && !isLoaded ? (
                                     // Loading skeleton state
                                     <div className="space-y-3">
                                         {[1, 2, 3, 4, 5].map((i) => (
@@ -4860,9 +4958,9 @@ export function PortfolioList() {
                                                 <Plus className="w-4 h-4 mr-2" />
                                                 New Transaction
                                             </Button>
-                                            <Button variant="default" className="font-bold shadow-lg bg-primary/90" onClick={triggerFileUpload}>
-                                                <Upload className="w-4 h-4 mr-2" />
-                                                Import My Data
+                                            <Button variant="default" className="font-bold shadow-lg bg-primary/90" onClick={triggerFileUpload} disabled={isImporting}>
+                                                {isImporting ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                                                {importProgress || "Import My Data"}
                                             </Button>
                                             <Button variant="outline" className="border-dashed" onClick={() => handleImportDemo('My Shares Values.csv')}>
                                                 <Download className="w-4 h-4 mr-2" />
@@ -5181,10 +5279,11 @@ export function PortfolioList() {
                                     size="sm"
                                     className="h-8 font-medium bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
                                     onClick={triggerFileUpload}
+                                    disabled={isImporting}
                                     title="Import"
                                 >
-                                    <Upload className="w-3.5 h-3.5 sm:mr-2" />
-                                    <span className="hidden sm:inline">Import</span>
+                                    {isImporting ? <RefreshCcw className="w-3.5 h-3.5 sm:mr-2 animate-spin" /> : <Upload className="w-3.5 h-3.5 sm:mr-2" />}
+                                    <span className="hidden sm:inline">{importProgress || "Import"}</span>
                                 </Button>
                                 {portfolioTransactions.length > 0 && (
                                     <Button
