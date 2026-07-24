@@ -282,10 +282,23 @@ export function DataSettings() {
           reject(new Error(event.data?.error || "Dropbox authorization failed"))
         }
       }
+      const POLL_START = Date.now()
+      const POLL_TIMEOUT = 30_000
       const timer = window.setInterval(() => {
-        if (authWindow.closed && !resolved) {
+        if (resolved) return
+        if (Date.now() - POLL_START > POLL_TIMEOUT) {
           cleanup()
-          reject(new Error("Dropbox authorization cancelled"))
+          reject(new Error("Dropbox authorization timed out"))
+          return
+        }
+        const session = getDropboxSession()
+        if (session?.accessToken && !Dropbox.isDropboxAccessTokenExpired(session, 60_000)) {
+          resolved = true
+          cleanup()
+          setHasDropboxToken(true)
+          setDropboxNeedsReconnect(false)
+          setDropboxError(null)
+          resolve(session.accessToken)
         }
       }, 500)
 
@@ -1118,9 +1131,11 @@ export function DataSettings() {
                 </>
               )}
 
-              <Button onClick={() => void handleDropboxDisconnect()} variant="outline" size="sm" className="w-full">
-                Disconnect Dropbox
-              </Button>
+              {hasDropboxToken && (
+                <Button onClick={() => void handleDropboxDisconnect()} variant="outline" size="sm" className="w-full">
+                  Disconnect Dropbox
+                </Button>
+              )}
             </div>
           )}
 
