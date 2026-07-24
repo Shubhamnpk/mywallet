@@ -221,7 +221,7 @@ export const getSipDueDateAtIndex = (
 export const resolveSipProviderQuote = (
   payload: Array<Record<string, any>> | null | undefined,
   symbol: string,
-): { symbol: string; price: number; source: "provider" | "fallback" } | null => {
+): { symbol: string; price: number; source: "provider" } | null => {
   const normalizedSymbol = (symbol || "").trim().toUpperCase()
   if (!normalizedSymbol) return null
 

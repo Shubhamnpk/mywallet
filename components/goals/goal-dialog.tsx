@@ -336,7 +336,7 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 pb-4">
-            {!editingGoal && goalCreationMode !== "custom" && (
+            {!editingGoal && (
               <Card>
                 <CardContent className="py-3 px-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
