@@ -246,7 +246,7 @@ interface StockDetailModalProps {
 }
 
 export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
-    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction, clearShareTransactionSipFields, deleteMultipleShareTransactions } = useWalletData()
+    const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction, clearShareTransactionSipFields, deleteMultipleShareTransactions, marketStatus } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
     const [dividendHistory, setDividendHistory] = useState<ProposedDividendRecord[] | null>(null)
@@ -1494,14 +1494,20 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
                                 {isSoldDetailMode ? "Sold Transaction Details" : isMarketLookupItem ? "Market Lookup" : isCrypto ? "Crypto Details" : "Stock Details"}
                             </Badge>
-                            {item.lastUpdated && (
-                                <div className="flex items-center gap-1.5 grayscale opacity-60">
-                                    <Clock className="w-3 h-3" />
-                                    <span className="text-[8px] font-black uppercase tracking-widest">
-                                        Synced {new Date(item.lastUpdated).toLocaleTimeString()}
-                                    </span>
-                                </div>
-                            )}
+                            {(() => {
+                                const lc = marketStatus?.last_checked
+                                if (!lc) return null
+                                const utcDate = lc.endsWith("Z") || lc.includes("+") ? lc : lc + "Z"
+                                const d = new Date(utcDate)
+                                return (
+                                    <div className="flex items-center gap-1.5 grayscale opacity-60">
+                                        <Clock className="w-3 h-3" />
+                                        <span className="text-[8px] font-black uppercase tracking-widest">
+                                            Snapshot {d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(d.getFullYear() !== new Date().getFullYear() && { year: "numeric" }) })} {d.toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                )
+                            })()}
                         </div>
                         <div className="flex items-center justify-between">
                             <div className="flex-1">

@@ -2440,8 +2440,9 @@ export function PortfolioList() {
                             </span>
                         </div>
                     </CardHeader>
+                    {intradayChartData.length > 0 && (
                     <CardContent className="px-1 pb-1 sm:px-2 sm:pb-2">
-                        {intradayChartData.length > 0 && (() => {
+                        {(() => {
                             const chartColor = nepseIndexData?.isPositive ? "#10b981" : "#ef4444"
                             const lineGradId = "nepseLineGrad"
                             const fillGradId = "nepseFillGrad"
@@ -2482,6 +2483,29 @@ export function PortfolioList() {
                             )
                         })()}
                     </CardContent>
+                    )}
+                    {intradayChartData.length === 0 && marketIndices.length > 0 && (
+                    <CardContent className="px-3 sm:px-4 pb-3">
+                        <div className="space-y-1.5">
+                            {marketIndices.filter((idx: { id?: number }) => idx.id !== 58).map((idx: { id?: number; index?: string; currentValue?: number; change?: number; perChange?: number }) => {
+                                const isUp = (idx.perChange ?? 0) >= 0
+                                return (
+                                    <div key={idx.id} className="flex items-center justify-between">
+                                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider truncate">{idx.index}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black font-mono text-foreground/80">
+                                                {typeof idx.currentValue === "number" ? idx.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                                            </span>
+                                            <span className={cn("text-[9px] font-black", isUp ? "text-success" : "text-error")}>
+                                                {isUp ? "+" : ""}{typeof idx.perChange === "number" ? idx.perChange.toFixed(2) : "0"}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </CardContent>
+                    )}
                 </Card>
                 )}
 

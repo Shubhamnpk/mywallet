@@ -29,6 +29,7 @@ type ImportOptions = {
   emergencyFund: boolean
   portfolioProfile: boolean
   shiftTracker: boolean
+  documentVault: boolean
 }
 
 type ImportMode = "all" | "custom"
@@ -54,6 +55,7 @@ const defaultOptions: ImportOptions = {
   emergencyFund: false,
   portfolioProfile: false,
   shiftTracker: false,
+  documentVault: false,
 }
 
 function getAvailableOptions(data: any): ImportOptions {
@@ -82,6 +84,9 @@ function getAvailableOptions(data: any): ImportOptions {
       Array.isArray(data?.shifts) ||
       Array.isArray(data?.shiftPayments) ||
       typeof data?.shiftRate === "number",
+    documentVault:
+      !!data?.documentVault &&
+      (Array.isArray(data.documentVault.manifest) || Array.isArray(data.documentVault.persons)),
   }
 }
 
@@ -112,6 +117,11 @@ function getImportCount(data: any, key: keyof ImportOptions): string {
       const shifts = Array.isArray(data?.shifts) ? data.shifts.length : 0
       const payments = Array.isArray(data?.shiftPayments) ? data.shiftPayments.length : 0
       return String(shifts + payments)
+    }
+    case "documentVault": {
+      const docs = Array.isArray(data?.documentVault?.manifest) ? data.documentVault.manifest.length : 0
+      const persons = Array.isArray(data?.documentVault?.persons) ? data.documentVault.persons.length : 0
+      return `${docs} docs, ${persons} persons`
     }
     default:
       return "0"
@@ -173,6 +183,9 @@ function buildSelectiveData(source: any, options: ImportOptions) {
     if (Array.isArray(source.shiftPayments)) selectiveData.shiftPayments = source.shiftPayments
     if (typeof source.shiftRate === "number") selectiveData.shiftRate = source.shiftRate
     if (typeof source.shiftTimeFormat === "string") selectiveData.shiftTimeFormat = source.shiftTimeFormat
+  }
+  if (options.documentVault && source.documentVault) {
+    selectiveData.documentVault = source.documentVault
   }
   // Profile/settings metadata is imported with profile selection.
   if (options.userProfile) {
@@ -437,6 +450,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
               emergencyFund: true,
               portfolioProfile: false,
               shiftTracker: true,
+              documentVault: true,
             })
           }}
           className={`flex-1 rounded-lg border p-2 text-sm font-medium transition ${
@@ -473,6 +487,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
               ["emergencyFund", "Emergency"],
               ["portfolioProfile", "Portfolio"],
               ["shiftTracker", "Shift Tracker"],
+              ["documentVault", "Document Vault"],
             ].map(([key, label]) => {
               const typedKey = key as keyof ImportOptions
               const available = availableOptions[typedKey]

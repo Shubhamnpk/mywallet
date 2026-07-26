@@ -56,6 +56,7 @@ type BackupOptions = {
   emergencyFund: boolean
   portfolioProfile: boolean
   shiftTracker: boolean
+  documentVault: boolean
 }
 
 export function BackupModal({
@@ -96,6 +97,7 @@ export function BackupModal({
     emergencyFund: true,
     portfolioProfile: true,
     shiftTracker: true,
+    documentVault: true,
   })
   const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
   const fullBackupOptions: BackupOptions = {
@@ -109,6 +111,7 @@ export function BackupModal({
     emergencyFund: true,
     portfolioProfile: true,
     shiftTracker: true,
+    documentVault: true,
   }
   const effectiveOptions = isCustomizeMode ? backupOptions : fullBackupOptions
   const getCount = (key: keyof BackupOptions) => {
@@ -159,6 +162,7 @@ export function BackupModal({
         emergencyFund: true,
         portfolioProfile: true,
         shiftTracker: true,
+        documentVault: true,
       })
       return
     }
@@ -174,6 +178,7 @@ export function BackupModal({
         emergencyFund: false,
         portfolioProfile: false,
         shiftTracker: false,
+        documentVault: false,
       })
       return
     }
@@ -189,6 +194,7 @@ export function BackupModal({
         emergencyFund: true,
         portfolioProfile: true,
         shiftTracker: true,
+        documentVault: true,
       })
       return
     }
@@ -203,6 +209,7 @@ export function BackupModal({
       emergencyFund: false,
       portfolioProfile: true,
       shiftTracker: false,
+      documentVault: false,
     })
   }
 
@@ -301,6 +308,10 @@ export function BackupModal({
         data.shiftPayments = shiftPayments || []
         data.shiftRate = shiftRate ?? 0
         data.shiftTimeFormat = shiftTimeFormat || "12h"
+      }
+      if (effectiveOptions.documentVault) {
+        const { serializeDocumentVault } = await import("@/lib/document-storage")
+        data.documentVault = await serializeDocumentVault()
       }
 
       // Profile/settings include display + biometric security metadata.
@@ -414,6 +425,7 @@ export function BackupModal({
                   ["emergencyFund", "Emergency", "1"],
                   ["portfolioProfile", "Portfolio", portfolio.length + shareTransactions.length],
                   ["shiftTracker", "Shift Tracker", (shifts?.length || 0) + (shiftPayments?.length || 0)],
+                  ["documentVault", "Document Vault", "docs"],
                 ].map(([key, label, count]) => (
                   <div key={key} className="flex items-center space-x-2">
                     <Checkbox
