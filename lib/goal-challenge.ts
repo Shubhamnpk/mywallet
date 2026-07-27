@@ -51,22 +51,23 @@ const buildPenaltyHistory = (goal: Goal, now = new Date()) => {
     effectiveTargetAmount = snapshot.effectiveTargetAmount
   }
 
-  while (now > currentDeadline && goal.currentAmount < effectiveTargetAmount) {
-    const previousDeadline = new Date(currentDeadline)
-    currentDeadline = addMonths(currentDeadline, plan.graceMonths)
-    effectiveTargetAmount += plan.penaltyAmount
+   while (now > currentDeadline && goal.currentAmount < effectiveTargetAmount) {
+     if (plan.mode === "easy" && goal.currentAmount >= plan.baseTargetAmount) break
+     const previousDeadline = new Date(currentDeadline)
+     currentDeadline = addMonths(currentDeadline, plan.graceMonths)
+     effectiveTargetAmount += plan.penaltyAmount
 
-    penaltyHistory.push({
-      id: `goal-penalty-${goal.id}-${penaltyHistory.length + 1}`,
-      cycleNumber: penaltyHistory.length + 1,
-      penaltyAmount: plan.penaltyAmount,
-      previousDeadline: previousDeadline.toISOString(),
-      newDeadline: currentDeadline.toISOString(),
-      effectiveTargetAmount,
-      appliedAt: now.toISOString(),
-    })
-    changed = true
-  }
+     penaltyHistory.push({
+       id: `goal-penalty-${goal.id}-${penaltyHistory.length + 1}`,
+       cycleNumber: penaltyHistory.length + 1,
+       penaltyAmount: plan.penaltyAmount,
+       previousDeadline: previousDeadline.toISOString(),
+       newDeadline: currentDeadline.toISOString(),
+       effectiveTargetAmount,
+       appliedAt: now.toISOString(),
+     })
+     changed = true
+   }
 
   return {
     plan,

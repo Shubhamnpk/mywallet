@@ -93,6 +93,8 @@ export function DataSettings() {
     "deleted_categories",
     "deleted_shareTransactions",
     "deleted_portfolios",
+    "deleted_documents",
+    "deleted_persons",
   ] as const
   const TOMBSTONE_LABELS: Record<(typeof TOMBSTONE_KEYS)[number], string> = {
     deleted_transactions: "Transactions",
@@ -104,6 +106,8 @@ export function DataSettings() {
     deleted_categories: "Categories",
     deleted_shareTransactions: "Share Transactions",
     deleted_portfolios: "Portfolios",
+    deleted_documents: "Documents",
+    deleted_persons: "Persons",
   }
 
   const getDropboxSession = () => {
@@ -548,6 +552,8 @@ export function DataSettings() {
   const buildBackupData = async (mode: "essential" | "full") => {
     const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
     const tombstones = await loadTombstones()
+    const { serializeDocumentVault } = await import("@/lib/document-storage")
+    const documentVault = await serializeDocumentVault()
     const data: any = {
       exportDate: new Date().toISOString(),
       version: "2.0",
@@ -567,6 +573,7 @@ export function DataSettings() {
         portfolios: true,
         activePortfolioId: true,
         shiftTracker: true,
+        documentVault: true,
       },
       userProfile,
       transactions,
@@ -586,6 +593,7 @@ export function DataSettings() {
       shiftPayments: JSON.parse(localStorage.getItem("mywallet_wt_pay_v1") || "[]"),
       shiftRate: Number(localStorage.getItem("mywallet_wt_rate_v1") || "0") || 12.20,
       shiftTimeFormat: localStorage.getItem("mywallet_wt_timefmt_v1") || "12h",
+      documentVault,
     }
 
     const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
@@ -706,34 +714,35 @@ export function DataSettings() {
     }
   }
 
-  const runDropboxImport = async (decrypted: any, localPinOverride?: string) => {
+  const runDropboxImport = async (decrypted: any) => {
     setIsDropboxPulling(true)
     try {
       const requiresUnlock = SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid()
-      const localPin = localPinOverride ?? rememberedWalletPin ?? undefined
-      if (requiresUnlock && !localPin) {
-        setPendingDecryptedBackup(decrypted)
-        setDropboxLocalPinAction("import")
-        setDropboxLocalPinError(null)
-        setShowDropboxLocalPinPrompt(true)
-        return
-      }
-      if (requiresUnlock && localPin) {
-        const validation = await SecurePinManager.validatePin(localPin)
-        if (!validation.success) {
+
+      if (requiresUnlock) {
+        if (rememberedWalletPin) {
+          const validation = await SecurePinManager.validatePin(rememberedWalletPin)
+          if (validation.success) {
+            SecureKeyManager.cacheSessionPin(rememberedWalletPin)
+          } else {
+            setRememberedWalletPin(null)
+            setPendingDecryptedBackup(decrypted)
+            setDropboxLocalPinAction("import")
+            setDropboxLocalPinError(null)
+            setShowDropboxLocalPinPrompt(true)
+            return
+          }
+        } else {
           setPendingDecryptedBackup(decrypted)
           setDropboxLocalPinAction("import")
-          setDropboxLocalPin("")
-          setDropboxLocalPinError("That PIN decrypted the backup, but it is not this wallet's current PIN. Enter your current wallet PIN to finish importing.")
+          setDropboxLocalPinError(null)
           setShowDropboxLocalPinPrompt(true)
           return
         }
-        SecureKeyManager.cacheSessionPin(localPin)
-        setRememberedWalletPin(localPin)
       }
 
       const merged = await mergeDropboxData(decrypted)
-      await importData(merged, localPin)
+      await importData(merged, rememberedWalletPin || undefined)
       if (merged?.tombstones) {
         await persistTombstones(merged.tombstones)
       }
@@ -811,7 +820,9 @@ export function DataSettings() {
       return
     }
 
-    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid() ? "" : DEFAULT_BACKUP_PIN)
+    const cachedPin = SecureKeyManager.getCachedSessionPin()
+    const pinToUse = overridePin || rememberedWalletPin || cachedPin ||
+      (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
       setDropboxLocalPinError(null)
@@ -878,7 +889,7 @@ export function DataSettings() {
           const decrypted = await restoreEncryptedBackup(content, DEFAULT_BACKUP_PIN)
           setIsDropboxPulling(false)
           setRememberedDropboxBackupPin(DEFAULT_BACKUP_PIN)
-          await runDropboxImport(decrypted, DEFAULT_BACKUP_PIN)
+          await runDropboxImport(decrypted)
           return
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
@@ -902,18 +913,25 @@ export function DataSettings() {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (message.toLowerCase().includes("decryption failed")) {
-          setPendingDropboxContent(content)
-          setDropboxBackupPinAction("pull")
-          setDropboxBackupPinError(null)
-          setIsDropboxPulling(false)
-          setShowDropboxBackupPinPrompt(true)
-          return
+          // Cached PIN failed. Try default backup PIN before prompting.
+          try {
+            decrypted = await restoreEncryptedBackup(content, DEFAULT_BACKUP_PIN)
+            setRememberedDropboxBackupPin(DEFAULT_BACKUP_PIN)
+          } catch {
+            setPendingDropboxContent(content)
+            setDropboxBackupPinAction("pull")
+            setDropboxBackupPinError(null)
+            setIsDropboxPulling(false)
+            setShowDropboxBackupPinPrompt(true)
+            return
+          }
+        } else {
+          throw error
         }
-        throw error
       }
 
       setIsDropboxPulling(false)
-      await runDropboxImport(decrypted, pinToUse)
+      await runDropboxImport(decrypted)
     } catch (error) {
       if (isDropboxAuthorizationError(error)) {
         markDropboxReconnectRequired(getDropboxReconnectMessage(error, "download"))
@@ -1289,7 +1307,7 @@ export function DataSettings() {
                       setDropboxBackupPinError(null)
                       setRememberedDropboxBackupPin(pin)
                       setIsDropboxPulling(false)
-                      await runDropboxImport(decrypted, pin)
+                      await runDropboxImport(decrypted)
                     } catch (error) {
                       setIsDropboxPulling(false)
                       const message = error instanceof Error ? error.message : "Failed to decrypt backup."
@@ -1418,11 +1436,26 @@ export function DataSettings() {
                     })
                     return
                   }
-                  setShowDropboxLocalPinPrompt(false)
-                  setDropboxLocalPin("")
-                  setDropboxLocalPinError(null)
-                  setPendingDecryptedBackup(null)
-                  void runDropboxImport(decrypted, pin)
+                  void (async () => {
+                    const validation = await SecurePinManager.validatePin(pin)
+                    if (!validation.success) {
+                      setDropboxLocalPin("")
+                      setDropboxLocalPinError("That PIN is not correct. Please re-enter your current wallet PIN.")
+                      toast({
+                        title: "Invalid Wallet PIN",
+                        description: "Please enter the correct PIN to continue.",
+                        variant: "destructive",
+                      })
+                      return
+                    }
+                    SecureKeyManager.cacheSessionPin(pin)
+                    setRememberedWalletPin(pin)
+                    setShowDropboxLocalPinPrompt(false)
+                    setDropboxLocalPin("")
+                    setDropboxLocalPinError(null)
+                    setPendingDecryptedBackup(null)
+                    void runDropboxImport(decrypted)
+                  })()
                 }}
                 className="flex-1"
               >

@@ -122,7 +122,7 @@ export function MeroShareSettings() {
         preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
         applyMode: "on-demand",
         showLiveBrowser: false,
-        browserProvider: userProfile?.meroShare?.browserProvider || "auto",
+        browserProvider: userProfile?.meroShare?.browserProvider || "api",
         isAutomatedEnabled: true
     })
     const openIpos = upcomingIPOs.filter(ipo => ipo.status === 'open')
@@ -175,7 +175,7 @@ export function MeroShareSettings() {
             preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
             applyMode: "on-demand",
             showLiveBrowser: false,
-            browserProvider: userProfile?.meroShare?.browserProvider || "auto",
+            browserProvider: userProfile?.meroShare?.browserProvider || "api",
             isAutomatedEnabled: true,
         })
     }, [userProfile?.meroShare])
@@ -360,7 +360,7 @@ export function MeroShareSettings() {
         persistMeroShareSettings(nextForm, accounts)
     }
 
-    const updateBrowserProvider = (value: "auto" | "browserless" | "local") => {
+    const updateBrowserProvider = (value: "api" | "auto" | "browserless" | "local") => {
         const nextForm = {
             ...formData,
             browserProvider: value,
@@ -406,7 +406,7 @@ export function MeroShareSettings() {
             ipoToTest,
             formData.preferredKitta || 0,
             "settings-test",
-            { showBrowser: false, browserProvider: formData.browserProvider }
+            { showBrowser: false, browserProvider: formData.browserProvider as "api" | "auto" | "browserless" | "local" }
         )
 
         toast.promise(promise, {
@@ -996,41 +996,49 @@ export function MeroShareSettings() {
                 </CardContent>
             </Card>
 
-            {isDeveloperMode && (
-                <Card className="border-dashed border-primary/30 bg-primary/5">
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center text-primary">
-                                <Fingerprint className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-base">Developer Browser Runtime</CardTitle>
-                                <CardDescription className="text-xs text-primary/60">Choose how MeroShare Puppeteer sessions launch on this machine</CardDescription>
-                            </div>
+            <Card className={formData.browserProvider === "api" ? "border-primary/40" : "border-dashed border-primary/30 bg-primary/5"}>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${formData.browserProvider === "api" ? "bg-green-500/20 text-green-500" : "bg-primary/20 text-primary"}`}>
+                            {formData.browserProvider === "api" ? <Rocket className="w-5 h-5" /> : <Fingerprint className="w-5 h-5" />}
                         </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="grid gap-2 sm:grid-cols-[1fr_220px] sm:items-center">
-                            <div className="text-xs text-muted-foreground leading-relaxed">
-                                Auto uses Browserless when configured, then falls back to local Chrome in development. Local Chrome is only for your own dev machine.
-                            </div>
-                            <Select
-                                value={formData.browserProvider}
-                                onValueChange={(value) => updateBrowserProvider(value as "auto" | "browserless" | "local")}
-                            >
-                                <SelectTrigger className="h-10 bg-background/70">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="auto">Auto</SelectItem>
-                                    <SelectItem value="browserless">Browserless API</SelectItem>
-                                    <SelectItem value="local">Local Chrome</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div>
+                            <CardTitle className="text-base">Browser Runtime</CardTitle>
+                            <CardDescription className="text-xs text-muted-foreground">
+                                {formData.browserProvider === "api"
+                                    ? "Using self-hosted API — fastest and most reliable. Other options are fallbacks."
+                                    : "Alternative browser runtimes for MeroShare automation"}
+                            </CardDescription>
                         </div>
-                    </CardContent>
-                </Card>
-            )}
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_220px] sm:items-center">
+                        <div className="text-xs text-muted-foreground leading-relaxed">
+                            <span className="font-medium text-green-500">Self-hosted API (default)</span> — uses your own MeroShare API server via Cloudflare Tunnel.{" "}
+                            {formData.browserProvider !== "api" && <span className="text-amber-500">Fallback: Puppeteer via Browserless/Local Chrome.</span>}
+                        </div>
+                        <Select
+                            value={formData.browserProvider}
+                            onValueChange={(value) => updateBrowserProvider(value as "api" | "auto" | "browserless" | "local")}
+                        >
+                            <SelectTrigger className="h-10 bg-background/70">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="api">
+                                    <span className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Self-hosted API
+                                    </span>
+                                </SelectItem>
+                                <SelectItem value="auto">Auto (Browserless → Local)</SelectItem>
+                                <SelectItem value="browserless">Browserless API</SelectItem>
+                                <SelectItem value="local">Local Chrome</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </CardContent>
+            </Card>
 
             {false && isDeveloperMode && (
                 <Card className="border-dashed border-primary/40 bg-primary/5">

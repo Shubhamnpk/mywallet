@@ -32,6 +32,7 @@ import type {
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent } from "@/lib/wallet-utils"
 import { generateId } from "@/lib/utils"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
+import { recordDeletion } from "@/lib/tombstones"
 import { updateBudgetSpendingHelper, updateGoalContributionHelper, updateCategoryStatsHelper } from "@/lib/wallet-ops"
 import { calculateGoalNetSavedAmount } from "@/lib/goal-calculations"
 import { SessionManager } from "@/lib/session-manager"
@@ -113,11 +114,6 @@ const normalizeGoals = (items: Goal[]) =>
     updatedAt: goal.updatedAt || goal.createdAt || new Date().toISOString(),
   }))
 
-type TombstoneRecord = {
-  id: string
-  deletedAt: string
-}
-
 const TOMBSTONE_KEYS = {
   transactions: "deleted_transactions",
   budgets: "deleted_budgets",
@@ -128,9 +124,9 @@ const TOMBSTONE_KEYS = {
   categories: "deleted_categories",
   shareTransactions: "deleted_shareTransactions",
   portfolios: "deleted_portfolios",
+  documents: "deleted_documents",
+  persons: "deleted_persons",
 } as const
-
-const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 const getCustomCategoriesOnly = (items: Category[]) => items.filter((category) => !category?.isDefault)
 
@@ -146,23 +142,6 @@ const mergeDefaultAndCustomCategories = (customCategories: Category[]) => {
   )
 
   return [...filteredDefaults, ...normalizedCustomCategories]
-}
-
-const recordDeletion = async (tombstoneKey: string, ids: string[]) => {
-  if (ids.length === 0) return
-  try {
-    const stored = await loadFromLocalStorage([tombstoneKey])
-    const existing = Array.isArray(stored[tombstoneKey]) ? stored[tombstoneKey] as TombstoneRecord[] : []
-    const now = new Date().toISOString()
-    const cutoff = Date.now() - TOMBSTONE_RETENTION_MS
-    const retained = existing.filter((entry) => Date.parse(entry.deletedAt || "") >= cutoff)
-    const next = [...retained.filter((entry) => !ids.includes(entry.id))]
-    ids.forEach((id) => {
-      next.push({ id, deletedAt: now })
-    })
-    await saveToLocalStorage(tombstoneKey, next, true)
-  } catch {
-  }
 }
 
 const findDebtHistoryEntryIndex = (
@@ -2894,6 +2873,22 @@ export function useWalletStore() {
         await saveToLocalStorage("scripNamesMap", data.scripNamesMap)
       }
 
+      if (data.documentVault) {
+        const { restoreDocumentVault, filterTombstonedDocuments, filterTombstonedPersons, cleanupOrphanedBlobs } = await import("@/lib/document-storage")
+        const tombstones = data.tombstones || {}
+        let vault = data.documentVault
+        if (tombstones.deleted_documents?.length) {
+          vault = { ...vault, manifest: filterTombstonedDocuments(vault.manifest || [], tombstones.deleted_documents) }
+        }
+        if (tombstones.deleted_persons?.length) {
+          vault = { ...vault, persons: filterTombstonedPersons(vault.persons || [], tombstones.deleted_persons) }
+        }
+        await restoreDocumentVault(vault)
+        if (tombstones.deleted_documents?.length) {
+          await cleanupOrphanedBlobs(vault.manifest || [])
+        }
+      }
+
       return true
     } catch (_error) {
       return false
@@ -4503,7 +4498,7 @@ export function useWalletStore() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         credentials,
-        options: { browserProvider: credentials?.browserProvider },
+        options: { browserProvider: credentials?.browserProvider || "api" },
       }),
     })
 
@@ -4528,7 +4523,7 @@ export function useWalletStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           credentials,
-          options: { browserProvider: credentials?.browserProvider },
+          options: { browserProvider: credentials?.browserProvider || "api" },
         })
       })
 
@@ -4620,7 +4615,7 @@ export function useWalletStore() {
     ipoName: string,
     kitta = 10,
     source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
-    options?: { showBrowser?: boolean; browserProvider?: "auto" | "browserless" | "local" }
+    options?: { showBrowser?: boolean; browserProvider?: "api" | "auto" | "browserless" | "local" }
   ) => {
     try {
       const response = await fetch('/api/meroshare/apply', {
@@ -4628,8 +4623,11 @@ export function useWalletStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           credentials,
-          ipoName,
-          kitta,
+          ipoDetails: {
+            company_share_id: ipoName,
+            units: kitta,
+            bank: credentials.bank || "",
+          },
           options: {
             ...options,
             browserProvider: options?.browserProvider || credentials?.browserProvider,
@@ -4680,7 +4678,7 @@ export function useWalletStore() {
         body: JSON.stringify({
           credentials,
           ipoName,
-          options: { browserProvider: credentials?.browserProvider },
+          options: { browserProvider: credentials?.browserProvider || "api" },
         })
       })
 
@@ -4794,6 +4792,7 @@ export function useWalletStore() {
     disclosures,
     exchangeMessages,
     scripNamesMap,
+    sectorsMap,
     isIPOsLoading,
     getFaceValue: (symbol: string) => {
       const sector = sectorsMap[normalizeStockSymbol(symbol)]

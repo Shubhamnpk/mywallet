@@ -642,11 +642,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   <div className="text-sm text-warning/70">Days per Month</div>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">Time wallet is disabled. Enable it to view your work information.</p>
-              </div>
-            )
+            ) : null
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">

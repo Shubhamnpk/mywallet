@@ -4,6 +4,8 @@ import { pdfjs } from "react-pdf"
 import { SecureWallet } from "./security"
 import { SecureKeyManager } from "./key-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "./storage"
+import { compressBlob, decompressBlob } from "./compression"
+import { recordDeletion, type TombstoneRecord } from "./tombstones"
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
 
@@ -89,7 +91,7 @@ export async function downloadDocument(doc: StoredDocument, pageIndices?: number
     setTimeout(() => {
       const a = document.createElement("a")
       a.href = url
-      const ext = p.mimeType.includes("pdf") ? "pdf" : "jpg"
+      const ext = p.mimeType.includes("pdf") ? "pdf" : p.mimeType.includes("png") ? "png" : p.mimeType === "text/plain" ? "txt" : "jpg"
       a.download = `${doc.name}${all.length > 1 ? ` - ${p.label}` : ""}.${ext}`
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
@@ -120,9 +122,7 @@ function openDB(): Promise<IDBDatabase> {
 
 async function getEncryptionKey(): Promise<CryptoKey | null> {
   try {
-    const key = await SecureKeyManager.getMasterKey("")
-    if (key) return key
-    return await SecureKeyManager.getDefaultEncryptionKey()
+    return await SecureKeyManager.getMasterKey("")
   } catch {
     return null
   }
@@ -170,6 +170,8 @@ export async function deletePerson(personId: string): Promise<{ deletedDocCount:
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
+  void recordDeletion("deleted_persons", [personId])
+  void recordDeletion("deleted_documents", removed.map((d) => d.id))
   return { deletedDocCount: removed.length }
 }
 
@@ -209,7 +211,10 @@ async function readStore(storeName: string, key: string, mimeType: string): Prom
 
   const decrypted = await SecureWallet.decryptData(encrypted, encKey)
   const isThumb = storeName === THUMB_STORE
-  return base64ToBlob(decrypted, isThumb ? "image/jpeg" : mimeType)
+  if (isThumb) return base64ToBlob(decrypted, "image/jpeg")
+
+  const rawBlob = base64ToBlob(decrypted, mimeType)
+  return decompressBlob(rawBlob, mimeType)
 }
 
 export async function saveDocument(doc: StoredDocument, pages: SavePage[]): Promise<void> {
@@ -222,7 +227,8 @@ export async function saveDocument(doc: StoredDocument, pages: SavePage[]): Prom
     const pageId = `p${i}`
     const db = await openDB()
 
-    const base64 = await blobToBase64(p.blob)
+    const { blob: compressedBlob, originalType } = await compressBlob(p.blob)
+    const base64 = await blobToBase64(compressedBlob)
     const encrypted = await SecureWallet.encryptData(base64, key)
     const blobTx = db.transaction(BLOB_STORE, "readwrite")
     blobTx.objectStore(BLOB_STORE).put(encrypted, `${doc.id}::${pageId}`)
@@ -241,8 +247,8 @@ export async function saveDocument(doc: StoredDocument, pages: SavePage[]): Prom
     pagesMeta.push({
       id: pageId,
       label: p.label,
-      mimeType: p.blob.type,
-      size: p.blob.size,
+      mimeType: originalType,
+      size: compressedBlob.size,
       hasThumbnail,
     })
   }
@@ -295,7 +301,8 @@ export async function updateDocumentBlob(
   const key = await getEncryptionKey()
   if (!key) throw new Error("No encryption key available")
 
-  const base64 = await blobToBase64(newBlob)
+  const { blob: compressedBlob, originalType } = await compressBlob(newBlob)
+  const base64 = await blobToBase64(compressedBlob)
   const encrypted = await SecureWallet.encryptData(base64, key)
 
   const db = await openDB()
@@ -323,7 +330,12 @@ export async function updateDocumentBlob(
         : [{ id: doc.id, label: "Document", mimeType: doc.mimeType, size: doc.size, hasThumbnail: !!doc.metadata?.hasThumbnail }]
     const pages = existingPages.map((p) =>
       p.id === pageId
-        ? { ...p, mimeType: newBlob.type, size: newBlob.size, hasThumbnail }
+        ? {
+            ...p,
+            mimeType: originalType,
+            size: compressedBlob.size,
+            hasThumbnail,
+          }
         : p,
     )
     const firstHasThumb = pages[0].hasThumbnail
@@ -347,7 +359,8 @@ export async function addDocumentPage(
   const key = await getEncryptionKey()
   if (!key) throw new Error("No encryption key available")
 
-  const base64 = await blobToBase64(blob)
+  const { blob: compressedBlob, originalType } = await compressBlob(blob)
+  const base64 = await blobToBase64(compressedBlob)
   const encrypted = await SecureWallet.encryptData(base64, key)
   const db = await openDB()
   const blobTx = db.transaction(BLOB_STORE, "readwrite")
@@ -396,7 +409,12 @@ export async function addDocumentPage(
     }
   }
 
-  const pages = [...existingPages, page]
+  const updatedPage: DocumentPage = {
+    ...page,
+    mimeType: originalType,
+    size: compressedBlob.size,
+  }
+  const pages = [...existingPages, updatedPage]
   manifest[idx] = {
     ...doc,
     size: pages.reduce((s, p) => s + p.size, 0),
@@ -423,6 +441,7 @@ export async function deleteDocument(docId: string): Promise<void> {
     if (doc?.metadata?.hasThumbnail) tx.objectStore(THUMB_STORE).delete(docId)
   }
   await txDone(tx)
+  void recordDeletion("deleted_documents", [docId])
 }
 
 export async function searchDocuments(
@@ -546,4 +565,145 @@ export async function downloadAllDocumentsAsZip(): Promise<Blob> {
 export async function getDocumentCount(): Promise<number> {
   const docs = await getDocuments()
   return docs.length
+}
+
+export interface SerializedDocumentVault {
+  persons: Person[]
+  manifest: StoredDocument[]
+  blobs: Record<string, string>
+  thumbnails: Record<string, string>
+}
+
+export async function serializeDocumentVault(): Promise<SerializedDocumentVault> {
+  const persons = await getPersons()
+  const manifest = await getManifest()
+  const blobs: Record<string, string> = {}
+  const thumbnails: Record<string, string> = {}
+
+  const encKey = await getEncryptionKey()
+  if (!encKey) return { persons, manifest, blobs, thumbnails }
+
+  const db = await openDB()
+
+  for (const doc of manifest) {
+    const pages = doc.pages?.length
+      ? doc.pages
+      : [{ id: doc.id, label: "Document", mimeType: doc.mimeType, size: doc.size, hasThumbnail: false }]
+    for (const p of pages) {
+      const blobKey = `${doc.id}::${p.id}`
+      const blobTx = db.transaction(BLOB_STORE, "readonly")
+      const blobReq = blobTx.objectStore(BLOB_STORE).get(blobKey)
+      const encrypted = await new Promise<string | undefined>((resolve, reject) => {
+        blobReq.onsuccess = () => resolve(blobReq.result as string | undefined)
+        blobReq.onerror = () => reject(blobReq.error)
+      })
+      if (encrypted) {
+        try {
+          const decrypted = await SecureWallet.decryptData(encrypted, encKey)
+          blobs[blobKey] = decrypted
+        } catch {
+          blobs[blobKey] = encrypted
+        }
+      }
+
+      if (p.hasThumbnail) {
+        const thumbTx = db.transaction(THUMB_STORE, "readonly")
+        const thumbReq = thumbTx.objectStore(THUMB_STORE).get(blobKey)
+        const encryptedThumb = await new Promise<string | undefined>((resolve, reject) => {
+          thumbReq.onsuccess = () => resolve(thumbReq.result as string | undefined)
+          thumbReq.onerror = () => reject(thumbReq.error)
+        })
+        if (encryptedThumb) {
+          try {
+            const decryptedThumb = await SecureWallet.decryptData(encryptedThumb, encKey)
+            thumbnails[blobKey] = decryptedThumb
+          } catch {
+            thumbnails[blobKey] = encryptedThumb
+          }
+        }
+      }
+    }
+  }
+
+  return { persons, manifest, blobs, thumbnails }
+}
+
+export async function restoreDocumentVault(data: SerializedDocumentVault): Promise<void> {
+  if (data.persons) await putStored(PERSONS_KEY, data.persons)
+  if (data.manifest) await putStored(MANIFEST_KEY, data.manifest)
+
+  const encKey = await getEncryptionKey()
+  if (!encKey) return
+
+  if (data.blobs) {
+    const db = await openDB()
+    const blobTx = db.transaction(BLOB_STORE, "readwrite")
+    for (const [key, plaintext] of Object.entries(data.blobs)) {
+      const encrypted = await SecureWallet.encryptData(plaintext, encKey)
+      blobTx.objectStore(BLOB_STORE).put(encrypted, key)
+    }
+    await txDone(blobTx)
+  }
+
+  if (data.thumbnails) {
+    const db = await openDB()
+    const thumbTx = db.transaction(THUMB_STORE, "readwrite")
+    for (const [key, plaintext] of Object.entries(data.thumbnails)) {
+      const encrypted = await SecureWallet.encryptData(plaintext, encKey)
+      thumbTx.objectStore(THUMB_STORE).put(encrypted, key)
+    }
+    await txDone(thumbTx)
+  }
+}
+
+export function filterTombstonedDocuments(
+  manifest: StoredDocument[],
+  tombstones: TombstoneRecord[],
+): StoredDocument[] {
+  if (!tombstones.length) return manifest
+  const deleted = new Set(tombstones.map((t) => t.id))
+  return manifest.filter((d) => !deleted.has(d.id))
+}
+
+export function filterTombstonedPersons(
+  persons: Person[],
+  tombstones: TombstoneRecord[],
+): Person[] {
+  if (!tombstones.length) return persons
+  const deleted = new Set(tombstones.map((t) => t.id))
+  return persons.filter((p) => !deleted.has(p.id))
+}
+
+export async function cleanupOrphanedBlobs(manifest: StoredDocument[]) {
+  const validKeys = new Set<string>()
+  for (const doc of manifest) {
+    if (doc.pages?.length) {
+      for (const p of doc.pages) {
+        validKeys.add(`${doc.id}::${p.id}`)
+      }
+    } else {
+      validKeys.add(doc.id)
+    }
+  }
+  const db = await openDB()
+  const tx = db.transaction([BLOB_STORE, THUMB_STORE], "readwrite")
+  const blobStore = tx.objectStore(BLOB_STORE)
+  const thumbStore = tx.objectStore(THUMB_STORE)
+  const allBlobs = await new Promise<string[]>((resolve, reject) => {
+    const req = blobStore.getAllKeys()
+    req.onsuccess = () => resolve(req.result as string[])
+    req.onerror = () => reject(req.error)
+  })
+  for (const key of allBlobs) {
+    if (!validKeys.has(key)) blobStore.delete(key)
+  }
+  const allThumbs = await new Promise<string[]>((resolve, reject) => {
+    const req = thumbStore.getAllKeys()
+    req.onsuccess = () => resolve(req.result as string[])
+    req.onerror = () => reject(req.error)
+  })
+  for (const key of allThumbs) {
+    if (!validKeys.has(key)) thumbStore.delete(key)
+  }
+  await txDone(tx)
 }

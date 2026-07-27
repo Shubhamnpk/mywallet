@@ -41,6 +41,7 @@ import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
 import { PortfolioValuationMeta, PortfolioValuationPoint, ValuationTimelineModal, ValuationTimelineRange } from "./modals/valuation-timeline-modal"
+import { MarketSectorModal } from "./modals/market-sector-modal"
 
 const isSameCalendarDay = (left: Date, right: Date) =>
     left.getFullYear() === right.getFullYear() &&
@@ -157,7 +158,7 @@ export function PortfolioList() {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
     const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
-    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap} = nepseData
+    const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap,sectorsMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
         userProfile?.meroShare?.dpId &&
@@ -197,6 +198,8 @@ export function PortfolioList() {
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
     const [selectedStockDetailMode, setSelectedStockDetailMode] = useState<"holding" | "sold">("holding")
+    const [isMarketSectorOpen, setIsMarketSectorOpen] = useState(false)
+    const [marketSectorInitial, setMarketSectorInitial] = useState<string>("")
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
     const [selectedIPO, setSelectedIPO] = useState<UpcomingIPO | null>(null)
     const [confirmModal, setConfirmModal] = useState<{
@@ -576,6 +579,39 @@ export function PortfolioList() {
             return
         }
         setSelectedStock(item)
+        setIsStockDetailOpen(true)
+    }
+
+    const handleOpenMarketSector = (sector?: string) => {
+        setMarketSectorInitial(sector || "")
+        setIsMarketSectorOpen(true)
+    }
+
+    const handleOpenStockDetailFromSymbol = (symbol: string) => {
+        const normalized = normalizeStockSymbol(symbol)
+        const matchingHolding = portfolio.find(
+            (item) => normalizeStockSymbol(item.symbol) === normalized && (item.assetType || "stock") === "stock" && !item.cryptoId,
+        )
+        if (matchingHolding) {
+            handleViewStockDetail(matchingHolding)
+            return
+        }
+        const sector = sectorsMap?.[normalized] || "Others"
+        const name = scripNamesMap?.[normalized] || normalized
+        setSelectedStockDetailMode("holding")
+        setSelectedStock({
+            id: `market-search-${normalized}`,
+            portfolioId: "market-search",
+            symbol: normalized,
+            assetType: "stock",
+            assetName: name,
+            units: 0,
+            buyPrice: 0,
+            currentPrice: 0,
+            sector,
+            detailContext: "market-search",
+            lastUpdated: new Date().toISOString(),
+        } as PortfolioItem)
         setIsStockDetailOpen(true)
     }
 
@@ -2417,7 +2453,18 @@ export function PortfolioList() {
             <>
             <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-5">
                 {nepseIndexData && (
-                <Card className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden">
+                <Card
+                    className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 focus-within:ring-2 focus-within:ring-primary/30"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenMarketSector("")}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            handleOpenMarketSector("")
+                        }
+                    }}
+                >
                     <CardHeader className="pb-0 px-2 pt-2 sm:px-3 sm:pt-3">
                         <div className="flex items-center justify-between gap-1">
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-1">
@@ -3143,6 +3190,14 @@ export function PortfolioList() {
                     open={isStockDetailOpen}
                     onOpenChange={setIsStockDetailOpen}
                     mode={selectedStockDetailMode}
+                />
+                <MarketSectorModal
+                    open={isMarketSectorOpen}
+                    onOpenChange={setIsMarketSectorOpen}
+                    initialSector={marketSectorInitial}
+                    topStocks={topStocks}
+                    sectorsMap={sectorsMap}
+                    onOpenStockDetail={handleOpenStockDetailFromSymbol}
                 />
                 <SellConfirmationModal
                     symbol={sellConfirmModal.symbol}
@@ -4129,6 +4184,16 @@ export function PortfolioList() {
                 open={isStockDetailOpen}
                 onOpenChange={setIsStockDetailOpen}
                 mode={selectedStockDetailMode}
+            />
+
+            {/* Market & Sector Modal */}
+            <MarketSectorModal
+                open={isMarketSectorOpen}
+                onOpenChange={setIsMarketSectorOpen}
+                initialSector={marketSectorInitial}
+                topStocks={topStocks}
+                sectorsMap={sectorsMap}
+                onOpenStockDetail={handleOpenStockDetailFromSymbol}
             />
 
             {/* Sell Confirmation Modal */}

@@ -1,94 +1,55 @@
-import { NextResponse } from "next/server";
-import { getMeroShareBrowser } from "../_lib/browser";
-import { loginToMeroShare } from "../_lib/transaction-history";
+import { NextResponse } from "next/server"
+import { proxyToMeroShareApi } from "../_lib/proxy-api"
 
 export async function POST(req: Request) {
-    let browser: any = null;
-    try {
-        const { credentials, options } = await req.json();
+  try {
+    const body = await req.json()
+    const credentials = body.credentials
+    const options = body.options
 
-        if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
-            return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
-        }
-
-        try {
-            browser = await getMeroShareBrowser({
-                showBrowser: Boolean(options?.showBrowser),
-                browserProvider: options?.browserProvider || credentials?.browserProvider
-            });
-            const page = await browser.newPage();
-
-            await loginToMeroShare(page, {
-                dpId: credentials.dpId,
-                username: credentials.username,
-                password: credentials.password,
-            });
-
-            // 2. Navigate to My Portfolio
-            await page.goto('https://meroshare.cdsc.com.np/#/portfolio', { waitUntil: 'networkidle2' });
-
-            // 3. Wait for Portfolio Table
-            try {
-                await page.waitForSelector('table', { timeout: 20000 });
-            } catch (_err) {
-                await browser.close();
-                return NextResponse.json({ error: "Portfolio table not found or timed out." }, { status: 504 });
-            }
-
-            // Check if there's a portfolio (or it's empty)
-            const isTableEmpty = await page.evaluate(() => {
-                const table = document.querySelector('table tbody');
-                return !table || table.textContent?.includes('No Record(s) Found');
-            });
-
-            if (isTableEmpty) {
-                await browser.close();
-                return NextResponse.json({ portfolio: [], message: "No holdings found in your Mero Share portfolio." });
-            }
-
-            // 4. Scrape Portfolio Data
-            const portfolio = await page.evaluate(() => {
-                const rows = Array.from(document.querySelectorAll('table tbody tr'));
-                return rows.map(row => {
-                    const cols = Array.from(row.querySelectorAll('td'));
-                    if (cols.length < 5) return null;
-
-                    // Mero Share Portfolio Table Structure (usually):
-                    // 1. S.N.
-                    // 2. Scrip
-                    // 3. Current Balance
-                    // 4. Previous Close
-                    // 5. Value
-
-                    const symbolText = cols[1]?.textContent?.trim() || "";
-                    // Sometimes it's like "SYMBOL (COMPANY NAME)"
-                    const symbol = symbolText.split(' ')[0].toUpperCase();
-
-                    const unitsStr = cols[2]?.textContent?.trim()?.replace(/,/g, '') || "0";
-                    const units = parseFloat(unitsStr);
-
-                    const ltpStr = cols[3]?.textContent?.trim()?.replace(/,/g, '') || "0";
-                    const currentPrice = parseFloat(ltpStr);
-
-                    return {
-                        symbol,
-                        units,
-                        currentPrice,
-                        buyPrice: 0, // Mero Share portfolio doesn't show average cost (Purchase Source does)
-                    };
-                }).filter(item => item !== null && item.symbol !== "TOTAL");
-            });
-
-            await browser.close();
-            return NextResponse.json({ success: true, portfolio });
-
-        } catch (innerError: any) {
-            console.error("Puppeteer Portfolio Error:", innerError);
-            if (browser) await browser.close();
-            return NextResponse.json({ error: innerError.message || "An error occurred during portfolio sync." }, { status: 500 });
-        }
-
-    } catch (_error: any) {
-        return NextResponse.json({ error: "Invalid request data" }, { status: 400 });
+    if (!credentials?.dpId || !credentials?.username || !credentials?.password) {
+      return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
     }
+
+    const provider = options?.browserProvider || credentials?.browserProvider || "api"
+
+    if (provider === "api") {
+      const payload: any = { credentials: { dpId: credentials.dpId, username: credentials.username, password: credentials.password } }
+      const data = await proxyToMeroShareApi("/portfolio", payload)
+      return NextResponse.json({ success: data.success, portfolio: data.portfolio, message: data.message, user_name: data.user_name, total_positions: data.total_positions, total_units: data.total_units })
+    }
+
+    const { getMeroShareBrowser } = await import("../_lib/browser")
+    const { loginToMeroShare } = await import("../_lib/transaction-history")
+
+    let browser: any = null
+    try {
+      browser = await getMeroShareBrowser({ showBrowser: false, browserProvider: provider })
+      const page = await browser.newPage()
+      await loginToMeroShare(page, credentials)
+      await page.goto("https://meroshare.cdsc.com.np/#/portfolio", { waitUntil: "networkidle2" })
+      await page.waitForSelector("table", { timeout: 20000 }).catch(() => {})
+
+      const portfolio = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll("table tbody tr"))
+        return rows.map(row => {
+          const cols = row.querySelectorAll("td")
+          if (cols.length < 5) return null
+          const symbolText = (cols[1]?.textContent || "").trim()
+          const symbol = symbolText.split(" ")[0].toUpperCase()
+          const unitsStr = (cols[2]?.textContent || "").trim().replace(/,/g, "") || "0"
+          const ltpStr = (cols[3]?.textContent || "").trim().replace(/,/g, "") || "0"
+          return { symbol, units: parseFloat(unitsStr), current_price: parseFloat(ltpStr), buy_price: 0 }
+        }).filter(item => item && item.symbol !== "TOTAL")
+      })
+
+      await browser.close()
+      browser = null
+      return NextResponse.json({ success: true, portfolio, message: portfolio.length ? `Fetched ${portfolio.length} holdings.` : "No holdings found." })
+    } finally {
+      if (browser) await browser.close()
+    }
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error?.message || "Portfolio sync failed" }, { status: 500 })
+  }
 }
