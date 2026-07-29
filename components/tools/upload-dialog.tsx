@@ -234,23 +234,21 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
             )}
           </div>
 
-          {persons.length === 0 && (
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Person *</label>
-              <SearchableCombobox
-                value={personQuery}
-                onChange={(v) => {
-                  setPersonQuery(v)
-                  const match = persons.find((p) => p.name.toLowerCase() === v.trim().toLowerCase())
-                  setPersonId(match ? match.id : "")
-                }}
-                options={persons.map((p) => p.name)}
-                placeholder="Search or type a new name"
-                allowCreate
-                createText={(v) => `Create "${v}"`}
-              />
-            </div>
-          )}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Person *</label>
+            <SearchableCombobox
+              value={personQuery}
+              onChange={(v) => {
+                setPersonQuery(v)
+                const match = persons.find((p) => p.name.toLowerCase() === v.trim().toLowerCase())
+                setPersonId(match ? match.id : "")
+              }}
+              options={persons.map((p) => p.name)}
+              placeholder="Search or type a new name"
+              allowCreate
+              createText={(v) => `Create "${v}"`}
+            />
+          </div>
 
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">

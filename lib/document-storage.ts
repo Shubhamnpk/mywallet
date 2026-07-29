@@ -81,6 +81,9 @@ export async function downloadDocument(doc: StoredDocument, pageIndices?: number
     ? doc.pages
     : [{ id: doc.id, label: "Document", mimeType: doc.mimeType, size: doc.size, hasThumbnail: false }]
   const indices = pageIndices && pageIndices.length ? pageIndices : all.map((_, i) => i)
+  const persons = await getPersons()
+  const person = persons.find((p) => p.id === doc.personId)
+  const personSlug = person ? person.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") : "unknown"
   for (let k = 0; k < indices.length; k++) {
     const i = indices[k]
     const p = all[i]
@@ -92,7 +95,9 @@ export async function downloadDocument(doc: StoredDocument, pageIndices?: number
       const a = document.createElement("a")
       a.href = url
       const ext = p.mimeType.includes("pdf") ? "pdf" : p.mimeType.includes("png") ? "png" : p.mimeType === "text/plain" ? "txt" : "jpg"
-      a.download = `${doc.name}${all.length > 1 ? ` - ${p.label}` : ""}.${ext}`
+      const docSlug = doc.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+      const labelSlug = all.length > 1 ? `-${p.label.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}` : ""
+      a.download = `${docSlug}-${personSlug}${labelSlug}.${ext}`
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     }, k * 400)
@@ -120,9 +125,18 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-async function getEncryptionKey(): Promise<CryptoKey | null> {
+async function getEncryptionKey(): Promise<{ key: CryptoKey; fallback?: CryptoKey } | null> {
   try {
-    return await SecureKeyManager.getMasterKey("")
+    const sessionPin = SecureKeyManager.getCachedSessionPin()
+    if (sessionPin) {
+      const masterKey = await SecureKeyManager.getMasterKey(sessionPin)
+      if (masterKey) {
+        return { key: masterKey, fallback: (await SecureKeyManager.getDefaultEncryptionKey()) ?? undefined }
+      }
+    }
+    const defaultKey = await SecureKeyManager.getDefaultEncryptionKey()
+    if (defaultKey) return { key: defaultKey }
+    return null
   } catch {
     return null
   }
@@ -197,8 +211,8 @@ function txDone(tx: IDBTransaction): Promise<void> {
 }
 
 async function readStore(storeName: string, key: string, mimeType: string): Promise<Blob | null> {
-  const encKey = await getEncryptionKey()
-  if (!encKey) return null
+  const enc = await getEncryptionKey()
+  if (!enc) return null
 
   const db = await openDB()
   const tx = db.transaction(storeName, "readonly")
@@ -209,17 +223,25 @@ async function readStore(storeName: string, key: string, mimeType: string): Prom
   })
   if (!encrypted) return null
 
-  const decrypted = await SecureWallet.decryptData(encrypted, encKey)
-  const isThumb = storeName === THUMB_STORE
-  if (isThumb) return base64ToBlob(decrypted, "image/jpeg")
+  let plaintext: string
+  try {
+    plaintext = await SecureWallet.decryptData(encrypted, enc.key)
+  } catch {
+    if (!enc.fallback) return null
+    plaintext = await SecureWallet.decryptData(encrypted, enc.fallback)
+  }
 
-  const rawBlob = base64ToBlob(decrypted, mimeType)
+  const isThumb = storeName === THUMB_STORE
+  if (isThumb) return base64ToBlob(plaintext, "image/jpeg")
+
+  const rawBlob = base64ToBlob(plaintext, mimeType)
   return decompressBlob(rawBlob, mimeType)
 }
 
 export async function saveDocument(doc: StoredDocument, pages: SavePage[]): Promise<void> {
-  const key = await getEncryptionKey()
-  if (!key) throw new Error("No encryption key available")
+  const enc = await getEncryptionKey()
+  if (!enc) throw new Error("No encryption key available")
+  const key = enc.key
 
   const pagesMeta: DocumentPage[] = []
   for (let i = 0; i < pages.length; i++) {
@@ -298,8 +320,9 @@ export async function updateDocumentBlob(
   newBlob: Blob,
   newThumbnail?: Blob,
 ): Promise<void> {
-  const key = await getEncryptionKey()
-  if (!key) throw new Error("No encryption key available")
+  const enc = await getEncryptionKey()
+  if (!enc) throw new Error("No encryption key available")
+  const key = enc.key
 
   const { blob: compressedBlob, originalType } = await compressBlob(newBlob)
   const base64 = await blobToBase64(compressedBlob)
@@ -356,8 +379,9 @@ export async function addDocumentPage(
   blob: Blob,
   thumbnail?: Blob,
 ): Promise<void> {
-  const key = await getEncryptionKey()
-  if (!key) throw new Error("No encryption key available")
+  const enc = await getEncryptionKey()
+  if (!enc) throw new Error("No encryption key available")
+  const key = enc.key
 
   const { blob: compressedBlob, originalType } = await compressBlob(blob)
   const base64 = await blobToBase64(compressedBlob)
@@ -574,14 +598,23 @@ export interface SerializedDocumentVault {
   thumbnails: Record<string, string>
 }
 
+async function decryptWithFallback(encrypted: string, enc: { key: CryptoKey; fallback?: CryptoKey }): Promise<string> {
+  try {
+    return await SecureWallet.decryptData(encrypted, enc.key)
+  } catch {
+    if (!enc.fallback) throw new Error("decryption failed")
+    return await SecureWallet.decryptData(encrypted, enc.fallback)
+  }
+}
+
 export async function serializeDocumentVault(): Promise<SerializedDocumentVault> {
   const persons = await getPersons()
   const manifest = await getManifest()
   const blobs: Record<string, string> = {}
   const thumbnails: Record<string, string> = {}
 
-  const encKey = await getEncryptionKey()
-  if (!encKey) return { persons, manifest, blobs, thumbnails }
+  const enc = await getEncryptionKey()
+  if (!enc) return { persons, manifest, blobs, thumbnails }
 
   const db = await openDB()
 
@@ -599,7 +632,7 @@ export async function serializeDocumentVault(): Promise<SerializedDocumentVault>
       })
       if (encrypted) {
         try {
-          const decrypted = await SecureWallet.decryptData(encrypted, encKey)
+          const decrypted = await decryptWithFallback(encrypted, enc)
           blobs[blobKey] = decrypted
         } catch {
           blobs[blobKey] = encrypted
@@ -615,7 +648,7 @@ export async function serializeDocumentVault(): Promise<SerializedDocumentVault>
         })
         if (encryptedThumb) {
           try {
-            const decryptedThumb = await SecureWallet.decryptData(encryptedThumb, encKey)
+            const decryptedThumb = await decryptWithFallback(encryptedThumb, enc)
             thumbnails[blobKey] = decryptedThumb
           } catch {
             thumbnails[blobKey] = encryptedThumb
@@ -632,14 +665,14 @@ export async function restoreDocumentVault(data: SerializedDocumentVault): Promi
   if (data.persons) await putStored(PERSONS_KEY, data.persons)
   if (data.manifest) await putStored(MANIFEST_KEY, data.manifest)
 
-  const encKey = await getEncryptionKey()
-  if (!encKey) return
+  const enc = await getEncryptionKey()
+  if (!enc) return
 
   if (data.blobs) {
     const db = await openDB()
     const blobTx = db.transaction(BLOB_STORE, "readwrite")
     for (const [key, plaintext] of Object.entries(data.blobs)) {
-      const encrypted = await SecureWallet.encryptData(plaintext, encKey)
+      const encrypted = await SecureWallet.encryptData(plaintext, enc.key)
       blobTx.objectStore(BLOB_STORE).put(encrypted, key)
     }
     await txDone(blobTx)
@@ -649,7 +682,7 @@ export async function restoreDocumentVault(data: SerializedDocumentVault): Promi
     const db = await openDB()
     const thumbTx = db.transaction(THUMB_STORE, "readwrite")
     for (const [key, plaintext] of Object.entries(data.thumbnails)) {
-      const encrypted = await SecureWallet.encryptData(plaintext, encKey)
+      const encrypted = await SecureWallet.encryptData(plaintext, enc.key)
       thumbTx.objectStore(THUMB_STORE).put(encrypted, key)
     }
     await txDone(thumbTx)

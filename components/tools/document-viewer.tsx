@@ -1,12 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { SecurePinManager } from "@/lib/secure-pin-manager"
+import { SecureKeyManager } from "@/lib/key-manager"
 import {
   ZoomIn, ZoomOut, Tag, Calendar, HardDrive,
   Download, ExternalLink, Crop, X, Loader2,
-  File, ChevronLeft, ChevronRight, Image as ImageIcon, Upload, Maximize,
+  File, ChevronLeft, ChevronRight, Image as ImageIcon, Upload, Maximize, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -362,6 +365,12 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   const [isLoading, setIsLoading] = useState(false)
   const [textContent, setTextContent] = useState<string | null>(null)
   const [editMode, setEditMode] = useState(false)
+  const [showPinDialog, setShowPinDialog] = useState(false)
+  const [pinInput, setPinInput] = useState("")
+  const [pinError, setPinError] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
+  const retryLoadRef = useRef(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   // ─── Image viewer state ────────────────────────────────────────────────────
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
@@ -388,7 +397,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     ro.observe(el)
     setImgContainerSize({ w: el.clientWidth, h: el.clientHeight })
     return () => ro.disconnect()
-  }, [blobUrl])
+  }, [blobUrl, editMode])
 
   useEffect(() => {
     const el = flipContainerRef.current
@@ -397,7 +406,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     ro.observe(el)
     setFlipContainerSize({ w: el.clientWidth, h: el.clientHeight })
     return () => ro.disconnect()
-  }, [blobUrl])
+  }, [blobUrl, editMode])
 
   useEffect(() => {
     const el = pdfContainerRef.current
@@ -406,7 +415,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     ro.observe(el)
     setPdfContainerSize({ w: el.clientWidth, h: el.clientHeight })
     return () => ro.disconnect()
-  }, [blobUrl])
+  }, [blobUrl, editMode])
 
   // ─── Compute fit sizes ─────────────────────────────────────────────────────
   const imgFit = useMemo(() => {
@@ -523,21 +532,30 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
       if (!found) { setIsLoading(false); return }
       setDoc(found)
       const pgs = found.pages?.length ? found.pages : [FALLBACK_PAGE(found)]
+      let decryptionFailed = false
       const urls: Record<string, string> = {}
       const blobs: Record<string, Blob> = {}
       for (const p of pgs) {
-        if (p.mimeType.startsWith("image/") || p.mimeType === "application/pdf") {
-          const blob = await getDocumentBlob(docId, p.id)
-          if (blob) {
-            const u = URL.createObjectURL(blob)
-            urls[p.id] = u
-            blobs[p.id] = blob
-            urlsRef.current.push(u)
+        try {
+          if (p.mimeType.startsWith("image/") || p.mimeType === "application/pdf") {
+            const blob = await getDocumentBlob(docId, p.id)
+            if (blob) {
+              const u = URL.createObjectURL(blob)
+              urls[p.id] = u
+              blobs[p.id] = blob
+              urlsRef.current.push(u)
+            }
+          } else if (p.mimeType === "text/plain") {
+            const blob = await getDocumentBlob(docId, p.id)
+            if (blob) setTextContent(await blob.text())
           }
-        } else if (p.mimeType === "text/plain") {
-          const blob = await getDocumentBlob(docId, p.id)
-          if (blob) setTextContent(await blob.text())
+        } catch {
+          decryptionFailed = true
         }
+      }
+      if (decryptionFailed) {
+        setShowPinDialog(true)
+        return
       }
       setPageUrls(urls)
       setPageBlobs(blobs)
@@ -554,7 +572,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     }
     load()
     return () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); urlsRef.current = [] }
-  }, [docId])
+  }, [docId, retryCount])
 
   // goToPage resets dimensions explicitly; no effect on blobUrl because toggleFlip
   // changes blobUrl and we must not destroy face dimensions mid-flip.
@@ -659,6 +677,31 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
 
   if (!docId || !doc) return null
 
+  const handlePinSubmit = async () => {
+    setIsVerifying(true)
+    setPinError(false)
+    try {
+      const result = await SecurePinManager.validatePin(pinInput)
+      if (result.success) {
+        if (!SecureKeyManager.hasMasterKey()) {
+          await SecureKeyManager.createMasterKey(pinInput)
+        }
+        await SecureKeyManager.getMasterKey(pinInput)
+        SecureKeyManager.cacheSessionPin(pinInput)
+        setShowPinDialog(false)
+        setPinInput("")
+        retryLoadRef.current = true
+        setRetryCount((c) => c + 1)
+      } else {
+        setPinError(true)
+      }
+    } catch {
+      setPinError(true)
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
   const handleClose = () => {
     onClose()
     setPageNum(1)
@@ -700,49 +743,34 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                 </Button>
               </>
             )}
-            {(isImage || isPdf) && !editMode && (
-              <>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
-                  onClick={() => isPdf ? pdfZP.zoomCenter(pdfZP.zoom - 0.25) : activeImgZP.zoomCenter(activeImgZP.zoom - 0.25)}>
-                  <ZoomOut className="h-3.5 w-3.5" />
-                </Button>
-                <span className="text-[10px] font-bold text-muted-foreground min-w-[3ch] text-center">{displayPercent}%</span>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
-                  onClick={() => isPdf ? pdfZP.zoomCenter(pdfZP.zoom + 0.25) : activeImgZP.zoomCenter(activeImgZP.zoom + 0.25)}>
-                  <ZoomIn className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
-                  onClick={() => isPdf ? pdfZP.fitToView() : activeImgZP.fitToView()}
-                  title="Fit to view">
-                  <Maximize className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            )}
             {isImage && !editMode && (!flip || !!face1) && (
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-bold" onClick={() => setEditMode(true)}>
-                <Crop className="h-3 w-3 mr-1" />
-                Edit
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setEditMode(true)}>
+                <Crop className="h-3.5 w-3.5" />
               </Button>
             )}
             {blobUrl && !editMode && (
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Open in new tab"
                 onClick={() => window.open(blobUrl, "_blank", "noopener,noreferrer")}>
                 <ExternalLink className="h-3.5 w-3.5" />
               </Button>
             )}
-            {!editMode && (
+            {!editMode && pages.length === 1 ? (
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Download"
+                onClick={() => downloadDocument(doc)}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            ) : !editMode && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-bold">
-                    <Download className="h-3 w-3 mr-1" />
-                    Download{pages.length > 1 ? ` (${pages.length})` : ""}
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Download">
+                    <Download className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   <DropdownMenuItem onClick={() => downloadDocument(doc)}>
-                    <Download className="h-3.5 w-3.5" /> Download all{pages.length > 1 ? ` (${pages.length})` : ""}
+                    <Download className="h-3.5 w-3.5" /> Download all ({pages.length})
                   </DropdownMenuItem>
-                  {pages.length > 1 && pages.map((p, i) => (
+                  {pages.map((p, i) => (
                     <DropdownMenuItem key={p.id} onClick={() => downloadDocument(doc, [i])}>
                       <Download className="h-3.5 w-3.5" /> Download {p.label}
                     </DropdownMenuItem>
@@ -763,7 +791,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
             onSave={handleSaveEditedImage}
           />
         ) : (
-          <div className="flex-1 min-h-0 overflow-hidden bg-muted/5">
+          <div className="relative flex-1 min-h-0 overflow-hidden bg-muted/5">
           {isLoading ? (
             <div className="h-full flex items-center justify-center gap-2 text-xs font-bold text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -782,7 +810,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                     left: 0,
                     top: 0,
                     transformOrigin: "0 0",
-                    transform: `translate(${flipZP.panX}px, ${flipZP.panY}px) scale(${flipZP.zoom})`,
+                    transform: `translate(${flipZP.panX}px, ${flipZP.panY}px)`,
                     willChange: "transform",
                   }}
                   className="[perspective:1000px]"
@@ -793,8 +821,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                     className="relative [transform-style:preserve-3d] transition-[transform,width,height] duration-500 [will-change:transform]"
                     style={{
                       transform: `rotateY(${flip ? 180 : 0}deg)`,
-                      width: flipFit?.w ?? 0,
-                      height: flipFit?.h ?? 0,
+                      width: flipFit ? Math.min(flipFit.w * flipZP.zoom, face0Natural?.w ?? Infinity) : 0,
+                      height: flipFit ? Math.min(flipFit.h * flipZP.zoom, face0Natural?.h ?? Infinity) : 0,
                     }}
                   >
                     <div className="[backface-visibility:hidden] flex items-center justify-center">
@@ -804,7 +832,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                         draggable={false}
                         onLoad={(e) => setFace0Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                         className="select-none rounded-lg shadow-lg touch-none"
-                        style={{ width: flipFit?.w ?? 0, height: flipFit?.h ?? 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
+                        style={{ width: flipFit ? Math.min(flipFit.w * flipZP.zoom, face0Natural?.w ?? Infinity) : 0, height: flipFit ? Math.min(flipFit.h * flipZP.zoom, face0Natural?.h ?? Infinity) : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
                       />
                     </div>
                     <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] flex items-center justify-center">
@@ -815,7 +843,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                           draggable={false}
                           onLoad={(e) => { if (!face1Natural) setFace1Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }) }}
                           className="select-none rounded-lg shadow-lg touch-none"
-                          style={{ width: flipFit?.w ?? 0, height: flipFit?.h ?? 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
+                          style={{ width: flipFit ? Math.min(flipFit.w * flipZP.zoom, (face1Natural ?? face0Natural)?.w ?? Infinity) : 0, height: flipFit ? Math.min(flipFit.h * flipZP.zoom, (face1Natural ?? face0Natural)?.h ?? Infinity) : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
                         />
                       ) : (
                       <div
@@ -876,7 +904,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                   left: 0,
                   top: 0,
                   transformOrigin: "0 0",
-                  transform: `translate(${imgZP.panX}px, ${imgZP.panY}px) scale(${imgZP.zoom})`,
+                  transform: `translate(${imgZP.panX}px, ${imgZP.panY}px)`,
                   willChange: "transform",
                 }}
               >
@@ -887,8 +915,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                   onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                   className="select-none rounded-lg shadow-lg touch-none"
                   style={{
-                    width: imgFit ? imgFit.w : 0,
-                    height: imgFit ? imgFit.h : 0,
+                    width: imgFit ? Math.min(imgFit.w * imgZP.zoom, imgNatural?.w ?? Infinity) : 0,
+                    height: imgFit ? Math.min(imgFit.h * imgZP.zoom, imgNatural?.h ?? Infinity) : 0,
                     maxWidth: "none",
                     display: "block",
                     visibility: imgFit ? "visible" : "hidden",
@@ -909,7 +937,6 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
               </pre>
             </div>
           ) : isPdf && pageBlobs[currentPage?.id ?? ""] ? (
-            /* ─── PDF Viewer ───────────────────────────────────────────────── */
             <div
               ref={pdfContainerRef}
               className="relative h-full w-full overflow-hidden select-none"
@@ -976,6 +1003,25 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
               </Button>
             </div>
           )}
+
+          {(isImage || isPdf) && !editMode && (
+            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 bg-background/80 backdrop-blur-sm rounded-lg px-2 py-1.5 shadow-sm border border-border/10">
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                onClick={() => isPdf ? pdfZP.zoomCenter(pdfZP.zoom - 0.25) : activeImgZP.zoomCenter(activeImgZP.zoom - 0.25)}>
+                <ZoomOut className="h-3 w-3" />
+              </Button>
+              <span className="text-[10px] font-bold text-muted-foreground min-w-[3ch] text-center">{displayPercent}%</span>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                onClick={() => isPdf ? pdfZP.zoomCenter(pdfZP.zoom + 0.25) : activeImgZP.zoomCenter(activeImgZP.zoom + 0.25)}>
+                <ZoomIn className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                onClick={() => isPdf ? pdfZP.fitToView() : activeImgZP.fitToView()}
+                title="Fit to view">
+                <Maximize className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
         )}
 
@@ -1005,6 +1051,49 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
         </div>
         <input ref={missingInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => { handleAddSide(e.target.files?.[0] ?? null); e.target.value = "" }} />
+
+        {showPinDialog && (
+          <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-card border rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 space-y-6">
+              <div className="text-center space-y-2">
+                <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+                  <Lock className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-semibold text-lg">Session Expired</h3>
+                <p className="text-sm text-muted-foreground">
+                  Your encryption session has expired. Please re-enter your PIN to decrypt documents.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <InputOTP maxLength={6} value={pinInput} onChange={setPinInput}>
+                  <InputOTPGroup className="w-full justify-center">
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+                {pinError && (
+                  <p className="text-xs text-destructive text-center">Invalid PIN. Please try again.</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => { setShowPinDialog(false); setPinInput(""); handleClose() }}>
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handlePinSubmit}
+                  disabled={pinInput.length !== 6 || isVerifying}
+                >
+                  {isVerifying ? "Verifying..." : "Unlock"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -97,12 +97,35 @@ export function useAuthentication(): AuthState & AuthActions {
       }))
     }
 
+    const handleAuthStateChange = () => {
+      const status = SecurePinManager.getAuthStatus()
+      if (!status.hasPin) {
+        setAuthState({
+          isAuthenticated: true,
+          isLoading: false,
+          hasPin: false,
+          hasEmergencyPin: false,
+          isLocked: false,
+          attemptsRemaining: 0,
+          masterKey: undefined,
+        })
+      } else {
+        setAuthState(prev => ({
+          ...prev,
+          hasPin: true,
+          isAuthenticated: false,
+        }))
+      }
+    }
+
     window.addEventListener('wallet-session-expired', handleSessionExpiry)
+    window.addEventListener('wallet-auth-state-changed', handleAuthStateChange)
 
     initializeAuth()
 
     return () => {
       window.removeEventListener('wallet-session-expired', handleSessionExpiry)
+      window.removeEventListener('wallet-auth-state-changed', handleAuthStateChange)
     }
   }, [])
 

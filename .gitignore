@@ -43,3 +43,5 @@ public/worker-*.js
 
 .playwright-mcp
 public/sw.js
+public/test-compression/
+test-compression/

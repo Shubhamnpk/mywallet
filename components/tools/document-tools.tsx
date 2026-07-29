@@ -78,14 +78,26 @@ export function DocumentTools() {
     const init = async () => {
       setIsLoading(true)
       const allPersons = await getPersons()
-      setPersons(allPersons)
-      if (allPersons.length === 1) {
-        setCurrentPersonId(allPersons[0].id)
+      if (allPersons.length === 0 && userProfile?.name?.trim()) {
+        const autoPerson: Person = {
+          id: generateId(),
+          name: userProfile.name.trim(),
+          emoji: PERSON_EMOJIS[0],
+          createdAt: new Date().toISOString(),
+        }
+        await savePerson(autoPerson)
+        setPersons([autoPerson])
+        setCurrentPersonId(autoPerson.id)
+      } else {
+        setPersons(allPersons)
+        if (allPersons.length === 1) {
+          setCurrentPersonId(allPersons[0].id)
+        }
       }
       setIsLoading(false)
     }
     init()
-  }, [])
+  }, [userProfile?.name])
 
   const reloadDocuments = useCallback(async (personId: string | null) => {
     const docs = await getDocuments(personId ?? undefined)
@@ -174,7 +186,7 @@ export function DocumentTools() {
               <FileText className="h-9 w-9 text-primary" />
             </div>
           </div>
-          <h3 className="text-lg font-black uppercase tracking-widest mb-2">Document Vault</h3>
+          <h3 className="text-lg font-black uppercase tracking-widest mb-2">Document Vault <Badge variant="secondary" className="text-[10px] ml-1 align-middle">Beta</Badge></h3>
           <p className="text-sm text-muted-foreground max-w-md mb-2">
             Store, view, and manage important documents which are encrypted and secure.
           </p>
@@ -198,7 +210,7 @@ export function DocumentTools() {
               <FileText className="h-9 w-9 text-primary" />
             </div>
           </div>
-          <h3 className="text-lg font-black uppercase tracking-widest mb-2">Welcome to Document Vault</h3>
+          <h3 className="text-lg font-black uppercase tracking-widest mb-2">Welcome to Document Vault <Badge variant="secondary" className="text-[10px] ml-1 align-middle">Beta</Badge></h3>
           <p className="text-sm text-muted-foreground max-w-md mb-8">
             Store, view, and manage documents for yourself and others.
           </p>
@@ -215,6 +227,7 @@ export function DocumentTools() {
                 <CardTitle className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-primary" />
                   Document Vault
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0">Beta</Badge>
                 </CardTitle>
                 {currentPerson && (
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5 gap-1 shrink-0">

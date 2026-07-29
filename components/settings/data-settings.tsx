@@ -21,6 +21,7 @@ import { SecureKeyManager } from "@/lib/key-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { DEFAULT_BACKUP_PIN } from "@/lib/backup"
+import { getDocuments } from "@/lib/document-storage"
 
 export function DataSettings() {
   const {
@@ -67,6 +68,8 @@ export function DataSettings() {
   const [backupSizeMode, setBackupSizeMode] = useState<"essential" | "full">("essential")
   const [pendingDropboxContent, setPendingDropboxContent] = useState<string | null>(null)
   const [pendingDecryptedBackup, setPendingDecryptedBackup] = useState<any | null>(null)
+  const [documentCount, setDocumentCount] = useState(0)
+  const [documentTotalSize, setDocumentTotalSize] = useState(0)
   const [dropboxBackupPinAction, setDropboxBackupPinAction] = useState<"pull">("pull")
   const [dropboxLocalPinAction, setDropboxLocalPinAction] = useState<"import" | "push">("import")
   const dropboxAppKey = Dropbox.getDropboxAppKey()
@@ -360,6 +363,18 @@ export function DataSettings() {
     if (storedMode === "full" || storedMode === "essential") {
       setBackupSizeMode(storedMode)
     }
+  }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const docs = await getDocuments()
+        setDocumentCount(docs.length)
+        setDocumentTotalSize(docs.reduce((sum, d) => sum + (d.size || 0), 0))
+      } catch {
+        // document vault not available
+      }
+    })()
   }, [])
 
   const handleDropboxConnect = async () => {
@@ -960,14 +975,37 @@ export function DataSettings() {
     const totalBudgets = budgets.length
     const totalGoals = goals.length
     const totalPortfolios = portfolios.length
-    const dataSize = new Blob([JSON.stringify({ userProfile, transactions, budgets, goals })]).size
+    const walletDataSize = new Blob([JSON.stringify({
+      userProfile, transactions, budgets, goals, debtAccounts,
+      creditAccounts, debtCreditTransactions, categories,
+      emergencyFund, portfolio, shareTransactions, portfolios,
+    })]).size
+    const totalSize = walletDataSize + documentTotalSize
+
+    const formatSize = (bytes: number) => {
+      if (bytes >= 1048576) return `${Math.round(bytes / 1048576)} MB`
+      if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+      return `${bytes} B`
+    }
+
+    const formatExact = (bytes: number) => {
+      if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`
+      if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`
+      return `${bytes} B`
+    }
 
     return {
       totalTransactions,
       totalBudgets,
       totalGoals,
       totalPortfolios,
-      dataSize: `${(dataSize / 1024).toFixed(2)} KB`,
+      dataSize: formatSize(walletDataSize),
+      walletDataExact: formatExact(walletDataSize),
+      documentCount,
+      documentTotalSize: documentTotalSize,
+      documentExact: formatExact(documentTotalSize),
+      totalSize: formatSize(totalSize),
+      totalExact: formatExact(totalSize),
     }
   }
 
@@ -984,7 +1022,7 @@ export function DataSettings() {
           <CardDescription>Current wallet data snapshot</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-lg border bg-muted p-3 text-center">
               <p className="text-2xl font-bold text-primary">{stats.totalTransactions}</p>
               <p className="text-xs text-muted-foreground">Transactions</p>
@@ -997,13 +1035,21 @@ export function DataSettings() {
               <p className="text-2xl font-bold text-primary">{stats.totalGoals}</p>
               <p className="text-xs text-muted-foreground">Goals</p>
             </div>
-            <div className="rounded-lg border bg-muted p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{stats.totalPortfolios}</p>
-              <p className="text-xs text-muted-foreground">Portfolios</p>
-            </div>
-            <div className="rounded-lg border bg-muted p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{stats.dataSize}</p>
-              <p className="text-xs text-muted-foreground">Approx Size</p>
+            {stats.totalPortfolios > 0 && (
+              <div className="rounded-lg border bg-muted p-3 text-center">
+                <p className="text-2xl font-bold text-primary">{stats.totalPortfolios}</p>
+                <p className="text-xs text-muted-foreground">Portfolios</p>
+              </div>
+            )}
+            {stats.documentCount > 0 && (
+              <div className="rounded-lg border bg-muted p-3 text-center">
+                <p className="text-2xl font-bold text-primary">{stats.documentCount}</p>
+                <p className="text-xs text-muted-foreground">Documents</p>
+              </div>
+            )}
+            <div className="rounded-lg border bg-muted p-3 text-center" title={`Wallet: ${stats.walletDataExact} | Documents: ${stats.documentExact} | Total: ${stats.totalExact}`}>
+              <p className="text-2xl font-bold text-primary">{stats.totalSize}</p>
+              <p className="text-xs text-muted-foreground">Total Data</p>
             </div>
           </div>
         </CardContent>
@@ -1017,30 +1063,26 @@ export function DataSettings() {
           </CardTitle>
           <CardDescription>Export your data securely or restore it with guided import</CardDescription>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h3 className="font-semibold">Export Data</h3>
-                  <p className="text-sm text-muted-foreground">Create encrypted backup</p>
-                </div>
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+            <div className="flex flex-1 items-center justify-between rounded-lg border px-4 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Export Data</p>
+                <p className="text-xs text-muted-foreground">Create encrypted backup</p>
               </div>
-              <Button onClick={() => handleCreateBackup("download")}>
-                <Download className="mr-2 h-4 w-4" />
+              <Button size="sm" onClick={() => handleCreateBackup("download")}>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
                 Export
               </Button>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h3 className="font-semibold">Import Data</h3>
-                  <p className="text-sm text-muted-foreground">Restore from backup</p>
-                </div>
+            <div className="flex flex-1 items-center justify-between rounded-lg border px-4 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Import Data</p>
+                <p className="text-xs text-muted-foreground">Restore from backup</p>
               </div>
-              <Button variant="outline" onClick={() => setShowImportModal(true)}>
-                <Upload className="mr-2 h-4 w-4" />
+              <Button size="sm" variant="outline" onClick={() => setShowImportModal(true)}>
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Import
               </Button>
             </div>
@@ -1159,21 +1201,23 @@ export function DataSettings() {
 
           {!hasDropboxToken ? (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {dropboxNeedsReconnect
-                  ? "Your Dropbox session expired or was revoked. Reconnect to resume backups."
-                  : "Connect your Dropbox account to enable manual backup uploads and downloads."}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {dropboxNeedsReconnect
+                    ? "Your Dropbox session expired or was revoked. Reconnect to resume backups."
+                    : "Connect your Dropbox account to enable manual backup uploads and downloads."}
+                </p>
+                <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting} className="shrink-0">
+                  <Cloud className="mr-2 h-4 w-4" />
+                  {isDropboxConnecting ? "Connecting..." : dropboxNeedsReconnect ? "Reconnect Dropbox" : "Connect Dropbox"}
+                </Button>
+              </div>
               {dropboxError && (
                 <Alert variant="destructive">
                   <AlertTitle>Dropbox error</AlertTitle>
                   <AlertDescription className="break-words text-xs">{dropboxError}</AlertDescription>
                 </Alert>
               )}
-              <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting}>
-                <Cloud className="mr-2 h-4 w-4" />
-                {isDropboxConnecting ? "Connecting..." : dropboxNeedsReconnect ? "Reconnect Dropbox" : "Connect Dropbox"}
-              </Button>
             </div>
           ) : (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">

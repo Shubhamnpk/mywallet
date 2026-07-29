@@ -1130,52 +1130,10 @@ export function useWalletStore() {
     }
   }, [isLoaded, sectorsMap, portfolio.length])
 
-  // Migration to encrypted storage (legacy plaintext -> encrypted)
   useEffect(() => {
-    if (isLoaded && !localStorage.getItem("encryption_v2_migrated")) {
-      const migrateToEncrypted = async () => {
-        try {
-          const key = await SecureKeyManager.getMasterKey("")
-          if (!key) {
-            return
-          }
-          const sensitiveKeys = [
-            "userProfile",
-            "transactions",
-            "budgets",
-            "goals",
-            "debtAccounts",
-            "creditAccounts",
-            "debtCreditTransactions",
-            "categories",
-            "emergencyFund",
-            "portfolio",
-            "shareTransactions",
-            "portfolios",
-            "celebratedAchievements",
-          ]
+    localStorage.removeItem("encryption_v2_migrated")
+  }, [])
 
-          for (const storageKey of sensitiveKeys) {
-            const raw = localStorage.getItem(storageKey)
-            if (!raw || raw.startsWith("encrypted:")) continue
-
-            let parsed: any = raw
-            try {
-              parsed = JSON.parse(raw)
-            } catch (error) {
-              console.warn("Failed to parse migration data:", error)
-            }
-
-            await saveToLocalStorage(storageKey, parsed, true)
-          }
-
-          localStorage.setItem("encryption_v2_migrated", "true")
-        } catch (error) {
-        }
-      }
-      migrateToEncrypted()
-    }
-  }, [isLoaded])
   type SaveFailureReason = "unlock_required" | "storage_full" | "unknown"
 
   const isQuotaExceeded = (error: unknown) => {
@@ -2576,6 +2534,8 @@ export function useWalletStore() {
           document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"
         }
       }
+
+      window.dispatchEvent(new CustomEvent('wallet-auth-state-changed'))
     }
     setUserProfile(null)
     userProfileRef.current = null

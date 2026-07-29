@@ -111,7 +111,7 @@ function BalanceCard({
   const timeEquivalentClockSize = isMobile ? "w-3 h-3" : "w-4 h-4"
 
   return (
-    <Card className="relative border-0 shadow-lg h-full md:min-h-[170px]">
+    <Card className="relative border-0 shadow-lg h-full md:min-h-[170px]" data-tour="current-balance">
       <div className="absolute inset-0 rounded-xl overflow-hidden">
         <div className={`absolute inset-0 ${getThemeBasedBackground()} opacity-90`} />
         <div className="absolute inset-0 bg-black/10" />
@@ -621,7 +621,7 @@ export function CombinedBalanceCard() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="balance-overview">
       {mainBalance}
 
       {/* Income & Expenses Row */}
@@ -629,7 +629,7 @@ export function CombinedBalanceCard() {
         <p className="text-xs sm:text-sm text-muted-foreground font-medium">
           {incomeExpenseRange === "monthly" ? `${activeMonthLabel} Summary` : "All Time Summary"}
         </p>
-        <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1">
+        <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1" data-tour="period-filter">
           <Button
             variant={incomeExpenseRange === "monthly" ? "default" : "ghost"}
             size="sm"
@@ -649,7 +649,7 @@ export function CombinedBalanceCard() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
-        <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50 relative">
+        <Card className="group hover:shadow-md transition-all duration-200 border-green-200/50 dark:border-green-800/50 relative" data-tour="income-card">
           <CardContent className="p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
@@ -670,7 +670,7 @@ export function CombinedBalanceCard() {
           </CardContent>
         </Card>
 
-        <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50 relative">
+        <Card className="group hover:shadow-md transition-all duration-200 border-red-200/50 dark:border-red-800/50 relative" data-tour="expenses-card">
           <CardContent className="p-3 sm:p-5">
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shadow-lg">

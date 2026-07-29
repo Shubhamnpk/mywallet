@@ -32,39 +32,29 @@ export function DropboxCallbackPageClient() {
       const error = params.get("error")
       const errorDescription = params.get("error_description")
 
-      if (error) {
-        const message = errorDescription || "Dropbox authorization failed. Please try again."
+      const reportError = (message: string) => {
         callbackWindow.__dropboxAuthInFlight = false
         setAuthData({ status: "error", message })
         if (window.opener) {
           window.opener.postMessage(
-            {
-              type: "dropbox-auth",
-              success: false,
-              error: message,
-            },
+            { type: "dropbox-auth", success: false, error: message },
             window.location.origin,
           )
         }
+        window.setTimeout(() => {
+          try { window.close() } catch { }
+        }, 2000)
+      }
+
+      if (error) {
+        reportError(errorDescription || "Dropbox authorization failed. Please try again.")
         return
       }
 
       const code = params.get("code")
       const state = params.get("state")
       if (!code || !state) {
-        const message = "Dropbox authorization did not return a valid code. Please try again."
-        callbackWindow.__dropboxAuthInFlight = false
-        setAuthData({ status: "error", message })
-        if (window.opener) {
-          window.opener.postMessage(
-            {
-              type: "dropbox-auth",
-              success: false,
-              error: message,
-            },
-            window.location.origin,
-          )
-        }
+        reportError("Dropbox authorization did not return a valid code. Please try again.")
         return
       }
 
@@ -102,18 +92,7 @@ export function DropboxCallbackPageClient() {
         }, 500)
       } catch (error) {
         const message = error instanceof Error ? error.message : "Dropbox authorization failed. Please try again."
-        callbackWindow.__dropboxAuthInFlight = false
-        setAuthData({ status: "error", message })
-        if (window.opener) {
-          window.opener.postMessage(
-            {
-              type: "dropbox-auth",
-              success: false,
-              error: message,
-            },
-            window.location.origin,
-          )
-        }
+        reportError(message)
       }
     }
 

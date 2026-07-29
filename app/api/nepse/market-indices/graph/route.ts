@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
-const BASE_URL = "http://130.210.4.183:8000/api/v1/indices/graph"
+const BASE_URL = "https://nepse.bitnepal.net/api/v1/indices/graph"
 
 const INDEX_MAP: Record<string, string> = {
   nepse: "nepse",

@@ -5,15 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { Download, Trash2, Shield, AlertTriangle } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -131,21 +128,21 @@ export function DeleteDataDialog({ trigger, title, description, onConfirm, type 
   }
 
   return (
-    <AlertDialog open={showDialog} onOpenChange={setShowDialog}>
-      <AlertDialogTrigger asChild>
+    <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetDialog(); else setShowDialog(true) }}>
+      <DialogTrigger asChild>
         {trigger}
-      </AlertDialogTrigger>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-destructive" />
-            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <DialogTitle>{title}</DialogTitle>
           </div>
           <div className="text-sm text-muted-foreground">
             {step === "warning" && (
               <div className="space-y-2">
-                <p>{description}</p>
-                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mt-4">
+                <p className="text-sm text-destructive font-medium">This action cannot be undone.</p>
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-destructive font-medium">
                     <Shield className="w-4 h-4" />
                     <span>Security Data Warning</span>
@@ -177,7 +174,7 @@ export function DeleteDataDialog({ trigger, title, description, onConfirm, type 
               </div>
             )}
           </div>
-        </AlertDialogHeader>
+        </DialogHeader>
 
         <div className="space-y-4">
           {step === "warning" && (
@@ -221,25 +218,19 @@ export function DeleteDataDialog({ trigger, title, description, onConfirm, type 
           )}
 
           {step === "confirm" && (
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={resetDialog}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
+            <div className="flex gap-2">
+              <Button
                 onClick={handleConfirmDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                variant="destructive"
+                className="flex-1"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 {type === "account" ? "Delete Account" : "Delete All Data"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
+              </Button>
+            </div>
           )}
         </div>
-
-        {step !== "confirm" && (
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={resetDialog}>Cancel</AlertDialogCancel>
-          </AlertDialogFooter>
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
+      </DialogContent>
+    </Dialog>
   )
 }
