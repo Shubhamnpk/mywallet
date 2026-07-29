@@ -5,7 +5,7 @@ import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
 import {
   ZoomIn, ZoomOut, Tag, Calendar, HardDrive,
-  Download, ExternalLink, Crop, X, Loader2,
+  Download, ExternalLink, Sliders, X, Loader2,
   File, ChevronLeft, ChevronRight, Image as ImageIcon, Upload, Maximize, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -745,7 +745,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
             )}
             {isImage && !editMode && (!flip || !!face1) && (
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setEditMode(true)}>
-                <Crop className="h-3.5 w-3.5" />
+                <Sliders className="h-3.5 w-3.5" />
               </Button>
             )}
             {blobUrl && !editMode && (

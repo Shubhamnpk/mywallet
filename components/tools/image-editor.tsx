@@ -1,10 +1,13 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ZoomIn, ZoomOut, Check, Loader2, RotateCcw, RotateCw, Crop as CropIcon } from "lucide-react"
+import { ZoomIn, ZoomOut, Check, Loader2, RotateCcw, RotateCw, Crop as CropIcon, Sliders, Paintbrush } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Cropper, { type Area, type Point } from "react-easy-crop"
 import { getCroppedBlob, createImage } from "./document-utils"
+import { ImageFabricEditor, type FabricEditorHandle } from "./image-fabric-editor"
+
+type EditMode = "rotate" | "crop" | "adjust" | "annotate"
 
 const MIN_ZOOM = 0.3
 
@@ -13,7 +16,7 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
   onCancel: () => void
   onSave: (cropped: Blob) => Promise<void>
 }) {
-  const [mode, setMode] = useState<"rotate" | "crop">("rotate")
+  const [mode, setMode] = useState<EditMode>("rotate")
   const [rotation, setRotation] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -30,6 +33,11 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
   const [previewSize, setPreviewSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
 
+  // fabric editor ref
+  const fabricRef = useRef<FabricEditorHandle>(null)
+
+  const isFabricMode = mode === "adjust" || mode === "annotate"
+
   useEffect(() => {
     const c = cropContainerRef.current
     if (c) {
@@ -45,7 +53,6 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
     }
   }, [])
 
-  // zoom out just enough so the entire rotated image stays inside the crop viewport
   const fitFull = (rot: number) => {
     if (!mediaSize || !containerSize.w) return
     const r = (rot * Math.PI) / 180
@@ -72,25 +79,27 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      let cropped: Blob
-      if (mode === "crop") {
+      if (isFabricMode) {
+        const blob = await fabricRef.current!.exportBlob()
+        await onSave(blob)
+      } else if (mode === "crop") {
         if (!cropPixels) return
-        cropped = await getCroppedBlob(imageUrl, cropPixels, rotation)
+        const cropped = await getCroppedBlob(imageUrl, cropPixels, rotation)
+        await onSave(cropped)
       } else {
         const img = await createImage(imageUrl)
-        cropped = await getCroppedBlob(
+        const cropped = await getCroppedBlob(
           imageUrl,
           { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight },
           rotation,
         )
+        await onSave(cropped)
       }
-      await onSave(cropped)
     } finally {
       setIsSaving(false)
     }
   }
 
-  // scale so the full rotated image fits the preview without clipping
   const previewScale = (() => {
     if (!naturalSize || !previewSize.w) return 1
     const r = (rotation * Math.PI) / 180
@@ -105,9 +114,18 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
     return f > 0 ? Math.min(1, 1 / f) : 1
   })()
 
+  const modeTabs: { key: EditMode; label: string; icon: typeof CropIcon }[] = [
+    { key: "rotate", label: "Rotate", icon: RotateCcw },
+    { key: "crop", label: "Crop", icon: CropIcon },
+    { key: "adjust", label: "Adjust", icon: Sliders },
+    { key: "annotate", label: "Annotate", icon: Paintbrush },
+  ]
+
   return (
     <div className="flex-1 min-h-0 relative flex flex-col">
-      {mode === "crop" ? (
+      {isFabricMode ? (
+        <ImageFabricEditor ref={fabricRef} imageUrl={imageUrl} mode={mode as "adjust" | "annotate"} />
+      ) : mode === "crop" ? (
         <div ref={cropContainerRef} className="relative flex-1 min-h-0 bg-black/5">
           <Cropper
             image={imageUrl}
@@ -150,29 +168,32 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/10 shrink-0">
-        <div className="flex items-center gap-2">
+      {mode === "rotate" && (
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-border/10 shrink-0">
           <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold" onClick={() => rotate(-90)}>
-            <RotateCcw className="h-3 w-3 mr-1" /> Rotate
+            <RotateCcw className="h-3 w-3 mr-1" /> Rotate Left
           </Button>
           <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold" onClick={() => rotate(90)}>
-            <RotateCw className="h-3 w-3 mr-1" /> Rotate
+            <RotateCw className="h-3 w-3 mr-1" /> Rotate Right
           </Button>
         </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5 border-t border-border/10 shrink-0 bg-background">
+        <div className="flex items-center gap-1">
+          {modeTabs.map(({ key, label, icon: Icon }) => (
+            <Button key={key} variant={mode === key ? "default" : "ghost"} size="sm"
+              className="h-7 text-[10px] font-bold" onClick={() => setMode(key)}>
+              <Icon className="h-3 w-3 mr-1" /> {label}
+            </Button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
-          {mode === "rotate" ? (
-            <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold" onClick={() => setMode("crop")}>
-              <CropIcon className="h-3 w-3 mr-1" /> Crop
-            </Button>
-          ) : (
-            <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold" onClick={() => setMode("rotate")}>
-              Rotate only
-            </Button>
-          )}
           <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold" onClick={onCancel} disabled={isSaving}>
             Cancel
           </Button>
-          <Button size="sm" className="h-7 text-[10px] font-bold" onClick={handleSave} disabled={isSaving || (mode === "crop" && !cropPixels)}>
+          <Button size="sm" className="h-7 text-[10px] font-bold" onClick={handleSave}
+            disabled={isSaving || (mode === "crop" && !cropPixels)}>
             {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
             Save
           </Button>
