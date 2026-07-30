@@ -219,7 +219,7 @@ function generatePNG(
   const padX = 16;
   const totalW = keys.reduce((s, k) => s + colW[k], 0) + padX * 2;
   const headerH = 96;
-  const summaryH = showRate || showPayments ? 68 : 44;
+  const summaryH = 68;
   const footerH = 36;
   const h = headerH + th + sorted.length * rh + summaryH + footerH;
 

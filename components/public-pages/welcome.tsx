@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Wallet, TrendingUp, Target, Shield, Smartphone, Brain, Check, Sparkles, Clock, DollarSign, Monitor, Tablet, Download, Home, UserCheck } from 'lucide-react';
 import OnboardingFlow from '@/components/onboarding/onboarding-flow';
 import { useWalletData } from '@/contexts/wallet-data-context';
-import { PublicLayout } from '@/components/public-layout';
+import { PublicLayout } from '@/components/public-pages/public-layout';
 
 /** `?start=1` opens onboarding from the welcome landing page. */
 function isWelcomeStartMode(value: string | string[] | null | undefined): boolean {

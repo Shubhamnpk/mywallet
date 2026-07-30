@@ -27,6 +27,9 @@ import { ExportDialog } from "@/components/tools/export-dialog";
 import {
   STORAGE_RATE,
   STORAGE_TIME_FMT,
+  STORAGE_PAY_TO_WALLET,
+  STORAGE_META,
+  type ShiftTrackerMeta,
   SHIFT_STORAGE_UPDATED_EVENT,
   type Shift,
   todayStr,
@@ -211,6 +214,7 @@ export function ShiftTracker() {
 
   const [selectedShifts, setSelectedShifts] = useState<Set<number>>(new Set());
   const [settingsRate, setSettingsRate] = useState("12.20");
+  const [payToWallet, setPayToWallet] = useState(true);
   const [paymentSearchTerm, setPaymentSearchTerm] = useState("");
   const [paymentTypeFilter, setPaymentTypeFilter] =
     useState<PaymentTypeFilter>("all-types");
@@ -290,15 +294,26 @@ export function ShiftTracker() {
 
   useEffect(() => {
     try {
-      // Use new storage functions that handle migration
       const shifts = getShiftsFromStorage();
       const p = localStorage.getItem(STORAGE_PAYMENTS);
-      const r = localStorage.getItem(STORAGE_RATE);
-      const tf = localStorage.getItem(STORAGE_TIME_FMT) as TimeFmt | null;
       if (shifts.length > 0) setShifts(shifts);
       if (p) setPayments(JSON.parse(p));
-      if (r) setRateInput(r);
-      if (tf === "12h" || tf === "24h") setTimeFormat(tf);
+
+      const metaRaw = localStorage.getItem(STORAGE_META);
+      if (metaRaw) {
+        const meta: ShiftTrackerMeta = JSON.parse(metaRaw);
+        setRateInput(meta.rate);
+        if (meta.timeFormat === "12h" || meta.timeFormat === "24h") setTimeFormat(meta.timeFormat);
+        if (typeof meta.payToWallet === "boolean") setPayToWallet(meta.payToWallet);
+      } else {
+        // fallback to old individual keys
+        const r = localStorage.getItem(STORAGE_RATE);
+        const tf = localStorage.getItem(STORAGE_TIME_FMT) as TimeFmt | null;
+        const pw = localStorage.getItem(STORAGE_PAY_TO_WALLET);
+        if (r) setRateInput(r);
+        if (tf === "12h" || tf === "24h") setTimeFormat(tf);
+        if (pw !== null) setPayToWallet(pw === "true");
+      }
     } catch {
       /* ignore */
     }
@@ -318,9 +333,13 @@ export function ShiftTracker() {
   const saveStorage = useCallback(() => {
     saveShiftsToStorage(shifts);
     localStorage.setItem(STORAGE_PAYMENTS, JSON.stringify(payments));
-    localStorage.setItem(STORAGE_RATE, rateInput);
-    localStorage.setItem(STORAGE_TIME_FMT, timeFormat);
-  }, [shifts, payments, rateInput, timeFormat]);
+    const meta: ShiftTrackerMeta = { rate: rateInput, timeFormat, payToWallet };
+    localStorage.setItem(STORAGE_META, JSON.stringify(meta));
+    // clean up old individual keys after migration
+    localStorage.removeItem(STORAGE_RATE);
+    localStorage.removeItem(STORAGE_TIME_FMT);
+    localStorage.removeItem(STORAGE_PAY_TO_WALLET);
+  }, [shifts, payments, rateInput, timeFormat, payToWallet]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -363,11 +382,43 @@ export function ShiftTracker() {
   );
 
   const paidForShift = useCallback(
-    (id: number) =>
-      payments
-        .filter((p) => p.type === "shift" && String(p.periodKey) === String(id))
-        .reduce((sum, p) => sum + p.amount, 0),
-    [payments],
+    (id: number) => {
+      const shift = shifts.find((s) => s.id === id);
+      if (!shift) return 0;
+      return payments.reduce((sum, payment) => {
+        let coveredShifts: Shift[];
+        switch (payment.type) {
+          case "shift":
+            coveredShifts = shifts.filter((s) => String(s.id) === String(payment.periodKey));
+            break;
+          case "day":
+            coveredShifts = shifts.filter((s) => s.date === payment.periodKey);
+            break;
+          case "week":
+            coveredShifts = shifts.filter((s) => weekKey(s.date) === payment.periodKey);
+            break;
+          case "month":
+            coveredShifts = shifts.filter((s) => monthKey(s.date) === payment.periodKey);
+            break;
+          case "all":
+            coveredShifts = shifts;
+            break;
+          default:
+            coveredShifts = [];
+        }
+        if (!coveredShifts.length) return sum;
+        const coveredEarn = coveredShifts.reduce(
+          (acc, s) => acc + s.hours * getShiftRate(s), 0,
+        );
+        if (coveredEarn <= 0) return sum;
+        const matchedEarn = coveredShifts
+          .filter((s) => s.id === id)
+          .reduce((acc, s) => acc + s.hours * getShiftRate(s), 0);
+        if (matchedEarn <= 0) return sum;
+        return sum + payment.amount * (matchedEarn / coveredEarn);
+      }, 0);
+    },
+    [payments, shifts, getShiftRate, weekKey, monthKey],
   );
 
   const shiftEarned = useCallback(
@@ -483,15 +534,17 @@ export function ShiftTracker() {
   ) => {
     const payDate = todayStr();
     let walletTransactionId: string | undefined;
-    try {
-      walletTransactionId = await recordIncomeForPayment(
-        amount,
-        label,
-        payDate,
-      );
-    } catch {
-      toast.error("Could not add income to your wallet.");
-      return;
+    if (payToWallet) {
+      try {
+        walletTransactionId = await recordIncomeForPayment(
+          amount,
+          label,
+          payDate,
+        );
+      } catch {
+        toast.error("Could not add income to your wallet.");
+        return;
+      }
     }
     const payment: ShiftPayment = {
       id: Date.now(),
@@ -503,7 +556,7 @@ export function ShiftTracker() {
       walletTransactionId,
     };
     setPayments((prev) => [payment, ...prev]);
-    toast.success("Marked paid — income added to transactions");
+    toast.success("Marked paid" + (payToWallet ? " — income added to transactions" : ""));
   };
 
   const markShiftPaid = async (id: number) => {
@@ -513,15 +566,17 @@ export function ShiftTracker() {
     if (owed <= 0) return;
     const payDate = todayStr();
     let walletTransactionId: string | undefined;
-    try {
-      walletTransactionId = await recordIncomeForPayment(
-        owed,
-        shiftPaymentLabel(shift),
-        payDate,
-      );
-    } catch {
-      toast.error("Could not add income to your wallet.");
-      return;
+    if (payToWallet) {
+      try {
+        walletTransactionId = await recordIncomeForPayment(
+          owed,
+          shiftPaymentLabel(shift),
+          payDate,
+        );
+      } catch {
+        toast.error("Could not add income to your wallet.");
+        return;
+      }
     }
     setPayments((prev) => [
       {
@@ -535,7 +590,7 @@ export function ShiftTracker() {
       },
       ...prev,
     ]);
-    toast.success("Shift paid — income added to transactions");
+    toast.success("Shift paid" + (payToWallet ? " — income added to transactions" : ""));
   };
 
   const undoPaid = async (paymentId: number) => {
@@ -1367,6 +1422,41 @@ export function ShiftTracker() {
                     24h
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
+                  Wallet income
+                </Label>
+                <div className="mt-2 flex w-fit gap-0.5 rounded-xl border bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap",
+                      payToWallet
+                        ? "bg-background text-foreground shadow-sm border border-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setPayToWallet(true)}
+                  >
+                    Add to wallet
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap",
+                      !payToWallet
+                        ? "bg-background text-foreground shadow-sm border border-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setPayToWallet(false)}
+                  >
+                    None
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  When marking shifts as paid, also record income in your wallet.
+                </p>
               </div>
 
               <div>

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatAppDate } from "@/lib/app-calendar"
 import { cn } from "@/lib/utils"
-import { PublicLayout } from "@/components/public-layout"
+import { PublicLayout } from "@/components/public-pages/public-layout"
 
 type ReleaseStatus = "current" | "stable"
 type ReleaseCategory = "Feature" | "Bugfix" | "Improvement" | "Major" | "UX" | "Security" | "Performance"

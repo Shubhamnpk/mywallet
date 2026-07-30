@@ -13,8 +13,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { BillReminderSystem } from "@/components/productivity/bill-reminder-system"
-import { IPODetailModal } from "@/components/portfolio/modals/ipo-detail-modal"
+import { BillReminderSystem } from "@/components/tools/productivity/bill-reminder-system"
+import { IPODetailModal } from "@/components/tools/portfolio/modals/ipo-detail-modal"
 import { loadFromLocalStorage } from "@/lib/storage"
 import {
   clearLiveNotificationHistory,

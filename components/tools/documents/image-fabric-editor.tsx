@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react"
 import {
   Paintbrush, Type, MousePointer, Sliders,
-  Palette, Minus, Plus, RotateCcw, Eraser, Eye, EyeOff,
+  Palette, Minus, Plus, RotateCcw, Eraser, Eye, EyeOff, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Canvas, PencilBrush, IText, FabricImage, filters as FabricFilters } from "fabric"
@@ -46,6 +46,12 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
     const [drawColor, setDrawColor] = useState("#e74c3c")
     const [drawSize, setDrawSize] = useState(3)
 
+    const [hasSelection, setHasSelection] = useState(false)
+
+    const [textPrompt, setTextPrompt] = useState<{ left: number; top: number; sceneX: number; sceneY: number } | null>(null)
+    const [textValue, setTextValue] = useState("")
+    const textInputRef = useRef<HTMLInputElement>(null)
+
     const [imageReady, setImageReady] = useState(false)
     const naturalRef = useRef({ w: 0, h: 0 })
     const displayScaleRef = useRef(1)
@@ -70,8 +76,10 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
     const getContainerSize = useCallback(() => {
       const c = containerRef.current
       if (!c) return { w: 800, h: 600 }
-      const pad = 24
-      return { w: Math.max(100, c.clientWidth - pad), h: Math.max(100, c.clientHeight - pad) }
+      const s = getComputedStyle(c)
+      const px = parseFloat(s.paddingLeft) + parseFloat(s.paddingRight)
+      const py = parseFloat(s.paddingTop) + parseFloat(s.paddingBottom)
+      return { w: Math.max(100, c.clientWidth - px), h: Math.max(100, c.clientHeight - py) }
     }, [])
 
     useEffect(() => {
@@ -119,6 +127,10 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
           imgRef.current = img
           fabricRef.current = fabric
           setImageReady(true)
+
+          fabric.on("selection:created", () => setHasSelection(true))
+          fabric.on("selection:updated", () => setHasSelection(true))
+          fabric.on("selection:cleared", () => setHasSelection(false))
         })
         .catch(() => { /* aborted on unmount */ })
 
@@ -147,10 +159,25 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
       })
       ro.observe(container)
 
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          const canvas = fabricRef.current
+          const active = canvas?.getActiveObject()
+          if (active && active !== imgRef.current) {
+            canvas!.remove(active)
+            canvas!.discardActiveObject()
+            canvas!.renderAll()
+            setHasSelection(false)
+          }
+        }
+      }
+      document.addEventListener("keydown", handleKeyDown)
+
       return () => {
         disposed = true
         abort.abort()
         ro.disconnect()
+        document.removeEventListener("keydown", handleKeyDown)
         if (resizeTimer) clearTimeout(resizeTimer)
         fabric.dispose()
         if (canvasElRef.current && container.contains(canvasElRef.current)) {
@@ -169,6 +196,8 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
       const canvas = fabricRef.current
       if (!canvas) return
       setActiveTool(tool)
+      setTextPrompt(null)
+      setTextValue("")
 
       canvas.isDrawingMode = tool === "draw"
       canvas.selection = tool === "select"
@@ -196,23 +225,47 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
     const handleTextAdd = useCallback((e: TPointerEventInfo<TPointerEvent>) => {
       if (activeTool !== "text") return
       const canvas = fabricRef.current
-      if (!canvas) return
+      const el = canvasElRef.current
+      const container = containerRef.current
+      if (!canvas || !el || !container || textPrompt) return
+
+      const target = canvas.findTarget(e.e)
+      if (target && target !== imgRef.current) return
 
       const pointer = canvas.getScenePoint(e.e)
-      const text = new IText("Text", {
-        left: pointer.x,
-        top: pointer.y,
+      const cr = container.getBoundingClientRect()
+      const er = el.getBoundingClientRect()
+      setTextPrompt({
+        left: er.left - cr.left + pointer.x,
+        top: er.top - cr.top + pointer.y,
+        sceneX: pointer.x,
+        sceneY: pointer.y,
+      })
+      setTextValue("")
+    }, [activeTool, textPrompt])
+
+    const handleTextConfirm = useCallback(() => {
+      const canvas = fabricRef.current
+      if (!canvas || !textPrompt) return
+      const val = textValue.trim() || "Text"
+      const text = new IText(val, {
+        left: textPrompt.sceneX,
+        top: textPrompt.sceneY,
         fontSize: 28,
         fontFamily: "Arial, sans-serif",
         fill: drawColor,
-        padding: 8,
-        backgroundColor: "rgba(255,255,255,0.7)",
       })
       canvas.add(text)
       canvas.setActiveObject(text)
       canvas.renderAll()
+      setTextPrompt(null)
+      setTextValue("")
       handleToolChange("select")
-    }, [activeTool, drawColor])
+    }, [textPrompt, textValue, drawColor])
+
+    useEffect(() => {
+      if (textPrompt) textInputRef.current?.focus()
+    }, [textPrompt])
 
     useEffect(() => {
       const canvas = fabricRef.current
@@ -272,8 +325,10 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
           multiplier,
         })
 
-        const res = await fetch(dataUrl)
-        return res.blob()
+        const bin = atob(dataUrl.split(",")[1])
+        const buf = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
+        return new Blob([buf], { type: "image/jpeg" })
       },
     }))
 
@@ -283,7 +338,17 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
 
     return (
       <>
-        <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden flex items-center justify-center bg-black/5 p-3" />
+        <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden flex items-center justify-center bg-black/5 p-1.5 sm:p-3">
+          {textPrompt && (
+            <input ref={textInputRef} type="text" value={textValue}
+              onChange={(e) => setTextValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleTextConfirm(); if (e.key === "Escape") { setTextPrompt(null); setTextValue("") } }}
+              onBlur={() => { if (textValue.trim()) handleTextConfirm(); else { setTextPrompt(null); setTextValue("") } }}
+              placeholder="Type here..."
+              className="absolute z-30 h-8 min-w-[120px] max-w-[80%] px-2 text-sm rounded-md border border-primary/50 bg-background shadow-lg outline-none"
+              style={{ left: textPrompt.left, top: textPrompt.top }} />
+          )}
+        </div>
 
         {mode === "adjust" ? (
           <div className="flex flex-col gap-1.5 px-3 py-2 border-t border-border/10 shrink-0 bg-background">
@@ -375,6 +440,21 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
             <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold text-destructive" onClick={handleClearDrawings} title="Clear all">
               <Eraser className="h-3 w-3 mr-1" /> Clear
             </Button>
+            {hasSelection && (
+              <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold text-destructive ml-auto"
+                onClick={() => {
+                  const canvas = fabricRef.current
+                  const active = canvas?.getActiveObject()
+                  if (active && active !== imgRef.current) {
+                    canvas!.remove(active)
+                    canvas!.discardActiveObject()
+                    canvas!.renderAll()
+                    setHasSelection(false)
+                  }
+                }} title="Delete selected">
+                <Trash2 className="h-3 w-3 mr-1" /> Delete
+              </Button>
+            )}
           </div>
         )}
       </>

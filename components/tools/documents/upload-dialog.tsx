@@ -38,7 +38,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
   onOpenChange: (v: boolean) => void
   persons: Person[]
   selectedPersonId: string | null
-  onUploaded: () => void
+  onUploaded: (personId: string) => void
 }) {
   const [personId, setPersonId] = useState(selectedPersonId || persons[0]?.id || "")
   const [name, setName] = useState("")
@@ -183,7 +183,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
       }
       await saveDocument({ ...payload.doc, personId: pid }, pages)
       toast.success(`"${payload.doc.name}" saved`)
-      onUploaded()
+      onUploaded(pid)
     } catch {
       toast.error("Failed to save document")
     } finally {

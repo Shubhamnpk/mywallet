@@ -39,7 +39,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { PublicLayout } from "@/components/public-layout"
+import { PublicLayout } from "@/components/public-pages/public-layout"
 
 type RoadmapStatus = "completed" | "in-progress" | "planned" | "exploring"
 type StatusFilter = RoadmapStatus | "all" | "open"

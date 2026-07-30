@@ -76,7 +76,7 @@ export interface MarketSectorModalProps {
     initialSector?: string
     topStocks?: { top_gainer: TopStockItem[]; top_loser: TopStockItem[]; top_turnover: TopStockItem[] } | null
     sectorsMap?: Record<string, string>
-    onOpenStockDetail?: (symbol: string) => void
+    onOpenStockDetail?: (symbol: string, ltp?: number, pointChange?: number, percentageChange?: number) => void
 }
 
 export function MarketSectorModal({
@@ -388,7 +388,7 @@ export function MarketSectorModal({
                                             <button
                                                 key={`${mover.symbol}-${idx}`}
                                                 onClick={() => {
-                                                    onOpenStockDetail?.(mover.symbol)
+                                                    onOpenStockDetail?.(mover.symbol, mover.ltp, mover.pointChange, mover.percentageChange)
                                                     onOpenChange(false)
                                                 }}
                                                 className={cn(

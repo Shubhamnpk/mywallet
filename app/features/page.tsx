@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { Wallet } from "lucide-react"
-import { FeaturesPageClient } from "@/components/features/features-page-client"
-import { PublicLayout } from "@/components/public-layout"
+import { FeaturesPageClient } from "@/components/public-pages/features"
+import { PublicLayout } from "@/components/public-pages/public-layout"
 
 export const metadata = {
   title: "Features | MyWallet",

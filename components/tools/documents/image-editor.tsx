@@ -118,7 +118,7 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
     { key: "rotate", label: "Rotate", icon: RotateCcw },
     { key: "crop", label: "Crop", icon: CropIcon },
     { key: "adjust", label: "Adjust", icon: Sliders },
-    { key: "annotate", label: "Annotate", icon: Paintbrush },
+    { key: "annotate", label: "Draw", icon: Paintbrush },
   ]
 
   return (
@@ -145,7 +145,7 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
           />
         </div>
       ) : (
-        <div ref={previewRef} className="relative flex-1 min-h-0 overflow-hidden flex items-center justify-center p-4 bg-black/5">
+        <div ref={previewRef} className="relative flex-1 min-h-0 overflow-hidden flex items-center justify-center p-2 sm:p-4 bg-black/5">
           <img
             src={imageUrl}
             alt="preview"
@@ -179,25 +179,23 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 px-2 py-1.5 border-t border-border/10 shrink-0 bg-background">
-        <div className="flex items-center gap-1">
-          {modeTabs.map(({ key, label, icon: Icon }) => (
-            <Button key={key} variant={mode === key ? "default" : "ghost"} size="sm"
-              className="h-7 text-[10px] font-bold" onClick={() => setMode(key)}>
-              <Icon className="h-3 w-3 mr-1" /> {label}
-            </Button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold" onClick={onCancel} disabled={isSaving}>
-            Cancel
+      <div className="flex items-center gap-1 px-2 py-1.5 border-t border-border/10 shrink-0 bg-background overflow-x-auto">
+        {modeTabs.map(({ key, label, icon: Icon }) => (
+          <Button key={key} variant={mode === key ? "default" : "ghost"} size="sm"
+            className="h-7 text-[10px] font-bold whitespace-nowrap" onClick={() => setMode(key)}>
+            <Icon className="h-3 w-3 mr-1" /> {label}
           </Button>
-          <Button size="sm" className="h-7 text-[10px] font-bold" onClick={handleSave}
-            disabled={isSaving || (mode === "crop" && !cropPixels)}>
-            {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
-            Save
-          </Button>
-        </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-border/10 shrink-0 bg-background">
+        <Button variant="ghost" size="sm" className="h-8 text-xs font-bold" onClick={onCancel} disabled={isSaving}>
+          Cancel
+        </Button>
+        <Button size="sm" className="h-8 text-xs font-bold" onClick={handleSave}
+          disabled={isSaving || (mode === "crop" && !cropPixels)}>
+          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+          Save
+        </Button>
       </div>
     </div>
   )

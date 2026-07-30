@@ -714,7 +714,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
 
   return (
     <Dialog open={!!docId} onOpenChange={(v) => { if (!v) handleClose() }}>
-      <DialogContent className="w-[95vw] sm:w-[52rem] sm:max-w-[52rem] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden [&>[data-slot=dialog-close]]:hidden">
+      <DialogContent className="w-full sm:w-[95vw] sm:max-w-[52rem] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden [&>[data-slot=dialog-close]]:hidden">
         <DialogTitle className="sr-only">{doc?.name || "Document"}</DialogTitle>
         <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-border/10 shrink-0 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">

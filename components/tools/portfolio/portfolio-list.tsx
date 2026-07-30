@@ -587,7 +587,7 @@ export function PortfolioList() {
         setIsMarketSectorOpen(true)
     }
 
-    const handleOpenStockDetailFromSymbol = (symbol: string) => {
+    const handleOpenStockDetailFromSymbol = (symbol: string, ltp?: number, pointChange?: number, percentageChange?: number) => {
         const normalized = normalizeStockSymbol(symbol)
         const matchingHolding = portfolio.find(
             (item) => normalizeStockSymbol(item.symbol) === normalized && (item.assetType || "stock") === "stock" && !item.cryptoId,
@@ -607,7 +607,9 @@ export function PortfolioList() {
             assetName: name,
             units: 0,
             buyPrice: 0,
-            currentPrice: 0,
+            currentPrice: ltp ?? 0,
+            change: pointChange,
+            percentChange: percentageChange,
             sector,
             detailContext: "market-search",
             lastUpdated: new Date().toISOString(),

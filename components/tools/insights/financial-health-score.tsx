@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Award, TrendingUp, Target, Shield, Star, Trophy, AlertTriangle, Sparkles, PlusCircle, HelpCircle, BarChart3 } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import type { Transaction, UserProfile, Budget, Goal, DebtAccount } from "@/types/wallet"
-import { Button } from "../ui/button"
+import { Button } from "@/components/ui/button"
 import { getCalendarMonthRange, isWithinDateRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 

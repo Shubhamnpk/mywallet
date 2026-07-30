@@ -151,11 +151,14 @@ export function DocumentTools() {
     toast(`${deletedDocCount} document${deletedDocCount !== 1 ? "s" : ""} deleted with person`)
   }, [currentPersonId])
 
-  const handleDocUploaded = useCallback(async () => {
+  const handleDocUploaded = useCallback(async (uploadedPersonId: string) => {
     setShowUploadDialog(false)
-    const docs = await getDocuments(currentPersonId ?? undefined)
+    const allPersons = await getPersons()
+    setPersons(allPersons)
+    setCurrentPersonId(uploadedPersonId)
+    const docs = await getDocuments(uploadedPersonId)
     setDocuments(docs)
-  }, [currentPersonId])
+  }, [])
 
   const handleDocUpdated = useCallback(async () => {
     const docs = await getDocuments(currentPersonId ?? undefined)

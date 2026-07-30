@@ -1,4 +1,4 @@
-import { FileText, Image, File, CreditCard, BookOpen, FileBadge, Award, Baby } from "lucide-react"
+import { FileText, Image, File, CreditCard, BookOpen, FileBadge, Award, Baby, Fingerprint, Pen, Landmark, IdCard } from "lucide-react"
 import { type Area } from "react-easy-crop"
 import type { LucideIcon } from "lucide-react"
 
@@ -20,6 +20,11 @@ export const DOCUMENT_TYPES: DocumentType[] = [
   { key: "idcard", label: "ID Card", faces: 2, faceLabels: ["Front", "Back"], icon: CreditCard, keywords: ["id card", "idcard", "identity", "card"] },
   { key: "birth", label: "Birth Certificate", faces: 1, icon: Baby, keywords: ["birth", "janma", "certificate"] },
   { key: "certificate", label: "Certificate", faces: 1, icon: Award, keywords: ["certificate", "award", "diploma", "degree"] },
+  { key: "ppsize", label: "PP Size Photo", faces: 1, icon: Image, keywords: ["pp size", "passport size", "photo", "pp"] },
+  { key: "signature", label: "Signature", faces: 1, icon: Pen, keywords: ["signature", "sign", "autograph"] },
+  { key: "thumbprint", label: "Thumbprint", faces: 1, icon: Fingerprint, keywords: ["thumbprint", "fingerprint", "thumb", "finger"] },
+  { key: "voter", label: "Voter ID", faces: 2, faceLabels: ["Front", "Back"], icon: IdCard, keywords: ["voter", "voter id", "election", "matadata"] },
+  { key: "pan", label: "PAN Card", faces: 1, icon: Landmark, keywords: ["pan", "tax", "pan card"] },
   { key: "other", label: "Other Document", faces: 1, icon: FileText, keywords: ["other", "document"] },
 ]
 

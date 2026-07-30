@@ -1,6 +1,6 @@
 import releasesData from "@/data/releases.json"
 import packageJson from "@/package.json"
-import { ReleasesPageClient, type ReleasesData } from "@/components/releases/releases-page-client"
+import { ReleasesPageClient, type ReleasesData } from "@/components/public-pages/releases"
 
 export const metadata = {
   title: "Release Notes | MyWallet",

@@ -434,7 +434,9 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }, [isMarketLookupItem, isZeroHolding, item, shareTransactions])
     const isSold = lastExitInfo?.type === "sell"
     const isMerged = lastExitInfo?.type === "merger_out"
-    const safePreviousClose = Number.isFinite(item?.previousClose) ? (item?.previousClose ?? safeCurrent) : safeCurrent
+    const hasPreviousClose = Number.isFinite(item?.previousClose)
+    const hasDailyMoveData = hasPreviousClose || Number.isFinite(item?.change) || Number.isFinite(item?.percentChange)
+    const safePreviousClose = hasPreviousClose ? (item?.previousClose ?? safeCurrent) : safeCurrent
     const dailyChange = !isZeroHolding && Number.isFinite(item?.change) ? (item?.change ?? 0) : (safeCurrent - safePreviousClose)
     const dailyChangePerc = !isZeroHolding && Number.isFinite(item?.percentChange)
         ? (item?.percentChange ?? 0)
@@ -1841,27 +1843,31 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     </div>
                                                     <div className={cn(
                                                         "p-4 rounded-2xl border flex flex-col gap-2",
-                                                        isDailyNeutral
+                                                        !hasDailyMoveData
                                                             ? "bg-muted/20 border-muted/50"
-                                                            : isDailyProfit
-                                                                ? "bg-green-500/5 border-green-500/10"
-                                                                : "bg-red-500/5 border-red-500/10"
+                                                            : isDailyNeutral
+                                                                ? "bg-muted/20 border-muted/50"
+                                                                : isDailyProfit
+                                                                    ? "bg-green-500/5 border-green-500/10"
+                                                                    : "bg-red-500/5 border-red-500/10"
                                                     )}>
                                                         <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
                                                             Daily Move
                                                         </div>
                                                         <div className="text-xl font-black font-mono">
-                                                            {isDailyProfit ? "+" : ""}{formatValue(dailyChange)}
+                                                            {hasDailyMoveData ? `${isDailyProfit ? "+" : ""}${formatValue(dailyChange)}` : "—"}
                                                         </div>
                                                         <div className={cn(
                                                             "text-[10px] font-bold",
-                                                            isDailyNeutral
+                                                            !hasDailyMoveData
                                                                 ? "text-muted-foreground"
-                                                                : isDailyProfit
-                                                                    ? "text-green-600"
-                                                                    : "text-red-600"
+                                                                : isDailyNeutral
+                                                                    ? "text-muted-foreground"
+                                                                    : isDailyProfit
+                                                                        ? "text-green-600"
+                                                                        : "text-red-600"
                                                         )}>
-                                                            {isDailyProfit ? "+" : ""}{dailyChangePerc.toFixed(2)}% vs previous close
+                                                            {hasDailyMoveData ? `${isDailyProfit ? "+" : ""}${dailyChangePerc.toFixed(2)}%${hasPreviousClose ? " vs previous close" : ""}` : "N/A"}
                                                         </div>
                                                     </div>
                                                 </>
@@ -2091,7 +2097,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         )}
                                         {/* Investment Details */}
-                                        {!isCrypto && (
+                                        {!isCrypto && !isMarketLookupItem && (
                                             <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
                                                 <div className="flex justify-between items-center pb-2 border-b border-muted/20">
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -2120,7 +2126,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         )}
 
-                                        {!isCrypto && !existingSipPlan && (
+                                        {!isCrypto && !isMarketLookupItem && !existingSipPlan && (
                                             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
