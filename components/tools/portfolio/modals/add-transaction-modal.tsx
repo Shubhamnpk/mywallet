@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ChevronDown, ChevronUp, Plus } from "lucide-react"
+import { ChevronDown, ChevronUp, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,DialogTrigger} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -233,11 +233,20 @@ export function AddTransactionModal({
     const content = (
         <>
             {!embedded && (
-                <DialogHeader className="pb-3 border-b border-primary/10">
+                <DialogHeader className="relative p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent">
                     <DialogTitle className="text-2xl font-black text-primary">Record Transaction</DialogTitle>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted hover:text-muted-foreground text-muted-foreground transition-all z-50 border border-muted-foreground/10"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Close</span>
+                    </Button>
                 </DialogHeader>
             )}
-            <div className={cn("grid gap-4", embedded ? "py-2" : "py-6")}>
+            <div className={cn("grid gap-4", embedded ? "py-2" : "flex-1 overflow-y-auto px-6 py-6")}>
                     <div className="grid gap-2">
                         <Label htmlFor="assetType" className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Asset Class</Label>
                         <Select
@@ -304,7 +313,7 @@ export function AddTransactionModal({
                                             setShowSuggestions(true)
                                         }
                                     }}
-                                    placeholder={newTx.assetType === "crypto" ? "Type BTC or Bitcoin" : "Type symbol or company name"}
+                                    placeholder={newTx.assetType === "crypto" ? "eg BTC" : "eg NABIL, NTC"}
                                 />
                                 {showSuggestions && (
                                     <div className="absolute z-50 mt-1 w-full max-h-52 overflow-auto rounded-xl border bg-popover shadow-lg">
@@ -443,7 +452,6 @@ export function AddTransactionModal({
                                         price: value === "" ? Number.NaN : Number(value),
                                     })
                                 }
-                                currencySymbol={resolvedCurrencySymbol}
                                 disabled={newTx.type === "bonus" || newTx.type === "gift"}
                             />
                         </div>
@@ -665,7 +673,8 @@ export function AddTransactionModal({
             {!hideFooter && (
                 <DialogFooter className={cn(
                     "gap-2",
-                    embedded && "sticky bottom-0 z-20 -mx-6 mt-2 border-t border-muted/20 bg-card/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+                    embedded && "sticky bottom-0 z-20 -mx-6 mt-2 border-t border-muted/20 bg-card/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80",
+                    !embedded && "border-t border-muted/20 px-6 py-4"
                 )}>
                     <Button variant="ghost" className={cn("rounded-xl font-bold", embedded && "flex-1")} disabled={isSubmitting} onClick={() => (onCancel || (() => onOpenChange(false)))()}>Cancel</Button>
                     <Button className={cn("rounded-xl font-bold px-8 shadow-md", embedded && "flex-1")} disabled={isSubmitting || sellQuantityError} onClick={onAdd}>
@@ -697,8 +706,8 @@ export function AddTransactionModal({
                 </Button>
             </DialogTrigger>
             <DialogContent
-                className="sm:max-w-[425px] rounded-xl sm:rounded-2xl border border-primary/30 bg-background shadow-none ring-1 ring-border/60 backdrop-blur-none text-foreground subpixel-antialiased sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
-                overlayClassName="bg-black/45 backdrop-blur-none"
+                className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh]"
+                showCloseButton={false}
             >
                 {content}
             </DialogContent>

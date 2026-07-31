@@ -694,9 +694,18 @@ export function DataSettings() {
       ? remoteData.emergencyFund
       : emergencyFund
 
+    const mergedSipPlans = mergeById(
+      userProfile?.sipPlans ?? [],
+      Array.isArray(remoteData?.userProfile?.sipPlans) ? remoteData.userProfile.sipPlans : [],
+    )
+    const mergedUserProfile = {
+      ...(remoteData?.userProfile ?? userProfile ?? {}),
+      sipPlans: mergedSipPlans,
+    }
+
     return {
       ...remoteData,
-      userProfile: remoteData?.userProfile ?? userProfile,
+      userProfile: mergedUserProfile,
       transactions: mergedTransactions,
       budgets: mergedBudgets,
       goals: mergedGoals,

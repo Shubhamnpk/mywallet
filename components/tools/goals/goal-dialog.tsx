@@ -500,7 +500,6 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                           setFormData((prev) => ({ ...prev, targetAmount: value }))
                           if (errors.targetAmount) setErrors((prev) => ({ ...prev, targetAmount: "" }))
                         }}
-                        currencySymbol={currencySymbol}
                         required
                       />
                       {errors.targetAmount && <p className="text-sm text-destructive">{errors.targetAmount}</p>}
@@ -630,7 +629,6 @@ export function GoalDialog({ isOpen, onClose, userProfile, editingGoal }: GoalDi
                                     setFormData((prev) => ({ ...prev, contributionAmount: value }))
                                     if (errors.contributionAmount) setErrors((prev) => ({ ...prev, contributionAmount: "" }))
                                   }}
-                                  currencySymbol={currencySymbol}
                                 />
                                 <div className="space-y-1">
                                   <Label>Frequency</Label>

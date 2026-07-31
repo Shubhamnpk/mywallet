@@ -136,7 +136,7 @@ export type WalletDataContextType = {
   settings: any
 }
 
-const WalletDataContext = createContext<WalletDataContextType | undefined>(undefined)
+export const WalletDataContext = createContext<WalletDataContextType | undefined>(undefined)
 
 interface WalletDataProviderProps {
   children: ReactNode

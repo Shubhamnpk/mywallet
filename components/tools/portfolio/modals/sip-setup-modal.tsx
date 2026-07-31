@@ -1,19 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useState, useRef } from "react"
-import { PiggyBank, RefreshCw, Upload } from "lucide-react"
+import { PiggyBank, RefreshCw, Upload, X } from "lucide-react"
 import type { PortfolioItem, ShareTransaction, SIPPlan } from "@/types/wallet"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { AppDateInput } from "@/components/ui/app-date-input"
+import { AmountInput } from "@/components/ui/amount-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -72,7 +71,7 @@ export function SIPSetupModal({
   onOpenChange,
   onPlanSaved,
 }: SIPSetupModalProps) {
-  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, userProfile, importSipPlanFromProvider, addShareTransaction, deleteMultipleShareTransactions, shareTransactions } = useWalletData()
+  const { saveSipPlan, deleteSipPlan, enrollMultipleShareTransactionsInSipPlan, importSipPlanFromProvider, addShareTransaction, deleteMultipleShareTransactions, shareTransactions } = useWalletData()
     const calendarSystem = useCalendarSystem()
   const [form, setForm] = useState<SIPFormState>({
     installmentAmount: "",
@@ -162,16 +161,6 @@ export function SIPSetupModal({
   useEffect(() => {
     if (!open) return
 
-    if (!existingPlan) {
-      const initialId = initialEnrollmentTransactionId || undefined
-      const initialExists = initialId ? enrollableTransactions.some((tx) => tx.id === initialId) : false
-      setSelectedEnrollmentId(
-        initialExists && initialId ? initialId
-          : enrollableTransactions.length > 0 ? enrollableTransactions[0].id
-          : NO_ENROLLMENT_VALUE
-      )
-    }
-
     if (existingPlan) {
       setForm({
         installmentAmount: existingPlan.installmentAmount ? String(existingPlan.installmentAmount) : "",
@@ -181,33 +170,46 @@ export function SIPSetupModal({
         mode: existingPlan.mode,
         status: existingPlan.status,
       })
+      setSelectedEnrollmentId(NO_ENROLLMENT_VALUE)
       return
     }
 
-    const enrollmentTx = initialEnrollmentTransactionId
-      ? enrollableTransactions.find((tx) => tx.id === initialEnrollmentTransactionId)
+    const initialId = initialEnrollmentTransactionId || undefined
+    const initialExists = initialId ? enrollableTransactions.some((tx) => tx.id === initialId) : false
+    const chosenId = initialExists && initialId ? initialId
+      : enrollableTransactions.length > 0 ? enrollableTransactions[0].id
+      : NO_ENROLLMENT_VALUE
+    setSelectedEnrollmentId(chosenId)
+
+    const enrollmentTx = chosenId !== NO_ENROLLMENT_VALUE
+      ? enrollableTransactions.find((tx) => tx.id === chosenId) || null
       : null
-    if (enrollmentTx) {
-      setForm({
-        installmentAmount: "",
-        frequency: "monthly",
-        startDate: enrollmentTx.date?.slice(0, 10) || getDefaultStartDate(),
-        reminderDays: "3",
-        mode: "manual",
-        status: "active",
-      })
-      return
-    }
-
     setForm({
       installmentAmount: "",
       frequency: "monthly",
-      startDate: getDefaultStartDate(),
+      startDate: enrollmentTx?.date?.slice(0, 10) || getDefaultStartDate(),
       reminderDays: "3",
       mode: "manual",
       status: "active",
     })
-  }, [enrollableTransactions, existingPlan, initialEnrollmentTransactionId, open])
+  }, [existingPlan, initialEnrollmentTransactionId, open])
+
+  useEffect(() => {
+    if (!open || existingPlan) return
+
+    if (enrollableTransactions.length === 0) {
+      if (selectedEnrollmentId !== NO_ENROLLMENT_VALUE) {
+        setSelectedEnrollmentId(NO_ENROLLMENT_VALUE)
+      }
+      return
+    }
+
+    const stillExists = selectedEnrollmentId !== NO_ENROLLMENT_VALUE &&
+      enrollableTransactions.some((tx) => tx.id === selectedEnrollmentId)
+    if (stillExists) return
+
+    setSelectedEnrollmentId(enrollableTransactions[0].id)
+  }, [enrollableTransactions, existingPlan, open, selectedEnrollmentId])
 
   useEffect(() => {
     if (!open || existingPlan || !selectedEnrollmentTx) return
@@ -571,10 +573,19 @@ export function SIPSetupModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         overlayClassName="bg-black/45"
-        className="sm:max-w-[500px] rounded-3xl border-primary/20 bg-card shadow-2xl sm:top-24 sm:translate-x-[-50%] sm:translate-y-0 sm:data-[state=open]:zoom-in-100 sm:data-[state=closed]:zoom-out-100"
+        className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh]"
         onCloseAutoFocus={(e) => e.preventDefault()}
+        showCloseButton={false}
       >
-        <DialogHeader className="pb-3">
+        <DialogHeader className="p-6 pb-4 relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-4 top-4 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted hover:text-muted-foreground text-muted-foreground transition-all z-50 border border-muted-foreground/10"
+            onClick={() => onOpenChange(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-primary/25 bg-background text-primary shadow-sm">
               <PiggyBank className="mr-1 h-3 w-3" />
@@ -585,39 +596,40 @@ export function SIPSetupModal({
           <DialogTitle>{assetLabel}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-4 px-6 py-4">
           {!existingPlan && enrollableTransactions.length > 0 && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Link existing buy as 1st installment</Label>
-              <Select value={selectedEnrollmentId} onValueChange={(value) => {
-                setSelectedEnrollmentId(value)
-                setSelectedTransactionIds(new Set())
-              }}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Skip for now" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_ENROLLMENT_VALUE}>Skip past buys</SelectItem>
-                  {enrollableTransactions.map((tx) => (
-                    <SelectItem key={tx.id} value={tx.id}>
-                      {formatSipDate(tx.date, calendarSystem)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {selectedEnrollmentId !== NO_ENROLLMENT_VALUE && (
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={openAdvancedSelect}>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <Select value={selectedEnrollmentId} onValueChange={(value) => {
+                    setSelectedEnrollmentId(value)
+                    setSelectedTransactionIds(new Set())
+                  }}>
+                    <SelectTrigger className="h-10 w-full">
+                      <SelectValue placeholder="Skip for now" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_ENROLLMENT_VALUE}>Skip past buys</SelectItem>
+                      {enrollableTransactions.map((tx) => (
+                        <SelectItem key={tx.id} value={tx.id}>
+                          {formatSipDate(tx.date, calendarSystem)} • {Number.isFinite(tx.quantity) ? tx.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 }) : 0} units @ {Number.isFinite(tx.price) ? tx.price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedEnrollmentId !== NO_ENROLLMENT_VALUE && (
+                  <Button type="button" variant="ghost" size="sm" className="text-xs h-10 px-3 whitespace-nowrap" onClick={openAdvancedSelect}>
                     <Settings2 className="w-3 h-3 mr-1" />
                     {selectedTransactionIds.size > 0 ? `${selectedTransactionIds.size} selected` : "Customize selection"}
                   </Button>
-                  {selectedTransactionIds.size > 0 && (
-                    <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2 text-muted-foreground" onClick={clearCustomSelection}>
-                      Reset
-                    </Button>
-                  )}
-                </div>
+                )}
+              </div>
+              {selectedTransactionIds.size > 0 && (
+                <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2 text-muted-foreground" onClick={clearCustomSelection}>
+                  Reset
+                </Button>
               )}
             </div>
           )}
@@ -696,31 +708,28 @@ export function SIPSetupModal({
             </div>
           ) : (<>
           <div className="space-y-2">
-            <Label htmlFor="sip-amount" className="text-xs">Contribution amount</Label>
-            <Input
+            <Label htmlFor="sip-amount">Contribution amount</Label>
+            <AmountInput
               id="sip-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-10"
               value={form.installmentAmount}
-              onChange={(event) => setForm((current) => ({ ...current, installmentAmount: event.target.value }))}
+              onChange={(value) => setForm((current) => ({ ...current, installmentAmount: value }))}
+              className="h-10"
             />
             <p className="text-[10px] text-muted-foreground">
               DP charge of {SIP_DEFAULT_DPS_CHARGE} per installment deducted from contribution
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Frequency</Label>
-              <Select
-                value={form.frequency}
-                onValueChange={(value: SIPPlan["frequency"]) => setForm((current) => ({ ...current, frequency: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <Select
+                  value={form.frequency}
+                  onValueChange={(value: SIPPlan["frequency"]) => setForm((current) => ({ ...current, frequency: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="weekly">Weekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
@@ -739,16 +748,16 @@ export function SIPSetupModal({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Reminder</Label>
-              <Select
-                value={form.reminderDays}
-                onValueChange={(value) => setForm((current) => ({ ...current, reminderDays: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <Select
+                  value={form.reminderDays}
+                  onValueChange={(value) => setForm((current) => ({ ...current, reminderDays: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
                 <SelectContent>
                   {SIP_REMINDER_DAY_OPTIONS.map((value) => (
                     <SelectItem key={value} value={String(value)}>
@@ -760,13 +769,13 @@ export function SIPSetupModal({
             </div>
             <div className="space-y-2">
               <Label>Mode</Label>
-              <Select
-                value={form.mode}
-                onValueChange={(value: SIPPlan["mode"]) => setForm((current) => ({ ...current, mode: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <Select
+                  value={form.mode}
+                  onValueChange={(value: SIPPlan["mode"]) => setForm((current) => ({ ...current, mode: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="manual">Manual</SelectItem>
                   <SelectItem value="auto">Auto</SelectItem>
@@ -775,13 +784,13 @@ export function SIPSetupModal({
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select
-                value={form.status}
-                onValueChange={(value: SIPPlan["status"]) => setForm((current) => ({ ...current, status: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <Select
+                  value={form.status}
+                  onValueChange={(value: SIPPlan["status"]) => setForm((current) => ({ ...current, status: value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="paused">Paused</SelectItem>
@@ -793,23 +802,19 @@ export function SIPSetupModal({
         </div>
 
         {!importReview && (
-        <DialogFooter className="mt-2 flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-          {existingPlan ? (
-            <Button type="button" variant="outline" onClick={handleDelete}>
+        <div className="mt-auto flex shrink-0 gap-2 border-t border-primary/10 bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          {existingPlan && (
+            <Button type="button" variant="outline" className="h-11 rounded-xl font-bold" onClick={handleDelete}>
               Remove SIP
             </Button>
-          ) : (
-            <div />
           )}
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : existingPlan ? "Save Changes" : "Create SIP"}
-            </Button>
-          </div>
-        </DialogFooter>
+          <Button type="button" variant="ghost" className="h-11 flex-1 rounded-xl font-bold" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="button" className="h-11 flex-1 rounded-xl font-bold shadow-md" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? "Saving..." : existingPlan ? "Save Changes" : "Create SIP"}
+          </Button>
+        </div>
         )}
       </DialogContent>
     </Dialog>

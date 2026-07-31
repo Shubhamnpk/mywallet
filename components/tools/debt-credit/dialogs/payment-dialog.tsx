@@ -3,7 +3,7 @@ import { AmountInput } from "@/components/ui/amount-input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Coins, Percent, Minus, CreditCard, Banknote, HandCoins } from "lucide-react"
-import { getCurrencySymbol, formatCurrency } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
 import { Badge } from "@/components/ui/badge"
 
@@ -96,7 +96,6 @@ export function PaymentDialog({
                                 label={isLending ? 'Amount Received' : 'Repayment Amount'}
                                 value={paymentAmount}
                                 onChange={setPaymentAmount}
-                                currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                 required
                                 autoFocus
                                 className="h-14 text-2xl font-bold shadow-sm focus-visible:ring-emerald-500"

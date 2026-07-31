@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Bell, Plus, Calendar, AlertTriangle, CheckCircle2, Clock, Trash2, RefreshCw } from "lucide-react"
 import { AmountInput } from "@/components/ui/amount-input"
-import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
+import { formatCurrency } from "@/lib/currency"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import type { UserProfile } from "@/types/wallet"
 
@@ -255,7 +255,6 @@ export function BillReminderSystem({ userProfile }: BillReminderSystemProps) {
                   label="Amount"
                   value={newBill.amount ?? ""}
                   onChange={(val) => setNewBill((prev) => ({ ...prev, amount: val ? Number(val) : undefined }))}
-                  currencySymbol={getCurrencySymbol(userProfile.currency, userProfile.customCurrency)}
                   className="h-11 rounded-xl border-primary/20 focus:border-primary"
                   placeholder="0.00"
                 />

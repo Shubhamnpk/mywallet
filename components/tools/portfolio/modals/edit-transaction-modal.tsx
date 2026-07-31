@@ -271,7 +271,7 @@ export function EditTransactionModal({
                                             setShowSuggestions(true)
                                         }
                                     }}
-                                    placeholder={formData.assetType === "crypto" ? "Type BTC or Bitcoin" : "Type symbol or company name"}
+                                    placeholder={formData.assetType === "crypto" ? "eg BTC or Bitcoin" : "eg NABIL, NTC"}
                                 />
                                 {showSuggestions && (
                                     <div className="absolute z-50 mt-1 w-full rounded-xl border bg-popover shadow-lg max-h-52 overflow-auto">

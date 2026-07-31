@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button"
 import { AmountInput } from "@/components/ui/amount-input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Plus, AlertTriangle } from "lucide-react"
-import { getCurrencySymbol } from "@/lib/utils"
 import type { UserProfile } from "@/types/wallet"
 import { Badge } from "@/components/ui/badge"
 
@@ -64,7 +63,6 @@ export function AddDebtDialog({
                             label="Amount to Add"
                             value={amount}
                             onChange={setAmount}
-                            currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                             required
                             disabled={isLoading}
                             autoFocus

@@ -177,7 +177,13 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
   }, [gameMode, draw])
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => keysRef.current.add(e.key.toLowerCase())
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPhase("menu")
+        return
+      }
+      keysRef.current.add(e.key.toLowerCase())
+    }
     const handleKeyUp = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase())
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
@@ -320,6 +326,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("w")}
                   onTouchEnd={() => keysRef.current.delete("w")}
+                  onTouchCancel={() => keysRef.current.delete("w")}
                   onMouseDown={() => keysRef.current.add("w")}
                   onMouseUp={() => keysRef.current.delete("w")}
                   onMouseLeave={() => keysRef.current.delete("w")}
@@ -327,6 +334,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("s")}
                   onTouchEnd={() => keysRef.current.delete("s")}
+                  onTouchCancel={() => keysRef.current.delete("s")}
                   onMouseDown={() => keysRef.current.add("s")}
                   onMouseUp={() => keysRef.current.delete("s")}
                   onMouseLeave={() => keysRef.current.delete("s")}
@@ -339,6 +347,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("i")}
                   onTouchEnd={() => keysRef.current.delete("i")}
+                  onTouchCancel={() => keysRef.current.delete("i")}
                   onMouseDown={() => keysRef.current.add("i")}
                   onMouseUp={() => keysRef.current.delete("i")}
                   onMouseLeave={() => keysRef.current.delete("i")}
@@ -346,6 +355,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("k")}
                   onTouchEnd={() => keysRef.current.delete("k")}
+                  onTouchCancel={() => keysRef.current.delete("k")}
                   onMouseDown={() => keysRef.current.add("k")}
                   onMouseUp={() => keysRef.current.delete("k")}
                   onMouseLeave={() => keysRef.current.delete("k")}
@@ -392,8 +402,9 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
         </div>
 
         {display.winner && (
-          <div className="text-center text-sm font-bold text-success py-1">
-            🎉 {display.winner} Wins! 🎉
+          <div className="text-center py-3 px-4 rounded-xl bg-success/10 border border-success/20 animate-in zoom-in-95 fade-in duration-200">
+            <div className="text-lg font-black text-success">🎉 {display.winner} Wins! 🎉</div>
+            <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Click Play Again to start a new round</div>
           </div>
         )}
       </CardContent>

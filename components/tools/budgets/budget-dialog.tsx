@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CategoryMultiSelect } from "@/components/ui/category-multi-select"
 import { Target, Clock } from "lucide-react"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useCurrencySymbol } from "@/hooks/use-currency-symbol"
 import { isTimeWalletEnabled, getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import type { UserProfile, Budget } from "@/types/wallet"
 
@@ -53,9 +52,6 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
       setErrors({})
     }
   }, [editingBudget])
-
-  // Get currency symbol
-  const currencySymbol = useCurrencySymbol()
 
   const timeEquivalentBreakdown = useMemo(() => {
     if (!amount || !userProfile) return null
@@ -124,7 +120,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6">
             <div className="space-y-2">
               <Label htmlFor="budget-name" className="flex items-center gap-2">
                 Budget Name
@@ -149,9 +145,9 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="budget-amount">Budget Amount</Label>
               <AmountInput
                 id="budget-amount"
-                label="Budget Amount"
                 value={amount}
                 onChange={(value) => {
                   setAmount(value)
@@ -159,7 +155,6 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                     setErrors(prev => ({ ...prev, amount: "" }))
                   }
                 }}
-                currencySymbol={currencySymbol}
                 required
               />
               {errors.amount && (
@@ -177,7 +172,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
               <div className="space-y-2">
                 <Label htmlFor="budget-period">Period</Label>
                 <Select value={period} onValueChange={setPeriod}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -195,7 +190,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                   Emergency Uses Allowed
                 </Label>
                 <Select value={emergencyUses} onValueChange={setEmergencyUses}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -207,7 +202,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
                 </Select>
               </div>
             </div>
-            <div className="pt-1 border-t border-border/10">
+            <div className="border-t border-border/10">
               <p className="text-sm font-medium mb-2">Supported Categories</p>
               <p className="text-xs text-muted-foreground mb-3">Select which expense categories this budget should cover</p>
               <CategoryMultiSelect
@@ -219,7 +214,7 @@ export function BudgetDialog({ open, onOpenChange, userProfile, onAddBudget, edi
               />
             </div>
 
-            <div className="flex flex-row gap-2 mb-4">
+            <div className="flex flex-row gap-2 mt-6 mb-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
                 Cancel
               </Button>

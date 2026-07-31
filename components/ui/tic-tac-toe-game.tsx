@@ -122,6 +122,14 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
     }
   }, [gameMode, currentPlayer, winner, isDraw, board, getBestMove, checkWinner, isBoardFull])
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPhase("menu")
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
+
   const resetGame = useCallback(() => {
     setBoard(Array(9).fill(null))
     setCurrentPlayer("X")
@@ -142,10 +150,6 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
     setIsDraw(false)
     setIsAiThinking(false)
     setPhase("playing")
-  }, [])
-
-  const toggleMode = useCallback(() => {
-    setGameMode((prev) => (prev === "human" ? "ai" : "human"))
   }, [])
 
   if (!isOpen) return null

@@ -2,8 +2,10 @@
 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { forwardRef, useEffect, useState } from "react"
+import { forwardRef, useContext, useEffect, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
+import { WalletDataContext } from "@/contexts/wallet-data-context"
+import { getCurrencySymbol } from "@/lib/currency"
 
 interface AmountInputProps extends Omit<ComponentPropsWithoutRef<typeof Input>, "value" | "onChange" | "type"> {
   value: string | number
@@ -14,7 +16,12 @@ interface AmountInputProps extends Omit<ComponentPropsWithoutRef<typeof Input>, 
 }
 
 export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
-  ({ value, onChange, currencySymbol = "$", label, required = false, className, ...props }, ref) => {
+  ({ value, onChange, currencySymbol, label, required = false, className, ...props }, ref) => {
+    const walletData = useContext(WalletDataContext)
+    const resolvedCurrencySymbol = currencySymbol ?? getCurrencySymbol(
+      walletData?.userProfile?.currency,
+      walletData?.userProfile?.customCurrency,
+    )
     const [displayAmount, setDisplayAmount] = useState("")
     const [locale, setLocale] = useState<"us" | "eu" | "in">(() => {
       return (typeof window !== 'undefined' ? (localStorage.getItem("wallet_number_format") || "us") : "us") as "us" | "eu" | "in"
@@ -110,7 +117,7 @@ export const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
         )}
         <div className="relative">
           <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground font-medium">
-            {currencySymbol}
+            {resolvedCurrencySymbol}
           </span>
           <Input
             ref={ref}

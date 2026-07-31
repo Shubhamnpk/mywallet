@@ -221,7 +221,6 @@ export function ScenarioPlanningCalculator({
                   id="purchase-amount"
                   value={purchaseAmount}
                   onChange={setPurchaseAmount}
-                  currencySymbol={currencySymbol}
                   className="h-10 md:h-11 rounded-2xl border-primary/15 focus:border-primary font-black text-base md:text-lg transition-all"
                   placeholder="0.00"
                 />

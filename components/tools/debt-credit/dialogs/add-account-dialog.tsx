@@ -27,6 +27,7 @@ interface AddAccountDialogProps {
     userProfile: UserProfile
     editingDebtId?: string | null
     editingCreditId?: string | null
+    onFastDebtChange?: (checked: boolean) => void
 }
 
 export function AddAccountDialog({
@@ -46,6 +47,7 @@ export function AddAccountDialog({
     userProfile,
     editingDebtId,
     editingCreditId,
+    onFastDebtChange,
 }: AddAccountDialogProps) {
     const isEditingDebt = !!editingDebtId
     const isEditingCredit = !!editingCreditId
@@ -115,7 +117,11 @@ export function AddAccountDialog({
                                 <Checkbox
                                     id="debt-fast"
                                     checked={debtForm.isFastDebt}
-                                    onCheckedChange={(checked) => setDebtForm({ ...debtForm, isFastDebt: checked as boolean })}
+                                    onCheckedChange={(checked) => {
+                                        const value = checked as boolean
+                                        setDebtForm({ ...debtForm, isFastDebt: value })
+                                        onFastDebtChange?.(value)
+                                    }}
                                     className="data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
                                 />
                                 <Label htmlFor="debt-fast" className="text-sm font-medium flex items-center gap-2 cursor-pointer w-full">
@@ -130,7 +136,6 @@ export function AddAccountDialog({
                                 label={`Current Balance (${getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})`}
                                 value={debtForm.balance}
                                 onChange={(value) => setDebtForm({ ...debtForm, balance: value })}
-                                currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                 required
                                 className="h-11 font-mono text-base shadow-sm focus-visible:ring-destructive"
                             />
@@ -148,7 +153,8 @@ export function AddAccountDialog({
                                             max="100"
                                             value={debtForm.interestRate}
                                             onChange={(e) => setDebtForm({ ...debtForm, interestRate: e.target.value })}
-                                                        className="h-11 shadow-sm focus-visible:ring-destructive"
+                                            placeholder="0"
+                                            className="h-11 shadow-sm focus-visible:ring-destructive"
                                         />
                                     </div>
 
@@ -188,7 +194,6 @@ export function AddAccountDialog({
                                 label={`Minimum Payment (${getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})`}
                                 value={debtForm.minimumPayment}
                                 onChange={(value) => setDebtForm({ ...debtForm, minimumPayment: value })}
-                                currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                 className="h-11 shadow-sm focus-visible:ring-destructive"
                             />
 
@@ -258,71 +263,9 @@ export function AddAccountDialog({
                                 label={`Amount (${getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})`}
                                 value={lendForm?.amount || ""}
                                 onChange={(value) => setLendForm?.({ ...lendForm, amount: value })}
-                                currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                 required
                                 className="h-9 font-mono text-sm shadow-sm focus-visible:ring-emerald-500"
                             />
-
-                            <button
-                                type="button"
-                                onClick={() => setShowLendAdvanced(!showLendAdvanced)}
-                                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full pt-1"
-                            >
-                                {showLendAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                {showLendAdvanced ? "Hide details" : "Show details"}
-                            </button>
-
-                            {showLendAdvanced && (
-                                <div className="space-y-3 pt-1">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="lend-rate" className="text-xs font-medium">Interest (%)</Label>
-                                        <Input
-                                            id="lend-rate"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            max="100"
-                                            value={lendForm?.interestRate || ""}
-                                            onChange={(e) => setLendForm?.({ ...lendForm, interestRate: e.target.value })}
-                                            placeholder="0 (no interest)"
-                                            className="h-9 text-sm shadow-sm focus-visible:ring-emerald-500"
-                                        />
-                                    </div>
-
-                                    {(lendForm?.interestRate && Number.parseFloat(lendForm.interestRate) > 0) && (
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1.5">
-                                                <Label htmlFor="lend-frequency" className="text-xs font-medium">Frequency</Label>
-                                                <select
-                                                    id="lend-frequency"
-                                                    title="lend-frequency"
-                                                    value={lendForm?.interestFrequency || "yearly"}
-                                                    onChange={(e) => setLendForm?.({ ...lendForm, interestFrequency: e.target.value })}
-                                                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 shadow-sm"
-                                                >
-                                                    <option value="yearly">Yearly</option>
-                                                    <option value="quarterly">Quarterly</option>
-                                                    <option value="monthly">Monthly</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label htmlFor="lend-type" className="text-xs font-medium">Type</Label>
-                                                <select
-                                                    id="lend-type"
-                                                    title="lend-type"
-                                                    value={lendForm?.interestType || "simple"}
-                                                    onChange={(e) => setLendForm?.({ ...lendForm, interestType: e.target.value })}
-                                                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 shadow-sm"
-                                                >
-                                                    <option value="simple">Simple</option>
-                                                    <option value="compound">Compound</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    </div>
-                            )}
 
                             <div className="space-y-1.5">
                                 <Label htmlFor="lend-notes" className="text-xs font-medium">Notes</Label>
@@ -334,6 +277,61 @@ export function AddAccountDialog({
                                     className="h-9 text-sm shadow-sm focus-visible:ring-emerald-500"
                                 />
                             </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowLendAdvanced(!showLendAdvanced)}
+                                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full pt-1"
+                            >
+                                {showLendAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                {showLendAdvanced ? "Hide advanced options" : "Advanced options"}
+                            </button>
+
+                            {showLendAdvanced && (
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="lend-rate" className="text-xs font-medium">Interest (%)</Label>
+                                        <Input
+                                            id="lend-rate"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            value={lendForm?.interestRate || ""}
+                                            onChange={(e) => setLendForm?.({ ...lendForm, interestRate: e.target.value })}
+                                            placeholder="0"
+                                            className="h-9 text-sm shadow-sm focus-visible:ring-emerald-500"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="lend-frequency" className="text-xs font-medium">Frequency</Label>
+                                        <select
+                                            id="lend-frequency"
+                                            title="lend-frequency"
+                                            value={lendForm?.interestFrequency || "yearly"}
+                                            onChange={(e) => setLendForm?.({ ...lendForm, interestFrequency: e.target.value })}
+                                            className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 shadow-sm"
+                                        >
+                                            <option value="yearly">Yearly</option>
+                                            <option value="quarterly">Quarterly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="lend-type" className="text-xs font-medium">Type</Label>
+                                        <select
+                                            id="lend-type"
+                                            title="lend-type"
+                                            value={lendForm?.interestType || "simple"}
+                                            onChange={(e) => setLendForm?.({ ...lendForm, interestType: e.target.value })}
+                                            className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 shadow-sm"
+                                        >
+                                            <option value="simple">Simple</option>
+                                            <option value="compound">Compound</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex gap-3 pt-2">
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1 h-10 text-sm font-medium">
@@ -370,7 +368,6 @@ export function AddAccountDialog({
                                     label="Current Balance"
                                     value={creditForm.balance}
                                     onChange={(value) => setCreditForm({ ...creditForm, balance: value })}
-                                    currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                     required
                                         className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
                                 />
@@ -379,7 +376,6 @@ export function AddAccountDialog({
                                     label="Credit Limit"
                                     value={creditForm.creditLimit}
                                     onChange={(value) => setCreditForm({ ...creditForm, creditLimit: value })}
-                                    currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                     required
                                         className="h-11 font-mono text-base shadow-sm focus-visible:ring-primary"
                                 />
@@ -388,17 +384,18 @@ export function AddAccountDialog({
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="credit-rate" className="text-sm font-medium">Interest (%)</Label>
-                                    <Input
-                                        id="credit-rate"
-                                        type="number"
-                                        required
-                                        step="0.01"
-                                        min="0"
-                                        max="100"
-                                        value={creditForm.interestRate}
-                                        onChange={(e) => setCreditForm({ ...creditForm, interestRate: e.target.value })}
-                                                className="h-11 shadow-sm focus-visible:ring-primary"
-                                    />
+                                        <Input
+                                            id="credit-rate"
+                                            type="number"
+                                            required
+                                            step="0.01"
+                                            min="0"
+                                            max="100"
+                                            value={creditForm.interestRate}
+                                            onChange={(e) => setCreditForm({ ...creditForm, interestRate: e.target.value })}
+                                            placeholder="0"
+                                            className="h-11 shadow-sm focus-visible:ring-primary"
+                                        />
                                 </div>
 
                                 <div className="space-y-2">
@@ -436,7 +433,6 @@ export function AddAccountDialog({
                                 label={`Min Payment (${getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)})`}
                                 value={creditForm.minimumPayment}
                                 onChange={(value) => setCreditForm({ ...creditForm, minimumPayment: value })}
-                                currencySymbol={getCurrencySymbol(userProfile.currency, (userProfile as any).customCurrency)}
                                 className="h-11 shadow-sm focus-visible:ring-primary"
                             />
 

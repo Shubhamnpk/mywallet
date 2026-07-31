@@ -599,35 +599,10 @@ export const getSipTransactionsForPlan = (
 }
 
 export const getSipDisplayTransactionsForPlan = (
-  plan: Pick<SIPPlan, "id" | "portfolioId" | "symbol" | "startDate">,
+  plan: Pick<SIPPlan, "id" | "portfolioId" | "symbol">,
   transactions: ShareTransaction[] | undefined,
 ) => {
-  const normalizedSymbol = plan.symbol.trim().toUpperCase()
-  const planStartTime = parseDateOnly(plan.startDate)?.getTime() ?? Number.NEGATIVE_INFINITY
-
-  return (transactions || [])
-    .filter((tx) => {
-      if (tx.portfolioId !== plan.portfolioId || tx.symbol.trim().toUpperCase() !== normalizedSymbol) {
-        return false
-      }
-
-      if (tx.sipPlanId === plan.id) {
-        return true
-      }
-
-      if (tx.type !== "buy") {
-        return false
-      }
-
-      // Exclude one-time purchases that aren't SIP installments
-      if (tx.description?.toUpperCase().startsWith("ONE TIME PURCHASE")) {
-        return false
-      }
-
-      const txTime = parseDateOnly(tx.date)?.getTime() ?? Number.NEGATIVE_INFINITY
-      return txTime >= planStartTime
-    })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  return getSipTransactionsForPlan(plan, transactions)
 }
 
 const getCompletedDueDateSet = (

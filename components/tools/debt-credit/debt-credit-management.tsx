@@ -120,18 +120,24 @@ export function DebtCreditManagement() {
     source: "wallet" as "wallet" | "external",
   })
 
-  // Auto-update fast debt checkbox based on interest and payment settings
+  // Auto-update fast debt checkbox based on interest and payment settings,
+  // but only until the user manually toggles it
+  const [fastDebtTouched, setFastDebtTouched] = useState(false)
   useEffect(() => {
+    if (fastDebtTouched) return
     const interestRate = Number.parseFloat(debtForm.interestRate) || 0
     const minPayment = Number.parseFloat(debtForm.minimumPayment) || 0
     const shouldBeFastDebt = interestRate === 0 && minPayment === 0
+    setDebtForm(prev => (prev.isFastDebt === shouldBeFastDebt ? prev : { ...prev, isFastDebt: shouldBeFastDebt }))
+  }, [debtForm.interestRate, debtForm.minimumPayment, fastDebtTouched])
 
-    if (shouldBeFastDebt && !debtForm.isFastDebt) {
-      setDebtForm(prev => ({ ...prev, isFastDebt: true }))
-    } else if (!shouldBeFastDebt && debtForm.isFastDebt) {
-      // Don't auto-uncheck if user manually checked it
+  // Reset the touch state when the dialog opens: respect loaded value when editing,
+  // otherwise allow auto-detection on a fresh form
+  useEffect(() => {
+    if (showAddDialog) {
+      setFastDebtTouched(!!editingDebtId)
     }
-  }, [debtForm.interestRate, debtForm.minimumPayment, debtForm.isFastDebt])
+  }, [showAddDialog, editingDebtId])
 
   // Form validation helpers
   const validateDebtForm = useCallback(() => {
@@ -1375,6 +1381,7 @@ export function DebtCreditManagement() {
         userProfile={userProfile}
         editingDebtId={editingDebtId}
         editingCreditId={editingCreditId}
+        onFastDebtChange={() => setFastDebtTouched(true)}
       />
 
       <DebtDetailsDialog
