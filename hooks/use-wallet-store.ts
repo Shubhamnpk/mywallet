@@ -4575,7 +4575,7 @@ export function useWalletStore() {
     ipoName: string,
     kitta = 10,
     source: "live-apply" | "live-auto" | "settings-test" = "live-apply",
-    options?: { showBrowser?: boolean; browserProvider?: "api" | "auto" | "browserless" | "local" }
+    options?: { showBrowser?: boolean; browserProvider?: "api" | "rest" | "auto" | "browserless" | "local" }
   ) => {
     try {
       const response = await fetch('/api/meroshare/apply', {

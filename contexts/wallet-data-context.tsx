@@ -113,7 +113,7 @@ export type WalletDataContextType = {
     ipoName: string,
     kitta?: number,
     source?: "live-apply" | "live-auto" | "settings-test",
-    options?: { showBrowser?: boolean; browserProvider?: "api" | "auto" | "browserless" | "local" }
+    options?: { showBrowser?: boolean; browserProvider?: "api" | "rest" | "auto" | "browserless" | "local" }
   ) => Promise<any>
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
   getFaceValue: (symbol: string) => number

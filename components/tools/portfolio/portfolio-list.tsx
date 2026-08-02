@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,7 @@ import { StockDetailModal } from "./modals/stock-detail-modal"
 import { PortfolioHeatMap } from "./portfolio-heatmap"
 import { OverviewStockSearch } from "./overview-stock-search"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
+import { IpoCenter } from "@/components/tools/ipo/ipo-center"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
 import { EditTransactionModal } from "./modals/edit-transaction-modal"
 import { UpcomingIPO } from "@/types/wallet"
@@ -172,6 +173,7 @@ export function PortfolioList() {
         return `${symbol}${symbol.endsWith(" ") ? "" : " "}`
     }, [userProfile?.currency, userProfile?.customCurrency])
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
+    const [isIpoCenterOpen, setIsIpoCenterOpen] = useState(false)
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isAddingTransaction, setIsAddingTransaction] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
@@ -3128,6 +3130,23 @@ export function PortfolioList() {
         )
     }
 
+    if (isIpoCenterOpen) {
+        return (
+            <div className="space-y-4">
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-1 py-2 mb-1 -mx-1">
+                    <button
+                        onClick={() => setIsIpoCenterOpen(false)}
+                        className="inline-flex items-center gap-1.5 p-2 rounded-lg hover:bg-muted/50 transition-colors text-sm font-medium"
+                    >
+                        <ChevronLeft className="w-5 h-5" />
+                        Back to Portfolio
+                    </button>
+                </div>
+                <IpoCenter />
+            </div>
+        )
+    }
+
     if (viewMode === "overview") {
         if (!isShareFeaturesEnabled) {
             return (
@@ -3909,6 +3928,16 @@ export function PortfolioList() {
                                                     <SelectItem value="closed">Closed</SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 rounded-lg text-[11px] font-black uppercase tracking-wider border-primary/20 bg-card/60 text-primary hover:bg-primary/10"
+                                                onClick={() => setIsIpoCenterOpen(true)}
+                                            >
+                                                <Rocket className="w-3.5 h-3.5 mr-1.5" />
+                                                <span className="hidden sm:inline">View Details</span>
+                                                <span className="sm:hidden">Details</span>
+                                            </Button>
                                             {filteredIPOsCount > 5 && (
                                                 <Button
                                                     variant="ghost"

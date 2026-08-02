@@ -13,6 +13,35 @@ export async function POST(req: Request) {
 
     const provider = options?.browserProvider || credentials?.browserProvider || "api"
 
+    if (provider === "rest") {
+      const { MeroShareRestClient } = await import("../_lib/rest-api")
+      const client = new MeroShareRestClient()
+      await client.login({
+        dpId: credentials.dpId,
+        username: credentials.username,
+        password: credentials.password,
+      })
+      const rows = await client.getPortfolio()
+      const portfolio = rows.map((row) => ({
+        symbol: row.symbol,
+        units: row.units,
+        currentPrice: row.currentPrice,
+        current_price: row.currentPrice,
+        buyPrice: row.averageCost || 0,
+        buy_price: row.averageCost || 0,
+        previousClose: row.previousClose ?? null,
+      }))
+      const user_name = (await client.getOwnData())?.name || credentials.username
+      return NextResponse.json({
+        success: true,
+        portfolio,
+        message: portfolio.length ? `Fetched ${portfolio.length} holdings.` : "No holdings found.",
+        user_name,
+        total_positions: portfolio.length,
+        total_units: portfolio.reduce((sum, row) => sum + (row.units || 0), 0),
+      })
+    }
+
     if (provider === "api") {
       const payload: any = { credentials: { dpId: credentials.dpId, username: credentials.username, password: credentials.password } }
       const data = await proxyToMeroShareApi("/portfolio", payload)

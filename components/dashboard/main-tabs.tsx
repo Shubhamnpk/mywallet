@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText,BarChart3} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
 import { BudgetsList } from "@/components/tools/budgets/budgets-list"
 import { EnhancedGoalsList } from "@/components/tools/goals/goals-list"
@@ -18,6 +18,7 @@ import { CalculatorTool } from "@/components/tools/calculator-tool"
 import { CurrencyConverterTool } from "@/components/tools/currency-converter-tool"
 import { GamesTool } from "@/components/tools/games-tool"
 import { DocumentTools } from "@/components/tools/documents/document-tools"
+import { MutualFundsTool } from "@/components/tools/mutual-funds/mutual-funds-tool"
 import ReceiptScanner from "@/components/tools/scanner/receipt-dialog"
 import { CurrencyConverterDialog } from "@/components/dashboard/currency-converter-dialog"
 import { SessionManager } from "@/lib/session-manager"
@@ -50,6 +51,7 @@ const MOBILE_TOOLS_GROUP = [
   "currency-converter",
   "games",
   "document-tools",
+  "mutual-funds",
 ] as const
 
 const DESKTOP_TOOLS_GROUP = [
@@ -63,9 +65,10 @@ const DESKTOP_TOOLS_GROUP = [
   "currency-converter",
   "games",
   "document-tools",
+  "mutual-funds",
 ] as const
 
-const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools", "calculator", "currency-converter", "games", "document-tools"])
+const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools", "calculator", "currency-converter", "games", "document-tools", "mutual-funds"])
 
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -265,6 +268,12 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
       description: "Store and manage important documents",
       badge: "Beta",
     },
+    {
+      value: "mutual-funds",
+      label: "Mutual Funds",
+      icon: BarChart3,
+      description: "Explore mutual fund NAV, performance & returns",
+    },
   ]
 
   const toolsHubTab: TabDef = {
@@ -356,6 +365,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "currency-converter"),
     pickTab(allTabs, "games"),
     pickTab(allTabs, "document-tools"),
+    pickTab(allTabs, "mutual-funds"),
   ]
 
   const mobileHubCards: TabDef[] = [
@@ -370,6 +380,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "currency-converter"),
     pickTab(allTabs, "games"),
     pickTab(allTabs, "document-tools"),
+    pickTab(allTabs, "mutual-funds"),
   ]
 
   const isFullscreen = !!mobileFullscreenTab
@@ -507,6 +518,10 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
 
           <TabsContent value="document-tools" className="space-y-4 px-3 sm:px-0">
             <DocumentTools />
+          </TabsContent>
+
+          <TabsContent value="mutual-funds" className="space-y-4 px-3 sm:px-0">
+            <MutualFundsTool />
           </TabsContent>
 
           <TabsContent

@@ -18,6 +18,44 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
   }
 
+  const provider = options?.browserProvider || credentials?.browserProvider || "api"
+
+  if (provider === "rest") {
+    try {
+      const { MeroShareRestClient } = await import("../_lib/rest-api")
+      const client = new MeroShareRestClient()
+      await client.login({
+        dpId: credentials.dpId,
+        username: credentials.username,
+        password: credentials.password,
+      })
+      const profileName = (await client.getOwnData())?.name || credentials.username
+      const rows = await client.getTransactions()
+      const transactions = rows.map((row) => ({
+        scrip: row.scrip,
+        transactionDate: row.transactionDate,
+        creditQuantity: row.creditQuantity,
+        debitQuantity: row.debitQuantity,
+        balanceAfterTransaction: row.balanceAfterTransaction,
+        historyDescription: row.historyDescription,
+      }))
+      return NextResponse.json({
+        success: true,
+        profileName,
+        transactions,
+        count: transactions.length,
+        message: transactions.length
+          ? `Fetched ${transactions.length} MeroShare transaction history rows.`
+          : "No MeroShare transaction history rows found.",
+      })
+    } catch (error: any) {
+      console.error("MeroShare REST Transaction History Error:", error)
+      return NextResponse.json({
+        error: error?.message || "An error occurred during transaction history sync.",
+      }, { status: 500 })
+    }
+  }
+
   try {
     browser = await getMeroShareBrowser({
       showBrowser: Boolean(options?.showBrowser),

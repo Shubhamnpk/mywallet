@@ -11,11 +11,57 @@ export async function POST(req: Request) {
     if (!credentials?.dpId || !credentials?.username || !credentials?.password || !credentials?.crn || !credentials?.pin) {
       return NextResponse.json({ error: "Missing required credentials (dpId, username, password, crn, pin)" }, { status: 400 })
     }
-    if (!ipoDetails?.company_share_id || !ipoDetails?.units || !ipoDetails?.bank) {
-      return NextResponse.json({ error: "Missing IPO details (company_share_id, units, bank)" }, { status: 400 })
+    if (!ipoDetails?.company_share_id || !ipoDetails?.units) {
+      return NextResponse.json({ error: "Missing IPO details (company_share_id, units)" }, { status: 400 })
     }
 
     const provider = options?.browserProvider || credentials?.browserProvider || "api"
+
+    if (provider === "rest") {
+      const { MeroShareRestClient } = await import("../_lib/rest-api")
+      const client = new MeroShareRestClient()
+      await client.login({
+        dpId: credentials.dpId,
+        username: credentials.username,
+        password: credentials.password,
+        crn: credentials.crn,
+        pin: credentials.pin,
+      })
+      const companyShareId = await client.resolveCompanyShareId(ipoDetails.company_share_id)
+      let alreadyApplied = false
+      let data: unknown
+      try {
+        data = await client.applyForIpo(
+          {
+            dpId: credentials.dpId,
+            username: credentials.username,
+            password: credentials.password,
+            crn: credentials.crn,
+            pin: credentials.pin,
+          },
+          { companyShareId, number_of_shares: Number(ipoDetails.units) || 10 },
+        )
+      } catch (error: any) {
+        const message = String(error?.message || error || "")
+        if (/already/i.test(message) || /duplicate/i.test(message)) {
+          alreadyApplied = true
+          data = error?.responseBody ?? null
+        } else {
+          throw error
+        }
+      }
+      const user_name = (await client.getOwnData())?.name || credentials.username
+      return NextResponse.json({
+        success: true,
+        application_id: (data as any)?.id ?? null,
+        alreadyApplied,
+        message: alreadyApplied
+          ? "Already applied earlier; no new application was submitted."
+          : ((data as any)?.message || "IPO application submitted successfully."),
+        user_name,
+        details: data,
+      })
+    }
 
     if (provider === "api") {
       const payload: any = {

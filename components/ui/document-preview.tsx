@@ -1,16 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Document, Page, pdfjs } from "react-pdf"
 import "react-pdf/dist/Page/AnnotationLayer.css"
 import "react-pdf/dist/Page/TextLayer.css"
 import { ZoomIn, ZoomOut, ExternalLink, Scan } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { usePreviewZoomPan } from "@/components/ui/document-preview-zoom"
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
 
 /** Render the page at this multiple of the container width so zooming in stays crisp
- *  without re-rendering the canvas (zoom is applied via CSS). */
+ *  without re-rendering the canvas (the visual scale is a CSS transform). */
 const BASE_RENDER_SCALE = 2
 
 const isImageUrl = (url: string | null): boolean => {
@@ -23,64 +24,50 @@ type DocumentPreviewProps = {
     sourceUrl?: string | null
 }
 
-const clampZoom = (z: number) => Number(Math.max(0.25, Math.min(3, z)).toFixed(2))
-
 export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
-    const [pdfZoom, setPdfZoom] = useState(1)
     const [pdfPageNumber, setPdfPageNumber] = useState(1)
     const [pdfTotalPages, setPdfTotalPages] = useState(0)
     const [docType, setDocType] = useState<"pdf" | "image" | null>(null)
-    const [containerWidth, setContainerWidth] = useState(0)
+    const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+    const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
+    const [pdfAspect, setPdfAspect] = useState<number | null>(null)
     const containerRef = useRef<HTMLDivElement | null>(null)
-    const lastPinchDist = useRef(0)
-    const pinchZoomRef = useRef(1)
+    const aspectRef = useRef<number | null>(null)
 
     useEffect(() => {
-        setPdfZoom(1)
         setPdfPageNumber(1)
         setPdfTotalPages(0)
         setDocType(isImageUrl(url) ? "image" : "pdf")
-        lastPinchDist.current = 0
-        pinchZoomRef.current = 1
+        setImgNatural(null)
+        setPdfAspect(null)
+        aspectRef.current = null
     }, [url])
 
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
-        const update = () => setContainerWidth(el.clientWidth)
+        const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
         update()
         const observer = new ResizeObserver(update)
         observer.observe(el)
         return () => observer.disconnect()
     }, [])
 
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        if (e.touches.length === 2) {
-            const dx = e.touches[0].clientX - e.touches[1].clientX
-            const dy = e.touches[0].clientY - e.touches[1].clientY
-            lastPinchDist.current = Math.hypot(dx, dy)
-            pinchZoomRef.current = pdfZoom
-        }
-    }, [pdfZoom])
+    const renderW = containerSize.w > 0 ? containerSize.w * BASE_RENDER_SCALE : 0
 
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-        if (e.touches.length === 2) {
-            e.preventDefault()
-            const dx = e.touches[0].clientX - e.touches[1].clientX
-            const dy = e.touches[0].clientY - e.touches[1].clientY
-            const dist = Math.hypot(dx, dy)
-            if (lastPinchDist.current > 0) {
-                const scale = dist / lastPinchDist.current
-                setPdfZoom(clampZoom(pinchZoomRef.current * scale))
-            }
+    // Layout size of the (2x) rendered content, used for centering math.
+    const contentSize = useMemo<{ w: number; h: number } | null>(() => {
+        if (renderW <= 0) return null
+        if (docType === "image" && imgNatural && imgNatural.w > 0) {
+            return { w: renderW, h: renderW * (imgNatural.h / imgNatural.w) }
         }
-    }, [])
+        if (docType === "pdf" && pdfAspect) {
+            return { w: renderW, h: renderW * pdfAspect }
+        }
+        return null
+    }, [renderW, docType, imgNatural, pdfAspect])
 
-    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-        if (e.touches.length < 2) {
-            lastPinchDist.current = 0
-        }
-    }, [])
+    const zp = usePreviewZoomPan(containerRef, contentSize, BASE_RENDER_SCALE, !!url && !!contentSize)
 
     if (!url) {
         return (
@@ -98,17 +85,22 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
     }
 
     const isImage = docType === "image"
-    const renderWidth = containerWidth > 0 ? containerWidth * BASE_RENDER_SCALE : undefined
-    // CSS zoom: at pdfZoom=1 the page is fit to the container width (crisp, downscaled from 2x).
-    const cssZoom = pdfZoom / BASE_RENDER_SCALE
+    const transformStyle: React.CSSProperties = {
+        position: "absolute",
+        left: 0,
+        top: 0,
+        transformOrigin: "0 0",
+        transform: `translate(${zp.panX}px, ${zp.panY}px) scale(${zp.zoom / BASE_RENDER_SCALE})`,
+        willChange: "transform",
+    }
 
     return (
-        <div ref={containerRef} className="relative h-full w-full bg-muted/10">
+        <div className="relative h-full w-full bg-muted/10">
             <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
                 <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-muted/50 bg-card/90 backdrop-blur shadow-lg px-1.5 py-1">
                     <button
                         type="button"
-                        onClick={() => setPdfZoom((z) => Number(Math.max(0.25, Number((z - 0.25).toFixed(2))).toFixed(2)))}
+                        onClick={() => zp.zoomCenter(zp.zoom - 0.25)}
                         className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted/40 active:scale-90"
                         title="Zoom out"
                         aria-label="Zoom out"
@@ -116,11 +108,11 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                         <ZoomOut className="h-4 w-4" />
                     </button>
                     <span className="min-w-[3.25rem] text-center text-xs font-semibold tabular-nums text-foreground">
-                        {Math.round(pdfZoom * 100)}%
+                        {Math.round(zp.zoom * 100)}%
                     </span>
                     <button
                         type="button"
-                        onClick={() => setPdfZoom((z) => Number(Math.min(3, Number((z + 0.25).toFixed(2))).toFixed(2)))}
+                        onClick={() => zp.zoomCenter(zp.zoom + 0.25)}
                         className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted/40 active:scale-90"
                         title="Zoom in"
                         aria-label="Zoom in"
@@ -130,29 +122,34 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                     <div className="mx-0.5 h-5 w-px bg-muted/40" />
                     <button
                         type="button"
-                        onClick={() => setPdfZoom(1)}
+                        onClick={() => zp.fitToView()}
                         className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted/40 active:scale-90"
-                        title="Fit to width"
-                        aria-label="Fit to width"
+                        title="Fit to view"
+                        aria-label="Fit to view"
                     >
                         <Scan className="h-4 w-4" />
                     </button>
                 </div>
             </div>
             <div
-                className="h-full w-full overflow-auto flex justify-center p-2 touch-pan-x touch-pan-y"
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
+                ref={containerRef}
+                className="relative h-full w-full overflow-hidden select-none"
+                style={{ cursor: "grab", touchAction: "none" }}
             >
                 {isImage ? (
-                    <div style={{ zoom: cssZoom }}>
+                    <div style={transformStyle}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={url}
                             alt="Document"
-                            className="block max-w-none rounded-lg"
-                            style={{ width: renderWidth ? `${renderWidth}px` : "auto" }}
+                            draggable={false}
+                            onLoad={(e) => {
+                                const nw = e.currentTarget.naturalWidth
+                                const nh = e.currentTarget.naturalHeight
+                                if (nw && nh) setImgNatural({ w: nw, h: nh })
+                            }}
+                            className="block max-w-none rounded-lg select-none"
+                            style={{ width: renderW ? `${renderW}px` : "auto", height: "auto" }}
                         />
                     </div>
                 ) : (
@@ -166,12 +163,12 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                             console.error("PDF load error:", err)
                         }}
                         loading={
-                            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                            <div className="py-10 text-center text-sm text-muted-foreground">
                                 Loading document...
                             </div>
                         }
                         error={
-                            <div className="h-full flex flex-col items-center justify-center gap-3 p-8 text-center">
+                            <div className="py-10 flex flex-col items-center justify-center gap-3 p-8 text-center">
                                 <p className="text-sm text-destructive font-medium">Failed to load document</p>
                                 <Button variant="outline" size="sm" onClick={openInNewTab}>
                                     <ExternalLink className="w-4 h-4 mr-2" />
@@ -181,7 +178,7 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                         }
                     >
                         {pdfTotalPages > 0 && (
-                            <div className="sticky top-0 z-10 flex items-center justify-center gap-3 border-b border-muted/20 bg-muted/10 px-4 py-2 text-xs text-muted-foreground">
+                            <div className="absolute top-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-muted/20 bg-background/80 px-3 py-1.5 text-[10px] font-bold text-muted-foreground shadow-sm backdrop-blur-sm">
                                 <button
                                     type="button"
                                     onClick={() => setPdfPageNumber((p) => Math.max(1, p - 1))}
@@ -203,10 +200,16 @@ export function DocumentPreview({ url, sourceUrl }: DocumentPreviewProps) {
                                 </button>
                             </div>
                         )}
-                        <div style={{ zoom: cssZoom }}>
+                        <div style={transformStyle}>
                             <Page
                                 pageNumber={pdfPageNumber}
-                                width={renderWidth}
+                                width={renderW || undefined}
+                                onRenderSuccess={(page) => {
+                                    if (aspectRef.current === null && page.originalWidth > 0) {
+                                        aspectRef.current = page.originalHeight / page.originalWidth
+                                        setPdfAspect(aspectRef.current)
+                                    }
+                                }}
                             />
                         </div>
                     </Document>

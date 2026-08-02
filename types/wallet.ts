@@ -30,7 +30,7 @@ export interface UserProfile {
     preferredKitta?: number
     applyMode?: "on-demand" | "automatic"
     showLiveBrowser?: boolean
-    browserProvider?: "api" | "auto" | "browserless" | "local"
+    browserProvider?: "api" | "rest" | "auto" | "browserless" | "local"
     isAutomatedEnabled: boolean
     applicationLogs?: MeroShareApplicationLog[]
   }

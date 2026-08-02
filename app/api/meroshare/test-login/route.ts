@@ -13,6 +13,24 @@ export async function POST(req: Request) {
 
     const provider = options?.browserProvider || credentials?.browserProvider || "api"
 
+    if (provider === "rest") {
+      const { MeroShareRestClient } = await import("../_lib/rest-api")
+      const client = new MeroShareRestClient()
+      await client.login({
+        dpId: credentials.dpId,
+        username: credentials.username,
+        password: credentials.password,
+      })
+      const ownData = await client.getOwnData()
+      return NextResponse.json({
+        success: true,
+        message: `Login Successful! Welcome, ${ownData?.name || credentials.username}.`,
+        user_name: ownData?.name || credentials.username,
+        request_id: null,
+        duration_ms: null,
+      })
+    }
+
     if (provider === "api") {
       const payload: any = { credentials: { dpId: credentials.dpId, username: credentials.username, password: credentials.password } }
       const data = await proxyToMeroShareApi("/test-login", payload)

@@ -12,6 +12,24 @@ const ALLOWED_DOMAINS = new Set([
   "www.merolagani.com",
   "shareholders.com.np",
   "www.shareholders.com.np",
+  // Mutual fund asset manager document hosts (NAV reports, prospectuses)
+  "api.rbbmbl.com.np",
+  "cms.optisyslab.com",
+  "garimacapital.com",
+  "globalimecapital.com",
+  "himalayancapital.com",
+  "himalayaninvest.com",
+  "lscapital.com.np",
+  "mcl.com.np",
+  "muktinathcapital.com",
+  "nabilinvest.com.np",
+  "nepallifecapital.com.np",
+  "nimbacecapital.com",
+  "www.citizenscapital.com.np",
+  "www.nicasiacapital.com",
+  "www.prabhucapital.com",
+  "www.sanimacapital.com",
+  "www.siddharthacapital.com",
 ])
 
 const MAX_REDIRECTS = 3

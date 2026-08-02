@@ -17,6 +17,37 @@ export async function POST(req: Request) {
 
     const provider = options?.browserProvider || credentials?.browserProvider || "api"
 
+    if (provider === "rest") {
+      const { MeroShareRestClient } = await import("../_lib/rest-api")
+      const client = new MeroShareRestClient()
+      await client.login({
+        dpId: credentials.dpId,
+        username: credentials.username,
+        password: credentials.password,
+      })
+      const companyShareId = await client.resolveCompanyShareId(ipoName)
+      const data = (await client.checkAllotment(companyShareId)) as any
+      const allotted = data?.allotedQuantity ?? data?.allottedQuantity ?? data?.allotted_qty
+      const isAllotted = Boolean(
+        data?.isAlloted === true ||
+          data?.isAllotted === true ||
+          Number(allotted) > 0 ||
+          String(data?.message ?? "").toLowerCase().includes("allotted"),
+      )
+      const user_name = (await client.getOwnData())?.name || credentials.username
+      return NextResponse.json({
+        success: true,
+        status: isAllotted ? "Allotted" : "Not Allotted",
+        is_allotted: isAllotted,
+        allotted_quantity: String(allotted ?? 0),
+        user_name,
+        details: data,
+        message: isAllotted
+          ? `Congratulations! You have been allotted ${allotted ?? 0} shares.`
+          : "Not allotted in this round.",
+      })
+    }
+
     if (provider === "api") {
       const payload: any = { credentials: { dpId: credentials.dpId, username: credentials.username, password: credentials.password }, ipoName }
       const data = await proxyToMeroShareApi("/check-allotment", payload)

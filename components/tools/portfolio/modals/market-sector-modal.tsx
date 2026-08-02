@@ -201,8 +201,10 @@ export function MarketSectorModal({
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
                 <DialogHeader className="px-5 pt-5 pb-3 shrink-0 border-b border-border/50">
                     <DialogTitle className="flex items-center gap-2 text-base">
-                        <BarChart3 className="w-4 h-4 text-primary" />
-                        Market & Sector Live View
+                        Market & Movers
+                        <Badge variant="secondary" className="text-[10px] font-bold">
+                            {activeTabMeta?.label || "NEPSE"}
+                        </Badge>
                     </DialogTitle>
                 </DialogHeader>
 

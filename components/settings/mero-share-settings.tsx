@@ -360,7 +360,7 @@ export function MeroShareSettings() {
         persistMeroShareSettings(nextForm, accounts)
     }
 
-    const updateBrowserProvider = (value: "api" | "auto" | "browserless" | "local") => {
+    const updateBrowserProvider = (value: "api" | "rest" | "auto" | "browserless" | "local") => {
         const nextForm = {
             ...formData,
             browserProvider: value,
@@ -406,7 +406,7 @@ export function MeroShareSettings() {
             ipoToTest,
             formData.preferredKitta || 0,
             "settings-test",
-            { showBrowser: false, browserProvider: formData.browserProvider as "api" | "auto" | "browserless" | "local" }
+            { showBrowser: false, browserProvider: formData.browserProvider as "api" | "rest" | "auto" | "browserless" | "local" }
         )
 
         toast.promise(promise, {
@@ -1003,11 +1003,11 @@ export function MeroShareSettings() {
                             {formData.browserProvider === "api" ? <Rocket className="w-5 h-5" /> : <Fingerprint className="w-5 h-5" />}
                         </div>
                         <div>
-                            <CardTitle className="text-base">Browser Runtime</CardTitle>
+                            <CardTitle className="text-base">Automation Runtime</CardTitle>
                             <CardDescription className="text-xs text-muted-foreground">
                                 {formData.browserProvider === "api"
                                     ? "Using self-hosted API — fastest and most reliable. Other options are fallbacks."
-                                    : "Alternative browser runtimes for MeroShare automation"}
+                                    : "Alternative runtimes for MeroShare automation"}
                             </CardDescription>
                         </div>
                     </div>
@@ -1016,11 +1016,12 @@ export function MeroShareSettings() {
                     <div className="grid gap-2 sm:grid-cols-[1fr_220px] sm:items-center">
                         <div className="text-xs text-muted-foreground leading-relaxed">
                             <span className="font-medium text-green-500">Self-hosted API (default)</span> — uses your own MeroShare API server via Cloudflare Tunnel.{" "}
-                            {formData.browserProvider !== "api" && <span className="text-amber-500">Fallback: Puppeteer via Browserless/Local Chrome.</span>}
+                            {formData.browserProvider === "rest" && <span className="text-sky-500">Direct REST — talks to CDSC backend directly, no server needed.</span>}
+                            {formData.browserProvider !== "api" && formData.browserProvider !== "rest" && <span className="text-amber-500">Fallback: Puppeteer via Browserless/Local Chrome.</span>}
                         </div>
                         <Select
                             value={formData.browserProvider}
-                            onValueChange={(value) => updateBrowserProvider(value as "api" | "auto" | "browserless" | "local")}
+                            onValueChange={(value) => updateBrowserProvider(value as "api" | "rest" | "auto" | "browserless" | "local")}
                         >
                             <SelectTrigger className="h-10 bg-background/70">
                                 <SelectValue />
@@ -1031,6 +1032,7 @@ export function MeroShareSettings() {
                                         <span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Self-hosted API
                                     </span>
                                 </SelectItem>
+                                <SelectItem value="rest">Direct REST (no backend)</SelectItem>
                                 <SelectItem value="auto">Auto (Browserless → Local)</SelectItem>
                                 <SelectItem value="browserless">Browserless API</SelectItem>
                                 <SelectItem value="local">Local Chrome</SelectItem>

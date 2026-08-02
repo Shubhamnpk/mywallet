@@ -44,6 +44,11 @@ import { ImageEditor } from "./image-editor"
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
 
+// Render PDF pages at this multiple of their fitted size and apply all zooming via the
+// CSS transform (see the PDF render block). The canvas is rasterized once at this base
+// resolution, so zooming never re-rasterizes and quality never degrades while pinching.
+const PDF_RENDER_SCALE = 2
+
 // ─── Unified zoom + pan hook ─────────────────────────────────────────────────
 // Uses CSS transforms instead of scroll manipulation. The content is placed in
 // an `overflow:hidden` container and moved via `translate(panX,panY) scale(zoom)`
@@ -469,19 +474,6 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   const activeImgZP = isTwoSided ? flipZP : imgZP
   const resetImgZoom = () => activeImgZP.setState({ zoom: 1, panX: 0, panY: 0 })
 
-  const [renderedZoom, setRenderedZoom] = useState(1)
-
-  useEffect(() => {
-    setRenderedZoom(1)
-  }, [currentPageId])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setRenderedZoom(pdfZP.zoom)
-    }, 400) // 400ms debounce
-    return () => clearTimeout(timer)
-  }, [pdfZP.zoom])
-
   // ─── PDF scrolling & page synchronization ──────────────────────────────────
   const scrollToPdfPage = useCallback((targetPageNum: number) => {
     if (!pdfPageSize || !pdfFitScale || !pdfContainerRef.current) return
@@ -588,7 +580,6 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     setFace1Natural(null)
     setPdfPageSize(null)
     pdfFitDoneRef.current = false
-    setRenderedZoom(1)
     resetImgZoom()
     pdfZP.setState({ zoom: 1, panX: 0, panY: 0 })
     if (isTwoSided) setFlip(pages.findIndex((p) => p.id === id) === 1)
@@ -966,7 +957,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                   left: 0,
                   top: 0,
                   transformOrigin: "0 0",
-                  transform: `translate(${pdfZP.panX}px, ${pdfZP.panY}px) scale(${pdfZP.zoom / renderedZoom})`,
+                  transform: `translate(${pdfZP.panX}px, ${pdfZP.panY}px) scale(${pdfZP.zoom / PDF_RENDER_SCALE})`,
                   willChange: "transform",
                 }}
               >
@@ -981,7 +972,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                       <Page
                         key={`page_${index + 1}`}
                         pageNumber={index + 1}
-                        scale={(pdfFitScale ?? 1) * renderedZoom}
+                        scale={(pdfFitScale ?? 1) * PDF_RENDER_SCALE}
                         onRenderSuccess={(page) => {
                           if (index === 0) {
                             setPdfPageSize({ w: page.originalWidth, h: page.originalHeight })
