@@ -629,7 +629,7 @@ export function CombinedBalanceCard() {
         <p className="text-xs sm:text-sm text-muted-foreground font-medium">
           {incomeExpenseRange === "monthly" ? `${activeMonthLabel} Summary` : "All Time Summary"}
         </p>
-        <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1" data-tour="period-filter">
+        <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/30 p-1" data-tour="period-filter">
           <Button
             variant={incomeExpenseRange === "monthly" ? "default" : "ghost"}
             size="sm"

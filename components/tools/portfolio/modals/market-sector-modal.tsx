@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn, getNumberFormatLocale } from "@/lib/utils"
-import { TopStockItem, NepseIndexGraphPoint } from "@/types/wallet"
+import { TopStockItem, NepseIndexGraphPoint, NepseIndexDetail } from "@/types/wallet"
 
 export type MarketSectorKey =
     | "nepse"
@@ -70,6 +70,26 @@ const SECTOR_NAME_MAP: Record<MarketSectorKey, string[]> = {
     trading: ["Trading"],
 }
 
+const SECTOR_INDEX_NAME: Record<MarketSectorKey, string[]> = {
+    nepse: ["NEPSE Index"],
+    sensitive: ["Sensitive Index"],
+    float: ["Float Index"],
+    sensitive_float: ["Sensitive Float Index"],
+    banking: ["Banking SubIndex", "Banking Index"],
+    dev_bank: ["Development Bank Index", "Development Bank"],
+    finance: ["Finance Index"],
+    hotel_tourism: ["Hotels And Tourism Index", "Hotel And Tourism"],
+    hydro: ["HydroPower Index", "Hydropower Index"],
+    investment: ["Investment Index"],
+    life_insurance: ["Life Insurance"],
+    manufacturing: ["Manufacturing And Processing"],
+    microfinance: ["Microfinance Index"],
+    mutual_fund: ["Mutual Fund"],
+    non_life_insurance: ["Non Life Insurance", "Non-Life Insurance"],
+    others: ["Others Index"],
+    trading: ["Trading Index"],
+}
+
 export interface MarketSectorModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -92,6 +112,7 @@ export function MarketSectorModal({
     const [isLoadingGraph, setIsLoadingGraph] = useState(false)
     const [graphError, setGraphError] = useState<string | null>(null)
     const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers")
+    const [indexDetails, setIndexDetails] = useState<NepseIndexDetail[]>([])
 
     useEffect(() => {
         if (!open) return
@@ -137,6 +158,27 @@ export function MarketSectorModal({
         }
     }, [])
 
+    const fetchIndexDetails = useCallback(async () => {
+        try {
+            const res = await fetch("/api/nepse/market-indices/graph?detail=1", {
+                headers: { Accept: "application/json" },
+            })
+            if (!res.ok) return
+            const data = await res.json()
+            if (Array.isArray(data)) {
+                setIndexDetails(data as NepseIndexDetail[])
+            }
+        } catch {
+            // non-fatal: fall back to graph-derived stats
+        }
+    }, [])
+
+    useEffect(() => {
+        if (open) {
+            void fetchIndexDetails()
+        }
+    }, [open, fetchIndexDetails])
+
     useEffect(() => {
         if (open) {
             fetchSectorGraph(selectedSector)
@@ -146,8 +188,14 @@ export function MarketSectorModal({
     const chartData = useMemo(() => {
         if (!sectorGraph.length) return []
         const firstTs = sectorGraph[0][0]
-        return sectorGraph
+        let prevTs = Number.NaN
+        const deduped = sectorGraph
             .filter(([ts]) => ts >= firstTs)
+            .filter(([ts]) => {
+                if (ts === prevTs) return false
+                prevTs = ts
+                return true
+            })
             .map(([ts, value]) => {
                 const date = new Date(ts * 1000)
                 const hours = date.getHours().toString().padStart(2, "0")
@@ -157,7 +205,22 @@ export function MarketSectorModal({
                     value: Number(value.toFixed(2)),
                 }
             })
+        if (deduped.length === 0) return []
+        const first = deduped[0]
+        const last = deduped[deduped.length - 1]
+        return [
+            { time: first.time, value: first.value },
+            { time: first.time, value: first.value },
+            ...deduped,
+            { time: last.time, value: last.value },
+            { time: last.time, value: last.value },
+        ]
     }, [sectorGraph])
+
+    const selectedIndexDetail = useMemo(() => {
+        const names = SECTOR_INDEX_NAME[selectedSector]
+        return indexDetails.find((d) => names.some((n) => d.index.toLowerCase() === n.toLowerCase())) ?? null
+    }, [indexDetails, selectedSector])
 
     const chartStats = useMemo(() => {
         if (!chartData.length) return null
@@ -166,11 +229,30 @@ export function MarketSectorModal({
         const close = values[values.length - 1]
         const high = Math.max(...values)
         const low = Math.min(...values)
+        const lastTime = chartData[chartData.length - 1]?.time
+
+        if (selectedIndexDetail) {
+            const change = selectedIndexDetail.change
+            const changePerc = selectedIndexDetail.perChange
+            const isPositive = change >= 0
+            return {
+                open,
+                close: selectedIndexDetail.currentValue ?? close,
+                high: selectedIndexDetail.high ?? high,
+                low: selectedIndexDetail.low ?? low,
+                change,
+                changePerc,
+                isPositive,
+                lastTime,
+                authoritative: true,
+            }
+        }
+
         const change = close - open
         const changePerc = open ? (change / open) * 100 : 0
         const isPositive = change >= 0
-        return { open, close, high, low, change, changePerc, isPositive, lastTime: chartData[chartData.length - 1]?.time }
-    }, [chartData])
+        return { open, close, high, low, change, changePerc, isPositive, lastTime, authoritative: false }
+    }, [chartData, selectedIndexDetail])
 
     const sectorTopMovers = useMemo(() => {
         if (!topStocks) return { gainers: [], losers: [] }

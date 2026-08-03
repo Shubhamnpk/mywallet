@@ -22,6 +22,8 @@ import {
   type HealthStatus,
 } from "@/lib/mutual-funds"
 import { SchemeDetailModal } from "./scheme-detail-modal"
+import { compactAmount } from "@/lib/money-format"
+import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
 type FilterType = "all" | FundType
 
@@ -94,6 +96,7 @@ function sortRows(rows: PerfRow[], key: SortKey, dir: "asc" | "desc"): PerfRow[]
 }
 
 export function MutualFundsTool() {
+  const calendarSystem = useCalendarSystem()
   const [managers, setManagers] = useState<Manager[]>([])
   const [schemes, setSchemes] = useState<Scheme[]>([])
   const [performance, setPerformance] = useState<PerfRow[]>([])
@@ -213,13 +216,13 @@ export function MutualFundsTool() {
           <div className="rounded-xl border border-border/30 bg-muted/10 px-3 py-2">
             <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Avg LTP vs NAV</p>
             <p className={cn("text-sm font-black font-mono", (avgLtpVsNav ?? 0) >= 0 ? "text-success" : "text-error")}>
-              {avgLtpVsNav === null ? "â€”" : formatPct(avgLtpVsNav)}
+              {avgLtpVsNav === null ? "\u2014" : formatPct(avgLtpVsNav)}
             </p>
             <p className="text-[9px] text-muted-foreground/70">weekly NAV basis</p>
           </div>
           <div className="rounded-xl border border-border/30 bg-muted/10 px-3 py-2">
             <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Total Paid-up</p>
-            <p className="text-sm font-black font-mono">{totalPaidUp ? formatMoney(totalPaidUp) : "â€”"}</p>
+            <p className="text-sm font-black font-mono">{totalPaidUp ? compactAmount(totalPaidUp, calendarSystem) : "\u2014"}</p>
             <p className="text-[9px] text-muted-foreground/70">across all schemes</p>
           </div>
           <div className="rounded-xl border border-border/30 bg-muted/10 px-3 py-2">
@@ -230,8 +233,8 @@ export function MutualFundsTool() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-3">
-          <div className="relative flex-1 min-w-[180px]">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="relative flex-1 min-w-[160px] max-w-[300px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
             <Input
               placeholder="Search scheme, symbol, or manager…"
@@ -250,11 +253,11 @@ export function MutualFundsTool() {
               </button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <select
               value={managerFilter}
               onChange={(e) => setManagerFilter(e.target.value)}
-              className="h-9 rounded-lg border border-border/40 bg-background px-2 text-xs font-bold"
+              className="h-9 max-w-[160px] rounded-lg border border-border/40 bg-background px-2 text-xs font-bold overflow-hidden text-ellipsis"
               aria-label="Filter by manager"
             >
               <option value="all">All Managers</option>
@@ -262,20 +265,16 @@ export function MutualFundsTool() {
                 <option key={m.slug} value={m.name}>{m.name} ({m.scheme_count})</option>
               ))}
             </select>
-            <div className="flex bg-muted/40 rounded-lg p-0.5">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as FilterType)}
+              className="h-9 w-auto rounded-lg border border-border/40 bg-background px-2 text-xs font-bold overflow-hidden text-ellipsis"
+              aria-label="Filter by fund type"
+            >
               {(["all", "open_end", "close_end"] as FilterType[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTypeFilter(t)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all",
-                    typeFilter === t ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {t === "all" ? "All" : FUND_TYPE_LABEL[t]}
-                </button>
+                <option key={t} value={t}>{t === "all" ? "All" : FUND_TYPE_LABEL[t]}</option>
               ))}
-            </div>
+            </select>
           </div>
         </div>
 
@@ -297,7 +296,6 @@ export function MutualFundsTool() {
               managers={managers}
               schemes={performance}
               searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
               onOpenScheme={(sym) => {
                 const row = performance.find((r) => r.symbol === sym)
                 if (row) setSelectedScheme(row)
@@ -465,12 +463,11 @@ const OFFER_LABELS: Record<string, string> = {
   sif_pe: "SIF / PE",
 }
 
-function ManagersView({ products, managers, schemes, searchQuery, onSearchChange, onOpenScheme }: {
+function ManagersView({ products, managers, schemes, searchQuery, onOpenScheme }: {
   products: ManagerProduct[]
   managers: Manager[]
   schemes: PerfRow[]
   searchQuery: string
-  onSearchChange: (v: string) => void
   onOpenScheme: (symbol: string) => void
 }) {
   const [selected, setSelected] = useState<ManagerProduct | null>(null)
@@ -494,25 +491,6 @@ function ManagersView({ products, managers, schemes, searchQuery, onSearchChange
         <span className="text-xs font-bold text-muted-foreground">
           {filtered.length} asset manager{filtered.length !== 1 ? "s" : ""}
         </span>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
-          <Input
-            placeholder="Search managers or services…"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-8 w-52 pl-8 pr-8 text-xs rounded-full bg-muted/40 border-border/30"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => onSearchChange("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full bg-muted-foreground/15 text-muted-foreground hover:text-foreground hover:bg-muted-foreground/25 transition-colors"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
       </div>
 
       {filtered.length === 0 ? (

@@ -554,7 +554,7 @@ export function useWalletStore() {
         }
       })
 
-    const marketIndicesTask = fetch("/api/nepse/market-indices")
+    const marketIndicesTask = fetch("/api/nepse/market-indices/graph?detail=1")
       .then(res => res.json())
       .then((data: NepseIndexItem[]) => {
         if (Array.isArray(data)) {
@@ -2847,6 +2847,13 @@ export function useWalletStore() {
         if (tombstones.deleted_documents?.length) {
           await cleanupOrphanedBlobs(vault.manifest || [])
         }
+      }
+
+      if (data.shifts !== undefined || data.shiftPayments !== undefined || data.shiftRate !== undefined || data.shiftTimeFormat !== undefined) {
+        if (Array.isArray(data.shifts)) localStorage.setItem("mywallet_wt_shifts_v2", JSON.stringify(data.shifts))
+        if (Array.isArray(data.shiftPayments)) localStorage.setItem("mywallet_wt_pay_v1", JSON.stringify(data.shiftPayments))
+        if (typeof data.shiftRate === "number") localStorage.setItem("mywallet_wt_rate_v1", String(data.shiftRate))
+        if (typeof data.shiftTimeFormat === "string") localStorage.setItem("mywallet_wt_timefmt_v1", data.shiftTimeFormat)
       }
 
       return true

@@ -1,16 +1,19 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket, Wallet, Megaphone } from "lucide-react"
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, Label, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/components/ui/carousel"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { compactAmount } from "@/lib/money-format"
 import { useNepseData } from "@/hooks/use-nepse-data"
 import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -36,6 +39,7 @@ import { ImportVerificationModal } from "./modals/import-verification-modal"
 import { StockDetailModal } from "./modals/stock-detail-modal"
 import { PortfolioHeatMap } from "./portfolio-heatmap"
 import { OverviewStockSearch } from "./overview-stock-search"
+import { MarketNotificationsModal } from "@/components/tools/ipo/market-notifications-modal"
 import { IPODetailModal } from "./modals/ipo-detail-modal"
 import { IpoCenter } from "@/components/tools/ipo/ipo-center"
 import { SellConfirmationModal } from "./modals/sell-confirmation-modal"
@@ -178,9 +182,11 @@ export function PortfolioList() {
     const [isAddingTransaction, setIsAddingTransaction] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
     const [isEditPortfolioOpen, setIsEditPortfolioOpen] = useState(false)
+    const [isSebonNoticesOpen, setIsSebonNoticesOpen] = useState(false)
     const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [isChartExpanded, setIsChartExpanded] = useState(false)
+    const isMobile = useIsMobile()
     const [importQueue, setImportQueue] = useState<ImportQueueItem[]>([])
     const [importPrices, setImportPrices] = useState<Record<string, string>>({})
     const [importTransactionPrices, setImportTransactionPrices] = useState<Record<string, string>>({})
@@ -256,6 +262,68 @@ export function PortfolioList() {
     const [dayWindow, setDayWindow] = useState<"30" | "90" | "180" | "365" | "all">("90")
     const [historySeriesMode, setHistorySeriesMode] = useState<"both" | "turnover" | "transactions">("both")
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
+    const statsScrollContainerRef = useRef<HTMLDivElement>(null)
+    const [currentStatsCardIndex, setCurrentStatsCardIndex] = useState(0)
+
+    useEffect(() => {
+        const container = statsScrollContainerRef.current
+        if (container) {
+            let touchStartX = 0
+            let touchStartY = 0
+            let isScrolling = false
+
+            const handleTouchStart = (e: TouchEvent) => {
+                touchStartX = e.touches[0].clientX
+                touchStartY = e.touches[0].clientY
+                isScrolling = false
+            }
+
+            const handleTouchMove = (e: TouchEvent) => {
+                if (!touchStartX || !touchStartY) return
+
+                const touchEndX = e.touches[0].clientX
+                const touchEndY = e.touches[0].clientY
+                const diffX = touchStartX - touchEndX
+                const diffY = touchStartY - touchEndY
+
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+                    isScrolling = true
+                }
+            }
+
+            const handleTouchEnd = () => {
+                touchStartX = 0
+                touchStartY = 0
+                if (isScrolling) {
+                    setTimeout(() => {
+                        isScrolling = false
+                    }, 150)
+                }
+            }
+
+            container.addEventListener('touchstart', handleTouchStart, { passive: true })
+            container.addEventListener('touchmove', handleTouchMove, { passive: true })
+            container.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+            const scrollHandler = () => {
+                if (!container) return
+                const scrollLeft = container.scrollLeft
+                const containerWidth = container.clientWidth
+                const threshold = containerWidth * 0.5
+                const newIndex = scrollLeft > threshold ? 1 : 0
+                setCurrentStatsCardIndex(prev => prev !== newIndex ? newIndex : prev)
+            }
+
+            container.addEventListener('scroll', scrollHandler, { passive: true })
+
+            return () => {
+                container.removeEventListener('touchstart', handleTouchStart)
+                container.removeEventListener('touchmove', handleTouchMove)
+                container.removeEventListener('touchend', handleTouchEnd)
+                container.removeEventListener('scroll', scrollHandler)
+            }
+        }
+    }, [])
     const [sellConfirmModal, setSellConfirmModal] = useState<{
         open: boolean
         symbol: string
@@ -1832,6 +1900,12 @@ export function PortfolioList() {
         ? (chartView === "sector" ? soldPortfolioStats.sectorData : soldPortfolioStats.scripData)
         : (chartView === "sector" ? sectorData : scripData)
 
+    const chartTotals = useMemo(() => {
+        const totalValue = activeChartData.reduce((sum, d) => sum + (d.value || 0), 0)
+        const totalUnits = activeChartData.reduce((sum, d) => sum + (d.units || 0), 0)
+        return { totalValue, totalUnits }
+    }, [activeChartData])
+
     const portfolioMovers = useMemo(() => {
         const rows = activePortfolioItemsForCalculations
             .map((item) => {
@@ -1985,8 +2059,14 @@ export function PortfolioList() {
     const intradayChartData = useMemo(() => {
         if (!Array.isArray(marketIndexGraph) || marketIndexGraph.length === 0) return []
         const firstTs = marketIndexGraph[0][0]
-        return marketIndexGraph
+        let prevTs = Number.NaN
+        const deduped = marketIndexGraph
             .filter(([ts]) => ts >= firstTs)
+            .filter(([ts]) => {
+                if (ts === prevTs) return false
+                prevTs = ts
+                return true
+            })
             .map(([ts, value]) => {
                 const date = new Date(ts * 1000)
                 const hours = date.getHours().toString().padStart(2, "0")
@@ -1996,6 +2076,16 @@ export function PortfolioList() {
                     value: Number(value.toFixed(2)),
                 }
             })
+        if (deduped.length === 0) return []
+        const first = deduped[0]
+        const last = deduped[deduped.length - 1]
+        return [
+            { time: first.time, value: first.value },
+            { time: first.time, value: first.value },
+            ...deduped,
+            { time: last.time, value: last.value },
+            { time: last.time, value: last.value },
+        ]
     }, [marketIndexGraph])
 
     const marketStatusMeta = useMemo(() => {
@@ -2446,6 +2536,8 @@ export function PortfolioList() {
         const totalPlPerc = totalInvest > 0 ? (totalPl / totalInvest) * 100 : 0
         const previousTotalValue = totalCurrent - totalTodayChange
         const totalTodayChangePerc = previousTotalValue > 0 ? (totalTodayChange / previousTotalValue) * 100 : 0
+        const formatTodayChangePerc = (value: number) =>
+            Math.abs(value) < 0.05 ? value.toFixed(2) : value.toFixed(1)
 
         // Calculate diversification
         const uniqueSectors = new Set(portfolio.map(p => p.sector || "Others")).size
@@ -2561,7 +2653,7 @@ export function PortfolioList() {
                 )}
 
                 <Card
-                    className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
+                    className="hidden md:block bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-primary/15 focus-within:ring-2 focus-within:ring-primary/30"
                     role="button"
                     tabIndex={0}
                     onClick={() => loadValuationTimeline("Total Valuation Timeline")}
@@ -2579,7 +2671,7 @@ export function PortfolioList() {
                                 <Activity className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             </div>
                         </div>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono tracking-tight">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</CardTitle>
+                        <CardTitle className="text-lg sm:text-2xl font-black font-mono tracking-tight break-all">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <div className={cn(
@@ -2591,7 +2683,7 @@ export function PortfolioList() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-1 px-3 sm:px-6">
                         <div className="flex items-center justify-between mb-1">
                             <CardDescription className="text-foreground/60 font-bold text-[9px] sm:text-[10px] uppercase tracking-widest">Today's Move</CardDescription>
@@ -2604,7 +2696,7 @@ export function PortfolioList() {
                         </div>
                         <div className="flex items-baseline gap-2">
                             <CardTitle className={cn(
-                                "text-xl sm:text-2xl font-black font-mono tracking-tight",
+                                "text-lg sm:text-2xl font-black font-mono tracking-tight",
                                 totalTodayChange >= 0 ? "text-success" : "text-error"
                             )}>
                                 {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString(getNumberFormatLocale())}
@@ -2613,7 +2705,7 @@ export function PortfolioList() {
                                 "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-tight",
                                 totalTodayChange >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                             )}>
-                                {totalTodayChange >= 0 ? "+" : ""}{totalTodayChangePerc.toFixed(1)}%
+                                {totalTodayChange >= 0 ? "+" : ""}{formatTodayChangePerc(totalTodayChangePerc)}%
                             </div>
                         </div>
                     </CardHeader>
@@ -2626,26 +2718,26 @@ export function PortfolioList() {
                 </Card>
 
                 <Card
-                    className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left cursor-pointer hover:border-primary/30 transition-colors"
+                    className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left cursor-pointer hover:border-primary/30 transition-colors"
                     onClick={() => openInvestmentBreakdown("Total Investment Breakdown")}
                 >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
-                        <CardTitle className="text-xl sm:text-2xl font-black font-mono">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</CardTitle>
+                        <CardTitle className="text-lg sm:text-2xl font-black font-mono break-all">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Cost Basis</span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
+                <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <div className="mb-1 flex items-start justify-between gap-2">
                             <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
                                 Diversification
                             </CardDescription>
                         </div>
-                        <CardTitle className={cn("text-xl sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
+                        <CardTitle className={cn("text-lg sm:text-2xl font-black font-mono", diversificationColor)}>{diversificationLabel}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <div className="flex items-center gap-2">
@@ -2662,6 +2754,141 @@ export function PortfolioList() {
                         </div>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Mobile stats carousel using the same technology as BalanceCard */}
+            <div className="md:hidden mb-3 w-full">
+                <div
+                    ref={statsScrollContainerRef}
+                    className="overflow-x-auto px-1 pb-2 hide-scrollbars w-full"
+                    style={{
+                        scrollBehavior: 'smooth',
+                        WebkitOverflowScrolling: 'touch',
+                        scrollSnapType: 'x mandatory'
+                    }}
+                >
+                    <div className="flex gap-4" style={{ width: 'calc(200% + 16px)' }}>
+                        {/* Card 0: Total Valuation */}
+                        <div
+                            data-stats-card="0"
+                            className="flex-shrink-0"
+                            style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start', willChange: 'transform', transform: 'translateZ(0)' }}
+                        >
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => loadValuationTimeline("Total Valuation Timeline")}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault()
+                                        loadValuationTimeline("Total Valuation Timeline")
+                                    }
+                                }}
+                                className="min-h-[120px] bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border border-primary/20 rounded-xl p-3 shadow-md cursor-pointer active:scale-[0.98] transition-transform select-none"
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Total Valuation</p>
+                                    <Activity className="w-3 h-3 text-primary" />
+                                </div>
+                                <div className="flex items-baseline gap-2 flex-wrap">
+                                    <p className="text-lg font-black font-mono tracking-tight break-all">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</p>
+                                    <div className={cn(
+                                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight",
+                                        totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                                    )}>
+                                        {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString(getNumberFormatLocale())} ({totalPlPerc.toFixed(2)}%)
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted/20">
+                                    <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Today's Move</p>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={cn("text-sm font-black font-mono", totalTodayChange >= 0 ? "text-success" : "text-error")}>
+                                            {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString(getNumberFormatLocale())}
+                                        </span>
+                                        <span className={cn(
+                                            "inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-tight",
+                                            totalTodayChange >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                                        )}>
+                                            {totalTodayChange >= 0 ? "+" : ""}{formatTodayChangePerc(totalTodayChangePerc)}%
+                                        </span>
+                                        <div className={cn("p-0.5 rounded-md", totalTodayChange >= 0 ? "bg-success/10 text-success" : "bg-error/10 text-error")}>
+                                            {totalTodayChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Card 1: Total Invested */}
+                        <div
+                            data-stats-card="1"
+                            className="flex-shrink-0"
+                            style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start', willChange: 'transform', transform: 'translateZ(0)' }}
+                        >
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => openInvestmentBreakdown("Total Investment Breakdown")}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault()
+                                        openInvestmentBreakdown("Total Investment Breakdown")
+                                    }
+                                }}
+                                className="min-h-[120px] bg-card/80 border border-muted/50 rounded-xl p-3 shadow-md cursor-pointer active:scale-[0.98] transition-transform select-none"
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Total Invested</p>
+                                    <Wallet className="w-3 h-3 text-muted-foreground" />
+                                </div>
+                                <p className="text-lg font-black font-mono break-all">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</p>
+                                <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest mt-0.5">Cost Basis</p>
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted/20">
+                                    <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Diversification</p>
+                                    <p className={cn("flex items-center gap-1.5 text-sm font-black font-mono", diversificationColor)}>
+                                        <span>{diversificationLabel}</span>
+                                        <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest">{uniqueSectors} Sectors</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Enhanced Scroll Indicators matching BalanceCard style */}
+                <div className="flex justify-center gap-3 mt-3 relative z-10">
+                    {[0, 1].map((index) => (
+                        <button
+                            key={index}
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                const container = statsScrollContainerRef.current
+                                if (container) {
+                                    const cards = container.querySelectorAll('[data-stats-card]')
+                                    if (cards[index]) {
+                                        container.style.scrollSnapType = 'none'
+                                        cards[index].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+                                        setTimeout(() => {
+                                            container.style.scrollSnapType = 'x mandatory'
+                                        }, 400)
+                                    }
+                                    setCurrentStatsCardIndex(index)
+                                }
+                            }}
+                            className={`relative transition-all duration-300 ease-out cursor-pointer ${currentStatsCardIndex === index
+                                ? 'w-6 h-2 bg-primary scale-110'
+                                : 'w-2 h-2 bg-muted-foreground/40 hover:bg-muted-foreground/60 hover:scale-105'
+                                } rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2`}
+                            aria-label={`Go to ${index === 0 ? 'Total Valuation' : 'Total Invested'} card`}
+                        >
+                            {currentStatsCardIndex === index && (
+                                <div className="absolute inset-0 bg-primary/30 rounded-full animate-pulse" />
+                            )}
+                        </button>
+                    ))}
+                </div>
             </div>
             </>
         )
@@ -3024,8 +3251,8 @@ export function PortfolioList() {
                     setViewMode("detail")
                 }}
             >
-                <CardHeader className="pb-3 sm:pb-4 relative px-4 sm:px-6">
-                    <div className="flex items-center justify-between mb-2">
+                <CardHeader className="pb-1 sm:pb-4 relative px-4 sm:px-6">
+                    <div className="flex items-center justify-between mb-1 sm:mb-2">
                         <div className="flex items-center gap-1.5">
                             <Badge variant="outline" className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary bg-primary/5">
                                 Portfolio
@@ -3086,28 +3313,28 @@ export function PortfolioList() {
                             </DropdownMenu>
                         </div>
                     </div>
-                    <CardTitle className="text-xl sm:text-2xl font-black group-hover:text-primary transition-colors">{p.name}</CardTitle>
-                    <CardDescription className="line-clamp-1 font-medium italic opacity-70 text-xs sm:text-sm">
+                    <CardTitle className="text-lg sm:text-2xl font-black group-hover:text-primary transition-colors">{p.name}</CardTitle>
+                    <CardDescription className="line-clamp-1 font-medium italic opacity-70 text-[11px] sm:text-sm mt-0.5 sm:mt-0">
                         {p.description || "Personal Investment Portfolio"}
                     </CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1 pb-4 sm:pb-6 space-y-3 sm:space-y-4 px-4 sm:px-6">
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        <div className="flex flex-col gap-0.5">
+                    </CardHeader>
+                <CardContent className="flex-1 pb-2 sm:pb-6 space-y-2 sm:space-y-4 px-4 sm:px-6">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                        <div className="flex flex-col gap-0">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Current Value</span>
-                            <span className="text-base sm:text-lg font-black font-mono">रु {summary.current.toLocaleString(getNumberFormatLocale())}</span>
+                            <span className="text-sm sm:text-lg font-black font-mono">रु {summary.current.toLocaleString(getNumberFormatLocale())}</span>
                         </div>
-                        <div className="flex flex-col gap-0.5 items-end">
+                        <div className="flex flex-col gap-0 items-end">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">today move</span>
                             <span className={cn(
-                                "text-sm sm:text-base font-black font-mono leading-tight",
+                                "text-xs sm:text-base font-black font-mono leading-tight",
                                 summary.todayChange >= 0 ? "text-success" : "text-error"
                             )}>
                                 {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString(getNumberFormatLocale())}
                             </span>
                         </div>
                     </div>
-                    <div className="pt-3 sm:pt-4 border-t border-muted/20 flex items-center justify-between">
+                    <div className="pt-2 sm:pt-4 border-t border-muted/20 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Badge variant="secondary" className="bg-muted/50 font-black text-[9px] sm:text-[10px] uppercase">
                                 {summary.count} Scrips
@@ -3387,6 +3614,22 @@ export function PortfolioList() {
                 />
 
                 <div className="space-y-8 animate-in fade-in duration-500 text-left">
+                    <MarketNotificationsModal
+                                open={isSebonNoticesOpen}
+                                onOpenChange={setIsSebonNoticesOpen}
+                                marketAlerts={overviewNotificationsWithMeta.map((item) => ({
+                                    id: item.id,
+                                    category: item.category,
+                                    title: item.title,
+                                    text: item.text,
+                                    tone: item.tone ?? "info",
+                                    dateLabel: item.dateLabel,
+                                    documents: item.documents ?? [],
+                                    actionLabel: item.actionLabel,
+                                }))}
+                                onOpenMarketAlert={(id) => openOverviewNotificationDetails(id)}
+                                onPreviewDocument={openOverviewNotificationDocument}
+                            />
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent uppercase">My Portfolios</h2>
@@ -3407,10 +3650,11 @@ export function PortfolioList() {
                             </Button>
                             <Button
                                 onClick={() => setIsCreatePortfolioOpen(true)}
-                                className="rounded-xl font-bold shadow-lg shadow-primary/20 px-6"
+                                className="rounded-xl font-bold shadow-lg shadow-primary/20 px-2.5 sm:px-6"
+                                title="Create New"
                             >
-                                <Plus className="w-4 h-4 mr-2" />
-                                Create New
+                                <Plus className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Create New</span>
                             </Button>
                         </div>
                     </div>
@@ -3436,6 +3680,8 @@ export function PortfolioList() {
                                                 activePortfolioId={activePortfolioId}
                                                 scripNamesMap={scripNamesMap}
                                                 onOpenStockDetail={handleViewStockDetail}
+                                                onOpenSebonNotices={() => setIsSebonNoticesOpen(true)}
+                                                notificationCount={overviewNotificationsWithMeta.length}
                                             />
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {(marketSnapshot.topGainers.length > 0 || marketSnapshot.topLosers.length > 0 || marketSnapshot.topTurnover.length > 0 || marketSnapshot.turnover !== null) && (
@@ -3545,7 +3791,7 @@ export function PortfolioList() {
                                                     </div>
                                                 )}
                                                 {overviewNotificationsWithMeta.length > 0 && (
-                                                    <div>
+                                                    <div className="hidden md:block">
                                                         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                             <div className="flex items-center gap-2">
                                                                 <BellRing className="w-4 h-4 text-primary" />
@@ -4172,7 +4418,7 @@ export function PortfolioList() {
                                             setIsCreatePortfolioOpen(true);
                                         }}
                                     >
-                                        <Plus className="w-3 h-3 mr-2" /> Create New
+                                        <Plus className="w-3 h-3 mr-2" />
                                     </Button>
                                 </SelectContent>
                             </Select>
@@ -4430,13 +4676,16 @@ export function PortfolioList() {
 
                 {/* Sector/Stock Distribution Chart */}
                 <Card className={cn(
-                    "lg:col-span-3 border-muted/50 shadow-xl overflow-hidden relative bg-card/20 backdrop-blur-sm border-2 border-primary/5 transition-all",
+                    "lg:col-span-3 border-muted/50 shadow-xl overflow-hidden relative bg-card/20 backdrop-blur-sm border-2 border-primary/5 transition-all p-0 lg:py-6 gap-0 lg:gap-6",
                     !isChartExpanded && "lg:block"
                 )}>
-                    <CardHeader className="pb-0 px-4 sm:px-6">
-                        <div className="flex items-center justify-between font-black">
+                    <CardHeader className="pb-0 pt-2.5 sm:pt-6 px-4 sm:px-6">
+                        <div
+                            className={cn("flex items-center justify-between font-black", isMobile && !isChartExpanded && "cursor-pointer")}
+                            onClick={() => { if (isMobile) setIsChartExpanded(!isChartExpanded) }}
+                        >
                             <div className="min-w-0 flex-1">
-                                <CardTitle className="text-base sm:text-lg font-black flex items-center gap-2">
+                                <CardTitle className="text-sm sm:text-lg font-black flex items-center gap-2">
                                     {chartMode === "allocation" ? (
                                         <PieChartIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                                     ) : (
@@ -4470,8 +4719,8 @@ export function PortfolioList() {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="lg:hidden h-8 w-8 p-0 rounded-lg"
-                                    onClick={() => setIsChartExpanded(!isChartExpanded)}
+                                    className="lg:hidden h-6 w-6 p-0 rounded-lg"
+                                    onClick={(e) => { e.stopPropagation(); setIsChartExpanded(!isChartExpanded) }}
                                     title={isChartExpanded ? "Collapse Chart" : "Expand Chart"}
                                 >
                                     {isChartExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -4481,7 +4730,7 @@ export function PortfolioList() {
                                         variant={chartMode === "allocation" ? "secondary" : "ghost"}
                                         size="sm"
                                         className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "allocation" && "bg-background shadow-sm")}
-                                        onClick={() => setChartMode("allocation")}
+                                        onClick={(e) => { e.stopPropagation(); setChartMode("allocation") }}
                                     >
                                         Allocation
                                     </Button>
@@ -4489,7 +4738,7 @@ export function PortfolioList() {
                                         variant={chartMode === "movers" ? "secondary" : "ghost"}
                                         size="sm"
                                         className={cn("h-6 sm:h-7 px-2 sm:px-3 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg transition-all", chartMode === "movers" && "bg-background shadow-sm")}
-                                        onClick={() => setChartMode("movers")}
+                                        onClick={(e) => { e.stopPropagation(); setChartMode("movers") }}
                                     >
                                         {showSoldStocks ? "Compare" : "Movers"}
                                     </Button>
@@ -4532,7 +4781,7 @@ export function PortfolioList() {
                     <CardContent className={cn(
                         "p-0 relative transition-all duration-300 overflow-hidden",
                         "h-0 lg:h-[280px] xl:h-[320px]",
-                        isChartExpanded && "h-[250px] sm:h-[280px]"
+                        isChartExpanded && "h-[220px] sm:h-[280px]"
                     )}>
                         {/* Mobile show chart hint when collapsed */}
                         <div className={cn(
@@ -4557,14 +4806,32 @@ export function PortfolioList() {
                                                 data={activeChartData}
                                                 cx="50%"
                                                 cy="50%"
-                                                innerRadius={75}
-                                                outerRadius={105}
+                                                innerRadius={isMobile ? 50 : 75}
+                                                outerRadius={isMobile ? 74 : 105}
                                                 paddingAngle={4}
                                                 dataKey={chartMetric}
                                                 stroke="none"
                                                 animationBegin={0}
                                                 animationDuration={1000}
                                             >
+                                                <Label
+                                                    position="center"
+                                                    content={({ viewBox }: any) => {
+                                                        const { cx, cy } = viewBox
+                                                        return (
+                                                            <g>
+                                                                <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="middle" className="fill-primary" style={{ fontFamily: "monospace", fontWeight: 800, fontSize: isMobile ? 15 : 18 }}>
+                                                                    {chartMetric === "units"
+                                                                        ? formatUnits(chartTotals.totalUnits)
+                                                                        : compactAmount(chartTotals.totalValue, calendarSystem, 2)}
+                                                                </text>
+                                                                <text x={cx} y={cy + 13} textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground" style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                                                                    {chartMetric === "units" ? "Total Units" : "Total Value"}
+                                                                </text>
+                                                            </g>
+                                                        )
+                                                    }}
+                                                />
                                                 {activeChartData.map((entry, index) => (
                                                     <Cell
                                                         key={`cell-${chartView}-${index}`}
@@ -4574,6 +4841,7 @@ export function PortfolioList() {
                                                 ))}
                                             </Pie>
                                             <Tooltip
+                                                isAnimationActive={false}
                                                 content={({ active, payload }) => {
                                                     if (active && payload && payload.length) {
                                                         const data = payload[0].payload;
@@ -4626,15 +4894,28 @@ export function PortfolioList() {
                                                 align="right"
                                                 layout="vertical"
                                                 iconType="circle"
-                                                iconSize={8}
-                                                wrapperStyle={{ paddingRight: '20px', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                                                iconSize={isMobile ? 6 : 8}
+                                                wrapperStyle={{ paddingRight: isMobile ? '8px' : '20px', fontSize: isMobile ? '8px' : '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.03em' }}
                                                 formatter={(value, entry: any) => {
                                                     const payload = entry.payload;
                                                     return (
-                                                        <span className="text-foreground/80 hover:text-foreground transition-colors inline-flex items-center justify-between w-32 border-b border-muted/20 pb-1 mb-1">
-                                                            <span className="truncate max-w-[80px]">{value}</span>
-                                                            <span className="text-primary/60">{Math.round(payload.percentage)}%</span>
-                                                        </span>
+                                                        <TooltipProvider>
+                                                            <UITooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <span className={cn(
+                                                                        "text-foreground/80 hover:text-foreground transition-colors inline-flex items-center justify-between gap-1 whitespace-nowrap border-b border-muted/20 cursor-help",
+                                                                        isMobile ? "w-28 pb-0.5 mb-0.5" : "w-44 pb-1 mb-1"
+                                                                    )}>
+                                                                        <span className="truncate flex-1 min-w-0">{value}</span>
+                                                                        <span className="text-primary/60 shrink-0">{Math.round(payload.percentage)}%</span>
+                                                                    </span>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="left" className="max-w-[220px]">
+                                                                    <p className="font-black">{value}</p>
+                                                                    <p className="text-xs font-bold text-primary/80">{Math.round(payload.percentage)}%</p>
+                                                                </TooltipContent>
+                                                            </UITooltip>
+                                                        </TooltipProvider>
                                                     );
                                                 }}
                                             />
@@ -4644,7 +4925,7 @@ export function PortfolioList() {
                             ) : showSoldStocks ? (
                                 <div className={cn(
                                     "h-full w-full p-4 sm:p-6 grid gap-4 min-h-0",
-                                    soldPortfolioStats.flat.length > 0 ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-2",
+                                    soldPortfolioStats.flat.length > 0 ? "grid-cols-2 lg:grid-cols-3" : "grid-cols-2",
                                 )}>
                                     {soldPortfolioStats.missedUpside.length > 0 && (
                                         <div className="flex flex-col gap-2 min-h-0">
@@ -4773,7 +5054,7 @@ export function PortfolioList() {
                             ) : hasMoverData || hasNoMoverData ? (
                                 <div className={cn(
                                     "h-full w-full p-4 sm:p-6 grid gap-4 min-h-0",
-                                    hasNoMoverData ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-2",
+                                    hasNoMoverData ? "grid-cols-2 lg:grid-cols-3" : "grid-cols-2",
                                 )}>
                                     {portfolioMovers.gainers.length > 0 && (
                                         <div className="flex flex-col gap-2 min-h-0">

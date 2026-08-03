@@ -103,6 +103,21 @@ function useZoomPan(
     return { panX, panY }
   }, [getContainerRect])
 
+  /** Keep the content within the container with breathing room: center it when it fits, otherwise bound the edges with a margin. */
+  const clampPan = useCallback((pan: { panX: number; panY: number }, z: number, cs: ContentSize | null) => {
+    const rect = getContainerRect()
+    if (!rect || !cs) return pan
+    const PAD = 24
+    const clampAxis = (v: number, viewport: number, content: number) => {
+      if (content <= viewport) return (viewport - content) / 2
+      return clamp(v, viewport - content - PAD, PAD)
+    }
+    return {
+      panX: clampAxis(pan.panX, rect.width, cs.w * z),
+      panY: clampAxis(pan.panY, rect.height, cs.h * z),
+    }
+  }, [getContainerRect])
+
   /** Reset to fit-in-view (zoom=1 means content at its fitted size, centered) */
   const fitToView = useCallback(() => {
     const cp = centerPan(1, contentSizeRef.current)
@@ -117,8 +132,9 @@ function useZoomPan(
     const contentX = (relX - s.panX) / s.zoom
     const contentY = (relY - s.panY) / s.zoom
     // Adjust pan so the same content point stays under the cursor
-    setState({ zoom: z, panX: relX - contentX * z, panY: relY - contentY * z })
-  }, [])
+    const p = clampPan({ panX: relX - contentX * z, panY: relY - contentY * z }, z, contentSizeRef.current)
+    setState({ zoom: z, panX: p.panX, panY: p.panY })
+  }, [clampPan])
 
   /** Zoom toward the center of the container */
   const zoomCenter = useCallback((nextZoom: number) => {
@@ -149,16 +165,15 @@ function useZoomPan(
         const factor = Math.exp(-e.deltaY * 0.002)
         zoomAt(stateRef.current.zoom * factor, relX, relY)
       } else {
-        setState(s => ({
-          ...s,
-          panX: s.panX - e.deltaX,
-          panY: s.panY - e.deltaY,
-        }))
+        setState(s => {
+          const p = clampPan({ panX: s.panX - e.deltaX, panY: s.panY - e.deltaY }, s.zoom, contentSizeRef.current)
+          return { ...s, panX: p.panX, panY: p.panY }
+        })
       }
     }
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
-  }, [containerRef, enabled, zoomAt])
+  }, [containerRef, enabled, zoomAt, clampPan])
 
   // ─── Mouse Drag Pan ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -187,7 +202,10 @@ function useZoomPan(
       if (!dragging || e.pointerId !== pointerId) return
       const dx = e.clientX - startX
       const dy = e.clientY - startY
-      setState(s => ({ ...s, panX: startPanX + dx, panY: startPanY + dy }))
+      setState(s => {
+        const p = clampPan({ panX: startPanX + dx, panY: startPanY + dy }, s.zoom, contentSizeRef.current)
+        return { ...s, panX: p.panX, panY: p.panY }
+      })
     }
     const onUp = (e: PointerEvent) => {
       if (!dragging || e.pointerId !== pointerId) return
@@ -199,13 +217,13 @@ function useZoomPan(
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
     window.addEventListener("pointercancel", onUp)
-    return () => {
-      el.removeEventListener("pointerdown", onDown)
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-      window.removeEventListener("pointercancel", onUp)
-    }
-  }, [containerRef, enabled])
+      return () => {
+        el.removeEventListener("pointerdown", onDown)
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
+        window.removeEventListener("pointercancel", onUp)
+      }
+    }, [containerRef, enabled, clampPan])
 
   // ─── Touch: Pinch Zoom + Drag Pan ─────────────────────────────────────────
   useEffect(() => {
@@ -257,22 +275,30 @@ function useZoomPan(
         const contentY = (relY - lastPanY) / startZoom
         const dx = m.x - lastMid.x
         const dy = m.y - lastMid.y
+        const p = clampPan(
+          { panX: relX - contentX * nextZoom + dx, panY: relY - contentY * nextZoom + dy },
+          nextZoom,
+          contentSizeRef.current
+        )
         setState({
           zoom: nextZoom,
-          panX: relX - contentX * nextZoom + dx,
-          panY: relY - contentY * nextZoom + dy,
+          panX: p.panX,
+          panY: p.panY,
         })
         // Update tracking for continuous delta
         lastMid = m
-        lastPanX = relX - contentX * nextZoom + dx
-        lastPanY = relY - contentY * nextZoom + dy
+        lastPanX = p.panX
+        lastPanY = p.panY
         startZoom = nextZoom
         startDist = d
         isPanning = false
       } else if (e.touches.length === 1 && isPanning) {
         const dx = e.touches[0].clientX - lastMid.x
         const dy = e.touches[0].clientY - lastMid.y
-        setState(s => ({ ...s, panX: lastPanX + dx, panY: lastPanY + dy }))
+        setState(s => {
+          const p = clampPan({ panX: lastPanX + dx, panY: lastPanY + dy }, s.zoom, contentSizeRef.current)
+          return { ...s, panX: p.panX, panY: p.panY }
+        })
       }
     }
     const onEnd = (e: TouchEvent) => {
@@ -298,7 +324,7 @@ function useZoomPan(
       el.removeEventListener("touchend", onEnd)
       el.removeEventListener("touchcancel", onEnd)
     }
-  }, [containerRef, enabled])
+  }, [containerRef, enabled, clampPan])
 
   // ─── Double-click / double-tap to toggle zoom ─────────────────────────────
   useEffect(() => {
@@ -599,7 +625,9 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   // Tap-to-flip detection. useZoomPan calls preventDefault() on pointerdown for
   // mouse, which cancels the synthesized `click`, so onClick={toggleFlip} never
   // fires. We detect a genuine tap (small movement, short duration) via pointer
-  // events instead — these still fire even when pointerdown is canceled.
+  // events instead — these still fire even when pointerdown is canceled. A fast
+  // horizontal swipe (left → back, right → front) also flips the card, like the
+  // tap interaction but as a swipe gesture.
   const flipTapRef = useRef<{ x: number; y: number; t: number } | null>(null)
   const handleFlipPointerDown = (e: React.PointerEvent) => {
     flipTapRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }
@@ -608,8 +636,26 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
     const s = flipTapRef.current
     flipTapRef.current = null
     if (!s || !e.isPrimary) return
-    const dist = Math.hypot(e.clientX - s.x, e.clientY - s.y)
-    if (dist < 6 && Date.now() - s.t < 400) toggleFlip()
+    const dx = e.clientX - s.x
+    const dy = e.clientY - s.y
+    const dist = Math.hypot(dx, dy)
+    const dur = Date.now() - s.t
+    if (dist < 6 && dur < 400) {
+      toggleFlip()
+      return
+    }
+    if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy) * 2 && dur < 500) {
+      const next = dx < 0
+      if (next !== flip) {
+        setFlip(next)
+        const target = next ? (face1 ?? null) : face0
+        if (target) {
+          setCurrentPageId(target.id)
+          setBlobUrl(pageUrls[target.id] ?? null)
+        }
+      }
+      flipZP.fitToView()
+    }
   }
 
   // ─── Add side (two-sided documents) ────────────────────────────────────────
@@ -801,7 +847,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                     left: 0,
                     top: 0,
                     transformOrigin: "0 0",
-                    transform: `translate(${flipZP.panX}px, ${flipZP.panY}px)`,
+                    transform: `translate(${flipZP.panX}px, ${flipZP.panY}px) scale(${flipZP.zoom})`,
                     willChange: "transform",
                   }}
                   className="[perspective:1000px]"
@@ -812,8 +858,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                     className="relative [transform-style:preserve-3d] transition-[transform,width,height] duration-500 [will-change:transform]"
                     style={{
                       transform: `rotateY(${flip ? 180 : 0}deg)`,
-                      width: flipFit ? Math.min(flipFit.w * flipZP.zoom, face0Natural?.w ?? Infinity) : 0,
-                      height: flipFit ? Math.min(flipFit.h * flipZP.zoom, face0Natural?.h ?? Infinity) : 0,
+                      width: flipFit ? flipFit.w : 0,
+                      height: flipFit ? flipFit.h : 0,
                     }}
                   >
                     <div className="[backface-visibility:hidden] flex items-center justify-center">
@@ -823,7 +869,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                         draggable={false}
                         onLoad={(e) => setFace0Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                         className="select-none rounded-lg shadow-lg touch-none"
-                        style={{ width: flipFit ? Math.min(flipFit.w * flipZP.zoom, face0Natural?.w ?? Infinity) : 0, height: flipFit ? Math.min(flipFit.h * flipZP.zoom, face0Natural?.h ?? Infinity) : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
+                        style={{ width: flipFit ? flipFit.w : 0, height: flipFit ? flipFit.h : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
                       />
                     </div>
                     <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] flex items-center justify-center">
@@ -834,7 +880,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                           draggable={false}
                           onLoad={(e) => { if (!face1Natural) setFace1Natural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }) }}
                           className="select-none rounded-lg shadow-lg touch-none"
-                          style={{ width: flipFit ? Math.min(flipFit.w * flipZP.zoom, (face1Natural ?? face0Natural)?.w ?? Infinity) : 0, height: flipFit ? Math.min(flipFit.h * flipZP.zoom, (face1Natural ?? face0Natural)?.h ?? Infinity) : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
+                          style={{ width: flipFit ? flipFit.w : 0, height: flipFit ? flipFit.h : 0, maxWidth: "none", visibility: flipFit ? "visible" : "hidden", display: "block" }}
                         />
                       ) : (
                       <div
@@ -895,7 +941,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                   left: 0,
                   top: 0,
                   transformOrigin: "0 0",
-                  transform: `translate(${imgZP.panX}px, ${imgZP.panY}px)`,
+                  transform: `translate(${imgZP.panX}px, ${imgZP.panY}px) scale(${imgZP.zoom})`,
                   willChange: "transform",
                 }}
               >
@@ -906,8 +952,8 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
                   onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                   className="select-none rounded-lg shadow-lg touch-none"
                   style={{
-                    width: imgFit ? Math.min(imgFit.w * imgZP.zoom, imgNatural?.w ?? Infinity) : 0,
-                    height: imgFit ? Math.min(imgFit.h * imgZP.zoom, imgNatural?.h ?? Infinity) : 0,
+                    width: imgFit ? imgFit.w : 0,
+                    height: imgFit ? imgFit.h : 0,
                     maxWidth: "none",
                     display: "block",
                     visibility: imgFit ? "visible" : "hidden",

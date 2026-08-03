@@ -180,7 +180,7 @@ export function ImportVerificationModal({
                 </ScrollArea>
 
                 <DialogFooter className="mt-6 gap-2">
-                    <Button variant="ghost" className="rounded-xl font-bold" onClick={() => onOpenChange(false)}>
+                    <Button variant="secondary" className="rounded-xl font-bold" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
                     <Button className="rounded-xl font-black bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 px-8" onClick={onConfirm}>

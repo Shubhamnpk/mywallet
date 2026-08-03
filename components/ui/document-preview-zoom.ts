@@ -54,6 +54,22 @@ export function usePreviewZoomPan(
     }
   }, [getContainerRect, scaleOf])
 
+  /** Keep the content within the container with breathing room: center it when it fits, otherwise bound the edges with a margin. */
+  const clampPan = useCallback((pan: { panX: number; panY: number }, z: number, cs: ContentSize | null) => {
+    const rect = getContainerRect()
+    if (!rect || !cs) return pan
+    const s = scaleOf(z)
+    const PAD = 24
+    const clampAxis = (v: number, viewport: number, content: number) => {
+      if (content <= viewport) return (viewport - content) / 2
+      return clamp(v, viewport - content - PAD, PAD)
+    }
+    return {
+      panX: clampAxis(pan.panX, rect.width, cs.w * s),
+      panY: clampAxis(pan.panY, rect.height, cs.h * s),
+    }
+  }, [getContainerRect, scaleOf])
+
   const fitToView = useCallback(() => {
     const cp = centerPan(1, contentSizeRef.current)
     setState({ zoom: 1, panX: cp.panX, panY: cp.panY })
@@ -67,8 +83,9 @@ export function usePreviewZoomPan(
     const newScale = scaleOf(z)
     const contentX = (relX - s.panX) / curScale
     const contentY = (relY - s.panY) / curScale
-    setState({ zoom: z, panX: relX - contentX * newScale, panY: relY - contentY * newScale })
-  }, [scaleOf])
+    const p = clampPan({ panX: relX - contentX * newScale, panY: relY - contentY * newScale }, z, contentSizeRef.current)
+    setState({ zoom: z, panX: p.panX, panY: p.panY })
+  }, [scaleOf, clampPan])
 
   const zoomCenter = useCallback((nextZoom: number) => {
     const rect = getContainerRect()
@@ -96,12 +113,15 @@ export function usePreviewZoomPan(
         const factor = Math.exp(-e.deltaY * 0.002)
         zoomAt(stateRef.current.zoom * factor, e.clientX - rect.left, e.clientY - rect.top)
       } else {
-        setState((s) => ({ ...s, panX: s.panX - e.deltaX, panY: s.panY - e.deltaY }))
+        setState((s) => {
+          const p = clampPan({ panX: s.panX - e.deltaX, panY: s.panY - e.deltaY }, s.zoom, contentSizeRef.current)
+          return { ...s, panX: p.panX, panY: p.panY }
+        })
       }
     }
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
-  }, [containerRef, enabled, zoomAt])
+  }, [containerRef, enabled, zoomAt, clampPan])
 
   // Mouse drag pan.
   useEffect(() => {
@@ -126,7 +146,10 @@ export function usePreviewZoomPan(
     }
     const onMove = (e: PointerEvent) => {
       if (!dragging || e.pointerId !== pointerId) return
-      setState((s) => ({ ...s, panX: startPanX + (e.clientX - startX), panY: startPanY + (e.clientY - startY) }))
+      setState((s) => {
+        const p = clampPan({ panX: startPanX + (e.clientX - startX), panY: startPanY + (e.clientY - startY) }, s.zoom, contentSizeRef.current)
+        return { ...s, panX: p.panX, panY: p.panY }
+      })
     }
     const onUp = () => {
       if (!dragging) return
@@ -144,7 +167,7 @@ export function usePreviewZoomPan(
       window.removeEventListener("pointerup", onUp)
       window.removeEventListener("pointercancel", onUp)
     }
-  }, [containerRef, enabled])
+  }, [containerRef, enabled, clampPan])
 
   // Touch: pinch zoom + drag pan (non-passive so the browser's gestures don't win).
   useEffect(() => {
@@ -190,17 +213,21 @@ export function usePreviewZoomPan(
         const dy = m.y - lastMid.y
         const nx = relX - contentX * newScale + dx
         const ny = relY - contentY * newScale + dy
-        setState({ zoom: nextZoom, panX: nx, panY: ny })
+        const p = clampPan({ panX: nx, panY: ny }, nextZoom, contentSizeRef.current)
+        setState({ zoom: nextZoom, panX: p.panX, panY: p.panY })
         lastMid = m
-        lastPanX = nx
-        lastPanY = ny
+        lastPanX = p.panX
+        lastPanY = p.panY
         startZoom = nextZoom
         startDist = d
         isPanning = false
       } else if (e.touches.length === 1 && isPanning) {
         const dx = e.touches[0].clientX - lastMid.x
         const dy = e.touches[0].clientY - lastMid.y
-        setState((s) => ({ ...s, panX: lastPanX + dx, panY: lastPanY + dy }))
+        setState((s) => {
+          const p = clampPan({ panX: lastPanX + dx, panY: lastPanY + dy }, s.zoom, contentSizeRef.current)
+          return { ...s, panX: p.panX, panY: p.panY }
+        })
       }
     }
     const onEnd = (e: TouchEvent) => {
@@ -224,7 +251,7 @@ export function usePreviewZoomPan(
       el.removeEventListener("touchend", onEnd)
       el.removeEventListener("touchcancel", onEnd)
     }
-  }, [containerRef, enabled, scaleOf])
+  }, [containerRef, enabled, scaleOf, clampPan])
 
   // Double-click / double-tap toggles between fit and 2x at the cursor.
   useEffect(() => {
@@ -245,5 +272,5 @@ export function usePreviewZoomPan(
     return () => el.removeEventListener("dblclick", onDblClick)
   }, [containerRef, enabled, zoomAt, centerPan])
 
-  return { ...state, zoomAt, zoomCenter, fitToView, setState }
+  return { ...state, zoomAt, zoomCenter, fitToView, setState, clampPan }
 }

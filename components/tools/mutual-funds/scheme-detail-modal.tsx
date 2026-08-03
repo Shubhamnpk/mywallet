@@ -257,7 +257,7 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
 
   const tabs: Array<{ key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { key: "overview", label: "Overview", icon: ScrollText },
-    { key: "nav", label: "Price Analysis", icon: TrendingUp },
+    { key: "nav", label: "NAV", icon: TrendingUp },
     { key: "returns", label: "Returns", icon: Wallet },
     { key: "holdings", label: "Holdings", icon: PieChartIcon },
   ]

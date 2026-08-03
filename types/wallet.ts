@@ -415,6 +415,18 @@ export interface NepseIndexItem {
 
 export type NepseIndexGraphPoint = [timestamp: number, value: number]
 
+export interface NepseIndexDetail {
+  id: number
+  index: string
+  change: number
+  perChange: number
+  currentValue: number
+  previousClose?: number
+  high?: number
+  low?: number
+  close?: number
+}
+
 export interface NepseNoticeGeneral {
   id: number
   noticeHeading: string

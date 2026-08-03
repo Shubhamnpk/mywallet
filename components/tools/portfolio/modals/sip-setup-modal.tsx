@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, useRef } from "react"
-import { PiggyBank, RefreshCw, Upload, X } from "lucide-react"
+import { PiggyBank, RefreshCw, Upload, X, Trash2 } from "lucide-react"
 import type { PortfolioItem, ShareTransaction, SIPPlan } from "@/types/wallet"
 import { Button } from "@/components/ui/button"
 import {
@@ -95,6 +95,8 @@ export function SIPSetupModal({
     existingToDelete: { id: string }[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  useEffect(() => { setConfirmingDelete(false) }, [open])
 
   const selectedEnrollmentTx = useMemo(
     () => selectedEnrollmentId === NO_ENROLLMENT_VALUE
@@ -799,16 +801,36 @@ export function SIPSetupModal({
             </div>
           </div>
           </>)}
+          {existingPlan && (
+            <div className="flex items-center gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2.5">
+              <Trash2 className="h-4 w-4 shrink-0 text-destructive" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-destructive">Remove SIP plan</p>
+                <p className="truncate text-[10px] text-muted-foreground">Stops installments & clears history. Can't be undone.</p>
+              </div>
+              <Button
+                type="button"
+                className={confirmingDelete
+                  ? "h-8 rounded-lg px-3 text-[10px] font-bold bg-destructive text-white hover:bg-destructive/90"
+                  : "h-8 rounded-lg px-3 text-[10px] font-bold border border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10 shadow-none"}
+                onClick={() => {
+                  if (confirmingDelete) {
+                    handleDelete()
+                  } else {
+                    setConfirmingDelete(true)
+                    window.setTimeout(() => setConfirmingDelete(false), 4000)
+                  }
+                }}
+              >
+                {confirmingDelete ? "Confirm" : "Remove"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {!importReview && (
         <div className="mt-auto flex shrink-0 gap-2 border-t border-primary/10 bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-          {existingPlan && (
-            <Button type="button" variant="outline" className="h-11 rounded-xl font-bold" onClick={handleDelete}>
-              Remove SIP
-            </Button>
-          )}
-          <Button type="button" variant="ghost" className="h-11 flex-1 rounded-xl font-bold" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="secondary" className="h-11 flex-1 rounded-xl font-bold" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button type="button" className="h-11 flex-1 rounded-xl font-bold shadow-md" onClick={handleSave} disabled={isSaving}>

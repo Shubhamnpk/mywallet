@@ -188,7 +188,7 @@ export function ImageEditor({ imageUrl, onCancel, onSave }: {
         ))}
       </div>
       <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-border/10 shrink-0 bg-background">
-        <Button variant="ghost" size="sm" className="h-8 text-xs font-bold" onClick={onCancel} disabled={isSaving}>
+        <Button variant="secondary" size="sm" className="h-8 text-xs font-bold" onClick={onCancel} disabled={isSaving}>
           Cancel
         </Button>
         <Button size="sm" className="h-8 text-xs font-bold" onClick={handleSave}

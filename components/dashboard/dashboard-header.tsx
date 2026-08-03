@@ -1,7 +1,7 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, Megaphone, PiggyBank, ReceiptText, Settings, Share, Target, Trash2, TrendingUp } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle2, Clock, ExternalLink, PiggyBank, ReceiptText, Settings, Share, Target, Trash2, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { UpcomingIPO, UserProfile } from "@/types/wallet"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BillReminderSystem } from "@/components/tools/productivity/bill-reminder-system"
 import { IPODetailModal } from "@/components/tools/portfolio/modals/ipo-detail-modal"
-import { SebonNoticesModal } from "@/components/tools/ipo/sebon-notices-modal"
 import { loadFromLocalStorage } from "@/lib/storage"
 import {
   clearLiveNotificationHistory,
@@ -80,7 +79,6 @@ export function DashboardHeader() {
   const router = useRouter()
   const calendarSystem = useCalendarSystem()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
-  const [isNoticesOpen, setIsNoticesOpen] = useState(false)
   const [readMap, setReadMap] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {}
     try {
@@ -465,14 +463,6 @@ export function DashboardHeader() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            className="relative flex justify-center items-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-lg"
-            aria-label="Open SEBON market notices"
-            title="SEBON Market Notices"
-            onClick={() => setIsNoticesOpen(true)}
-          >
-            <Megaphone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -716,7 +706,6 @@ export function DashboardHeader() {
           if (!open) setSelectedIPO(null)
         }}
       />
-      <SebonNoticesModal open={isNoticesOpen} onOpenChange={setIsNoticesOpen} />
     </header>
   )
 }

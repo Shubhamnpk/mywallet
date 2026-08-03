@@ -676,7 +676,7 @@ export function AddTransactionModal({
                     embedded && "sticky bottom-0 z-20 -mx-6 mt-2 border-t border-muted/20 bg-card/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80",
                     !embedded && "border-t border-muted/20 px-6 py-4"
                 )}>
-                    <Button variant="ghost" className={cn("rounded-xl font-bold", embedded && "flex-1")} disabled={isSubmitting} onClick={() => (onCancel || (() => onOpenChange(false)))()}>Cancel</Button>
+                    <Button variant="secondary" className={cn("rounded-xl font-bold", embedded && "flex-1")} disabled={isSubmitting} onClick={() => (onCancel || (() => onOpenChange(false)))()}>Cancel</Button>
                     <Button className={cn("rounded-xl font-bold px-8 shadow-md", embedded && "flex-1")} disabled={isSubmitting || sellQuantityError} onClick={onAdd}>
                         {isSubmitting ? "Recording..." : "Record"}
                     </Button>

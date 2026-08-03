@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
-const BASE_URL = "https://nepse.bitnepal.net/api/v1/indices/graph"
+const BASE_URL = "https://nepse.bitnepal.net/api/v1/indices"
 
 const INDEX_MAP: Record<string, string> = {
   nepse: "nepse",
@@ -27,6 +27,34 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const indexName = searchParams.get("index") || "nepse"
+
+    if (searchParams.get("detail") === "1") {
+      const [nepseRes, subRes] = await Promise.all([
+        fetch(`${BASE_URL}/nepse`, {
+          next: { revalidate: 300 },
+          signal: AbortSignal.timeout(8000),
+        }),
+        fetch(`${BASE_URL}/subindices`, {
+          next: { revalidate: 300 },
+          signal: AbortSignal.timeout(8000),
+        }),
+      ])
+
+      if (!nepseRes.ok || !subRes.ok) {
+        return errorResponse({
+          status: nepseRes.ok ? subRes.status : nepseRes.status,
+          code: "UPSTREAM_ERROR",
+          message: "Failed to fetch index details",
+        })
+      }
+
+      const nepseJson = await nepseRes.json()
+      const subJson = await subRes.json()
+      const main = Array.isArray(nepseJson?.data) ? nepseJson.data : []
+      const sub = Array.isArray(subJson?.data) ? subJson.data : []
+      return NextResponse.json([...main, ...sub])
+    }
+
     const mapped = INDEX_MAP[indexName]
     if (!mapped) {
       return errorResponse({
@@ -36,7 +64,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const response = await fetch(`${BASE_URL}/${mapped}`, {
+    const response = await fetch(`${BASE_URL}/graph/${mapped}`, {
       next: { revalidate: 300 },
       signal: AbortSignal.timeout(8000),
     })

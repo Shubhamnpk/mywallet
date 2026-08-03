@@ -813,7 +813,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button variant="ghost" size="sm" className="h-8 text-xs" disabled={!!docVaultAction}
+            <Button variant="secondary" size="sm" className="h-8 text-xs" disabled={!!docVaultAction}
               onClick={() => setShowDocVaultDialog(false)}>
               Cancel
             </Button>

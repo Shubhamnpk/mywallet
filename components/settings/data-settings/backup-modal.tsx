@@ -18,6 +18,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { DEFAULT_BACKUP_PIN } from "@/lib/backup"
 import { toast } from "@/hooks/use-toast"
 import { Download } from "lucide-react"
 
@@ -99,6 +100,7 @@ export function BackupModal({
     shiftTracker: true,
     documentVault: true,
   })
+  const hasWalletPin = SecurePinManager.hasPin()
   const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
   const fullBackupOptions: BackupOptions = {
     userProfile: true,
@@ -215,7 +217,8 @@ export function BackupModal({
 
   const handleExportData = async () => {
     const cachedPin = SecureKeyManager.getCachedSessionPin()
-    const pinToUse = exportPin || cachedPin || ""
+    const hasWalletPin = SecurePinManager.hasPin()
+    const pinToUse = exportPin || cachedPin || (hasWalletPin ? "" : DEFAULT_BACKUP_PIN)
     setExportError(null)
     if (!pinToUse) {
       setExportError("Please enter your wallet PIN to create an encrypted backup.")
@@ -226,7 +229,7 @@ export function BackupModal({
       })
       return
     }
-    if (pinToUse.length !== 6) {
+    if (pinToUse !== DEFAULT_BACKUP_PIN && pinToUse.length !== 6) {
       setExportError("PIN must be 6 digits.")
       toast({
         title: "Invalid PIN",
@@ -238,26 +241,19 @@ export function BackupModal({
 
     setIsExporting(true)
     try {
-      // Enforce wallet PIN: backups can only be encrypted with the active wallet PIN.
-      if (!SecurePinManager.hasPin()) {
-        setExportError("Set a wallet PIN in Security settings before creating encrypted backups.")
-        toast({
-          title: "Wallet PIN Required",
-          description: "Set a wallet PIN in Security settings before creating encrypted backups.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const validation = await SecurePinManager.validatePin(pinToUse)
-      if (!validation.success) {
-        setExportError("Backup blocked. Use your current wallet PIN.")
-        toast({
-          title: "Invalid Wallet PIN",
-          description: "Backup blocked. Use your current wallet PIN.",
-          variant: "destructive",
-        })
-        return
+      // Backups are encrypted with the active wallet PIN when one is set.
+      // Without a wallet PIN, fall back to the default backup key so exports still work.
+      if (hasWalletPin) {
+        const validation = await SecurePinManager.validatePin(pinToUse)
+        if (!validation.success) {
+          setExportError("Backup blocked. Use your current wallet PIN.")
+          toast({
+            title: "Invalid Wallet PIN",
+            description: "Backup blocked. Use your current wallet PIN.",
+            variant: "destructive",
+          })
+          return
+        }
       }
 
       // Prepare selective data for backup
@@ -360,7 +356,9 @@ export function BackupModal({
             Export Backup
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Select data to include and enter your PIN to encrypt.
+            {hasWalletPin
+              ? "Select data to include and enter your PIN to encrypt."
+              : "Select data to include. No wallet PIN is set, so this backup will be encrypted with the app's default security key."}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -375,21 +373,29 @@ export function BackupModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Enter PIN</Label>
-            <div className="flex justify-center">
-              <InputOTP maxLength={6} value={exportPin} onChange={setExportPin}>
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
-                </InputOTPGroup>
-              </InputOTP>
-            </div>
-            {SecureKeyManager.getCachedSessionPin() && exportPin.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground">Using your unlocked wallet session.</p>
+            {hasWalletPin ? (
+              <>
+                <Label>Enter PIN</Label>
+                <div className="flex justify-center">
+                  <InputOTP maxLength={6} value={exportPin} onChange={setExportPin}>
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                {SecureKeyManager.getCachedSessionPin() && exportPin.length === 0 && (
+                  <p className="text-center text-xs text-muted-foreground">Using your unlocked wallet session.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-center text-xs text-muted-foreground">
+                No wallet PIN is set. This backup uses the app's default security key.
+              </p>
             )}
           </div>
 
@@ -456,7 +462,7 @@ export function BackupModal({
           <Button
             type="button"
             onClick={() => void handleExportData()}
-            disabled={(!SecureKeyManager.getCachedSessionPin() && exportPin.length !== 6) || isExporting}
+            disabled={isExporting || (hasWalletPin && !SecureKeyManager.getCachedSessionPin() && exportPin.length !== 6)}
           >
             {isExporting ? "Creating..." : "Export"}
           </Button>

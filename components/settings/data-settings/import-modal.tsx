@@ -17,6 +17,7 @@ import { toast } from "@/hooks/use-toast"
 import { Upload } from "lucide-react"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { SecureKeyManager } from "@/lib/key-manager"
+import { DEFAULT_BACKUP_PIN } from "@/lib/backup"
 
 type ImportOptions = {
   userProfile: boolean
@@ -276,8 +277,31 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
       const encrypted = !!(parsedData?.version && parsedData?.salt && parsedData?.payload)
 
       if (encrypted) {
-        setIsEncrypted(true)
-        setStep("pin")
+        if (SecurePinManager.hasPin()) {
+          setIsEncrypted(true)
+          setStep("pin")
+        } else {
+          // No wallet PIN set — the backup was made with the app's default security key.
+          try {
+            const { restoreEncryptedBackup } = await import("@/lib/backup")
+            const decrypted = await restoreEncryptedBackup(text, DEFAULT_BACKUP_PIN)
+            if (!decrypted || (typeof decrypted === "object" && Object.keys(decrypted).length === 0)) {
+              throw new Error("Backup file contains no data to import")
+            }
+            setAvailableImportData(decrypted)
+            setStep("review")
+            refreshNeedsWalletPin()
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            if (message.toLowerCase().includes("decryption failed")) {
+              // Encrypted with a wallet PIN on another device.
+              setIsEncrypted(true)
+              setStep("pin")
+            } else {
+              throw err
+            }
+          }
+        }
       } else {
         if (!parsedData || (typeof parsedData === "object" && Object.keys(parsedData).length === 0)) {
           throw new Error("Backup file contains no data to import")
@@ -301,7 +325,8 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
   }
 
   const decryptBackup = async () => {
-    if (!backupText || !importPin.trim()) {
+    const hasWalletPin = SecurePinManager.hasPin()
+    if (hasWalletPin && !importPin.trim()) {
       const message = "PIN is required to decrypt this backup"
       setImportError(message)
       toast({
@@ -311,7 +336,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
       })
       return
     }
-    if (importPin.trim().length !== 6) {
+    if (hasWalletPin && importPin.trim().length !== 6) {
       const message = "PIN must be 6 digits"
       setImportError(message)
       toast({
@@ -321,13 +346,14 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
       })
       return
     }
+    const pinToUse = hasWalletPin ? importPin : (importPin.trim() || DEFAULT_BACKUP_PIN)
 
     setIsBusy(true)
     setImportError("")
 
     try {
       const { restoreEncryptedBackup } = await import("@/lib/backup")
-      const decrypted = await restoreEncryptedBackup(backupText, importPin)
+      const decrypted = await restoreEncryptedBackup(backupText, pinToUse)
 
       if (!decrypted || (typeof decrypted === "object" && Object.keys(decrypted).length === 0)) {
         throw new Error("Backup file contains no data to import")
@@ -402,7 +428,11 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
 
   const renderPinStep = () => (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">This backup is encrypted. Enter PIN to decrypt.</p>
+      <p className="text-sm text-muted-foreground">
+        {SecurePinManager.hasPin()
+          ? "This backup is encrypted. Enter PIN to decrypt."
+          : "This backup is encrypted with a PIN. Enter the PIN used when it was created (leave empty to try the default security key)."}
+      </p>
       <div className="flex justify-center">
         <InputOTP maxLength={6} value={importPin} onChange={(value) => { setImportPin(value); setImportError(""); }}>
           <InputOTPGroup>
@@ -571,7 +601,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
           )}
 
           {step === "pin" && (
-            <Button onClick={decryptBackup} disabled={importPin.trim().length !== 6 || isBusy}>
+            <Button onClick={decryptBackup} disabled={isBusy || (SecurePinManager.hasPin() && importPin.trim().length !== 6)}>
               {isBusy ? "Decrypting..." : "Continue"}
             </Button>
           )}

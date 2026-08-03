@@ -8,13 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogFooter,} from "@/components/ui/dialog"
 
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -235,7 +229,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Person *</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Person Name *</label>
             <SearchableCombobox
               value={personQuery}
               onChange={(v) => {
@@ -244,7 +238,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
                 setPersonId(match ? match.id : "")
               }}
               options={persons.map((p) => p.name)}
-              placeholder="Search or type a new name"
+              placeholder="Search or type eg Emily, John Doe"
               allowCreate
               createText={(v) => `Create "${v}"`}
             />

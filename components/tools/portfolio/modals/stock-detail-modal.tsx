@@ -1621,7 +1621,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             </ScrollArea>
                             <div className="mt-auto flex shrink-0 gap-2 border-t border-muted/20 bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
                                 <Button
-                                    variant="ghost"
+                                    variant="secondary"
                                     className="h-11 flex-1 rounded-xl font-bold"
                                     disabled={isInlineTransactionSaving}
                                     onClick={() => setTransactionMode(null)}
@@ -3519,7 +3519,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                 {!isZeroHolding && !isMarketLookupItem && (
                                     <Button
                                         variant="outline"
-                                        className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10"
+                                        className="flex-1 rounded-xl font-bold text-[11px] uppercase tracking-widest h-11 border-destructive/20 text-destructive hover:bg-destructive/10! hover:text-destructive!"
                                         onClick={() => openInlineTransaction("sell")}
                                     >
                                         <ArrowUpRight className="w-3.5 h-3.5 mr-2" />

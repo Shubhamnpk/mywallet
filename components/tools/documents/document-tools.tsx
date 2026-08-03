@@ -232,11 +232,6 @@ export function DocumentTools() {
                   Document Vault
                   <Badge variant="secondary" className="text-[9px] px-1 py-0">Beta</Badge>
                 </CardTitle>
-                {currentPerson && (
-                  <Badge variant="secondary" className="text-[10px] px-2 py-0.5 gap-1 shrink-0">
-                    {currentPerson.emoji} {currentPerson.name}
-                  </Badge>
-                )}
               </div>
               <Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-black uppercase tracking-wider shrink-0"
                 onClick={() => setShowUploadDialog(true)}>

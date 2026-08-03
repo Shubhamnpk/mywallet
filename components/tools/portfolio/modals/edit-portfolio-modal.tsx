@@ -162,7 +162,7 @@ export function EditPortfolioModal({
                 {/* Footer */}
                 <div className="px-6 py-4 bg-muted/30 border-t border-border/50 flex items-center justify-between">
                     <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="sm"
                         onClick={() => onOpenChange(false)}
                         className="text-muted-foreground hover:text-foreground"

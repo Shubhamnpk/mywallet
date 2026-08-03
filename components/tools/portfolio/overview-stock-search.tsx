@@ -1,7 +1,7 @@
 "use client"
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
-import { Search, TrendingDown, TrendingUp } from "lucide-react"
+import { Search, TrendingDown, TrendingUp, Megaphone } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,8 @@ interface OverviewStockSearchProps {
     activePortfolioId: string | null
     scripNamesMap: Record<string, string>
     onOpenStockDetail: (item: PortfolioItem) => void
+    onOpenSebonNotices?: () => void
+    notificationCount?: number
 }
 
 export function OverviewStockSearch({
@@ -26,6 +28,8 @@ export function OverviewStockSearch({
     activePortfolioId,
     scripNamesMap,
     onOpenStockDetail,
+    onOpenSebonNotices,
+    notificationCount = 0,
 }: OverviewStockSearchProps) {
     const [isFocused, setIsFocused] = useState(false)
     const [query, setQuery] = useState("")
@@ -91,6 +95,28 @@ export function OverviewStockSearch({
                 <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[9px] font-black uppercase tracking-wider">
                     Live
                 </Badge>
+                {onOpenSebonNotices && (
+                    <button
+                        type="button"
+                        onClick={onOpenSebonNotices}
+                        aria-label="Open market notifications"
+                        title="Market Notifications"
+                        className="relative ml-auto flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-gradient-to-br from-primary/20 to-primary/5 text-primary shadow-lg shadow-primary/10 transition-all hover:from-primary/30 hover:to-primary/10 hover:scale-105 cursor-pointer"
+                    >
+                        <Megaphone className="h-4.5 w-4.5" />
+                        {notificationCount > 0 && (
+                            <>
+                                <span className="absolute right-0 top-0 flex h-2.5 w-2.5">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+                                </span>
+                                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-black leading-none text-primary-foreground">
+                                    {notificationCount}
+                                </span>
+                            </>
+                        )}
+                    </button>
+                )}
             </div>
             <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

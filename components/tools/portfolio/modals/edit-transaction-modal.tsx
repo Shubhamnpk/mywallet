@@ -426,7 +426,7 @@ export function EditTransactionModal({
                     </div>
                 </div>
                 <DialogFooter className="gap-2">
-                    <Button variant="ghost" className="rounded-xl font-bold" onClick={() => onOpenChange(false)} disabled={isUpdating}>Cancel</Button>
+                    <Button variant="secondary" className="rounded-xl font-bold" onClick={() => onOpenChange(false)} disabled={isUpdating}>Cancel</Button>
                     <Button className="rounded-xl font-bold px-8 shadow-md" onClick={handleUpdate} disabled={isUpdating}>
                         {isUpdating ? "Updating..." : "Update"}
                     </Button>

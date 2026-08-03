@@ -76,7 +76,7 @@ export function CreatePortfolioModal({
                 </div>
                 <DialogFooter className="gap-2">
                     <Button
-                        variant="ghost"
+                        variant="secondary"
                         className="rounded-xl font-bold"
                         onClick={() => {
                             onOpenChange(false)
