@@ -22,6 +22,7 @@ import {
   type HealthStatus,
 } from "@/lib/mutual-funds"
 import { SchemeDetailModal } from "./scheme-detail-modal"
+import { SkeletonStatGrid, SkeletonSectionTitle, SkeletonBlock, SkeletonText } from "@/components/ui/modal-skeletons"
 import { compactAmount } from "@/lib/money-format"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 
@@ -296,6 +297,7 @@ export function MutualFundsTool() {
               managers={managers}
               schemes={performance}
               searchQuery={searchQuery}
+              isLoading={isLoading}
               onOpenScheme={(sym) => {
                 const row = performance.find((r) => r.symbol === sym)
                 if (row) setSelectedScheme(row)
@@ -426,6 +428,7 @@ export function MutualFundsTool() {
         manager={detailManager ? managers.find((m) => m.name === detailManager.name) ?? null : null}
         schemes={detailManager ? performance.filter((s) => s.manager === detailManager.name) : []}
         schemeBySymbol={schemeBySymbol}
+        isLoading={isLoading}
         onOpenChange={(open) => { if (!open) setDetailManager(null) }}
         onOpenScheme={(sym) => {
           const row = performance.find((r) => r.symbol === sym)
@@ -463,11 +466,12 @@ const OFFER_LABELS: Record<string, string> = {
   sif_pe: "SIF / PE",
 }
 
-function ManagersView({ products, managers, schemes, searchQuery, onOpenScheme }: {
+function ManagersView({ products, managers, schemes, searchQuery, isLoading, onOpenScheme }: {
   products: ManagerProduct[]
   managers: Manager[]
   schemes: PerfRow[]
   searchQuery: string
+  isLoading?: boolean
   onOpenScheme: (symbol: string) => void
 }) {
   const [selected, setSelected] = useState<ManagerProduct | null>(null)
@@ -561,6 +565,7 @@ function ManagersView({ products, managers, schemes, searchQuery, onOpenScheme }
         manager={selected ? mgrBySlug.get(selected.slug) ?? null : null}
         schemes={selected ? schemes.filter((s) => s.manager === (mgrBySlug.get(selected.slug)?.name ?? selected.name)) : []}
         schemeBySymbol={schemeBySymbol}
+        isLoading={isLoading}
         onOpenChange={(open) => { if (!open) setSelected(null) }}
         onOpenScheme={(sym) => {
           setSelected(null)
@@ -571,11 +576,12 @@ function ManagersView({ products, managers, schemes, searchQuery, onOpenScheme }
   )
 }
 
-function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, onOpenChange, onOpenScheme }: {
+function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, isLoading, onOpenChange, onOpenScheme }: {
   product: ManagerProduct | null
   manager: Manager | null
   schemes: PerfRow[]
   schemeBySymbol: Map<string, PerfRow>
+  isLoading?: boolean
   onOpenChange: (open: boolean) => void
   onOpenScheme: (symbol: string) => void
 }) {
@@ -587,19 +593,19 @@ function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, onOpenC
   const enabledServices = (Object.entries(product.offers ?? {}).filter(([, on]) => on) as Array<[string, boolean]>).map(([t]) => t)
   const displaySchemes = schemes.length > 0 ? schemes : (schemeBySymbol.size > 0 ? Array.from(schemeBySymbol.values()).filter((s) => s.manager === product.name) : [])
 
-  const tabs: Array<{ key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { key: "overview", label: "Overview", icon: Building },
-    { key: "funds", label: "Managed Funds", icon: Wallet },
-    { key: "resources", label: "Resources", icon: FileText },
+  const tabs: Array<{ key: Tab; label: string }> = [
+    { key: "overview", label: "Overview" },
+    { key: "funds", label: "Managed Funds" },
+    { key: "resources", label: "Resources" },
   ]
 
   return (
     <Dialog open={!!product} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh]"
+        className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 h-[85vh] sm:h-[86vh] lg:h-[88vh]"
       >
-        <DialogHeader className="p-6 pb-3 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative shrink-0">
+        <DialogHeader className="p-6 pb-3 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative shrink-0 text-left">
           <button
             type="button"
             aria-label="Close"
@@ -630,6 +636,13 @@ function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, onOpenC
           </div>
         </DialogHeader>
 
+        {isLoading ? (
+          <div className="flex-1 min-h-0 overflow-y-auto bg-muted/5">
+            <div className="p-5 space-y-5">
+              <ManagerDetailSkeleton />
+            </div>
+          </div>
+        ) : (
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex-1 flex flex-col gap-0 overflow-hidden">
           <div className="px-6 py-1 border-b border-muted/20 bg-muted/5 shrink-0">
             <TabsList className="h-9 w-full justify-start gap-3 overflow-x-auto rounded-none border-0 bg-transparent p-0 shadow-none">
@@ -637,9 +650,8 @@ function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, onOpenC
                 <TabsTrigger
                   key={t.key}
                   value={t.key}
-                  className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest gap-1.5 whitespace-nowrap"
+                  className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest whitespace-nowrap"
                 >
-                  <t.icon className="h-3.5 w-3.5" />
                   {t.label}
                 </TabsTrigger>
               ))}
@@ -827,7 +839,38 @@ function ManagerDetailModal({ product, manager, schemes, schemeBySymbol, onOpenC
             </div>
           </div>
         </Tabs>
+        )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ManagerDetailSkeleton() {
+  return (
+    <div className="space-y-5">
+      <SkeletonStatGrid count={3} className="grid-cols-3" />
+      <div className="rounded-xl border border-border/40 bg-card/60 p-3 space-y-3">
+        <SkeletonSectionTitle />
+        <SkeletonText width="70%" />
+        <SkeletonSectionTitle />
+        <div className="flex flex-wrap gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <SkeletonBlock key={i} className="h-6 w-24 rounded-full" />
+          ))}
+        </div>
+      </div>
+      <div>
+        <SkeletonSectionTitle />
+        <div className="grid grid-cols-3 gap-2">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex flex-col items-center gap-1.5 rounded-xl border border-border/30 bg-card/60 px-2 py-3">
+              <SkeletonBlock className="h-8 w-8 rounded-lg" />
+              <SkeletonText width="80%" className="h-2" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <SkeletonBlock className="h-20 rounded-xl" />
+    </div>
   )
 }

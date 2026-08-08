@@ -13,7 +13,7 @@ import { AmountInput } from "@/components/ui/amount-input"
 import { formatAppDate } from "@/lib/app-calendar"
 import type { CalendarSystem } from "@/lib/app-calendar"
 import { createNepseTradePreview } from "@/lib/nepse-trade-preview"
-import type { PortfolioItem } from "@/types/wallet"
+import type { PortfolioItem, ShareTransaction } from "@/types/wallet"
 import { cn } from "@/lib/utils"
 
 type StockTransactionType = "buy" | "sell" | "ipo" | "reinvestment" | "bonus" | "gift" | "merger_in" | "merger_out"
@@ -40,6 +40,7 @@ interface AddTransactionModalProps {
     portfolioCryptoOptions?: CryptoHoldingOption[]
     portfolioItems?: PortfolioItem[]
     activePortfolioId?: string
+    shareTransactions?: ShareTransaction[]
     currencySymbol?: string
     calendarSystem?: CalendarSystem
     embedded?: boolean
@@ -77,6 +78,7 @@ export function AddTransactionModal({
     portfolioCryptoOptions = [],
     portfolioItems = [],
     activePortfolioId,
+    shareTransactions = [],
     currencySymbol = "Rs. ",
     calendarSystem = "AD",
     embedded = false,
@@ -182,6 +184,18 @@ export function AddTransactionModal({
     const isBuySidePreview = newTx.type === "buy" || newTx.type === "reinvestment"
     const isStockTradePreview = newTx.assetType === "stock" && (isBuySidePreview || newTx.type === "sell")
 
+    const sellAcquisitionDate = useMemo(() => {
+        if (newTx.type !== "sell" || !activePortfolioId) return undefined
+        const normalizedSymbol = (newTx.symbol || "").trim().toUpperCase()
+        if (!normalizedSymbol) return undefined
+        const buyDates = shareTransactions
+            .filter((t) => t.portfolioId === activePortfolioId && t.symbol.trim().toUpperCase() === normalizedSymbol && t.type === "buy")
+            .map((t) => new Date(t.date).getTime())
+            .filter(Number.isFinite)
+        if (buyDates.length === 0) return undefined
+        return new Date(Math.min(...buyDates))
+    }, [activePortfolioId, newTx.symbol, newTx.type, shareTransactions])
+
     const tradePreview = useMemo(
         () => isStockTradePreview
             ? createNepseTradePreview(
@@ -189,9 +203,11 @@ export function AddTransactionModal({
                 Number(newTx.price) || 0,
                 previewTradeType,
                 newTx.type === "sell" ? (sellReferenceHolding?.buyPrice ?? 0) : 0,
+                newTx.type === "sell" ? sellAcquisitionDate : undefined,
+                newTx.type === "sell" ? newTx.date : undefined,
             )
             : null,
-        [isStockTradePreview, newTx.price, newTx.quantity, newTx.type, previewTradeType, sellReferenceHolding?.buyPrice],
+        [isStockTradePreview, newTx.price, newTx.quantity, newTx.type, previewTradeType, sellReferenceHolding?.buyPrice, sellAcquisitionDate, newTx.date],
     )
 
     const resolvedCurrencySymbol = currencySymbol.trim().toUpperCase() === "NPR" ? "रु " : currencySymbol
@@ -556,100 +572,155 @@ export function AddTransactionModal({
                                 onClick={() => setIsPreviewDetailsOpen((prev) => !prev)}
                             >
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-[8px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                        Preview Calculation
-                                    </p>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-[8px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            {newTx.type === "sell" ? "Sale Outcome" : "Transaction Preview"}
+                                        </p>
+                                    </div>
                                     <div className="mt-1 flex items-start justify-between gap-2.5">
                                         <div className="min-w-0">
                                             <p className="text-sm font-black font-mono text-foreground leading-none">
                                                 {formatMoneyPlain(tradePreview.shareAmount)}
                                             </p>
                                             <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                                Share Amount
+                                                {newTx.type === "sell" ? "Gross Sale" : newTx.type === "reinvestment" ? "Reinvested Value" : "Amount"}
                                             </p>
                                         </div>
                                         <div className="min-w-0 text-right">
-                                            <p className="text-sm font-black font-mono text-foreground leading-none">
-                                                {formatMoneyPlain(tradePreview.totalCharges)}
+                                            <p className="text-sm font-black font-mono text-red-500 leading-none">
+                                                {newTx.type === "sell" ? "−" : "+"} {formatMoneyPlain(tradePreview.totalCharges)}
                                             </p>
                                             <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                                Charges
+                                                Fees &amp; Tax
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="mt-1.5 border-t border-primary/10 pt-1.5">
+                                    <div className="mt-1.5 border-t border-primary/10 pt-1.5 flex items-center justify-between gap-3">
                                         <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                            {newTx.type === "sell" ? "Net Receivable" : newTx.type === "reinvestment" ? "Reinvestment Cost" : "Total Payable"}
+                                            {newTx.type === "sell" ? "Net In Hand" : newTx.type === "reinvestment" ? "Reinvestment Cost" : "Total Payable"}
                                         </p>
-                                        <p className="mt-0.5 text-lg font-black font-mono text-primary leading-none">
+                                        <p className="text-lg font-black font-mono text-primary leading-none">
                                             {formatMoney(tradePreview.settlementAmount)}
                                         </p>
-                                        <p className="mt-0.5 text-[8px] text-muted-foreground">
-                                            Tap to {isPreviewDetailsOpen ? "hide" : "show"} charge details
-                                        </p>
                                     </div>
+                                    {newTx.type === "sell" && (
+                                        <div className="mt-0.5 flex items-center justify-between gap-3">
+                                            <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                                                Profit / Loss
+                                            </p>
+                                            <p className={cn("text-sm font-black font-mono leading-none", tradePreview.settlementAmount - tradePreview.costBasisAmount >= 0 ? "text-emerald-600" : "text-red-600")}>
+                                                {tradePreview.settlementAmount - tradePreview.costBasisAmount >= 0 ? "+" : "−"}{" "}
+                                                {formatMoneyPlain(Math.abs(tradePreview.settlementAmount - tradePreview.costBasisAmount))}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <p className="mt-0.5 text-[8px] text-muted-foreground">
+                                        Tap to {isPreviewDetailsOpen ? "hide" : "show"} charge details
+                                    </p>
                                 </div>
                                 {isPreviewDetailsOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
                             </button>
 
                             {isPreviewDetailsOpen && (
-                                <div className="space-y-3 border-t border-primary/10 pt-3">
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Share Amount</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.shareAmount)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Share Quantity</span>
-                                        <span className="font-bold">{tradePreview.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="font-bold uppercase tracking-wider text-muted-foreground">Total Charges</span>
-                                        <span className="font-black font-mono">{formatMoneyPlain(tradePreview.totalCharges)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="font-bold uppercase tracking-wider text-muted-foreground">Effective Rate</span>
-                                        <span className="font-black font-mono">{formatMoneyPlain(tradePreview.effectiveRate)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Broker Comm.</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.brokerCommission)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Broker Rate</span>
-                                        <span className="font-bold">{formatPercent(tradePreview.brokerRate)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Total Commission</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.totalCommission)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">NEPSE Comm.</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.nepseCommission)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">SEBO Comm.</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.seboCommission)}</span>
-                                    </div>
-                                    {newTx.type === "sell" && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-muted-foreground">
-                                                Capital Gain Tax ({formatPercent(tradePreview.capitalGainTaxRate)})
-                                            </span>
-                                            <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.capitalGainTax)}</span>
+<div className="space-y-3 border-t border-primary/10 pt-3">
+                                        {/* Real outcome waterfall */}
+                                        <div className="rounded-xl border border-primary/15 bg-background/70 p-3 space-y-1.5">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                    {newTx.type === "sell" ? "Gross Sale" : newTx.type === "reinvestment" ? "Reinvested Value" : "Purchase Amount"}
+                                                </span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.shareAmount)}</span>
+                                            </div>
+                                            {newTx.type === "sell" && tradePreview.costBasisAmount > 0 && (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cost Basis</span>
+                                                    <span className="font-bold font-mono text-muted-foreground">− {formatMoneyPlain(tradePreview.costBasisAmount)}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-red-400/80">Total Costs / Fees</span>
+                                                <span className="font-bold font-mono text-red-500">{newTx.type === "sell" ? "−" : "+"} {formatMoneyPlain(tradePreview.totalCharges)}</span>
+                                            </div>
+                                            <div className="h-px bg-border/60" />
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-black uppercase tracking-widest text-primary">
+                                                    {newTx.type === "sell" ? "Net In Hand" : "Total Cost"}
+                                                </span>
+                                                <span className="text-base font-black font-mono text-primary">{formatMoney(tradePreview.settlementAmount)}</span>
+                                            </div>
+                                            {newTx.type === "sell" && (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Profit / Loss</span>
+                                                    <span className={cn("font-bold font-mono", tradePreview.settlementAmount - tradePreview.costBasisAmount >= 0 ? "text-emerald-500" : "text-red-500")}>
+                                                        {tradePreview.settlementAmount - tradePreview.costBasisAmount >= 0 ? "+" : "−"}{" "}
+                                                        {formatMoneyPlain(Math.abs(tradePreview.settlementAmount - tradePreview.costBasisAmount))}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">Regulatory Fee</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.regulatoryFee)}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">DP Amount</span>
-                                        <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.dpAmount)}</span>
-                                    </div>
-                                    </div>
+
+                                        {/* Detailed charges (classic breakdown) */}
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Share Amount</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.shareAmount)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Share Quantity</span>
+                                                <span className="font-bold">{tradePreview.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-bold uppercase tracking-wider text-muted-foreground">Total Charges</span>
+                                                <span className="font-black font-mono">{formatMoneyPlain(tradePreview.totalCharges)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-bold uppercase tracking-wider text-muted-foreground">Effective Rate</span>
+                                                <span className="font-black font-mono">{formatMoneyPlain(tradePreview.effectiveRate)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Broker Comm.</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.brokerCommission)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Broker Rate</span>
+                                                <span className="font-bold">{formatPercent(tradePreview.brokerRate)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Total Commission</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.totalCommission)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">NEPSE Comm.</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.nepseCommission)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">SEBO Comm.</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.seboCommission)}</span>
+                                            </div>
+                                            {newTx.type === "sell" && (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-muted-foreground">
+                                                        Capital Gain Tax ({formatPercent(tradePreview.capitalGainTaxRate)}
+                                                        {tradePreview.holdingTerm !== "unknown" && tradePreview.holdingTerm === "short"
+                                                            ? " · Short-term"
+                                                            : tradePreview.holdingTerm === "long"
+                                                                ? " · Long-term"
+                                                                : ""})
+                                                    </span>
+                                                    <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.capitalGainTax)}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">Regulatory Fee</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.regulatoryFee)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">DP Amount</span>
+                                                <span className="font-bold font-mono">{formatMoneyPlain(tradePreview.dpAmount)}</span>
+                                            </div>
+                                        </div>
                                     <p className="text-[10px] text-muted-foreground">
-                                        Estimated using standard NEPSE brokerage slabs and common transaction charges. Final broker note may vary slightly.
+                                        Estimated using standard NEPSE brokerage slabs, common transaction charges, and holding-period-based capital gain tax (10% short-term / 7.5% long-term). Final broker note may vary slightly.
                                     </p>
                                 </div>
                             )}

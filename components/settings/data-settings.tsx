@@ -75,6 +75,65 @@ export function DataSettings() {
   const dropboxAppKey = Dropbox.getDropboxAppKey()
   const hasDropboxConfig = Boolean(dropboxAppKey)
   const backupSizeModeKey = "wallet_dropbox_backup_size_mode"
+
+  const submitDropboxBackupPin = () => {
+    const pin = dropboxBackupPin.trim()
+    if (!pin) {
+      setDropboxBackupPinError("Please enter the backup PIN.")
+      toast({
+        title: "PIN Required",
+        description: "Please enter the backup PIN.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (pin.length !== 6) {
+      setDropboxBackupPinError("PIN must be 6 digits.")
+      toast({
+        title: "Invalid PIN",
+        description: "PIN must be 6 digits.",
+        variant: "destructive",
+      })
+      return
+    }
+    const content = pendingDropboxContent
+    if (!content) {
+      setShowDropboxBackupPinPrompt(false)
+      setDropboxBackupPin("")
+      setDropboxBackupPinError(null)
+      toast({
+        title: "Backup Missing",
+        description: "Please try pulling again.",
+        variant: "destructive",
+      })
+      return
+    }
+    void (async () => {
+      setIsDropboxPulling(true)
+      try {
+        const { restoreEncryptedBackup } = await import("@/lib/backup")
+        const decrypted = await restoreEncryptedBackup(content, pin)
+        setPendingDropboxContent(null)
+        setShowDropboxBackupPinPrompt(false)
+        setDropboxBackupPin("")
+        setDropboxBackupPinError(null)
+        setRememberedDropboxBackupPin(pin)
+        setIsDropboxPulling(false)
+        await runDropboxImport(decrypted)
+      } catch (error) {
+        setIsDropboxPulling(false)
+        const message = error instanceof Error ? error.message : "Failed to decrypt backup."
+        setDropboxBackupPin("")
+        setDropboxBackupPinError(`${message} Please re-enter the backup PIN.`)
+        toast({
+          title: "Invalid Backup PIN",
+          description: message,
+          variant: "destructive",
+        })
+      }
+    })()
+  }
+
   const nonEssentialBackupKeys = [
     "qrScanHistory",
     "receiptScanHistory",
@@ -1277,7 +1336,12 @@ export function DataSettings() {
               <p className="text-xs text-muted-foreground">
                 Usually this is your wallet PIN from the device that created the backup.
               </p>
-              <div className="flex justify-center py-1">
+              <div className="flex justify-center py-1" onKeyDown={(e) => {
+                if (e.key === "Enter" && dropboxBackupPin.length === 6) {
+                  e.preventDefault()
+                  submitDropboxBackupPin()
+                }
+              }}>
                 <InputOTP
                   id="dropbox-backup-pin"
                   maxLength={6}
@@ -1317,63 +1381,7 @@ export function DataSettings() {
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  const pin = dropboxBackupPin.trim()
-                  if (!pin) {
-                    setDropboxBackupPinError("Please enter the backup PIN.")
-                    toast({
-                      title: "PIN Required",
-                      description: "Please enter the backup PIN.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  if (pin.length !== 6) {
-                    setDropboxBackupPinError("PIN must be 6 digits.")
-                    toast({
-                      title: "Invalid PIN",
-                      description: "PIN must be 6 digits.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  const content = pendingDropboxContent
-                  if (!content) {
-                    setShowDropboxBackupPinPrompt(false)
-                    setDropboxBackupPin("")
-                    setDropboxBackupPinError(null)
-                    toast({
-                      title: "Backup Missing",
-                      description: "Please try pulling again.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  void (async () => {
-                    setIsDropboxPulling(true)
-                    try {
-                      const { restoreEncryptedBackup } = await import("@/lib/backup")
-                      const decrypted = await restoreEncryptedBackup(content, pin)
-                      setPendingDropboxContent(null)
-                      setShowDropboxBackupPinPrompt(false)
-                      setDropboxBackupPin("")
-                      setDropboxBackupPinError(null)
-                      setRememberedDropboxBackupPin(pin)
-                      setIsDropboxPulling(false)
-                      await runDropboxImport(decrypted)
-                    } catch (error) {
-                      setIsDropboxPulling(false)
-                      const message = error instanceof Error ? error.message : "Failed to decrypt backup."
-                      setDropboxBackupPin("")
-                      setDropboxBackupPinError(`${message} Please re-enter the backup PIN.`)
-                      toast({
-                        title: "Invalid Backup PIN",
-                        description: message,
-                        variant: "destructive",
-                      })
-                    }
-                  })()
-                }}
+                onClick={submitDropboxBackupPin}
                 className="flex-1"
               >
                 Continue

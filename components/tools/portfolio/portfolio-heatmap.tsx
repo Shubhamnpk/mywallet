@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { LayoutGrid, X, Search, Info, Filter, PieChart, Eye, Activity } from "lucide-react"
 import type { PortfolioItem } from "@/types/wallet"
+import { useShareCurrency } from "@/hooks/use-share-currency"
 
 type SizeMode = "allocation" | "units" | "return"
 type ColorMode = "daily" | "total"
@@ -54,6 +55,7 @@ function HeatMapContent({
   setSelectedItem: (item: HeatMapItem | null) => void
   heightClass: string
 }) {
+  const { money, moneySigned } = useShareCurrency()
   const maxAbsChange = useMemo(() => {
     return items.length > 0 ? Math.max(...items.map(i => i.absChange), 1) : 1
   }, [items])
@@ -277,7 +279,7 @@ function HeatMapContent({
                 <div className="space-y-1.5 text-[11px] font-semibold text-muted-foreground">
                   <div className="flex justify-between gap-6">
                     <span>Current Value:</span>
-                    <span className="font-bold text-foreground">रु {item.currentValue.toLocaleString()}</span>
+                    <span className="font-bold text-foreground">{money(item.currentValue)}</span>
                   </div>
                   <div className="flex justify-between gap-6">
                     <span>Units Held:</span>
@@ -286,7 +288,7 @@ function HeatMapContent({
                   <div className="flex justify-between gap-6">
                     <span>Avg Purchase Cost:</span>
                     <span className="font-bold text-foreground">
-                      {item.hasValidCost ? `रु ${(item.totalCost / item.totalUnits).toFixed(2)}` : '—'}
+                      {item.hasValidCost ? `${money(item.totalCost / item.totalUnits, { maximumFractionDigits: 2 })}` : '—'}
                     </span>
                   </div>
                   <div className="flex justify-between gap-6 border-t border-border/20 pt-1 mt-1">
@@ -297,13 +299,13 @@ function HeatMapContent({
                   </div>
                   <div className="flex justify-between gap-6">
                     <span>LTP:</span>
-                    <span className="font-bold text-foreground">रु {item.ltp.toFixed(2)}</span>
+                    <span className="font-bold text-foreground">{money(item.ltp, { maximumFractionDigits: 2 })}</span>
                   </div>
                   {item.hasValidCost ? (
                     <div className="flex justify-between gap-6">
                       <span>Total Return:</span>
                       <span className={`font-bold ${item.returnAmount >= 0 ? 'text-success' : 'text-error'}`}>
-                        रु {item.returnAmount >= 0 ? '+' : ''}{item.returnAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ({item.returnPercent >= 0 ? '+' : ''}{item.returnPercent.toFixed(2)}%)
+                        {item.returnAmount >= 0 ? '+' : ''}{moneySigned(item.returnAmount, { maximumFractionDigits: 2 })} ({item.returnPercent >= 0 ? '+' : ''}{item.returnPercent.toFixed(2)}%)
                       </span>
                     </div>
                   ) : (
@@ -323,6 +325,7 @@ function HeatMapContent({
 }
 
 export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
+  const { money, moneySigned } = useShareCurrency()
   const [sizeMode, setSizeMode] = useState<SizeMode>("allocation")
   const [colorMode, setColorMode] = useState<ColorMode>("daily")
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all")
@@ -621,7 +624,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="flex flex-col">
                     <span className="text-muted-foreground text-[9px] font-black uppercase tracking-wider">Current Value</span>
-                    <span className="font-black text-foreground text-xs">रु {selectedItem.currentValue.toLocaleString()}</span>
+                    <span className="font-black text-foreground text-xs">{money(selectedItem.currentValue)}</span>
                   </div>
                   <div className="flex flex-col">
                     <span className="text-muted-foreground text-[9px] font-black uppercase tracking-wider">Units Held</span>
@@ -630,7 +633,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                   <div className="flex flex-col">
                     <span className="text-muted-foreground text-[9px] font-black uppercase tracking-wider">Avg Cost / Unit</span>
                     <span className="font-black text-foreground text-xs">
-                      {selectedItem.hasValidCost ? `रु ${(selectedItem.totalCost / selectedItem.totalUnits).toFixed(2)}` : '—'}
+                      {selectedItem.hasValidCost ? `${money(selectedItem.totalCost / selectedItem.totalUnits, { maximumFractionDigits: 2 })}` : '—'}
                     </span>
                   </div>
                   <div className="flex flex-col">
@@ -643,7 +646,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                     <span className="text-muted-foreground text-[9px] font-black uppercase tracking-wider">Total Net Return</span>
                     {selectedItem.hasValidCost ? (
                       <span className={`font-black text-xs ${selectedItem.returnAmount >= 0 ? 'text-success' : 'text-error'}`}>
-                        रु {selectedItem.returnAmount >= 0 ? '+' : ''}{selectedItem.returnAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ({selectedItem.returnPercent >= 0 ? '+' : ''}{selectedItem.returnPercent.toFixed(2)}%)
+                        {selectedItem.returnAmount >= 0 ? '+' : ''}{moneySigned(selectedItem.returnAmount, { maximumFractionDigits: 2 })} ({selectedItem.returnPercent >= 0 ? '+' : ''}{selectedItem.returnPercent.toFixed(2)}%)
                       </span>
                     ) : (
                       <span className="font-black text-xs text-muted-foreground/60">— (no cost data available)</span>

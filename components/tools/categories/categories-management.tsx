@@ -1,12 +1,12 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Plus, BarChart3, FolderOpen, Search, Filter, Target, Trash2 } from "lucide-react"
-import { getCurrencySymbol } from "@/lib/utils"
+import { getCurrencySymbol, cn } from "@/lib/utils"
 import { CategoryProgressCard } from "./category-progress-card"
 import { CreateCategoryModal } from "./create-category-modal"
 import { DeleteCategoryDialog } from "./delete-category-dialog"
@@ -28,8 +28,25 @@ export function CategoriesManagement() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
-  const [bulkDeleteMode, setBulkDeleteMode] = useState(false)
   const [disabledCategories, setDisabledCategories] = useState<Set<string>>(new Set())
+  const [currentStatIndex, setCurrentStatIndex] = useState(0)
+  const statScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = statScrollRef.current
+    if (!container) return
+    const scrollHandler = () => {
+      if (!container) return
+      const cards = container.querySelectorAll<HTMLElement>("[data-stat-card]")
+      if (cards.length === 0) return
+      const scrollLeft = container.scrollLeft
+      const cardWidth = cards[0].offsetWidth + 12
+      const newIndex = Math.min(cards.length - 1, Math.max(0, Math.round(scrollLeft / cardWidth)))
+      setCurrentStatIndex(prev => (prev !== newIndex ? newIndex : prev))
+    }
+    container.addEventListener("scroll", scrollHandler, { passive: true })
+    return () => container.removeEventListener("scroll", scrollHandler)
+  }, [])
   if (!userProfile) return null
 
   const currencySymbol = getCurrencySymbol(userProfile.currency, (userProfile as any)?.customCurrency)
@@ -113,11 +130,6 @@ export function CategoriesManagement() {
     return filtered
   }, [categoryStats, searchTerm, filterType, sortBy])
 
-  // Separate default and custom categories
-  const defaultCategories = filteredCategories.filter((c) => c.isDefault)
-  const customCategories = filteredCategories.filter((c) => !c.isDefault)
-
-
   const handleDeleteCategory = (category: Category) => {
     setDeletingCategory(category)
   }
@@ -151,11 +163,15 @@ export function CategoriesManagement() {
     })
   }
 
+  const handleLongPressCategory = (categoryId: string) => {
+    handleSelectCategory(categoryId)
+  }
+
   const handleSelectAll = () => {
-    if (selectedCategories.size === customCategories.length) {
+    if (selectedCategories.size === filteredCategories.length) {
       setSelectedCategories(new Set())
     } else {
-      setSelectedCategories(new Set(customCategories.map(c => c.id)))
+      setSelectedCategories(new Set(filteredCategories.map(c => c.id)))
     }
   }
 
@@ -179,7 +195,6 @@ export function CategoriesManagement() {
         deleteCategory(categoryId)
       })
       setSelectedCategories(new Set())
-      setBulkDeleteMode(false)
     }
   }
 
@@ -193,84 +208,180 @@ export function CategoriesManagement() {
         </h3>
 
         <div className="flex items-center gap-2">
-          {bulkDeleteMode && customCategories.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={selectedCategories.size === customCategories.length}
-                onCheckedChange={handleSelectAll}
-                aria-label="Select all categories"
-                className="hidden sm:flex"
-              />
-              <span className="text-sm text-muted-foreground hidden sm:inline">
-                {selectedCategories.size} of {customCategories.length} selected
-              </span>
-              {selectedCategories.size > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBulkDelete}
-                  className="flex items-center gap-2"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Delete ({selectedCategories.size})</span>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setBulkDeleteMode(false)
-                  setSelectedCategories(new Set())
-                }}
-              >
-                <span className="hidden sm:inline">Cancel</span>
-                <span className="sm:hidden">✕</span>
-              </Button>
-            </div>
-          )}
-
-          {!bulkDeleteMode && (
-            <>
-              {customCategories.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setBulkDeleteMode(true)}
-                  className="flex items-center gap-2"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Bulk Delete</span>
-                </Button>
-              )}
-              <Button
-                onClick={() => setIsAddDialogOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Add Category</span>
-              </Button>
-            </>
-          )}
+          <Button
+            onClick={() => setIsAddDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Category</span>
+          </Button>
         </div>
       </div>
 
-      {/* Search and Filters */}
+      {(() => {
+        const enabledCount = categories.filter(c => !disabledCategories.has(c.id)).length
+        const activeCount = categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length
+        const topSpender = categoryStats.length > 0 ? [...categoryStats].sort((a, b) => b.totalSpent - a.totalSpent)[0] : null
+
+        const statCards = [
+          { label: "Enabled", value: `${enabledCount}`, sub: `/ ${categories.length} Total`, icon: FolderOpen, iconClass: "text-primary bg-primary/10", bar: true },
+          { label: "Active Usage", value: `${activeCount}`, sub: "with transactions", icon: Target, iconClass: "text-primary opacity-60 bg-primary/10", bar: false },
+          { label: "Top Spender", value: topSpender?.name ?? "None", sub: topSpender ? currencySymbol + topSpender.totalSpent.toLocaleString() : "-", icon: BarChart3, iconClass: "text-warning opacity-80 bg-warning/10", bar: false },
+        ]
+
+        return (
+          <>
+            {/* Mobile stat carousel (md:hidden) */}
+            <div className="md:hidden mb-1 w-full">
+              <div
+                ref={statScrollRef}
+                className="overflow-x-auto px-1 pb-2 hide-scrollbars w-full"
+                style={{ scrollBehavior: "smooth", WebkitOverflowScrolling: "touch", scrollSnapType: "x mandatory" }}
+              >
+                <div className="flex gap-3" style={{ width: "calc(300% + 24px)" }}>
+                  {statCards.map((stat, index) => (
+                    <div
+                      key={stat.label}
+                      data-stat-card={index}
+                      className="flex-shrink-0"
+                      style={{ width: "calc(100%/3 - 8px)", scrollSnapAlign: "start", willChange: "transform", transform: "translateZ(0)" }}
+                    >
+                      <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md h-full">
+                        <CardContent className="p-3.5">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</p>
+                            <div className={cn("p-1.5 rounded-lg", stat.iconClass)}>
+                              <stat.icon className="w-3.5 h-3.5" />
+                            </div>
+                          </div>
+                          <p className="text-lg font-black font-mono tracking-tight truncate">{stat.value}</p>
+                          <p className="text-[10px] font-bold text-muted-foreground mt-0.5 uppercase tracking-wider truncate">{stat.sub}</p>
+                          {stat.bar && (
+                            <div className="mt-2 w-full bg-primary/10 h-1 rounded-full overflow-hidden">
+                              <div className="bg-primary h-full transition-all duration-500 rounded-full" style={{ width: categories.length > 0 ? `${(enabledCount / categories.length) * 100}%` : "0%" }} />
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Dot indicators */}
+              <div className="flex justify-center gap-2 mt-1 relative z-10">
+                {statCards.map((stat, index) => (
+                  <button
+                    key={stat.label}
+                    type="button"
+                    aria-label={`Go to ${stat.label} card`}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const container = statScrollRef.current
+                      if (container) {
+                        const cards = container.querySelectorAll("[data-stat-card]")
+                        if (cards[index]) {
+                          container.style.scrollSnapType = "none"
+                          cards[index].scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })
+                          setTimeout(() => { container.style.scrollSnapType = "x mandatory" }, 400)
+                        }
+                        setCurrentStatIndex(index)
+                      }
+                    }}
+                    className={cn(
+                      "relative transition-all duration-300 ease-out rounded-full cursor-pointer",
+                      currentStatIndex === index ? "w-6 h-2 bg-primary scale-110" : "w-2 h-2 bg-muted-foreground/40 hover:bg-muted-foreground/60 hover:scale-105"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )
+      })()}
+      {(() => {
+        const enabledCount = categories.filter(c => !disabledCategories.has(c.id)).length
+        const activeCount = categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length
+        const topSpender = categoryStats.length > 0 ? [...categoryStats].sort((a, b) => b.totalSpent - a.totalSpent)[0] : null
+
+        return (
+          <div className="hidden md:grid grid-cols-3 gap-3">
+        <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group">
+          <CardContent className="p-3.5 sm:p-4 relative z-10">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">Enabled Categories</p>
+              <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
+                <FolderOpen className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className="text-xl sm:text-2xl font-black font-mono tracking-tight">
+                {enabledCount}
+              </p>
+              <span className="text-xs font-bold text-muted-foreground mb-1 uppercase tracking-wider">
+                / {categories.length} Total
+              </span>
+            </div>
+            <div className="mt-2 w-full bg-primary/10 h-1 rounded-full overflow-hidden">
+              <div
+                className="bg-primary h-full transition-all duration-500 rounded-full"
+                style={{ width: categories.length > 0 ? `${(enabledCount / categories.length) * 100}%` : "0%" }}
+              />
+            </div>
+          </CardContent>
+          {/* Ambient Glow */}
+          <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-primary/20 blur-3xl rounded-full pointer-events-none" />
+        </Card>
+
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
+          <CardContent className="p-3.5 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Usage</p>
+              <Target className="w-3.5 h-3.5 text-primary opacity-60" />
+            </div>
+            <p className="text-lg sm:text-xl font-black font-mono">
+              {activeCount}
+            </p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">With transactions</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
+          <CardContent className="p-3.5 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top Spender</p>
+              <BarChart3 className="w-3.5 h-3.5 text-warning opacity-80" />
+            </div>
+            <p className="text-sm font-black truncate leading-tight">
+              {topSpender?.name ?? "None"}
+            </p>
+            <p className="text-[10px] font-bold text-muted-foreground mt-0.5 uppercase tracking-wider">
+              {topSpender ? currencySymbol + topSpender.totalSpent.toLocaleString() : "-"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+        )
+      })()}
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search Bar */}
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search categories..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 h-10 rounded-xl border-border/60 bg-background/50 backdrop-blur-sm focus:border-primary/50 focus:ring-primary/20 font-medium shadow-sm"
+            className="pl-10 h-12 rounded-xl border-border/60 bg-background/50 backdrop-blur-sm focus:border-primary/50 focus:ring-primary/20 font-medium shadow-sm"
           />
         </div>
 
         {/* Filter Controls */}
         <div className="flex gap-2">
           <Select value={filterType} onValueChange={(value: "all" | "income" | "expense") => setFilterType(value)}>
-            <SelectTrigger className="w-[140px] h-10 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
+            <SelectTrigger className="w-[140px] h-12 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
               <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -285,7 +396,7 @@ export function CategoriesManagement() {
             value={sortBy}
             onValueChange={(value: "usage" | "amount" | "transactions" | "name") => setSortBy(value)}
           >
-            <SelectTrigger className="w-[140px] h-10 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
+            <SelectTrigger className="w-[140px] h-12 rounded-xl border-border/60 bg-background/50 font-medium shadow-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
@@ -298,100 +409,66 @@ export function CategoriesManagement() {
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <Card className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent border-primary/20 shadow-xl relative overflow-hidden group col-span-2 md:col-span-1">
-          <CardContent className="p-4 sm:p-5 relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">Enabled Categories</p>
-              <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
-                <FolderOpen className="w-3.5 h-3.5" />
-              </div>
-            </div>
-            <div className="flex items-end gap-2">
-              <p className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
-                {categories.filter(c => !disabledCategories.has(c.id)).length}
-              </p>
-              <span className="text-xs font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
-                / {categories.length} Total
-              </span>
-            </div>
-            <div className="mt-3 w-full bg-primary/10 h-1 rounded-full overflow-hidden">
-              <div
-                className="bg-primary h-full transition-all duration-500 rounded-full"
-                style={{ width: `${(categories.filter(c => !disabledCategories.has(c.id)).length / categories.length) * 100}%` }}
-              />
-            </div>
-          </CardContent>
-          {/* Ambient Glow */}
-          <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-primary/20 blur-3xl rounded-full pointer-events-none" />
-        </Card>
-
-        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Usage</p>
-              <Target className="w-3.5 h-3.5 text-primary opacity-60" />
-            </div>
-            <p className="text-xl sm:text-2xl font-black font-mono">
-              {categoryStats.filter((c) => c.transactionCount > 0 && !disabledCategories.has(c.id)).length}
-            </p>
-            <div className="mt-1 flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">With transactions</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/40 backdrop-blur-sm border-muted/50 shadow-md">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Top Spender</p>
-              <BarChart3 className="w-3.5 h-3.5 text-warning opacity-80" />
-            </div>
-            <p className="text-sm font-black truncate leading-tight">
-              {categoryStats.length > 0
-                ? categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]?.name
-                : "None"}
-            </p>
-            <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-wider">
-              {categoryStats.length > 0 && categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0]
-                ? currencySymbol + (categoryStats.sort((a, b) => b.totalSpent - a.totalSpent)[0].totalSpent).toLocaleString()
-                : "-"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Select All Section */}
+      {filteredCategories.length > 0 && (
+        <div className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={selectedCategories.size === filteredCategories.length && filteredCategories.length > 0}
+              onCheckedChange={handleSelectAll}
+            />
+            <span className="text-sm text-muted-foreground">
+              {selectedCategories.size === 0
+                ? "Select all categories"
+                : `${selectedCategories.size} of ${filteredCategories.length} categories selected`}
+            </span>
+          </div>
+          {selectedCategories.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete ({selectedCategories.size})
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Categories Display */}
       <div className="space-y-8">
-        {/* Custom Categories Section */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 mb-2">
             <FolderOpen className="w-4 h-4 text-primary" />
-            <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Custom Categories</h4>
+            <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">All Categories</h4>
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {customCategories.filter(c => !disabledCategories.has(c.id)).length}
+              {filteredCategories.length}
             </span>
           </div>
 
-          {customCategories.length === 0 ? (
+          {filteredCategories.length === 0 ? (
             <Card className="border-dashed border-2 bg-muted/20">
               <CardContent className="flex flex-col items-center justify-center py-8">
                 <FolderOpen className="w-10 h-10 text-muted-foreground/50 mb-3" />
-                <h3 className="text-base font-medium mb-1">No Custom Categories</h3>
+                <h3 className="text-base font-medium mb-1">No Categories Found</h3>
                 <p className="text-sm text-muted-foreground text-center mb-4 max-w-xs">
-                  Create your own to organize transactions exactly how you want.
+                  {searchTerm || filterType !== "all"
+                    ? "No categories match your search or filter."
+                    : "Create your own to organize transactions exactly how you want."}
                 </p>
-                <Button onClick={() => setIsAddDialogOpen(true)} variant="outline" size="sm">
-                  <Plus className="w-3.5 h-3.5 mr-2" />
-                  Create Category
-                </Button>
+                {!searchTerm && filterType === "all" && (
+                  <Button onClick={() => setIsAddDialogOpen(true)} variant="outline" size="sm">
+                    <Plus className="w-3.5 h-3.5 mr-2" />
+                    Create Category
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
-              {customCategories.map((category) => (
+              {filteredCategories.map((category) => (
                 <CategoryProgressCard
                   key={category.id}
                   category={category}
@@ -401,45 +478,17 @@ export function CategoriesManagement() {
                   }}
                   onEdit={() => setEditingCategory(category)}
                   onDelete={() => handleDeleteCategory(category)}
-                  showActions={!bulkDeleteMode}
-                  selectionMode={bulkDeleteMode}
+                  showActions={true}
+                  selectionMode={true}
                   isSelected={selectedCategories.has(category.id)}
                   onSelect={() => handleSelectCategory(category.id)}
                   isDisabled={disabledCategories.has(category.id)}
                   onToggleVisibility={() => handleToggleCategory(category.id)}
+                  onLongPress={() => handleLongPressCategory(category.id)}
                 />
               ))}
             </div>
           )}
-        </div>
-
-        {/* Default Categories Section */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Default Categories</h4>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {defaultCategories.filter(c => !disabledCategories.has(c.id)).length}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {defaultCategories.map((category) => (
-              <CategoryProgressCard
-                key={category.id}
-                category={category}
-                userProfile={userProfile}
-                onViewDetails={() => {
-                  /* TODO: Implement details view */
-                }}
-                onEdit={() => setEditingCategory(category)}
-                onDelete={() => handleDeleteCategory(category)}
-                showActions={true}
-                isDisabled={disabledCategories.has(category.id)}
-                onToggleVisibility={() => handleToggleCategory(category.id)}
-              />
-            ))}
-          </div>
         </div>
       </div>
 

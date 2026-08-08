@@ -36,6 +36,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
     )
     const canUseMeroShare = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareLoginCredentials)
     const canApplyFromCard = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareApplyCredentials)
+    const primaryMeroShareAccount = userProfile?.meroShare?.accounts?.find(account => account.role === "primary")
     const normalizeIpoName = (value?: string) =>
         (value || "")
             .toLowerCase()
@@ -82,7 +83,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         const promise = applyMeroShareIPO(
             credentials,
             ipo?.company || "",
-            10,
+            primaryMeroShareAccount?.preferredKitta || 0,
             source,
             { showBrowser: false }
         )

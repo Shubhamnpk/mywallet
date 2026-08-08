@@ -20,6 +20,10 @@ export type NotificationHistoryItem = {
   source: NotificationHistorySource
   channel: NotificationHistoryChannel
   at: number
+  symbol?: string
+  planId?: string
+  portfolioId?: string
+  tab?: string
 }
 
 const MAX_ITEMS = 100
@@ -71,6 +75,10 @@ export function recordNotificationDelivery(params: {
   body: string
   source: NotificationHistorySource
   channel: NotificationHistoryChannel
+  symbol?: string
+  planId?: string
+  portfolioId?: string
+  tab?: string
 }): void {
   if (typeof window === "undefined") return
   const list = safeRead()
@@ -91,6 +99,10 @@ export function recordNotificationDelivery(params: {
     source: params.source,
     channel: params.channel,
     at: Date.now(),
+    ...(params.symbol !== undefined && { symbol: params.symbol }),
+    ...(params.planId !== undefined && { planId: params.planId }),
+    ...(params.portfolioId !== undefined && { portfolioId: params.portfolioId }),
+    ...(params.tab !== undefined && { tab: params.tab }),
   }
 
   try {

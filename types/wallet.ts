@@ -33,6 +33,8 @@ export interface UserProfile {
     browserProvider?: "api" | "rest" | "auto" | "browserless" | "local"
     isAutomatedEnabled: boolean
     applicationLogs?: MeroShareApplicationLog[]
+    /** How share (portfolio) amounts are displayed. "npr" always shows NPR (default); "auto" shows them in the profile currency. */
+    shareCurrencyMode?: "npr" | "auto"
   }
   settings?: {
     zeroHoldingsEnabled?: boolean
@@ -53,6 +55,8 @@ export interface MeroShareAccount {
   password?: string
   crn?: string
   pin?: string
+  /** Per-account preferred IPO application kitta. 0 = auto-detect from the IPO. */
+  preferredKitta?: number
 }
 
 export interface NotificationSettings {

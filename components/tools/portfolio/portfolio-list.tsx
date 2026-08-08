@@ -13,7 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { compactAmount } from "@/lib/money-format"
 import { useNepseData } from "@/hooks/use-nepse-data"
 import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -26,11 +25,14 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { toast } from "sonner"
 import { cn, getCurrencySymbol, getNumberFormatLocale } from "@/lib/utils"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useShareCurrency } from "@/hooks/use-share-currency"
 import { formatAppDate, todayAdDateKey } from "@/lib/app-calendar"
 import { getSectorColor, getSectorVariantColor } from "@/lib/portfolio-colors"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { getLtpCache, setLtpCache } from "@/lib/ltp-cache"
 import { normalizeSipPlans, getSipScheduleSummary } from "@/lib/sip"
+import type { StockDeepLinkPayload } from "@/lib/stock-deep-link"
+import { estimateSellLotsFees, type SellLotFeeInput } from "@/lib/nepse-trade-preview"
 import { buildDividendData, DividendHoldingSummary, DividendPortfolioAllYearsRow, DividendPortfolioSummaryRow, DividendViewMode, DividendYearSummary, getDefaultDividendYear, ProposedDividendRecord } from "@/lib/dividend-outlook"
 import { CreatePortfolioModal } from "./modals/create-portfolio-modal"
 import { EditPortfolioModal } from "./modals/edit-portfolio-modal"
@@ -159,7 +161,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
         entry.volume ?? "",
     ].join("|")
 
-export function PortfolioList() {
+export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: StockDeepLinkPayload | null; onDeepLinkHandled?: () => void }) {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
     const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
@@ -171,11 +173,14 @@ export function PortfolioList() {
         userProfile?.meroShare?.password
     )
     const calendarSystem = useCalendarSystem()
+    const shareCurrency = useShareCurrency()
     const currencySymbol = useMemo(() => {
         if (userProfile?.currency === "NPR") return "रु "
         const symbol = getCurrencySymbol(userProfile?.currency || "NPR", userProfile?.customCurrency)
         return `${symbol}${symbol.endsWith(" ") ? "" : " "}`
     }, [userProfile?.currency, userProfile?.customCurrency])
+    const money = shareCurrency.money
+    const moneyCompact = shareCurrency.moneyCompact
     const [viewMode, setViewMode] = useState<"overview" | "detail">("overview")
     const [isIpoCenterOpen, setIsIpoCenterOpen] = useState(false)
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -206,6 +211,7 @@ export function PortfolioList() {
     const [isStockDetailOpen, setIsStockDetailOpen] = useState(false)
     const [selectedStock, setSelectedStock] = useState<PortfolioItem | null>(null)
     const [selectedStockDetailMode, setSelectedStockDetailMode] = useState<"holding" | "sold">("holding")
+    const [stockDetailInitialTab, setStockDetailInitialTab] = useState<string | undefined>(undefined)
     const [isMarketSectorOpen, setIsMarketSectorOpen] = useState(false)
     const [marketSectorInitial, setMarketSectorInitial] = useState<string>("")
     const [isIPODetailOpen, setIsIPODetailOpen] = useState(false)
@@ -264,6 +270,30 @@ export function PortfolioList() {
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
     const statsScrollContainerRef = useRef<HTMLDivElement>(null)
     const [currentStatsCardIndex, setCurrentStatsCardIndex] = useState(0)
+
+    useEffect(() => {
+        if (!isStockDetailOpen) setStockDetailInitialTab(undefined)
+    }, [isStockDetailOpen])
+
+    useEffect(() => {
+        if (!deepLink?.symbol) return
+        if (!isLoaded) return
+        const normalized = normalizeStockSymbol(deepLink.symbol)
+        const candidates = portfolio.filter(
+            (item) => normalizeStockSymbol(item.symbol) === normalized && (item.assetType || "stock") === "stock" && !item.cryptoId,
+        )
+        const item =
+            (deepLink.portfolioId
+                ? candidates.find((c) => c.portfolioId === deepLink.portfolioId) ?? candidates[0]
+                : candidates[0]) || null
+        if (item) {
+            handleViewStockDetail(item, deepLink.tab && deepLink.tab !== "overview" ? deepLink.tab : undefined)
+        } else {
+            handleOpenStockDetailFromSymbol(normalized)
+        }
+        onDeepLinkHandled?.()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deepLink, isLoaded])
 
     useEffect(() => {
         const container = statsScrollContainerRef.current
@@ -361,6 +391,10 @@ export function PortfolioList() {
             return `${sign}${adjusted.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
         }
         return amount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })
+    }
+    const moneyWithCrypto = (amountNpr: number, isCrypto: boolean) => {
+        if (isCrypto) return `$${formatHoldingAmount(amountNpr, true)}`
+        return money(amountNpr)
     }
     const formatUnits = (units: number) => {
         if (!Number.isFinite(units)) return "0"
@@ -618,8 +652,9 @@ export function PortfolioList() {
         toast.success("Share features enabled")
     }
 
-    const handleViewStockDetail = (item: PortfolioItem) => {
+    const handleViewStockDetail = (item: PortfolioItem, initialTab?: string) => {
         setSelectedStockDetailMode(showSoldStocks ? "sold" : "holding")
+        setStockDetailInitialTab(initialTab)
         const isCrypto = item.assetType === "crypto" || Boolean(item.cryptoId)
         if (isCrypto) {
             fetchPortfolioPrices([item], true)
@@ -1746,6 +1781,39 @@ export function PortfolioList() {
             return amount > 0 ? sum + amount : sum
         }, 0)
 
+        // Estimate the real sell outcome (gross proceeds, total cost, net to reinvest)
+        const acquisitionByKey = new Map<string, SellLotFeeInput[]>()
+        portfolioTransactions
+            .filter((tx) => tx.type === "buy" || tx.type === "ipo" || tx.type === "reinvestment")
+            .forEach((tx) => {
+                const key = [normalizeStockSymbol(tx.symbol), tx.assetType || "stock", (tx.cryptoId || "").trim()].join("|")
+                const arr = acquisitionByKey.get(key) || []
+                arr.push({ quantity: safeNumber(tx.quantity), price: safeNumber(tx.price), date: tx.date })
+                acquisitionByKey.set(key, arr)
+            })
+        const sellsByKey = new Map<string, SellLotFeeInput[]>()
+        portfolioTransactions
+            .filter((tx) => tx.type === "sell")
+            .forEach((tx) => {
+                const key = [normalizeStockSymbol(tx.symbol), tx.assetType || "stock", (tx.cryptoId || "").trim()].join("|")
+                const arr = sellsByKey.get(key) || []
+                arr.push({ quantity: safeNumber(tx.quantity), price: safeNumber(tx.price), date: tx.date })
+                sellsByKey.set(key, arr)
+            })
+
+        let grossSellProceeds = 0
+        let sellTransactionCost = 0
+        let sellTransactionTax = 0
+        let netSellProceeds = 0
+        sellsByKey.forEach((sells, key) => {
+            const { summary } = estimateSellLotsFees(sells, acquisitionByKey.get(key) || [])
+            grossSellProceeds += summary.gross
+            sellTransactionTax += summary.tax
+            sellTransactionCost += summary.totalCost
+            netSellProceeds += summary.net
+        })
+        const hasEstimatedSellCost = grossSellProceeds > 0
+
         const totalBase = chartMetric === "units" ? totalSoldUnits : totalSoldValue
         const sectorData = Array.from(sectorMap.entries())
             .map(([name, data]) => ({
@@ -1823,6 +1891,11 @@ export function PortfolioList() {
             soldSectors: sectorMap.size,
             reinvestedAmount,
             reinvestedPercentage: totalSoldValue > 0 ? (reinvestedAmount / totalSoldValue) * 100 : 0,
+            grossSellProceeds,
+            sellTransactionCost,
+            sellTransactionTax,
+            netSellProceeds,
+            hasEstimatedSellCost,
             latestSoldAt,
             sectorData,
             scripData,
@@ -2443,7 +2516,7 @@ export function PortfolioList() {
                 normalizeStockSymbol(item.symbol) === normalizeStockSymbol(notification.symbol)
             )
             if (portfolioItem) {
-                handleViewStockDetail(portfolioItem)
+                handleViewStockDetail(portfolioItem, "sip")
                 return
             }
         }
@@ -2492,7 +2565,7 @@ export function PortfolioList() {
             open={investmentBreakdownModal.open}
             onOpenChange={(open) => setInvestmentBreakdownModal((prev) => ({ ...prev, open }))}
         >
-            <DialogContent className="max-w-md w-[94vw]">
+            <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle className="text-base sm:text-lg font-black">
                         {investmentBreakdownModal.title || "Investment Breakdown"}
@@ -2501,18 +2574,18 @@ export function PortfolioList() {
                 <div className="space-y-3 text-left">
                     <div className="rounded-xl border border-muted/30 bg-muted/5 p-3">
                         <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Current Invested</p>
-                        <p className="mt-1 text-xl font-black font-mono">रु {investmentBreakdown.currentInvested.toLocaleString(getNumberFormatLocale())}</p>
+                        <p className="mt-1 text-xl font-black font-mono">{money(investmentBreakdown.currentInvested)}</p>
                         <p className="mt-1 text-xs text-muted-foreground">Cost basis of holdings that are currently active.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-primary">Fresh Capital</p>
-                            <p className="mt-1 text-lg font-black font-mono text-primary">रु {investmentBreakdown.freshInvestment.toLocaleString(getNumberFormatLocale())}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-primary">{money(investmentBreakdown.freshInvestment)}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">New money added by the user.</p>
                         </div>
                         <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
                             <p className="text-[10px] uppercase font-black tracking-widest text-cyan-700">Reinvestment</p>
-                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">रु {investmentBreakdown.reinvestment.toLocaleString(getNumberFormatLocale())}</p>
+                            <p className="mt-1 text-lg font-black font-mono text-cyan-700">{money(investmentBreakdown.reinvestment)}</p>
                             <p className="mt-1 text-[11px] text-muted-foreground">Buys funded from previous sales.</p>
                         </div>
                     </div>
@@ -2671,16 +2744,16 @@ export function PortfolioList() {
                                 <Activity className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             </div>
                         </div>
-                        <CardTitle className="text-lg sm:text-2xl font-black font-mono tracking-tight break-all">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3 sm:px-6">
-                        <div className={cn(
-                            "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
-                            totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
-                        )}>
-                            {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString(getNumberFormatLocale())} ({totalPlPerc.toFixed(2)}%)
-                        </div>
-                    </CardContent>
+                        <CardTitle className="text-lg sm:text-2xl font-black font-mono tracking-tight break-all">{shareCurrency.formatNpr(totalCurrent)}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 sm:px-6">
+                            <div className={cn(
+                                "inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight shadow-sm",
+                                totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
+                            )}>
+                                {shareCurrency.formatNpr(totalPl).replace(/^[^\d-]+/, "")} ({totalPlPerc.toFixed(2)}%)
+                            </div>
+                        </CardContent>
                 </Card>
 
                 <Card className="hidden md:block bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left">
@@ -2723,7 +2796,7 @@ export function PortfolioList() {
                 >
                     <CardHeader className="pb-2 px-3 sm:px-6">
                         <CardDescription className="text-[9px] sm:text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1">Total Invested</CardDescription>
-                        <CardTitle className="text-lg sm:text-2xl font-black font-mono break-all">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</CardTitle>
+                        <CardTitle className="text-lg sm:text-2xl font-black font-mono break-all">{shareCurrency.formatNpr(totalInvest)}</CardTitle>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6">
                         <span className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest opacity-60">Cost Basis</span>
@@ -2791,19 +2864,19 @@ export function PortfolioList() {
                                     <Activity className="w-3 h-3 text-primary" />
                                 </div>
                                 <div className="flex items-baseline gap-2 flex-wrap">
-                                    <p className="text-lg font-black font-mono tracking-tight break-all">रु {totalCurrent.toLocaleString(getNumberFormatLocale())}</p>
+                                    <p className="text-lg font-black font-mono tracking-tight break-all">{shareCurrency.formatNpr(totalCurrent)}</p>
                                     <div className={cn(
                                         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight",
                                         totalPl >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                                     )}>
-                                        {totalPl >= 0 ? "+" : ""}{totalPl.toLocaleString(getNumberFormatLocale())} ({totalPlPerc.toFixed(2)}%)
+                                        {shareCurrency.formatNpr(totalPl).replace(/^[^\d-]+/, "")} ({totalPlPerc.toFixed(2)}%)
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted/20">
                                     <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Today's Move</p>
                                     <div className="flex items-center gap-1.5">
                                         <span className={cn("text-sm font-black font-mono", totalTodayChange >= 0 ? "text-success" : "text-error")}>
-                                            {totalTodayChange >= 0 ? "+" : ""}{totalTodayChange.toLocaleString(getNumberFormatLocale())}
+{totalTodayChange >= 0 ? "+" : ""}{shareCurrency.formatNpr(totalTodayChange).replace(/^[^\d-]+/, "")}
                                         </span>
                                         <span className={cn(
                                             "inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-tight",
@@ -2841,7 +2914,7 @@ export function PortfolioList() {
                                     <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Total Invested</p>
                                     <Wallet className="w-3 h-3 text-muted-foreground" />
                                 </div>
-                                <p className="text-lg font-black font-mono break-all">रु {totalInvest.toLocaleString(getNumberFormatLocale())}</p>
+                                <p className="text-lg font-black font-mono break-all">{shareCurrency.formatNpr(totalInvest)}</p>
                                 <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest mt-0.5">Cost Basis</p>
                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted/20">
                                     <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Diversification</p>
@@ -3014,7 +3087,7 @@ export function PortfolioList() {
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Est. Cash Dividend</p>
-                        <p className="mt-1 text-lg font-black font-mono">{currencySymbol}{dividendOverviewTotals.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
+                        <p className="mt-1 text-lg font-black font-mono">{money(dividendOverviewTotals.estimatedCash, { maximumFractionDigits: 2 })}</p>
                         <p className="mt-1 text-[10px] text-muted-foreground">Across included portfolios only.</p>
                     </div>
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
@@ -3091,7 +3164,7 @@ export function PortfolioList() {
                                                 <div>
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cash</p>
                                                     <p className="mt-1 text-sm font-black font-mono">
-                                                        {currencySymbol}{(selectedDividendYear === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
+                                                        {money((selectedDividendYear === "all" ? allYearsRow?.totalEstimatedCash || 0 : yearlyRow?.estimatedCash || 0), { maximumFractionDigits: 2 })}
                                                     </p>
                                                 </div>
                                                 <div>
@@ -3118,7 +3191,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{allYearsRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{allYearsRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{allYearsRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
+                                                                        Est. cash {money(allYearsRow.topCashContributor.estimatedCash, { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -3153,7 +3226,7 @@ export function PortfolioList() {
                                                                     </Badge>
                                                                 </div>
                                                                 <div className="mt-2 text-[10px] text-muted-foreground">
-                                                                    <p>Est. cash {currencySymbol}{yearSummary.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}</p>
+                                                                    <p>Est. cash {money(yearSummary.estimatedCash, { maximumFractionDigits: 2 })}</p>
                                                                     <p>Est. bonus {yearSummary.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })} units</p>
                                                                 </div>
                                                             </div>
@@ -3170,7 +3243,7 @@ export function PortfolioList() {
                                                                     <p className="text-[11px] font-black uppercase">{yearlyRow.topCashContributor.symbol}</p>
                                                                     <p className="truncate text-[10px] text-muted-foreground">{yearlyRow.topCashContributor.assetName}</p>
                                                                     <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                        Est. cash {currencySymbol}{yearlyRow.topCashContributor.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })}
+                                                                        Est. cash {money(yearlyRow.topCashContributor.estimatedCash, { maximumFractionDigits: 2 })}
                                                                     </p>
                                                                 </div>
                                                             ) : (
@@ -3207,7 +3280,7 @@ export function PortfolioList() {
                                                             <div className="mt-2 text-[10px] text-muted-foreground">
                                                                 <p>Units: {formatUnits(holding.units)}</p>
                                                                 <p>Cash: {holding.cashPercent.toFixed(2)}% • Bonus: {holding.bonusPercent.toFixed(2)}%</p>
-                                                                <p>Est. cash {currencySymbol}{holding.estimatedCash.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
+                                                                <p>Est. cash {money(holding.estimatedCash, { maximumFractionDigits: 2 })} • Est. bonus {holding.estimatedBonusUnits.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 4 })}</p>
                                                                 <p>{holding.announcementDate ? `Announced ${formatAppDate(holding.announcementDate, calendarSystem)}` : "Announcement date unavailable"}</p>
                                                             </div>
                                                         </div>
@@ -3322,7 +3395,7 @@ export function PortfolioList() {
                     <div className="grid grid-cols-2 gap-2 sm:gap-4">
                         <div className="flex flex-col gap-0">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Current Value</span>
-                            <span className="text-sm sm:text-lg font-black font-mono">रु {summary.current.toLocaleString(getNumberFormatLocale())}</span>
+                            <span className="text-sm sm:text-lg font-black font-mono">{money(summary.current)}</span>
                         </div>
                         <div className="flex flex-col gap-0 items-end">
                             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 text-right">today move</span>
@@ -3330,7 +3403,7 @@ export function PortfolioList() {
                                 "text-xs sm:text-base font-black font-mono leading-tight",
                                 summary.todayChange >= 0 ? "text-success" : "text-error"
                             )}>
-                                {summary.todayChange >= 0 ? "+" : ""}{summary.todayChange.toLocaleString(getNumberFormatLocale())}
+                                {summary.todayChange >= 0 ? "+" : ""}{shareCurrency.moneySigned(summary.todayChange)}
                             </span>
                         </div>
                     </div>
@@ -3438,6 +3511,7 @@ export function PortfolioList() {
                     open={isStockDetailOpen}
                     onOpenChange={setIsStockDetailOpen}
                     mode={selectedStockDetailMode}
+                    initialTab={stockDetailInitialTab}
                 />
                 <MarketSectorModal
                     open={isMarketSectorOpen}
@@ -4448,6 +4522,7 @@ export function PortfolioList() {
                             portfolioCryptoOptions={portfolioCryptoOptions}
                             portfolioItems={portfolio}
                             activePortfolioId={activePortfolioId ?? undefined}
+                            shareTransactions={shareTransactions}
                             currencySymbol={currencySymbol}
                             calendarSystem={calendarSystem}
                         />
@@ -4461,6 +4536,7 @@ export function PortfolioList() {
                 open={isStockDetailOpen}
                 onOpenChange={setIsStockDetailOpen}
                 mode={selectedStockDetailMode}
+                initialTab={stockDetailInitialTab}
             />
 
             {/* Market & Sector Modal */}
@@ -4577,7 +4653,7 @@ export function PortfolioList() {
                                 </div>
                             </div>
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
-                                {currencySymbol}{(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue).toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
+                                {money(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue)}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4587,7 +4663,7 @@ export function PortfolioList() {
                                         {formatUnits(soldPortfolioStats.totalSoldUnits)} Units Sold
                                     </div>
                                     <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-success/10 text-success border border-success/20">
-                                        {currencySymbol}{soldPortfolioStats.reinvestedAmount.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })} Reinvested
+                                        {money(soldPortfolioStats.reinvestedAmount)} Reinvested
                                     </div>
                                 </div>
                             ) : (
@@ -4595,7 +4671,17 @@ export function PortfolioList() {
                                     "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight",
                                     totalProfitLoss >= 0 ? "bg-success/10 text-success border border-success/20" : "bg-error/10 text-error border border-error/20"
                                 )}>
-                                    {totalProfitLoss >= 0 ? "+" : ""}{totalProfitLoss.toLocaleString(getNumberFormatLocale())} ({totalProfitLossPercentage.toFixed(1)}%)
+                                    {totalProfitLoss >= 0 ? "+" : ""}{shareCurrency.moneySigned(totalProfitLoss)} ({totalProfitLossPercentage.toFixed(1)}%)
+                                </div>
+                            )}
+                            {showSoldStocks && soldPortfolioStats.hasEstimatedSellCost && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-error/10 text-error border border-error/20">
+                                        − {money(soldPortfolioStats.sellTransactionCost)} Sell Cost
+                                    </div>
+                                    <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-tight bg-primary/10 text-primary border border-primary/20">
+                                        Net {money(soldPortfolioStats.netSellProceeds)}
+                                    </div>
                                 </div>
                             )}
                         </CardContent>
@@ -4609,8 +4695,8 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
                                 <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
                                     {showSoldStocks
-                                        ? `${currencySymbol}${soldPortfolioStats.totalSoldTodayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`
-                                        : `${todayChange >= 0 ? "+" : ""}${todayChange.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
+                                        ? `${money(soldPortfolioStats.totalSoldTodayValue)}`
+                                        : `${todayChange >= 0 ? "+" : ""}${shareCurrency.moneySigned(todayChange)}`}
                                 </span>
                             </CardTitle>
                         </CardHeader>
@@ -4624,7 +4710,7 @@ export function PortfolioList() {
                                             : "text-success bg-success/10 border-success/20"
                                     )}>
                                         {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
-                                        {currencySymbol}{soldPortfolioStats.soldValueDifference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
+                                        {`${soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}${shareCurrency.moneySigned(soldPortfolioStats.soldValueDifference)}`}
                                         {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
                                         {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
                                     </div>
@@ -4657,7 +4743,7 @@ export function PortfolioList() {
                             <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
                                 {showSoldStocks
                                     ? `${soldPortfolioStats.soldScrips} Scrips`
-                                    : `${currencySymbol}${totalInvestment.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}`}
+                                    : `${money(totalInvestment)}`}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="px-2 sm:px-4 pb-2 sm:pb-4">
@@ -4821,9 +4907,9 @@ export function PortfolioList() {
                                                         return (
                                                             <g>
                                                                 <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="middle" className="fill-primary" style={{ fontFamily: "monospace", fontWeight: 800, fontSize: isMobile ? 15 : 18 }}>
-                                                                    {chartMetric === "units"
-                                                                        ? formatUnits(chartTotals.totalUnits)
-                                                                        : compactAmount(chartTotals.totalValue, calendarSystem, 2)}
+{chartMetric === "units"
+                                        ? formatUnits(chartTotals.totalUnits)
+                                        : moneyCompact(chartTotals.totalValue)}
                                                                 </text>
                                                                 <text x={cx} y={cy + 13} textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground" style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                                                                     {chartMetric === "units" ? "Total Units" : "Total Value"}
@@ -4861,9 +4947,9 @@ export function PortfolioList() {
                                                                             {chartMetric === "units" ? "Units" : "Value"}
                                                                         </span>
                                                                         <span className="text-[10px] font-black text-right">
-                                                                            {chartMetric === "units"
-                                                                                ? formatUnits(data.units || 0)
-                                                                                : `रु${data.value.toLocaleString(getNumberFormatLocale())}`}
+{chartMetric === "units"
+                                                ? formatUnits(data.units || 0)
+                                                : `${shareCurrency.moneySigned(data.value, { maximumFractionDigits: 0 })}`}
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex justify-between gap-8">
@@ -4871,9 +4957,9 @@ export function PortfolioList() {
                                                                             {chartMetric === "units" ? "Value" : "Units"}
                                                                         </span>
                                                                         <span className="text-[10px] font-black text-right">
-                                                                            {chartMetric === "units"
-                                                                                ? `रु${data.value.toLocaleString(getNumberFormatLocale())}`
-                                                                                : formatUnits(data.units || 0)}
+{chartMetric === "units"
+                                                ? `${shareCurrency.moneySigned(data.value, { maximumFractionDigits: 0 })}`
+                                                : formatUnits(data.units || 0)}
                                                                         </span>
                                                                     </div>
                                                                     {chartView === "sector" && (
@@ -4933,14 +5019,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-error">Missed Upside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-error bg-error/10 border border-error/20 px-1.5 py-0.5 rounded-md">
-                                                        +{currencySymbol}{soldPortfolioStats.missedUpsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
+                                                        +{money(soldPortfolioStats.missedUpsideTotal.difference)}
                                                     </span>
                                                     <TrendingUp className="w-3.5 h-3.5 text-error" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.missedUpsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.missedUpsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {money(soldPortfolioStats.missedUpsideTotal.todayValue)}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.missedUpside.map((row) => (
@@ -4961,7 +5047,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-error">
                                                                 +{row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-error">+{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-error">+{money(row.difference)}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4974,14 +5060,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-success">Saved Downside</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.savedDownsideTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
+                                                        {money(soldPortfolioStats.savedDownsideTotal.difference)}
                                                     </span>
                                                     <TrendingDown className="w-3.5 h-3.5 text-success" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.savedDownsideTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.savedDownsideTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {money(soldPortfolioStats.savedDownsideTotal.todayValue)}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.savedDownside.map((row) => (
@@ -5002,7 +5088,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-success">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-success">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-success">{money(row.difference)}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -5015,14 +5101,14 @@ export function PortfolioList() {
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Flat Since Sold</span>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[9px] font-black text-muted-foreground bg-muted/40 border border-muted px-1.5 py-0.5 rounded-md">
-                                                        {currencySymbol}{soldPortfolioStats.flatTotal.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}
+                                                        {money(soldPortfolioStats.flatTotal.difference)}
                                                     </span>
                                                     <Activity className="w-3.5 h-3.5 text-muted-foreground" />
                                                 </div>
                                             </div>
                                             <div className="flex items-center justify-between text-[9px] font-bold text-muted-foreground">
                                                 <span>{formatUnits(soldPortfolioStats.flatTotal.units)} units</span>
-                                                <span>Today {currencySymbol}{soldPortfolioStats.flatTotal.todayValue.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</span>
+                                                <span>Today {money(soldPortfolioStats.flatTotal.todayValue)}</span>
                                             </div>
                                             <div className="space-y-2 overflow-y-auto pr-1 min-h-0">
                                                 {soldPortfolioStats.flat.map((row) => (
@@ -5043,7 +5129,7 @@ export function PortfolioList() {
                                                             <p className="text-[11px] font-black text-muted-foreground">
                                                                 {row.differencePercentage.toFixed(2)}%
                                                             </p>
-                                                            <p className="text-[9px] text-muted-foreground">{currencySymbol}{row.difference.toLocaleString(getNumberFormatLocale(), { maximumFractionDigits: 0 })}</p>
+                                                            <p className="text-[9px] text-muted-foreground">{money(row.difference)}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -5517,7 +5603,7 @@ export function PortfolioList() {
                                                                             <>
                                                                                 <span className="hidden sm:inline text-[10px] opacity-20">•</span>
                                                                                 <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                                                    Avg {isCrypto ? "$" : "रु"} {formatHoldingAmount(averageSoldPrice, isCrypto)}
+                                                                                    Avg {moneyWithCrypto(averageSoldPrice, isCrypto)}
                                                                                 </span>
                                                                             </>
                                                                         ) : (
@@ -5535,7 +5621,7 @@ export function PortfolioList() {
                                                                         isSold ? "text-amber-600/80" : isMerged ? "text-purple-600/80" : "text-muted-foreground"
                                                                     )}>
                                                                         {isSold && lastExitInfo
-                                                                            ? `Sold @ ${isCrypto ? "$" : "रु"}${lastExitInfo.price}`
+                                                                            ? `Sold @ ${moneyWithCrypto(lastExitInfo.price, isCrypto)}`
                                                                             : isMerged && lastExitInfo
                                                                                 ? `Merged Out`
                                                                                 : "Zero Units"}
@@ -5546,7 +5632,7 @@ export function PortfolioList() {
                                                                         <span className="hidden sm:inline text-[10px] opacity-20">•</span>
                                                                         <div className="flex items-center gap-1.5">
                                                                             <span className="text-[10px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-                                                                                {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
+{moneyWithCrypto(current, isCrypto)}
                                                                             </span>
                                                                             {showDailyChange && (
                                                                                 <span
@@ -5585,18 +5671,18 @@ export function PortfolioList() {
                                                                         <span className="hidden sm:inline">
                                                                             Trading value
                                                                         </span>
-                                                                        <span>{isCrypto ? "$" : "रु"}{formatHoldingAmount(soldTodayValue, isCrypto)}</span>
+                                                                        <span>{moneyWithCrypto(soldTodayValue, isCrypto)}</span>
                                                                     </div>
                                                                     {hasSoldPrice && (
                                                                         <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60">
-                                                                            Sold value {isCrypto ? "$" : "रु"}{formatHoldingAmount(soldValue, isCrypto)}
+                                                                            Sold value {moneyWithCrypto(soldValue, isCrypto)}
                                                                         </div>
                                                                     )}
                                                                 </>
                                                             ) : isZeroHolding ? (
                                                                 <>
                                                                     <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight text-muted-foreground">
-                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(current, isCrypto)}
+                                                                        {moneyWithCrypto(current, isCrypto)}
                                                                     </div>
                                                                     <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground/60">
                                                                         Current Price
@@ -5605,7 +5691,7 @@ export function PortfolioList() {
                                                             ) : (
                                                                 <>
                                                                     <div className="font-black text-sm sm:text-lg tracking-tighter font-mono leading-tight">
-                                                                        {isCrypto ? "$" : "रु"} {formatHoldingAmount(value, isCrypto)}
+                                                                        {moneyWithCrypto(value, isCrypto)}
                                                                     </div>
                                                                     <div className={cn(
                                                                         "text-[9px] sm:text-[10px] flex items-center gap-1 font-black",
@@ -5792,7 +5878,7 @@ export function PortfolioList() {
                                                         </div>
                                                         {tx.price > 0 && (
                                                             <div className="text-[9px] sm:text-[10px] text-muted-foreground font-bold">
-                                                                @ रु{tx.price.toLocaleString(getNumberFormatLocale())}
+                                                                @ {money(tx.price)}
                                                             </div>
                                                         )}
                                                     </div>

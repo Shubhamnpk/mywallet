@@ -1,44 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import {
-  Loader2,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  PieChart as PieChartIcon,
-  X,
-  Clock,
-  Layers,
-  Building2,
-  Sparkles,
-  Activity,
-  ExternalLink,
-  ScrollText,
-  FileText,
-  BookOpen,
-  RefreshCcw,
-  Building,
-  ChevronRight,
-} from "lucide-react"
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  PieChart as RePieChart,
-  Pie,
-  Cell,
-} from "recharts"
+import {TrendingUp,TrendingDown,X,Layers,Building2,Sparkles,Activity,ExternalLink,ScrollText,FileText,BookOpen,RefreshCcw,Building,ChevronRight,} from "lucide-react"
+import {ResponsiveContainer,LineChart,Line,CartesianGrid,XAxis,YAxis,Tooltip,PieChart as RePieChart,Pie,Cell,} from "recharts"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
+import { SkeletonStatGrid, SkeletonSectionTitle, SkeletonList, SkeletonChart, SkeletonDonut, SkeletonBlock } from "@/components/ui/modal-skeletons"
 import { cn } from "@/lib/utils"
 import { compactAmount } from "@/lib/money-format"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
@@ -53,13 +24,9 @@ import {
   type SchemeReturns,
   type SchemeHoldings,
 } from "@/lib/mutual-funds"
-
 type Tab = "overview" | "nav" | "returns" | "holdings"
-
 type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
-
 type PriceHistoryFrequency = "daily" | "weekly" | "monthly" | "yearly"
-
 type LtpHistoryPoint = {
   date: string
   ltp: number
@@ -255,21 +222,21 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
     [schemeDocuments],
   )
 
-  const tabs: Array<{ key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { key: "overview", label: "Overview", icon: ScrollText },
-    { key: "nav", label: "NAV", icon: TrendingUp },
-    { key: "returns", label: "Returns", icon: Wallet },
-    { key: "holdings", label: "Holdings", icon: PieChartIcon },
+  const tabs: Array<{ key: Tab; label: string;  }> = [
+    { key: "overview", label: "Overview"},
+    { key: "nav", label: "NAV"},
+    { key: "returns", label: "Returns"},
+    { key: "holdings", label: "Holdings"},
   ]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {scheme && (
         <DialogContent
-          className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh]"
+          className="max-w-md rounded-3xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl p-0 overflow-hidden flex flex-col gap-0 h-[85vh] sm:h-[86vh] lg:h-[88vh]"
           showCloseButton={false}
         >
-          <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative">
+          <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent relative text-left">
             <Button
               variant="ghost"
               size="icon"
@@ -332,12 +299,7 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
           </DialogHeader>
 
           <div className="flex-1 min-h-0 flex flex-col gap-0 overflow-hidden relative z-10">
-            {isLoading ? (
-              <div className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading scheme details…
-              </div>
-            ) : error ? (
+            {error ? (
               <div className="flex-1 flex items-center justify-center text-sm text-destructive font-medium">{error}</div>
             ) : (
               <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex-1 flex flex-col gap-0 overflow-hidden">
@@ -349,7 +311,6 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
                         value={t.key}
                         className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest gap-1.5"
                       >
-                        <t.icon className="h-3.5 w-3.5" />
                         {t.label}
                       </TabsTrigger>
                     ))}
@@ -359,6 +320,10 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
                 <div className="flex-1 min-h-0 overflow-y-auto bg-muted/5">
                   <div className="p-6 pt-4 space-y-4">
                     <TabsContent value="overview" className="m-0 space-y-4">
+                      {isLoading ? (
+                        <SchemeOverviewSkeleton />
+                      ) : (
+                        <>
                       {/* Market snapshot */}
                       <section>
                         <SectionLabel icon={Activity} title="Market Snapshot" />
@@ -513,18 +478,32 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
                           </div>
                         </section>
                       )}
+                        </>
+                      )}
                     </TabsContent>
 
                     <TabsContent value="nav" className="m-0">
-                      <NavTab key={scheme.symbol} symbol={scheme.symbol} />
+                      {isLoading ? (
+                        <SkeletonChart />
+                      ) : (
+                        <NavTab key={scheme.symbol} symbol={scheme.symbol} />
+                      )}
                     </TabsContent>
 
                     <TabsContent value="returns" className="m-0">
-                      <ReturnsTab key={scheme.symbol} returns={returns} all={allReturns} />
+                      {isLoading ? (
+                        <SkeletonList count={5} />
+                      ) : (
+                        <ReturnsTab key={scheme.symbol} returns={returns} all={allReturns} />
+                      )}
                     </TabsContent>
 
                     <TabsContent value="holdings" className="m-0">
-                      <HoldingsTab key={scheme.symbol} holdings={holdingsList} />
+                      {isLoading ? (
+                        <SchemeHoldingsSkeleton />
+                      ) : (
+                        <HoldingsTab key={scheme.symbol} holdings={holdingsList} />
+                      )}
                     </TabsContent>
                   </div>
                 </div>
@@ -1082,20 +1061,21 @@ function HoldingsTab({ holdings }: { holdings: HoldingsRow[] }) {
     <div className="space-y-3">
       <div className="rounded-2xl border border-border/40 bg-muted/10 p-3 sm:p-4">
         <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-4 items-center">
-          <div className="relative h-[170px] w-full sm:w-[200px]">
+          <div className="relative h-[150px] w-full sm:h-[170px] sm:w-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
-                <Pie data={donut} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} paddingAngle={2} stroke="none">
+                <Pie data={donut} dataKey="value" nameKey="name" innerRadius="62%" outerRadius="92%" paddingAngle={2} stroke="none">
                   {donut.map((_, i) => (
                     <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip
+                  wrapperStyle={{ zIndex: 50 }}
                   content={({ active, payload }) => {
                     if (!active || !payload || payload.length === 0) return null
                     const p = payload[0]
                     return (
-                      <div className="rounded-lg border border-border/50 bg-background/95 backdrop-blur-sm shadow-lg px-2.5 py-1.5">
+                      <div className="relative z-50 rounded-lg border border-border/50 bg-background/95 backdrop-blur-sm shadow-lg px-2.5 py-1.5">
                         <p className="text-[10px] font-bold text-muted-foreground/70">{p?.name}</p>
                         <p className="text-xs font-black font-mono">{compactAmount(Number(p?.value ?? 0), calendarSystem)}</p>
                         <p className="text-[9px] text-muted-foreground/60">{(total ? (Number(p?.value ?? 0) / total) * 100 : 0).toFixed(1)}% of portfolio</p>
@@ -1125,7 +1105,7 @@ function HoldingsTab({ holdings }: { holdings: HoldingsRow[] }) {
         </div>
       </div>
 
-      <div className="max-h-[40vh] overflow-y-auto pr-1 space-y-2">
+      <div className="space-y-2">
         {sorted.map((h) => {
           const weight = total ? (h.marketValue / total) * 100 : 0
           return (
@@ -1153,6 +1133,39 @@ function HoldingsTab({ holdings }: { holdings: HoldingsRow[] }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/* ── Loading skeletons ────────────────────────────────── */
+
+function SchemeOverviewSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div>
+        <SkeletonSectionTitle />
+        <SkeletonStatGrid />
+      </div>
+      <div>
+        <SkeletonSectionTitle />
+        <SkeletonBlock className="h-16 rounded-2xl" />
+      </div>
+      <div>
+        <SkeletonSectionTitle />
+        <SkeletonStatGrid />
+      </div>
+      <SkeletonBlock className="h-28 rounded-2xl" />
+    </div>
+  )
+}
+
+function SchemeHoldingsSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-border/40 bg-muted/10 p-3 sm:p-4">
+        <SkeletonDonut />
+      </div>
+      <SkeletonList count={4} />
     </div>
   )
 }

@@ -280,7 +280,7 @@ export function MarketSectorModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] sm:h-[86vh] sm:max-h-[86vh] lg:h-[88vh] lg:max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
                 <DialogHeader className="px-5 pt-5 pb-3 shrink-0 border-b border-border/50">
                     <DialogTitle className="flex items-center gap-2 text-base">
                         Market & Movers

@@ -23,6 +23,7 @@ import ReceiptScanner from "@/components/tools/scanner/receipt-dialog"
 import { CurrencyConverterDialog } from "@/components/dashboard/currency-converter-dialog"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
+import { STOCK_DEEP_LINK_EVENT, type StockDeepLinkPayload } from "@/lib/stock-deep-link"
 
 type TabDef = {
   value: string
@@ -121,24 +122,42 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
   const toolsContentRef = useRef<HTMLDivElement>(null)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [isConverterOpen, setIsConverterOpen] = useState(false)
+  const [stockDeepLink, setStockDeepLink] = useState<StockDeepLinkPayload | null>(null)
   const DESKTOP_DIALOG_TOOLS = new Set(["scanner", "calculator", "currency-converter"])
 
   useEffect(() => {
     const syncFromLocation = () => {
-      const requestedTab = new URLSearchParams(window.location.search).get("tab")
+      const url = new URL(window.location.href)
+      const requestedTab = url.searchParams.get("tab")
       if (requestedTab && KNOWN_TAB_VALUES.has(requestedTab)) {
         setActiveTab(requestedTab)
+      }
+      const stock = url.searchParams.get("stock")
+      if (stock) {
+        setStockDeepLink({
+          symbol: stock,
+          portfolioId: url.searchParams.get("portfolio") || undefined,
+          tab: url.searchParams.get("stockTab") || undefined,
+        })
       }
     }
     const syncFromEvent = (event: Event) => {
       const tab = (event as CustomEvent<string>).detail
       if (tab && KNOWN_TAB_VALUES.has(tab)) setActiveTab(tab)
     }
+    const syncFromStockEvent = (event: Event) => {
+      const payload = (event as CustomEvent<StockDeepLinkPayload>).detail
+      if (!payload?.symbol) return
+      setActiveTab("portfolio")
+      setStockDeepLink(payload)
+    }
     window.addEventListener("popstate", syncFromLocation)
     window.addEventListener("mywallet:navigate-tab", syncFromEvent)
+    window.addEventListener(STOCK_DEEP_LINK_EVENT, syncFromStockEvent)
     return () => {
       window.removeEventListener("popstate", syncFromLocation)
       window.removeEventListener("mywallet:navigate-tab", syncFromEvent)
+      window.removeEventListener(STOCK_DEEP_LINK_EVENT, syncFromStockEvent)
     }
   }, [])
 
@@ -485,7 +504,10 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           </TabsContent>
 
           <TabsContent value="portfolio" className="space-y-4">
-            <PortfolioList />
+            <PortfolioList
+              deepLink={stockDeepLink}
+              onDeepLinkHandled={() => setStockDeepLink(null)}
+            />
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">
@@ -529,7 +551,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
             value="tools"
             className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-4 duration-300"
           >
-            <div className="hidden lg:grid lg:grid-cols-3 gap-4">
+            <div className="hidden lg:grid lg:grid-cols-4 gap-4">
               {desktopHubCards.map((tool) => (
                 <button
                   key={tool.value}

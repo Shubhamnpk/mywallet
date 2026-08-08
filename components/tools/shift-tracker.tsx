@@ -1345,6 +1345,7 @@ export function ShiftTracker() {
         rate={getRate()}
         timeFormat={timeFormat}
         currencySymbol={currencySymbol}
+        calendarSystem={calendarSystem}
       />
 
       {/* Settings */}
@@ -1355,7 +1356,7 @@ export function ShiftTracker() {
             "animate-in fade-in-0 zoom-in-95 duration-300",
           )}
         >
-          <DialogHeader className="p-6 pb-4 space-y-2 border-b border-border/60 bg-muted/20">
+          <DialogHeader className="p-6 pb-4 space-y-2 border-b border-border/60 bg-muted/20 text-left">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner">
                 <Settings className="h-5 w-5" />
@@ -1364,7 +1365,7 @@ export function ShiftTracker() {
                 <DialogTitle className="text-xl font-semibold tracking-tight">
                   Shift Tracker Settings
                 </DialogTitle>
-                <DialogDescription className="text-sm text-muted-foreground leading-snug">
+                <DialogDescription className="text-sm text-muted-foreground leading-snug hidden sm:block">
                   Adjust your hourly rate and time format preferences for shift
                   tracking.
                 </DialogDescription>
@@ -1392,71 +1393,70 @@ export function ShiftTracker() {
                 </p>
               </div>
 
-              <div>
-                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
-                  Time format
-                </Label>
-                <div className="mt-2 flex w-fit gap-0.5 rounded-xl border bg-muted/30 p-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                      timeFormat === "12h"
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setTimeFormat("12h")}
-                  >
-                    12h
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                      timeFormat === "24h"
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setTimeFormat("24h")}
-                  >
-                    24h
-                  </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
+                    Time format
+                  </Label>
+                  <div className="mt-2 flex w-full gap-0.5 rounded-xl border bg-muted/30 p-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        timeFormat === "12h"
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setTimeFormat("12h")}
+                    >
+                      12h
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        timeFormat === "24h"
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setTimeFormat("24h")}
+                    >
+                      24h
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
-                  Wallet income
-                </Label>
-                <div className="mt-2 flex w-fit gap-0.5 rounded-xl border bg-muted/30 p-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap",
-                      payToWallet
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setPayToWallet(true)}
-                  >
-                    Add to wallet
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap",
-                      !payToWallet
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setPayToWallet(false)}
-                  >
-                    None
-                  </button>
+                <div>
+                  <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
+                    Payout
+                  </Label>
+                  <div className="mt-2 flex w-full gap-0.5 rounded-xl border bg-muted/30 p-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        payToWallet
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setPayToWallet(true)}
+                    >
+                      Add to wallet
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        !payToWallet
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setPayToWallet(false)}
+                    >
+                      None
+                    </button>
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  When marking shifts as paid, also record income in your wallet.
-                </p>
               </div>
 
               <div>

@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { CalendarSystem, formatAppDate } from "@/lib/app-calendar"
+import { useShareCurrency } from "@/hooks/use-share-currency"
 import type { Portfolio } from "@/types/wallet"
 
 export type PortfolioValuationPoint = {
@@ -173,6 +174,7 @@ export function ValuationTimelineModal({
 }: ValuationTimelineModalProps) {
     const [selectedSnapshotDate, setSelectedSnapshotDate] = useState<string | null>(null)
     const [frequency, setFrequency] = useState<AggregationFrequency>("daily")
+    const { money: scMoney, moneySigned: scMoneySigned } = useShareCurrency()
 
     const rangeStats = useMemo(() => {
         const orderedTimeline = [...timeline].sort((a, b) => a.date.localeCompare(b.date))
@@ -265,10 +267,10 @@ export function ValuationTimelineModal({
 
     if (!modal.open) return null
 
-    const money = (amount: number) => `${currencySymbol.trim() || "Rs."} ${formatAmount(amount, false)}`
+    const money = (amount: number) => scMoney(amount)
     const signedMoney = (amount: number) => {
         const sign = amount > 0 ? "+" : amount < 0 ? "-" : ""
-        return `${currencySymbol.trim() || "Rs."}${sign}${formatAmount(Math.abs(amount), false)}`
+        return `${sign}${scMoneySigned(Math.abs(amount))}`
     }
     const handleChartClick = (chartState: unknown) => {
         const payload = (chartState as { activePayload?: Array<{ payload?: PortfolioValuationPoint }> })?.activePayload?.[0]?.payload

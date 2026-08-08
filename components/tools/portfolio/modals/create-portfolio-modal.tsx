@@ -57,7 +57,6 @@ export function CreatePortfolioModal({
                             value={newPortfolio.name}
                             onChange={(e) => setNewPortfolio({ ...newPortfolio, name: e.target.value })}
                             placeholder="e.g., Long Term Investments"
-                            autoFocus
                         />
                     </div>
                     <div className="grid gap-3">

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download } from "lucide-react"
+import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download, Banknote } from "lucide-react"
 import { toast } from "sonner"
 import { Check, ChevronsUpDown } from "lucide-react"
 import {
@@ -54,6 +54,7 @@ const emptyAccountForm: MeroShareAccount = {
     password: "",
     crn: "",
     pin: "",
+    preferredKitta: 0,
 }
 
 const getMeroShareAccounts = (meroShare?: {
@@ -119,7 +120,7 @@ export function MeroShareSettings() {
         pin: getPrimaryAccount(getMeroShareAccounts(userProfile?.meroShare))?.pin || "",
         shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
         shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
-        preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
+        shareCurrencyMode: userProfile?.meroShare?.shareCurrencyMode || "npr",
         applyMode: "on-demand",
         showLiveBrowser: false,
         browserProvider: userProfile?.meroShare?.browserProvider || "api",
@@ -172,7 +173,7 @@ export function MeroShareSettings() {
             pin: primaryAccount?.pin || "",
             shareFeaturesEnabled: userProfile?.meroShare?.shareFeaturesEnabled || false,
             shareNotificationsEnabled: userProfile?.meroShare?.shareNotificationsEnabled || false,
-            preferredKitta: userProfile?.meroShare?.preferredKitta || 0,
+            shareCurrencyMode: userProfile?.meroShare?.shareCurrencyMode || "npr",
             applyMode: "on-demand",
             showLiveBrowser: false,
             browserProvider: userProfile?.meroShare?.browserProvider || "api",
@@ -351,10 +352,10 @@ export function MeroShareSettings() {
         }
     }
 
-    const updatePreferredKitta = (value: number) => {
+    const updateShareCurrencyMode = (mode: "npr" | "auto") => {
         const nextForm = {
             ...formData,
-            preferredKitta: value,
+            shareCurrencyMode: mode,
         }
         setFormData(nextForm)
         persistMeroShareSettings(nextForm, accounts)
@@ -404,7 +405,7 @@ export function MeroShareSettings() {
         const promise = applyMeroShareIPO(
             formData,
             ipoToTest,
-            formData.preferredKitta || 0,
+            getPrimaryAccount(accounts)?.preferredKitta || 0,
             "settings-test",
             { showBrowser: false, browserProvider: formData.browserProvider as "api" | "rest" | "auto" | "browserless" | "local" }
         )
@@ -505,9 +506,6 @@ export function MeroShareSettings() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <Label className="text-sm font-bold">MeroShare Accounts</Label>
-                                <p className="text-xs text-muted-foreground">
-                                    Credentials stay hidden until you add or edit an account.
-                                </p>
                             </div>
                             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                                 <Button
@@ -593,21 +591,60 @@ export function MeroShareSettings() {
                         )}
                     </div>
 
-                    <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                            <Rocket className="w-3 h-3" /> Preferred Kitta (Optional)
-                        </Label>
-                        <Input
-                            type="number"
-                            min="0"
-                            placeholder="0 = Auto-detect minimum"
-                            value={formData.preferredKitta || ""}
-                            onChange={(e) => updatePreferredKitta(parseInt(e.target.value) || 0)}
-                            className="h-11 bg-background/50"
-                        />
-                        <p className="text-[10px] text-muted-foreground italic">
-                            Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount.
-                        </p>
+                    <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold flex items-center gap-2">
+                                    <Banknote className="w-4 h-4 text-primary" />
+                                    Share Currency
+                                </Label>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    Control how portfolio (share) amounts are displayed.
+                                    <span className="font-semibold text-primary"> NPR</span> keeps everything in Nepalese Rupees.
+                                    <span className="font-semibold text-primary"> Auto</span> shows amounts in your profile currency
+                                    (e.g. GBP, USD) using a live conversion rate.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => updateShareCurrencyMode("npr")}
+                                className={cn(
+                                    "flex flex-col items-center gap-1 rounded-xl border p-3 text-sm font-bold transition-all",
+                                    (formData.shareCurrencyMode || "npr") === "npr"
+                                        ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                                        : "border-border/40 text-muted-foreground hover:bg-muted/40",
+                                )}
+                            >
+                                <span>रु NPR</span>
+                                <span className="text-[10px] font-normal text-muted-foreground">Default</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => updateShareCurrencyMode("auto")}
+                                className={cn(
+                                    "flex flex-col items-center gap-1 rounded-xl border p-3 text-sm font-bold transition-all",
+                                    (formData.shareCurrencyMode || "npr") === "auto"
+                                        ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                                        : "border-border/60 text-muted-foreground hover:bg-muted/40",
+                                )}
+                            >
+                                <span>Auto</span>
+                                <span className="text-[10px] font-normal text-muted-foreground">
+                                    {userProfile?.currency && userProfile.currency !== "NPR"
+                                        ? `Follow ${userProfile.currency}`
+                                        : "Follow profile"}
+                                </span>
+                            </button>
+                        </div>
+                        {(formData.shareCurrencyMode || "npr") === "auto" && (
+                            <p className="text-[10px] text-muted-foreground italic">
+                                {userProfile?.currency && userProfile.currency !== "NPR"
+                                    ? `Portfolio totals will display in ${userProfile.currency}.`
+                                    : "Set a non-NPR profile currency to see converted share amounts."}
+                            </p>
+                        )}
                     </div>
 
                     {/* legacy inline credential fields removed; accounts are edited in the modal
@@ -670,9 +707,6 @@ export function MeroShareSettings() {
                                     </Command>
                                 </PopoverContent>
                             </Popover>
-                            <p className="text-[11px] text-muted-foreground">
-                                {isLoadingDps ? "Loading DPS list..." : `${dps.length} DPS entries available from bundled data.`}
-                            </p>
                         </div>
 
                         <div className="space-y-2">
@@ -853,9 +887,6 @@ export function MeroShareSettings() {
                                     </Command>
                                 </div>
                             )}
-                            <p className="text-[11px] text-muted-foreground">
-                                {isLoadingDps ? "Loading DPS list..." : `${dps.length} DPS entries available from bundled data.`}
-                            </p>
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -917,6 +948,23 @@ export function MeroShareSettings() {
                                     inputMode="numeric"
                                 />
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="mero-account-kitta" className="flex items-center gap-2">
+                                <Rocket className="w-3 h-3" /> Preferred Kitta <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                            </Label>
+                            <Input
+                                id="mero-account-kitta"
+                                type="number"
+                                min="0"
+                                placeholder="0 = Auto-detect minimum"
+                                value={accountForm.preferredKitta || ""}
+                                onChange={(e) => setAccountForm(prev => ({ ...prev, preferredKitta: parseInt(e.target.value) || 0 }))}
+                            />
+                            <p className="text-[10px] text-muted-foreground italic">
+                                Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount from this account.
+                            </p>
                         </div>
                     </div>
 

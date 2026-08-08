@@ -103,7 +103,6 @@ export function EditPortfolioModal({
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Portfolio name"
                                 className="pl-10 h-11 rounded-xl border-border/60 focus-visible:ring-primary/20 font-medium"
-                                autoFocus
                             />
                         </div>
                     </div>

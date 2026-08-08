@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, RotateCcw, Cpu, Users, X, Circle } from "lucide-react"
+import { Play, RotateCcw, Cpu, Users, X, Circle, Keyboard } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TicTacToeGameProps {
@@ -23,11 +23,30 @@ const WINNING_COMBINATIONS = [
   [0, 4, 8], [2, 4, 6],
 ]
 
+function XMark() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-3/4 h-3/4 drop-shadow-md" aria-hidden="true">
+      <line x1="22" y1="22" x2="78" y2="78" stroke="var(--info)" strokeWidth="16" strokeLinecap="round" />
+      <line x1="78" y1="22" x2="22" y2="78" stroke="var(--info)" strokeWidth="16" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function OMark() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-3/4 h-3/4 drop-shadow-md" aria-hidden="true">
+      <circle cx="50" cy="50" r="30" fill="none" stroke="var(--error)" strokeWidth="16" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
   const [phase, setPhase] = useState<Phase>("menu")
+  const [showHelp, setShowHelp] = useState(false)
   const [board, setBoard] = useState<Board>(Array(9).fill(null))
   const [currentPlayer, setCurrentPlayer] = useState<Player>("X")
   const [winner, setWinner] = useState<Player>(null)
+  const [winningCombo, setWinningCombo] = useState<number[] | null>(null)
   const [isDraw, setIsDraw] = useState(false)
   const [gameMode, setGameMode] = useState<GameMode>("human")
   const [scores, setScores] = useState({ X: 0, O: 0, draws: 0 })
@@ -36,6 +55,14 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
   const checkWinner = useCallback((b: Board): Player => {
     for (const [a, c, d] of WINNING_COMBINATIONS) {
       if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a]
+    }
+    return null
+  }, [])
+
+  const getWinningCombo = useCallback((b: Board): number[] | null => {
+    for (const combo of WINNING_COMBINATIONS) {
+      const [a, c, d] = combo
+      if (b[a] && b[a] === b[c] && b[a] === b[d]) return combo
     }
     return null
   }, [])
@@ -80,6 +107,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
     if (newWinner || newIsDraw) {
       setBoard(newBoard)
       setWinner(newWinner)
+      setWinningCombo(newWinner ? getWinningCombo(newBoard) : null)
       setIsDraw(newIsDraw)
       setScores((prev) => ({
         ...prev,
@@ -90,7 +118,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
 
     setBoard(newBoard)
     setCurrentPlayer(currentPlayer === "X" ? "O" : "X")
-  }, [board, currentPlayer, winner, isDraw, isAiThinking, checkWinner, isBoardFull])
+  }, [board, currentPlayer, winner, isDraw, isAiThinking, checkWinner, isBoardFull, getWinningCombo])
 
   useEffect(() => {
     if (gameMode === "ai" && currentPlayer === "O" && !winner && !isDraw) {
@@ -106,6 +134,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
           if (newWinner || newIsDraw) {
             setBoard(newBoard)
             setWinner(newWinner)
+            setWinningCombo(newWinner ? getWinningCombo(newBoard) : null)
             setIsDraw(newIsDraw)
             setScores((prev) => ({
               ...prev,
@@ -120,7 +149,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
       }, 400)
       return () => clearTimeout(timer)
     }
-  }, [gameMode, currentPlayer, winner, isDraw, board, getBestMove, checkWinner, isBoardFull])
+  }, [gameMode, currentPlayer, winner, isDraw, board, getBestMove, checkWinner, isBoardFull, getWinningCombo])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -134,6 +163,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
     setBoard(Array(9).fill(null))
     setCurrentPlayer("X")
     setWinner(null)
+    setWinningCombo(null)
     setIsDraw(false)
     setIsAiThinking(false)
   }, [])
@@ -147,6 +177,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
     setBoard(Array(9).fill(null))
     setCurrentPlayer("X")
     setWinner(null)
+    setWinningCombo(null)
     setIsDraw(false)
     setIsAiThinking(false)
     setPhase("playing")
@@ -164,7 +195,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
 
   if (phase === "menu") {
     return (
-      <Card className="w-full max-w-md mx-auto border-border/40">
+      <Card className="w-full max-w-lg mx-auto border-border/40">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <X className="w-4 h-4 text-info" />
@@ -229,7 +260,7 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto border-border/40">
+    <Card className="w-full max-w-lg mx-auto border-border/40">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <X className="w-4 h-4 text-info" />
@@ -257,13 +288,51 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
               <><Cpu className="w-3 h-3 mr-1" /> Human vs AI</>
             )}
           </Badge>
-          <button
-            onClick={() => setPhase("menu")}
-            className="text-[10px] font-bold text-muted-foreground hover:text-foreground underline underline-offset-2"
-          >
-            Change mode
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowHelp((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[10px] font-bold border transition-all",
+                showHelp
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+              )}
+              aria-label="Toggle keyboard shortcuts"
+              aria-expanded={showHelp}
+            >
+              <Keyboard className="w-3 h-3" />
+              Shortcuts
+            </button>
+            <button
+              onClick={() => setPhase("menu")}
+              className="text-[10px] font-bold text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              Change mode
+            </button>
+          </div>
         </div>
+
+        {showHelp && (
+          <div className="rounded-xl border border-border/40 bg-muted/10 p-3 space-y-2 animate-in slide-in-from-top-1 fade-in duration-150">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Keyboard className="w-3 h-3" /> Keyboard Controls
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Place mark</span>
+                <span className="flex gap-1">
+                  <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">Click</kbd>
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Back to menu</span>
+                <span className="flex gap-1">
+                  <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">Esc</kbd>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
           <div className="p-2 rounded-lg bg-info/5">
@@ -281,25 +350,71 @@ export function TicTacToeGame({ isOpen, onClose }: TicTacToeGameProps) {
         </div>
 
         <div className="flex justify-center">
-          <div className="grid grid-cols-3 gap-1.5 w-full max-w-64 bg-muted/10 p-2 rounded-xl border border-border/30">
-            {board.map((cell, index) => (
-              <button
-                key={index}
-                onClick={() => makeMove(index)}
-                disabled={!!cell || !!winner || isDraw || isAiThinking}
-                className={cn(
-                  "aspect-square text-3xl font-black rounded-lg transition-all duration-150",
-                  "border border-border/40 hover:border-primary/30 active:scale-95",
-                  "disabled:cursor-not-allowed disabled:opacity-80",
-                  cell === "X" && "text-info bg-info/5 border-info/20",
-                  cell === "O" && "text-error bg-error/5 border-error/20",
-                  !cell && !winner && !isDraw && !isAiThinking && "hover:bg-muted/30 hover:shadow-sm",
-                  isAiThinking && "cursor-wait",
-                )}
-              >
-                {cell || ""}
-              </button>
-            ))}
+          <div className="relative w-full max-w-72 aspect-square rounded-2xl overflow-hidden shadow-xl border-2 border-border/60 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100 p-0">
+            <div className="grid grid-cols-3 grid-rows-3 w-full h-full">
+              {board.map((cell, index) => {
+                const row = Math.floor(index / 3)
+                const col = index % 3
+                const isWinning = winningCombo?.includes(index)
+                return (
+                  <button
+                    key={index}
+                    onClick={() => makeMove(index)}
+                    disabled={!!cell || !!winner || isDraw || isAiThinking}
+                    aria-label={`Cell ${index + 1}${cell ? `, ${cell}` : ""}`}
+                    className={cn(
+                      "relative flex items-center justify-center transition-all duration-150",
+                      row < 2 && "border-b-[3px] border-amber-900/80",
+                      col < 2 && "border-r-[3px] border-amber-900/80",
+                      !cell && !winner && !isDraw && !isAiThinking && "hover:bg-amber-900/10 active:scale-[0.97]",
+                      isAiThinking && "cursor-wait",
+                      cell && "cursor-default",
+                      isWinning && "bg-emerald-500/10",
+                    )}
+                  >
+                    {cell === "X" && <XMark />}
+                    {cell === "O" && <OMark />}
+                  </button>
+                )
+              })}
+            </div>
+            {winningCombo && (() => {
+              const center = (i: number) => ({
+                x: (i % 3) * 100 + 50,
+                y: Math.floor(i / 3) * 100 + 50,
+              })
+              const a = center(winningCombo[0])
+              const b = center(winningCombo[2])
+              const dx = b.x - a.x
+              const dy = b.y - a.y
+              const len = Math.hypot(dx, dy) || 1
+              const ext = 38
+              const x1 = a.x - (dx / len) * ext
+              const y1 = a.y - (dy / len) * ext
+              const x2 = b.x + (dx / len) * ext
+              const y2 = b.y + (dy / len) * ext
+              return (
+                <svg viewBox="0 0 300 300" className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="var(--success)" strokeWidth="22" strokeLinecap="round" opacity="0.18"
+                    style={{ filter: "blur(3px)" }}
+                  />
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="var(--success)" strokeWidth="11" strokeLinecap="round" opacity="0.85"
+                  />
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="oklch(0.95 0.02 160)" strokeWidth="3" strokeLinecap="round" opacity="0.9"
+                    strokeDasharray={`${len + ext * 2} ${len + ext * 2 + 20}`}
+                    strokeDashoffset={len + ext * 2}
+                  >
+                    <animate attributeName="stroke-dashoffset" from={len + ext * 2} to="0" dur="0.5s" fill="freeze" />
+                  </line>
+                </svg>
+              )
+            })()}
           </div>
         </div>
 

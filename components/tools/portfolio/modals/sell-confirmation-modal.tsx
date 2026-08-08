@@ -10,6 +10,7 @@ import type { ShareTransaction } from "@/types/wallet"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useShareCurrency } from "@/hooks/use-share-currency"
 import { formatAppDate } from "@/lib/app-calendar"
 
 interface SellConfirmationModalProps {
@@ -41,6 +42,7 @@ export function SellConfirmationModal({
 }: SellConfirmationModalProps) {
   const { userProfile } = useWalletData()
     const calendarSystem = useCalendarSystem()
+  const { money: scMoney } = useShareCurrency()
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const normalizedSymbol = normalizeStockSymbol(symbol)
 
@@ -121,7 +123,7 @@ export function SellConfirmationModal({
                     Total Amount
                   </span>
                   <span className="text-2xl font-black text-primary">
-                    {currencySymbol} {(lastSellInfo.price * lastSellInfo.quantity).toLocaleString()}
+                    {isCrypto ? `${currencySymbol} ${(lastSellInfo.price * lastSellInfo.quantity).toLocaleString()}` : scMoney(lastSellInfo.price * lastSellInfo.quantity)}
                   </span>
                 </div>
               </div>

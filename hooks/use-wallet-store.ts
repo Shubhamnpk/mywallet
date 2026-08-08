@@ -59,6 +59,7 @@ import {
   type NotificationHistorySource,
 } from "@/lib/notification-history"
 import { buildSipExecutionPlan, formatSipDate, getSipCompletedTransactionForDueDate, getSipScheduleSummary, normalizeSipPlans, resolveSipProviderQuote } from "@/lib/sip"
+import { buildStockDeepLinkUrl } from "@/lib/stock-deep-link"
 import { getGoalChallengeSummary, syncGoalChallengeState } from "@/lib/goal-challenge"
 import { getCalendarSystem } from "@/lib/app-calendar"
 import { toast } from "sonner"
@@ -708,6 +709,7 @@ export function useWalletStore() {
           browserCooldownMs: number,
           source: NotificationHistorySource,
           inAppCooldownMs = IN_APP_REMINDER_COOLDOWN_MS,
+          meta?: { symbol?: string; planId?: string; portfolioId?: string; tab?: string },
       ) => {
         if (emittedCount >= maxPerScan) return
 
@@ -736,6 +738,10 @@ export function useWalletStore() {
             body: description,
             source,
             channel: "toast",
+            ...(meta?.symbol !== undefined && { symbol: meta.symbol }),
+            ...(meta?.planId !== undefined && { planId: meta.planId }),
+            ...(meta?.portfolioId !== undefined && { portfolioId: meta.portfolioId }),
+            ...(meta?.tab !== undefined && { tab: meta.tab }),
           })
           didEmit = true
         }
@@ -751,6 +757,13 @@ export function useWalletStore() {
             title,
             body: description,
             tag: key,
+            ...(meta?.symbol !== undefined && {
+              url: buildStockDeepLinkUrl({
+                symbol: meta.symbol,
+                portfolioId: meta.portfolioId,
+                tab: meta.tab,
+              }),
+            }),
           })
           cache[browserCacheKey] = Date.now()
           recordNotificationDelivery({
@@ -759,6 +772,10 @@ export function useWalletStore() {
             body: description,
             source,
             channel: "browser",
+            ...(meta?.symbol !== undefined && { symbol: meta.symbol }),
+            ...(meta?.planId !== undefined && { planId: meta.planId }),
+            ...(meta?.portfolioId !== undefined && { portfolioId: meta.portfolioId }),
+            ...(meta?.tab !== undefined && { tab: meta.tab }),
           })
           didEmit = true
           }
@@ -820,6 +837,8 @@ export function useWalletStore() {
                 `Spent ${usage.toFixed(0)}% of limit. Review this budget to prevent further overspending.`,
                 12 * HOUR_MS,
                 "budget",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "budgets" },
               )
             } else if (usage >= criticalThreshold) {
               emitReminder(
@@ -828,6 +847,8 @@ export function useWalletStore() {
                 `You've used ${usage.toFixed(0)}% of this budget. Slow spending to stay on track.`,
                 24 * HOUR_MS,
                 "budget",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "budgets" },
               )
             } else if (usage >= warningThreshold) {
               emitReminder(
@@ -836,6 +857,8 @@ export function useWalletStore() {
                 `You've used ${usage.toFixed(0)}% of this budget.`,
                 24 * HOUR_MS,
                 "budget",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "budgets" },
               )
             }
           })
@@ -860,6 +883,8 @@ export function useWalletStore() {
                 `This goal is past target date and is ${progress.toFixed(0)}% complete.`,
                 24 * HOUR_MS,
                 "goal",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "goals" },
               )
             } else if (daysRemaining <= 3) {
               emitReminder(
@@ -868,6 +893,8 @@ export function useWalletStore() {
                 `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left. Progress: ${progress.toFixed(0)}%.`,
                 12 * HOUR_MS,
                 "goal",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "goals" },
               )
             } else if (daysRemaining <= 7) {
               emitReminder(
@@ -876,6 +903,8 @@ export function useWalletStore() {
                 `${goalLabel} is ${progress.toFixed(0)}% complete.`,
                 24 * HOUR_MS,
                 "goal",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { tab: "goals" },
               )
             }
           })
@@ -983,6 +1012,8 @@ export function useWalletStore() {
               `Your ${amountLabel} ${plan.frequency} SIP is scheduled for today.`,
               10 * HOUR_MS,
               "sip",
+              IN_APP_REMINDER_COOLDOWN_MS,
+              { symbol: plan.symbol, planId: plan.id, portfolioId: plan.portfolioId, tab: "sip" },
             )
             return
           }
@@ -994,6 +1025,8 @@ export function useWalletStore() {
                 `${planLabel} is scheduled on ${formatSipDate(schedule.nextDate.toISOString(), getCalendarSystem(userProfile?.calendarSystem))}. Keep ${amountLabel} ready.`,
                 18 * HOUR_MS,
                 "sip",
+                IN_APP_REMINDER_COOLDOWN_MS,
+                { symbol: plan.symbol, planId: plan.id, portfolioId: plan.portfolioId, tab: "sip" },
             )
           }
 
@@ -1004,6 +1037,8 @@ export function useWalletStore() {
               `The installment scheduled on ${formatSipDate(schedule.previousDate.toISOString(), getCalendarSystem(userProfile?.calendarSystem))} may still be pending.`,
               24 * HOUR_MS,
               "sip",
+              IN_APP_REMINDER_COOLDOWN_MS,
+              { symbol: plan.symbol, planId: plan.id, portfolioId: plan.portfolioId, tab: "sip" },
             )
           }
         })

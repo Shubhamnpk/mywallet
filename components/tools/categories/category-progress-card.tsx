@@ -1,10 +1,10 @@
 "use client"
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3, Trash2, Edit, ChevronDown, Eye, EyeOff } from "lucide-react"
+import { TrendingUp, TrendingDown, Clock, Target, Calendar, BarChart3, Trash2, Edit, ChevronDown, Eye, EyeOff, MousePointerClick } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import type { Category, UserProfile } from "@/types/wallet"
@@ -32,6 +32,7 @@ interface CategoryProgressCardProps {
   onSelect?: () => void
   isDisabled?: boolean
   onToggleVisibility?: () => void
+  onLongPress?: () => void
 }
 
 export function CategoryProgressCard({
@@ -45,10 +46,34 @@ export function CategoryProgressCard({
   isSelected = false,
   onSelect,
   isDisabled = false,
-  onToggleVisibility
+  onToggleVisibility,
+  onLongPress
 }: CategoryProgressCardProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isLongPressing, setIsLongPressing] = useState(false)
   const calendarSystem = useCalendarSystem()
+
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFiredRef = useRef(false)
+
+  const startLongPress = useCallback(() => {
+    if (!onLongPress) return
+    longPressFiredRef.current = false
+    setIsLongPressing(true)
+    pressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true
+      onLongPress()
+      setIsLongPressing(false)
+    }, 600)
+  }, [onLongPress])
+
+  const endLongPress = useCallback(() => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+    setIsLongPressing(false)
+  }, [])
 
   // Calculate time equivalent
   const timeBreakdown = getTimeEquivalentBreakdown(category.totalSpent, userProfile)
@@ -74,18 +99,39 @@ export function CategoryProgressCard({
       open={isOpen}
       onOpenChange={setIsOpen}
       className={cn(
-        "group rounded-2xl border transition-all duration-300 overflow-hidden",
+        "group relative rounded-2xl border transition-all duration-300 overflow-hidden",
         isOpen ? "shadow-lg border-primary/20 bg-card/60 backdrop-blur-md" : "hover:bg-muted/10 hover:shadow-md border-muted/50 bg-card/40 backdrop-blur-sm",
         isSelected && "border-primary bg-primary/5 hover:bg-primary/10",
+        isLongPressing && "scale-[0.99] border-primary/40 shadow-lg",
         isDisabled && "opacity-60 grayscale-[0.5]"
       )}
+      onPointerDown={startLongPress}
+      onPointerUp={(e) => {
+        // A completed long-press shouldn't also toggle collapse on release
+        if (longPressFiredRef.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          longPressFiredRef.current = false
+        }
+        endLongPress()
+      }}
+      onPointerLeave={endLongPress}
+      onPointerCancel={endLongPress}
     >
+      {onLongPress && !isSelected && !isLongPressing && (
+        <div className="absolute bottom-1.5 right-2.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">
+          <MousePointerClick className="h-3 w-3" />
+          Hold to select
+        </div>
+      )}
+
       <div className="flex items-center p-3 sm:p-4 gap-3 sm:gap-4">
         {selectionMode && (
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => onSelect && onSelect()}
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className="shrink-0"
           />
         )}

@@ -25,6 +25,9 @@ import {
 } from "@/lib/notification-history"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDateTime } from "@/lib/app-calendar"
+import { normalizeSipPlans } from "@/lib/sip"
+import { normalizeStockSymbol } from "@/lib/stock-symbol"
+import { dispatchStockDeepLink } from "@/lib/stock-deep-link"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
@@ -59,6 +62,7 @@ type HeaderNotification = {
   actionLabel: string
   targetTab?: string
   opensBillDialog?: boolean
+  opensStockDetail?: { symbol: string; portfolioId?: string | null; tab?: string }
   ipo?: UpcomingIPO
   settingsUrl?: string
   sourceLabel?: string
@@ -306,6 +310,17 @@ export function DashboardHeader() {
     return liveDeliveredNotifications.map((item) => {
       const ipo = findIPOForNotification(item)
       const isIPO = item.source === "ipo" || Boolean(ipo)
+      const isSip = item.source === "sip"
+      const sipPlan =
+        isSip && item.symbol
+          ? normalizeSipPlans(userProfile?.sipPlans).find(
+              (plan) =>
+                plan.id === item.planId ||
+                (normalizeStockSymbol(plan.symbol) === normalizeStockSymbol(item.symbol) &&
+                  (!item.portfolioId || plan.portfolioId === item.portfolioId)),
+            ) || null
+          : null
+      const opensStock = isSip && sipPlan
 
       return ({
       id: `delivered-${item.id}`,
@@ -327,14 +342,35 @@ export function DashboardHeader() {
             ? "Review Budget"
             : isIPO
               ? "View IPO"
-              : "Open Settings",
+              : opensStock
+                ? "View SIP"
+                : "Open Settings",
       opensBillDialog: item.source === "bill",
       ipo: ipo || undefined,
-      targetTab: item.source === "budget" ? "budgets" : isIPO ? "portfolio" : undefined,
-      settingsUrl: item.source !== "bill" && item.source !== "budget" && !isIPO ? "/settings?tab=notifications" : undefined,
+      opensStockDetail: opensStock
+        ? { symbol: sipPlan.symbol, portfolioId: sipPlan.portfolioId, tab: "sip" }
+        : undefined,
+      targetTab:
+        item.source === "budget"
+          ? "budgets"
+          : item.source === "goal"
+            ? "goals"
+            : isIPO
+              ? "portfolio"
+              : isSip && !sipPlan
+                ? "portfolio"
+                : undefined,
+      settingsUrl:
+        item.source !== "bill" &&
+        item.source !== "budget" &&
+        item.source !== "goal" &&
+        !isIPO &&
+        !isSip
+          ? "/settings?tab=notifications"
+          : undefined,
       })
     })
-  }, [findIPOForNotification, liveDeliveredNotifications])
+  }, [findIPOForNotification, liveDeliveredNotifications, userProfile?.sipPlans])
 
   const liveNotifications = useMemo<HeaderNotification[]>(
     () => [...deliveredLiveItems, ...notifications].filter((item) => !dismissedMap[item.id]).slice(0, 40),
@@ -404,6 +440,10 @@ export function DashboardHeader() {
     markAsRead(notification.id)
     if (notification.opensBillDialog) {
       setBillDialogOpen(true)
+      return
+    }
+    if (notification.opensStockDetail) {
+      dispatchStockDeepLink(notification.opensStockDetail)
       return
     }
     if (notification.ipo) {
@@ -561,16 +601,22 @@ export function DashboardHeader() {
                             {!readMap[n.id] && <Badge variant="secondary" className="text-[10px] h-4 px-1">New</Badge>}
                           </div>
                           <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2 group-focus:text-muted-foreground">{n.description}</p>
-                          {(n.sourceLabel || n.deliveredAt) && (
-                            <p className="text-[9px] text-muted-foreground mt-1 inline-flex items-center gap-1 group-focus:text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {n.sourceLabel ? `${n.sourceLabel}${n.deliveredAt ? " · " : ""}` : ""}
-                              {n.deliveredAt ? formatAppDateTime(new Date(n.deliveredAt), calendarSystem) : ""}
-                            </p>
-                          )}
-                          <div className="mt-1 inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary group-focus:text-primary">
-                            {n.actionLabel}
-                            <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            {(n.sourceLabel || n.deliveredAt) && (
+                              <p className="text-[9px] text-muted-foreground inline-flex items-center gap-1 min-w-0 truncate group-focus:text-muted-foreground">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                <span className="truncate">
+                                  {n.sourceLabel ? `${n.sourceLabel}${n.deliveredAt ? " · " : ""}` : ""}
+                                  {n.deliveredAt ? formatAppDateTime(new Date(n.deliveredAt), calendarSystem) : ""}
+                                </span>
+                              </p>
+                            )}
+                            {n.actionLabel && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary shrink-0 group-focus:text-primary">
+                                {n.actionLabel}
+                                <ExternalLink className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                              </span>
+                            )}
                           </div>
                         </div>
                       </DropdownMenuItem>
@@ -581,6 +627,18 @@ export function DashboardHeader() {
                       <p className="text-sm font-semibold">No alerts right now.</p>
                       <p className="text-xs text-muted-foreground">New reminders and IPO alerts will appear here.</p>
                     </div>
+                  )}
+                  {liveNotifications.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost-outline"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={markAllAsRead}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                      Read all
+                    </Button>
                   )}
                 </TabsContent>
                 <TabsContent value="history" className="mt-0 max-h-[320px] overflow-y-auto py-1 px-2 pb-2">
@@ -606,7 +664,7 @@ export function DashboardHeader() {
                   )}
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghost-outline"
                     size="sm"
                     className="w-full mt-2 h-8 text-xs"
                     onClick={() => {
@@ -614,7 +672,7 @@ export function DashboardHeader() {
                       setHistory(readNotificationHistory())
                     }}
                   >
-                    Clear history
+                    Clear all
                   </Button>
                 </TabsContent>
               </Tabs>

@@ -3,14 +3,14 @@
 import type { PortfolioItem, ShareTransaction, NepseDisclosure, NepseExchangeMessage } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal} from "lucide-react"
+import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal,ChevronDown,ChevronRight} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { isMarketSearchDetailItem } from "@/lib/market-stock-detail"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip as UITooltip, TooltipContent as UITooltipContent, TooltipProvider as UITooltipProvider, TooltipTrigger as UITooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -24,7 +24,9 @@ import { AddTransactionModal, type TransactionDraft } from "./add-transaction-mo
 import { SIP_DEFAULT_DPS_CHARGE, canSipCycleBuyUnit, formatSipDate, getSipBaseAmount, getSipCarryRemainder, getSipCompletedTransactionForDueDate, getSipCycleAmounts, getSipDisplayTransactionsForPlan, getSipScheduleSummary, getSipTransactionGrossAmount, getSipTransactionNetAmount, isSipEnrollmentCandidate, normalizeSipPlans } from "@/lib/sip"
 import { toast } from "sonner"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
+import { useShareCurrency } from "@/hooks/use-share-currency"
 import { adToBsDateKey, formatAppDate } from "@/lib/app-calendar"
+import { estimateSellLotsFees, type SellLotFeeBreakdown } from "@/lib/nepse-trade-preview"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
@@ -243,9 +245,10 @@ interface StockDetailModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     mode?: "holding" | "sold"
+    initialTab?: string
 }
 
-export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding" }: StockDetailModalProps) {
+export function StockDetailModal({ item: initialItem, open, onOpenChange, mode = "holding", initialTab }: StockDetailModalProps) {
     const { userProfile, portfolio, scripNamesMap, shareTransactions, noticesBundle, disclosures, exchangeMessages, getFaceValue, completeSipInstallment, deleteShareTransaction, updateShareTransaction, addShareTransaction, clearShareTransactionSipFields, deleteMultipleShareTransactions, marketStatus } = useWalletData()
     const [isDividendHistoryLoading, setIsDividendHistoryLoading] = useState(false)
     const [dividendHistoryError, setDividendHistoryError] = useState<string | null>(null)
@@ -303,6 +306,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [isFinancialReportsLoading, setIsFinancialReportsLoading] = useState(false)
     const [financialReportsError, setFinancialReportsError] = useState<string | null>(null)
     const calendarSystem = useCalendarSystem()
+    const shareCurrency = useShareCurrency()
 
     const item = useMemo(() => {
         if (!initialItem) return null
@@ -539,8 +543,13 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     }
     const formatSignedCurrency = (amount: number) => {
         const sign = amount > 0 ? "+" : amount < 0 ? "-" : ""
-        return `${currencySymbol} ${sign}${formatValue(Math.abs(amount))}`
+        if (isCrypto) return `${currencySymbol} ${sign}${formatValue(Math.abs(amount))}`
+        return `${sign}${shareCurrency.formatNpr(Math.abs(amount)).replace(/^[^\d-]+/, "")}`
     }
+    const money = (amountNpr: number, maxFrac = 2) =>
+        isCrypto ? `${formatValue(amountNpr)}` : shareCurrency.formatNpr(amountNpr, { maximumFractionDigits: maxFrac })
+    const moneySymboled = (amountNpr: number, maxFrac = 2) =>
+        isCrypto ? `${currencySymbol} ${formatValue(amountNpr)}` : shareCurrency.formatNpr(amountNpr, { maximumFractionDigits: maxFrac })
 
     const priceHistoryStats = useMemo(() => {
         if (priceHistory.length === 0) return null
@@ -1067,6 +1076,42 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         ) || null
     }, [isMarketLookupItem, item, symbol, userProfile?.sipPlans])
 
+    const initialTabRef = useRef<string | null>(null)
+    const lastDeepOpenKeyRef = useRef<string>("")
+
+    useEffect(() => {
+        if (!initialTab) return
+        initialTabRef.current = initialTab
+        if (open) {
+            if (initialTab === "sip") {
+                setActiveTab(!isMarketLookupItem && existingSipPlan ? "sip" : "overview")
+            } else if (initialTab) {
+                setActiveTab(initialTab)
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialTab])
+
+    useEffect(() => {
+        if (!open) {
+            lastDeepOpenKeyRef.current = ""
+            return
+        }
+        const openKey = `${initialItem?.id ?? ""}:${mode}`
+        if (lastDeepOpenKeyRef.current === openKey) return
+        lastDeepOpenKeyRef.current = openKey
+        const requested = initialTabRef.current
+        initialTabRef.current = null
+        if (requested === "sip") {
+            setActiveTab(!isMarketLookupItem && existingSipPlan ? "sip" : "overview")
+        } else if (requested) {
+            setActiveTab(requested)
+        } else {
+            setActiveTab(mode === "sold" ? "sold" : "overview")
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, mode, initialItem?.id])
+
     const sipSchedule = useMemo(() => {
         if (!existingSipPlan) return null
         return getSipScheduleSummary(existingSipPlan, shareTransactions, new Date())
@@ -1106,6 +1151,20 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         const currentTradingValue = soldUnits * current
         const valueDifference = currentTradingValue - soldValue
 
+        // Estimate the real outcome of all recorded sell lots using FIFO lot matching
+        const acquisitionLots = matchedTransactions.filter(
+            (tx) => tx.type === "buy" || tx.type === "ipo" || tx.type === "reinvestment",
+        )
+        const { summary: sellOutcome, lots: sellOutcomeLots } = estimateSellLotsFees(
+            soldTransactions.map((tx) => ({ id: tx.id, quantity: tx.quantity, price: tx.price, date: tx.date })),
+            acquisitionLots.map((tx) => ({ quantity: tx.quantity, price: tx.price, date: tx.date })),
+        )
+        const sellOutcomeByTxId = new Map<string, SellLotFeeBreakdown>()
+        sellOutcomeLots.forEach((lot) => {
+            if (lot.id) sellOutcomeByTxId.set(lot.id, lot)
+        })
+        const hasEstimatedSellOutcome = sellOutcome.gross > 0
+
         return {
             soldUnits,
             soldValue,
@@ -1116,8 +1175,14 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             valueDifference,
             valueDifferencePercentage: soldValue > 0 ? (valueDifference / soldValue) * 100 : 0,
             hasRecordedSellValue: averageSoldPrice > 0,
+            grossProceeds: sellOutcome.gross,
+            sellTransactionCost: sellOutcome.totalCost,
+            sellTransactionTax: sellOutcome.tax,
+            netProceeds: sellOutcome.net,
+            hasEstimatedSellOutcome,
+            sellOutcomeByTxId,
         }
-    }, [current, soldTransactions])
+    }, [current, soldTransactions, matchedTransactions])
 
     const sipTransactions = useMemo(() => {
         if (!existingSipPlan) return []
@@ -1145,6 +1210,15 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [clearingSipTxId, setClearingSipTxId] = useState<string | null>(null)
     const [isSelectionMode, setIsSelectionMode] = useState(false)
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
+    const [expandedSellLotIds, setExpandedSellLotIds] = useState<Set<string>>(new Set())
+    const toggleSellLot = useCallback((txId: string) => {
+        setExpandedSellLotIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(txId)) next.delete(txId)
+            else next.add(txId)
+            return next
+        })
+    }, [])
     const [isBatchDeleting, setIsBatchDeleting] = useState(false)
     const [isBatchClearingSip, setIsBatchClearingSip] = useState(false)
 
@@ -1501,11 +1575,14 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                 if (!lc) return null
                                 const utcDate = lc.endsWith("Z") || lc.includes("+") ? lc : lc + "Z"
                                 const d = new Date(utcDate)
+                                const now = new Date()
+                                const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+                                const snapshotDateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(d.getFullYear() !== now.getFullYear() && { year: "numeric" }) })
                                 return (
                                     <div className="flex items-center gap-1.5 grayscale opacity-60">
                                         <Clock className="w-3 h-3" />
                                         <span className="text-[8px] font-black uppercase tracking-widest">
-                                            Snapshot {d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(d.getFullYear() !== new Date().getFullYear() && { year: "numeric" }) })} {d.toLocaleTimeString()}
+                                            Snapshot {snapshotDateLabel}{isToday ? ` ${d.toLocaleTimeString()}` : ""}
                                         </span>
                                     </div>
                                 )
@@ -1574,7 +1651,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                             </div>
                             <div className="text-right ml-4">
                                 <div className="text-2xl font-black font-mono">
-                                    {currencySymbol} {formatValue(current)}
+                                    {moneySymboled(current)}
                                 </div>
                                 <div className={cn(
                                     "text-[10px] font-black uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1",
@@ -1654,7 +1731,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         {isSoldDetailMode ? "All Tx" : "History"}
                                     </TabsTrigger>
                                 )}
-                                {!isCrypto && (
+                                {!isCrypto && !isSoldDetailMode && (
                                     <TabsTrigger
                                         value="financials"
                                         className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
@@ -1665,7 +1742,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         Financials
                                     </TabsTrigger>
                                 )}
-                                {!isCrypto && (
+                                {!isCrypto && !isSoldDetailMode && (
                                     <TabsTrigger
                                         value="dividend"
                                         className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest"
@@ -1684,9 +1761,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         SIP
                                     </TabsTrigger>
                                 )}
-                                <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
-                                    News
-                                </TabsTrigger>
+                                {!isSoldDetailMode && (
+                                    <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                        News
+                                    </TabsTrigger>
+                                )}
                             </TabsList>
                         </div>
 
@@ -1699,7 +1778,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div className="p-4 rounded-2xl border bg-muted/20 border-muted/50">
                                                     <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Recorded Sold Value</p>
                                                     <p className="mt-1 text-xl font-black font-mono">
-                                                        {soldDetailStats.hasRecordedSellValue ? `${currencySymbol} ${formatValue(soldDetailStats.soldValue)}` : "Not recorded"}
+                                                        {soldDetailStats.hasRecordedSellValue ? `${moneySymboled(soldDetailStats.soldValue)}` : "Not recorded"}
                                                     </p>
                                                     <div className="mt-2 flex flex-wrap gap-1">
                                                         <Badge variant="outline" className="text-[8px] font-black uppercase tracking-wider">
@@ -1742,11 +1821,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             : "text-primary"
                                                     )}>
                                                         {soldDetailStats.hasRecordedSellValue
-                                                            ? `${soldDetailStats.valueDifference >= 0 ? "+" : ""}${currencySymbol} ${formatValue(soldDetailStats.valueDifference)}`
-                                                            : `${currencySymbol} ${formatValue(current)}`}
+                                                            ? `${soldDetailStats.valueDifference >= 0 ? "+" : ""}${moneySymboled(soldDetailStats.valueDifference)}`
+                                                            : `${moneySymboled(current)}`}
                                                     </p>
                                                     <p className="mt-1 text-[10px] font-bold text-muted-foreground">
-                                                        Trading value {currencySymbol} {formatValue(soldDetailStats.currentTradingValue)}
+                                                        Trading value {moneySymboled(soldDetailStats.currentTradingValue)}
                                                     </p>
                                                     <p className="mt-1 text-[10px] font-bold text-muted-foreground">
                                                         {soldDetailStats.hasRecordedSellValue
@@ -1756,6 +1835,32 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 </div>
                                             </div>
 
+                                            {soldDetailStats.hasEstimatedSellOutcome && (
+                                                <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 to-background p-4">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-primary">
+                                                        Sell Outcome · Money In Hand
+                                                    </p>
+                                                    <div className="mt-3 space-y-1.5">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Sale / Gross</span>
+                                                            <span className="font-bold font-mono">{shareCurrency.formatNpr(soldDetailStats.grossProceeds)}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Cost of Selling</span>
+                                                            <span className="font-bold font-mono text-red-500">− {shareCurrency.formatNpr(soldDetailStats.sellTransactionCost)}</span>
+                                                        </div>
+                                                        <div className="h-px bg-border/60" />
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[11px] font-black uppercase tracking-widest text-primary">Net In Hand</span>
+                                                            <span className="text-lg font-black font-mono text-primary">{shareCurrency.formatNpr(soldDetailStats.netProceeds)}</span>
+                                                        </div>
+                                                    </div>
+                                                    <p className="mt-3 text-[9px] leading-relaxed text-muted-foreground">
+                                                        Estimated from recorded sell lots using NEPSE brokerage slabs ({shareCurrency.formatNpr(soldDetailStats.sellTransactionTax)} tax included). Set your buy price/cost for the most accurate figure. Net In Hand = proceeds you actually receive after fees &amp; tax.
+                                                    </p>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-2">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sell transaction lots</p>
                                                 {soldTransactions.length > 0 ? (
@@ -1764,16 +1869,22 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         const txTradingValue = tx.quantity * current
                                                         const txDifference = txTradingValue - txSoldValue
                                                         const hasTxPrice = tx.price > 0
+                                                        const isLotExpanded = expandedSellLotIds.has(tx.id)
+                                                        const outcome = soldDetailStats.sellOutcomeByTxId?.get(tx.id)
                                                         return (
-                                                            <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5">
-                                                                <div className="flex items-start justify-between gap-3">
+                                                            <div key={tx.id} className="p-3 rounded-xl border border-muted/30 bg-muted/5 transition-colors hover:border-primary/40 hover:bg-muted/10 group-hover:border-primary/40">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleSellLot(tx.id)}
+                                                                    className="w-full flex items-start justify-between gap-3 text-left group"
+                                                                >
                                                                     <div className="min-w-0">
                                                                         <div className="flex items-center gap-2">
                                                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500/10 text-red-600">
                                                                                 <ArrowUpRight className="w-4 h-4" />
                                                                             </div>
                                                                             <div>
-                                                                                <p className="text-[11px] font-black uppercase">{formatUnits(tx.quantity)} units sold</p>
+                                                                                <p className="text-[11px] font-black uppercase transition-colors group-hover:text-primary">{formatUnits(tx.quantity)} units sold</p>
                                                                                 <p className="text-[9px] font-bold text-muted-foreground">
                                                                                     {formatAppDate(tx.date, calendarSystem)} · {formatTimeSince(tx.date)}
                                                                                 </p>
@@ -1785,36 +1896,84 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     </div>
                                                                     <div className="text-right shrink-0">
                                                                         <p className="text-[11px] font-black font-mono">
-                                                                            {hasTxPrice ? `${currencySymbol}${formatValue(txSoldValue)}` : "Price N/A"}
+{hasTxPrice ? `${moneySymboled(txSoldValue)}` : "Price N/A"}
+                                                                    </p>
+                                                                    <p className="text-[9px] font-bold text-muted-foreground">
+                                                                        @ {moneySymboled(tx.price)}
+                                                                    </p>
+                                                                    {outcome && (
+                                                                        <p className="mt-1 text-[9px] font-black font-mono text-primary">
+                                                                            Net {moneySymboled(outcome.net)}
                                                                         </p>
-                                                                        <p className="text-[9px] font-bold text-muted-foreground">
-                                                                            @ {currencySymbol}{formatValue(tx.price)}
-                                                                        </p>
+                                                                    )}
+                                                                        <div className="mt-1 flex items-center justify-end gap-1 text-[8px] font-black uppercase tracking-widest text-muted-foreground">
+                                                                            <span>{isLotExpanded ? "Hide details" : "Details"}</span>
+                                                                            {isLotExpanded
+                                                                                ? <ChevronDown className="w-3 h-3" />
+                                                                                : <ChevronRight className="w-3 h-3" />}
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-muted/20 pt-2">
-                                                                    <div>
-                                                                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Today value</p>
-                                                                        <p className="text-[11px] font-black font-mono">{currencySymbol}{formatValue(txTradingValue)}</p>
-                                                                    </div>
-                                                                    <div className="text-right">
-                                                                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">{hasTxPrice ? "Difference" : "Recorded price"}</p>
-                                                                        <p className={cn(
-                                                                            "text-[11px] font-black font-mono",
-                                                                            hasTxPrice
-                                                                                ? txDifference > 0
-                                                                                    ? "text-red-600"
-                                                                                    : txDifference < 0
-                                                                                        ? "text-green-600"
+                                                                </button>
+                                                                {isLotExpanded && (
+                                                                    <>
+                                                                        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-muted/20 pt-2">
+                                                                            <div>
+                                                                                <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Today value</p>
+                                                                                <p className="text-[11px] font-black font-mono">{moneySymboled(txTradingValue)}</p>
+                                                                            </div>
+                                                                            <div className="text-right">
+                                                                                <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">{hasTxPrice ? "Difference" : "Recorded price"}</p>
+                                                                                <p className={cn(
+                                                                                    "text-[11px] font-black font-mono",
+                                                                                    hasTxPrice
+                                                                                        ? txDifference > 0
+                                                                                            ? "text-red-600"
+                                                                                            : txDifference < 0
+                                                                                                ? "text-green-600"
+                                                                                                : "text-muted-foreground"
                                                                                         : "text-muted-foreground"
-                                                                                : "text-muted-foreground"
-                                                                        )}>
-                                                                            {hasTxPrice
-                                                                                ? `${txDifference >= 0 ? "+" : ""}${currencySymbol}${formatValue(txDifference)}`
-                                                                                : "Not captured"}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
+                                                                                )}>
+{hasTxPrice
+                                                        ? `${txDifference >= 0 ? "+" : ""}${moneySymboled(txDifference)}`
+                                                        : "Not captured"}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        {outcome && (
+                                                                            <div className="mt-2 rounded-lg border border-muted/20 bg-background/60 p-2">
+                                                                                <div className="flex items-center justify-between gap-2">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Sale</span>
+                                                                                    <span className="text-[10px] font-bold font-mono">{moneySymboled(outcome.gross)}</span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between gap-2">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Cost of selling</span>
+                                                                                    <span className="text-[10px] font-bold font-mono text-red-500">− {moneySymboled(outcome.totalCost)}</span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between gap-2 border-t border-muted/20 pt-1">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Fees / Tax</span>
+                                                                                    <span className="text-[10px] font-bold font-mono">
+                                                                                        {moneySymboled(outcome.fees)} / {moneySymboled(outcome.tax)}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between gap-2">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Broker slab</span>
+                                                                                    <span className="text-[10px] font-bold font-mono">{(outcome.brokerRate * 100).toFixed(2)}%</span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between gap-2">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Gain tax rate</span>
+                                                                                    <span className="text-[10px] font-bold font-mono">
+                                                                                        {(outcome.taxRate * 100).toFixed(1)}% · {outcome.holdingTerm === "long" ? "Long" : "Short"}
+                                                                                        {outcome.tax <= 0 && <span className="text-muted-foreground"> (no gain)</span>}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between gap-2">
+                                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-primary">Net in hand</span>
+                                                                                    <span className="text-[10px] font-black font-mono text-primary">{moneySymboled(outcome.net)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )
                                                     })
@@ -1896,7 +2055,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         Total Amount
                                                                     </span>
                                                                     <span className="text-lg font-black text-amber-600">
-                                                                        {currencySymbol} {lastExitInfo ? formatValue(lastExitInfo.price * lastExitInfo.quantity) : formatValue(0)}
+                                                                        {lastExitInfo ? moneySymboled(lastExitInfo.price * lastExitInfo.quantity) : moneySymboled(0)}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -1949,7 +2108,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                                 : "text-muted-foreground"
                                                                     )}>
                                                                         {(current - (lastExitInfo?.price ?? 0)) * (lastExitInfo?.quantity ?? 0) > 0 ? "+" : ""}
-                                                                        {currencySymbol} {lastExitInfo ? formatValue((current - lastExitInfo.price) * lastExitInfo.quantity) : formatValue(0)}
+                                                                        {lastExitInfo ? moneySymboled((current - lastExitInfo.price) * lastExitInfo.quantity) : moneySymboled(0)}
                                                                     </span>
                                                                 </div>
                                                             </div>
@@ -1988,7 +2147,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             Position Summary
                                                         </div>
                                                         <div className="text-lg font-black font-mono">
-                                                            {currencySymbol} {formatValue(value)}
+                                                            {moneySymboled(value)}
                                                         </div>
                                                         <div className={cn(
                                                             "text-[10px] font-bold",
@@ -2103,14 +2262,16 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                                         <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
                                                     </span>
-                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(item.buyPrice)}</span>
+                                                    <span className="text-sm font-black font-mono">{moneySymboled(item.buyPrice)}</span>
                                                 </div>
-                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                                        <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
-                                                    </span>
-                                                    <span className="text-sm font-black font-mono">{currencySymbol} {formatValue(investment)}</span>
-                                                </div>
+                                                {!isSoldDetailMode && (
+                                                    <div className="flex justify-between items-center pb-2 border-b border-muted/20">
+                                                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                                            <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
+                                                        </span>
+                                                        <span className="text-sm font-black font-mono">{moneySymboled(investment)}</span>
+                                                    </div>
+                                                )}
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                                         <Activity className="w-3.5 h-3.5 text-primary" /> Holding Period
@@ -2126,7 +2287,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             </div>
                                         )}
 
-                                        {!isCrypto && !isMarketLookupItem && !existingSipPlan && (
+                                        {!isCrypto && !isMarketLookupItem && !existingSipPlan && !isSoldDetailMode && (
                                             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
@@ -2326,12 +2487,12 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             </div>
                                                             <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
                                                                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Profit</p>
-                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(latestFinancialReport.profit)}</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{shareCurrency.moneyCompact(latestFinancialReport.profit)}</p>
                                                                 {renderFinancialDelta(latestFinancialReport.profit, financialCompareReport?.profit, "higher")}
                                                             </div>
                                                             <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
                                                                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Paid-up Capital</p>
-                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(latestFinancialReport.paid_up_capital)}</p>
+                                                                <p className="mt-1 text-sm font-black font-mono">{shareCurrency.moneyCompact(latestFinancialReport.paid_up_capital)}</p>
                                                                 {renderFinancialDelta(latestFinancialReport.paid_up_capital, financialCompareReport?.paid_up_capital, "higher")}
                                                             </div>
                                                             <div className="rounded-xl border border-muted/40 bg-muted/10 p-3">
@@ -2380,7 +2541,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         </div>
                                                                         <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
                                                                             <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Profit</p>
-                                                                            <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatCompactValue(yearLatest?.profit)}</p>
+                                                                            <p className="mt-1 text-sm font-black font-mono">{shareCurrency.moneyCompact(yearLatest?.profit)}</p>
                                                                         </div>
                                                                         <div className="rounded-xl border border-muted/40 bg-background/40 p-2">
                                                                             <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Net Worth</p>
@@ -2428,8 +2589,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                                     </div>
                                                                                 )}
                                                                                 <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground sm:grid-cols-3">
-                                                                                    <span>Profit: <strong className="text-foreground">{currencySymbol} {formatCompactValue(report.profit)}</strong></span>
-                                                                                    <span>Capital: <strong className="text-foreground">{currencySymbol} {formatCompactValue(report.paid_up_capital)}</strong></span>
+                                                                                    <span>Profit: <strong className="text-foreground">{shareCurrency.moneyCompact(report.profit)}</strong></span>
+                                                                                    <span>Capital: <strong className="text-foreground">{shareCurrency.moneyCompact(report.paid_up_capital)}</strong></span>
                                                                                     <span>Docs: <strong className="text-foreground">{(report.documents || []).length}</strong></span>
                                                                                 </div>
                                                                                 <div className="mt-3 flex flex-wrap gap-2">
@@ -3045,7 +3206,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                     <p className="text-[10px] font-black uppercase tracking-widest text-green-700">Cash Estimate</p>
                                                                     <p className="mt-1 text-sm font-black text-green-700">{formatProfitLossPercent(whatIfCashPercent)}</p>
                                                                     <p className="mt-1 text-[10px] text-green-700/80">
-                                                                        Est. {currencySymbol} {formatValue(whatIfEstimatedCash)}
+                                                                        Est. {moneySymboled(whatIfEstimatedCash)}
                                                                     </p>
                                                                 </div>
                                                                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
@@ -3058,7 +3219,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                                                                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Current Value</p>
                                                                     <p className="mt-1 text-sm font-black text-amber-700">
-                                                                        {currencySymbol} {formatValue(whatIfCurrentValue)}
+                                                                        {moneySymboled(whatIfCurrentValue)}
                                                                     </p>
                                                                     <p className="mt-1 text-[10px] text-amber-700/80">
                                                                         {whatIfCurrentPrice > 0
@@ -3112,7 +3273,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             </div>
                                                             <p className="text-sm font-black text-green-700 mt-1">{latestCashPercent.toFixed(2)}%</p>
                                                             <p className="text-[10px] text-green-700/80 mt-0.5">
-                                                                Est. {currencySymbol} {estimatedCashAmount.toFixed(2)}
+                                                                Est. {moneySymboled(estimatedCashAmount)}
                                                             </p>
                                                             {showCashInfo && (
                                                                 <p className="text-[9px] text-green-700/60 mt-0.5">
@@ -3239,19 +3400,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             <PopoverContent side="top" className="max-w-[260px] text-xs p-3">
                                                                 <div className="space-y-1">
                                                                     <p>Your set contribution amount per cycle.</p>
-                                                                    <p>DPS {currencySymbol} {formatValue(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net invests {currencySymbol} {formatValue(nextSipBaseOnlyAmounts.netAmount)}</p>
+                                                                    <p>DPS {moneySymboled(existingSipPlan.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net invests {moneySymboled(nextSipBaseOnlyAmounts.netAmount)}</p>
                                                                     {nextSipRemainder > 0 && (
-                                                                        <p>+ Carryover {currencySymbol} {formatValue(nextSipRemainder)} • Total this cycle {currencySymbol} {formatValue(nextSipNetAmount)}</p>
+                                                                        <p>+ Carryover {moneySymboled(nextSipRemainder)} • Total this cycle {moneySymboled(nextSipNetAmount)}</p>
                                                                     )}
                                                                     {nextSipRemainder <= 0 && (
-                                                                        <p>Total this cycle {currencySymbol} {formatValue(nextSipNetAmount)}</p>
+                                                                        <p>Total this cycle {moneySymboled(nextSipNetAmount)}</p>
                                                                     )}
                                                                 </div>
                                                             </PopoverContent>
                                                         </Popover>
                                                     </p>
                                                     <p className="mt-1 text-sm font-black">
-                                                        {currencySymbol} {formatValue(nextSipBaseAmount)}
+                                                        {moneySymboled(nextSipBaseAmount)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -3279,14 +3440,14 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 <Info className="w-3 h-3 text-muted-foreground/60 cursor-help" />
                                                             </PopoverTrigger>
                                                                 <PopoverContent side="top" className="max-w-[280px] text-xs p-3 space-y-1.5">
-                                                                    <p><strong>Total cash in:</strong> the full amount you put in (रु {formatValue(totalSipCashInvestment)}) रु {formatValue(existingSipPlan?.installmentAmount ?? 0)} × {sipTransactions.length} installments.</p>
-                                                                    <p><strong>Net invested:</strong> what actually bought units after DPS charges (रु {formatValue(totalSipNet)}).</p>
-                                                                    <p>The difference (रु {formatValue(totalSipCashInvestment - totalSipNet)}) went to DPS fees and reminder over {sipTransactions.length} cycle{sipTransactions.length !== 1 ? "s" : ""}.</p>
+                                                                    <p><strong>Total cash in:</strong> the full amount you put in ({moneySymboled(totalSipCashInvestment)}) {moneySymboled(existingSipPlan?.installmentAmount ?? 0)} × {sipTransactions.length} installments.</p>
+                                                                    <p><strong>Net invested:</strong> what actually bought units after DPS charges ({moneySymboled(totalSipNet)}).</p>
+                                                                    <p>The difference ({moneySymboled(totalSipCashInvestment - totalSipNet)}) went to DPS fees and reminder over {sipTransactions.length} cycle{sipTransactions.length !== 1 ? "s" : ""}.</p>
                                                                 </PopoverContent>
                                                         </Popover>
                                                     </p>
-                                                    <p className="mt-1 text-sm font-black">{currencySymbol} {formatValue(totalSipCashInvestment)}</p>
-                                                    <p className="text-[10px] text-muted-foreground">{currencySymbol} {formatValue(totalSipNet)} net</p>
+                                                    <p className="mt-1 text-sm font-black">{moneySymboled(totalSipCashInvestment)}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{moneySymboled(totalSipNet)} net</p>
                                                 </div>
                                             </div>
 
@@ -3302,8 +3463,8 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 </PopoverTrigger>
                                                                 <PopoverContent side="top" className="max-w-[300px] text-xs p-3 space-y-1.5">
                                                                     <p>When you mark this cycle done, a buy transaction is recorded automatically:</p>
-                                                                    <p>• Your contribution (रु {formatValue(nextSipBaseAmount)}) is deducted by DPS (रु {formatValue(existingSipPlan?.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)})</p>
-                                                                    <p>• The net amount (रु {formatValue(nextSipNetAmount)}) buys units at the current price (रु {formatValue(safeCurrent)})</p>
+                                                                    <p>• Your contribution ({moneySymboled(nextSipBaseAmount)}) is deducted by DPS ({moneySymboled(existingSipPlan?.dpsCharge ?? SIP_DEFAULT_DPS_CHARGE)})</p>
+                                                                    <p>• The net amount ({moneySymboled(nextSipNetAmount)}) buys units at the current price (रु {formatValue(safeCurrent)})</p>
                                                                     <p>• Any leftover cash carries over to the next cycle</p>
                                                                     <p className="text-[10px] text-muted-foreground pt-1">You can change the contribution amount anytime from Manage SIP.</p>
                                                                 </PopoverContent>
@@ -3319,7 +3480,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         : "Next cycle not due yet"}
                                                         </p>
                                                         <p className="mt-1 text-[10px] text-muted-foreground">
-                                                            {currencySymbol} {formatValue(safeCurrent)} per unit • Net {currencySymbol} {formatValue(nextSipNetAmount)}
+                                                            {currencySymbol} {formatValue(safeCurrent)} per unit • Net {moneySymboled(nextSipNetAmount)}
                                                         </p>
                                                     </div>
                                                     <div className="flex flex-col gap-2">
@@ -3347,7 +3508,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                 <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-muted/20">
                                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Installment ledger</p>
                                                     <p className="flex items-center gap-3 text-[10px] font-bold text-muted-foreground">
-                                                        <span>Net invested {currencySymbol} {formatValue(totalSipNet)}</span>
+                                                        <span>Net invested {moneySymboled(totalSipNet)}</span>
                                                         {totalSipUnits > 0 && (
                                                             <span>{formatUnits(totalSipUnits)} units</span>
                                                         )}
@@ -3369,7 +3530,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         {formatSipDate(tx.sipDueDate || tx.date, calendarSystem)}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground mt-1">
-                                                                        Gross {currencySymbol} {formatValue(getSipGrossAmount(tx))} • DPS {currencySymbol} {formatValue(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {currencySymbol} {formatValue(getSipNetAmount(tx))}
+                                                                        Gross {moneySymboled(getSipGrossAmount(tx))} • DPS {moneySymboled(tx.sipDpsCharge ?? SIP_DEFAULT_DPS_CHARGE)} • Net {moneySymboled(getSipNetAmount(tx))}
                                                                     </p>
                                                                     <p className="text-[10px] text-muted-foreground">
                                                                         Completed {formatAppDate(tx.date, calendarSystem)}
@@ -3379,7 +3540,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 <div className="text-right">
                                                                     <p className="text-[11px] font-black font-mono">{formatUnits(tx.quantity || 0)} units</p>
                                                                     <p className="text-[10px] text-muted-foreground">
-                                                                        @ {currencySymbol}{formatValue(tx.price || 0)}
+                                                                        @ {moneySymboled(tx.price || 0)}
                                                                     </p>
                                                                 </div>
                                                             </div>
