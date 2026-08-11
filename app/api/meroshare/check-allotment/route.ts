@@ -15,37 +15,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing ipo_name" }, { status: 400 })
     }
 
-    const provider = options?.browserProvider || credentials?.browserProvider || "api"
+    const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
-      const { MeroShareRestClient } = await import("../_lib/rest-api")
-      const client = new MeroShareRestClient()
-      await client.login({
-        dpId: credentials.dpId,
-        username: credentials.username,
-        password: credentials.password,
-      })
-      const companyShareId = await client.resolveCompanyShareId(ipoName)
-      const data = (await client.checkAllotment(companyShareId)) as any
-      const allotted = data?.allotedQuantity ?? data?.allottedQuantity ?? data?.allotted_qty
-      const isAllotted = Boolean(
-        data?.isAlloted === true ||
-          data?.isAllotted === true ||
-          Number(allotted) > 0 ||
-          String(data?.message ?? "").toLowerCase().includes("allotted"),
-      )
-      const user_name = (await client.getOwnData())?.name || credentials.username
-      return NextResponse.json({
-        success: true,
-        status: isAllotted ? "Allotted" : "Not Allotted",
-        is_allotted: isAllotted,
-        allotted_quantity: String(allotted ?? 0),
-        user_name,
-        details: data,
-        message: isAllotted
-          ? `Congratulations! You have been allotted ${allotted ?? 0} shares.`
-          : "Not allotted in this round.",
-      })
+      const { MeroShareRestClient, clearCachedSession } = await import("../_lib/rest-api")
+      const username = String(credentials.username || "").trim()
+
+      const runFlow = async (client: InstanceType<typeof MeroShareRestClient>) => {
+        await client.ensureSession(credentials)
+        const result = await client.checkAllotmentViaApplicationReport(ipoName)
+        const user_name = (await client.getOwnData())?.name || credentials.username
+        if (!result.matched) {
+          return NextResponse.json({
+            success: true,
+            status: "No Application",
+            is_allotted: false,
+            allotted_quantity: "0",
+            user_name,
+            details: null,
+            message: `No MeroShare application found for '${ipoName}'. Did you apply for this IPO?`,
+          })
+        }
+        return NextResponse.json({
+          success: true,
+          status: result.isAllotted ? "Allotted" : "Not Allotted",
+          is_allotted: result.isAllotted,
+          allotted_quantity: String(result.allottedQuantity ?? 0),
+          user_name,
+          details: result.row ?? null,
+          message: result.isAllotted
+            ? `Congratulations! You have been allotted ${result.allottedQuantity ?? 0} shares.`
+            : `Not allotted in this round (status: ${result.statusName || "N/A"}).`,
+        })
+      }
+
+      let client = new MeroShareRestClient()
+      try {
+        return await runFlow(client)
+      } catch (error: any) {
+        const status = Number(error?.statusCode ?? 0)
+        const unauthorized = status === 401 || status === 403 || /unauthorized/i.test(String(error?.message ?? ""))
+        if (unauthorized && !/login failed/i.test(String(error?.message ?? ""))) {
+          clearCachedSession(username)
+          client = new MeroShareRestClient()
+          return await runFlow(client)
+        }
+        throw error
+      }
     }
 
     if (provider === "api") {
@@ -70,8 +86,10 @@ export async function POST(req: Request) {
       browser = await getMeroShareBrowser({ showBrowser: false, browserProvider: provider })
       const page = await browser.newPage()
       await loginToMeroShare(page, credentials)
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
       await page.goto("https://meroshare.cdsc.com.np/#/asba", { waitUntil: "networkidle2" })
-      await page.waitForTimeout(3000)
+      await sleep(3000)
 
       const ipoDropdown = await page.waitForSelector("select", { timeout: 10000 }).catch(() => null)
       if (ipoDropdown) {
@@ -91,7 +109,7 @@ export async function POST(req: Request) {
       }
 
       await page.evaluate(() => { const btn = Array.from(document.querySelectorAll("button")).find(b => b.textContent?.includes("Search") || b.textContent?.includes("View")); if (btn) btn.click() })
-      await page.waitForTimeout(3000)
+      await sleep(3000)
 
       const result = await page.evaluate(() => {
         const table = document.querySelector("table")

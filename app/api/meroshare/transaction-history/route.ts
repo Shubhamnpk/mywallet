@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
   }
 
-  const provider = options?.browserProvider || credentials?.browserProvider || "api"
+  const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
   if (provider === "rest") {
     try {
@@ -50,6 +50,34 @@ export async function POST(req: Request) {
       })
     } catch (error: any) {
       console.error("MeroShare REST Transaction History Error:", error)
+      return NextResponse.json({
+        error: error?.message || "An error occurred during transaction history sync.",
+      }, { status: 500 })
+    }
+  }
+
+  if (provider === "api") {
+    try {
+      const { proxyToMeroShareApi } = await import("../_lib/proxy-api")
+      const data = await proxyToMeroShareApi("/transaction-history", {
+        credentials: {
+          dpId: credentials.dpId,
+          username: credentials.username,
+          password: credentials.password,
+        },
+      })
+      const transactions = Array.isArray(data.transactions) ? data.transactions : []
+      return NextResponse.json({
+        success: data.success,
+        profileName: data.profileName ?? data.user_name ?? credentials.username,
+        transactions,
+        count: transactions.length,
+        message: transactions.length
+          ? `Fetched ${transactions.length} MeroShare transaction history rows.`
+          : "No MeroShare transaction history rows found.",
+      })
+    } catch (error: any) {
+      console.error("MeroShare API Transaction History Error:", error)
       return NextResponse.json({
         error: error?.message || "An error occurred during transaction history sync.",
       }, { status: 500 })

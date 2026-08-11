@@ -27,6 +27,12 @@ interface ImportVerificationModalProps {
     importTransactionPrices: Record<string, string>
     setImportTransactionPrices: (prices: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void
     onConfirm: () => Promise<void>
+    stats?: {
+        fetchedCount: number
+        mergedCount: number
+        existingCount: number
+        needsPriceCount: number
+    } | null
 }
 
 export function ImportVerificationModal({
@@ -37,14 +43,15 @@ export function ImportVerificationModal({
     setImportPrices,
     importTransactionPrices,
     setImportTransactionPrices,
-    onConfirm
+    onConfirm,
+    stats
 }: ImportVerificationModalProps) {
-    const [expandedSymbols, setExpandedSymbols] = useState<Record<string, boolean>>({})
+    const [showPrefilled, setShowPrefilled] = useState(false)
     const symbolItems = useMemo(
         () => importQueue.filter((item) => !item.id?.includes("__row_") && item.type !== "Merger"),
         [importQueue]
     )
-    const transactionItems = useMemo(() => importQueue.filter((item) => item.id?.includes("__row_") && item.type === "Buy"), [importQueue])
+    const transactionItems = useMemo(() => importQueue.filter((item) => item.id?.includes("__row_") && (item.type === "Buy" || item.type === "Sell" || item.type === "IPO")), [importQueue])
     const transactionsBySymbol = useMemo(() => {
         return transactionItems.reduce<Record<string, typeof transactionItems>>((groups, item) => {
             const key = item.symbol || "Unknown"
@@ -53,6 +60,9 @@ export function ImportVerificationModal({
             return groups
         }, {})
     }, [transactionItems])
+    // Transactions that need a price are prioritized; pre-filled ones (IPO face value) collapse.
+    const needsPriceItems = useMemo(() => symbolItems.filter((item) => item.type === "Buy" || item.type === "Sell"), [symbolItems])
+    const prefilledItems = useMemo(() => symbolItems.filter((item) => item.type !== "Buy" && item.type !== "Sell"), [symbolItems])
     const renderTransactionRateRow = (item: (typeof transactionItems)[number]) => {
         const rowId = item.id || item.symbol
 
@@ -87,6 +97,71 @@ export function ImportVerificationModal({
         )
     }
 
+    const renderSymbolCard = (item: (typeof symbolItems)[number]) => {
+        const symbolTransactions = transactionsBySymbol[item.symbol] || []
+        const isIpo = item.type === "IPO"
+        const customCount = symbolTransactions.filter((transaction) => {
+            const rowId = transaction.id || transaction.symbol
+            return Boolean(importTransactionPrices[rowId])
+        }).length
+
+        return (
+            <div key={item.symbol} className="flex flex-col gap-2 p-3 rounded-xl border bg-muted/20 hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span className="font-black text-sm">{item.symbol}</span>
+                        <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider h-5 flex items-center justify-center border-primary/20 text-primary">
+                            {item.type}
+                        </Badge>
+                        {symbolTransactions.length > 0 && (
+                            <Badge variant="secondary" className="text-[10px]">
+                                {symbolTransactions.length} tx
+                            </Badge>
+                        )}
+                    </div>
+                    {isIpo && (
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
+                            Auto-filled Face Value
+                        </span>
+                    )}
+                </div>
+                <div className="flex items-center gap-3">
+                    <Label className="text-[11px] font-black text-muted-foreground uppercase w-20">
+                        {isIpo ? "IPO Price" : item.type === "Sell" ? "Sell Price" : "Buy Price"}
+                    </Label>
+                    <Input
+                        type="number"
+                        value={importPrices[item.symbol] || ""}
+                        onChange={(e) => setImportPrices(prev => ({ ...prev, [item.symbol]: e.target.value }))}
+                        className="h-9 rounded-lg border-primary/10 bg-background font-mono font-bold focus:ring-primary/20"
+                        placeholder="Use for all transactions..."
+                    />
+                </div>
+
+                {symbolTransactions.length > 0 && (
+                    <div className="rounded-lg border bg-background/60">
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-black">Set each transaction separately</span>
+                                    {customCount > 0 && (
+                                        <Badge variant="secondary" className="text-[10px]">{customCount} custom</Badge>
+                                    )}
+                                </div>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                    Leave blank to use the price above.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 border-t px-3 py-3">
+                            {symbolTransactions.map(renderTransactionRateRow)}
+                        </div>
+                    </div>
+                )}
+            </div>
+        )
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl rounded-2xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl">
@@ -96,86 +171,43 @@ export function ImportVerificationModal({
                         Verify Cost Prices
                     </DialogTitle>
                     <DialogDescription className="font-medium text-muted-foreground">
-                        We've identified items that need an initial cost price for accurate profit tracking.
+                        Items needing a price are shown first. Price entry is optional — leave blank to import as-is.
                     </DialogDescription>
+                    {stats && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <Badge variant="secondary" className="text-[10px] font-bold">Fetched {stats.fetchedCount}</Badge>
+                            <Badge variant="secondary" className="text-[10px] font-bold">Merged {stats.mergedCount}</Badge>
+                            <Badge variant="secondary" className="text-[10px] font-bold">Already exist {stats.existingCount}</Badge>
+                            <Badge variant={stats.needsPriceCount > 0 ? "default" : "secondary"} className="text-[10px] font-bold">
+                                Need price {stats.needsPriceCount}
+                            </Badge>
+                        </div>
+                    )}
                 </DialogHeader>
 
                 <ScrollArea className="max-h-[40vh] pr-4 mt-4" onKeyDown={(e) => e.key === "Enter" && onConfirm()}>
                     <div className="space-y-4 py-2">
-                        {symbolItems.map((item) => {
-                            const symbolTransactions = transactionsBySymbol[item.symbol] || []
-                            const hasMultipleTransactions = symbolTransactions.length > 1
-                            const isIpo = item.type === "IPO"
-                            const expanded = expandedSymbols[item.symbol] ?? false
-                            const customCount = symbolTransactions.filter((transaction) => {
-                                const rowId = transaction.id || transaction.symbol
-                                return Boolean(importTransactionPrices[rowId])
-                            }).length
+                        {needsPriceItems.map(renderSymbolCard)}
 
-                            return (
-                                <div key={item.symbol} className="flex flex-col gap-2 p-3 rounded-xl border bg-muted/20 hover:bg-muted/30 transition-colors">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-black text-sm">{item.symbol}</span>
-                                            <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider h-5 flex items-center justify-center border-primary/20 text-primary">
-                                                {item.type}
-                                            </Badge>
-                                            {hasMultipleTransactions && (
-                                                <Badge variant="secondary" className="text-[10px]">
-                                                    {symbolTransactions.length} tx
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        {isIpo && (
-                                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
-                                                Auto-filled Face Value
-                                            </span>
-                                        )}
+                        {prefilledItems.length > 0 && (
+                            <div className="rounded-xl border bg-background/40">
+                                <button
+                                    type="button"
+                                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                                    onClick={() => setShowPrefilled((prev) => !prev)}
+                                >
+                                    <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                        {prefilledItems.length} auto-filled item{prefilledItems.length === 1 ? "" : "s"} (pre-filled prices)
+                                    </span>
+                                    {showPrefilled ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                                </button>
+                                {showPrefilled && (
+                                    <div className="space-y-4 border-t px-3 py-3">
+                                        {prefilledItems.map(renderSymbolCard)}
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <Label className="text-[11px] font-black text-muted-foreground uppercase w-20">
-                                            {isIpo ? "IPO Price" : "Buy Price"}
-                                        </Label>
-                                        <Input
-                                            type="number"
-                                            value={importPrices[item.symbol] || ""}
-                                            onChange={(e) => setImportPrices(prev => ({ ...prev, [item.symbol]: e.target.value }))}
-                                            className="h-9 rounded-lg border-primary/10 bg-background font-mono font-bold focus:ring-primary/20"
-                                            placeholder="Use for all transactions..."
-                                        />
-                                    </div>
-
-                                    {hasMultipleTransactions && (
-                                        <div className="rounded-lg border bg-background/60">
-                                            <button
-                                                type="button"
-                                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-                                                onClick={() => setExpandedSymbols((prev) => ({ ...prev, [item.symbol]: !expanded }))}
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="text-xs font-black">Set each transaction separately</span>
-                                                        {customCount > 0 && (
-                                                            <Badge variant="secondary" className="text-[10px]">{customCount} custom</Badge>
-                                                        )}
-                                                    </div>
-                                                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                                        Leave blank to use the buy price above.
-                                                    </p>
-                                                </div>
-                                                {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-                                            </button>
-
-                                            {expanded && (
-                                                <div className="space-y-2 border-t px-3 py-3">
-                                                    {symbolTransactions.map((transaction) => renderTransactionRateRow(transaction))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                                )}
+                            </div>
+                        )}
                     </div>
                 </ScrollArea>
 

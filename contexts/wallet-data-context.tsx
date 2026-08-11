@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react"
 import { useWalletStore } from "@/hooks/use-wallet-store"
-import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, NepseIndexItem, NepseIndexGraphPoint, } from "@/types/wallet"
+import type { UserProfile, Transaction, Budget, Goal, DebtAccount, CreditAccount, DebtCreditTransaction, Category, Portfolio, PortfolioItem, ShareTransaction, UpcomingIPO, TopStocksData, MarketSummaryMetric, MarketSummaryHistoryItem, MarketStatusData, NepseNoticesBundle, NepseDisclosure, NepseExchangeMessage, SIPPlan, NepseIndexItem, NepseIndexGraphPoint, MeroShareSyncResult, MeroShareApplicationLog, } from "@/types/wallet"
 export type WalletDataContextType = {
   userProfile: UserProfile | null
   transactions: Transaction[]
@@ -105,9 +105,9 @@ export type WalletDataContextType = {
   clearPortfolioHistory: () => Promise<void>
   fetchPortfolioPrices: (portfolioOverride?: PortfolioItem[], forceRefresh?: boolean) => Promise<PortfolioItem[] | undefined>
   refreshMarketData: () => Promise<void>
-  syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; addedCount: number }>
-  importMeroShareTransactionHistoryRows: (rows: any[], targetPortfolioId?: string) => Promise<{ fetchedCount: number; importedCount: number; skippedCount: number }>
-  syncMeroShareTransactionHistory: (credentials: any, targetPortfolioId?: string) => Promise<{ fetchedCount: number; importedCount: number; skippedCount: number }>
+  syncMeroSharePortfolio: (credentials: any, targetPortfolioId?: string) => Promise<{ updatedCount: number; skippedCount: number }>
+  importMeroShareTransactionHistoryRows: (rows: any[], targetPortfolioId?: string, resolvedPrices?: Record<string, number>) => Promise<MeroShareSyncResult>
+  syncMeroShareTransactionHistory: (credentials: any, targetPortfolioId?: string, resolvedPrices?: Record<string, number>) => Promise<MeroShareSyncResult>
   applyMeroShareIPO: (
     credentials: any,
     ipoName: string,
@@ -116,6 +116,8 @@ export type WalletDataContextType = {
     options?: { showBrowser?: boolean; browserProvider?: "api" | "rest" | "auto" | "browserless" | "local" }
   ) => Promise<any>
   checkIPOAllotment: (credentials: any, ipoName: string, source?: "live-check" | "settings-check") => Promise<any>
+  logMeroShareApplication: (entry: Omit<MeroShareApplicationLog, "id" | "createdAt">) => Promise<MeroShareApplicationLog | null>
+  clearMeroShareApplicationLogs: () => Promise<void>
   getFaceValue: (symbol: string) => number
   addShareTransaction: (tx: Omit<ShareTransaction, "id">) => Promise<{ newTx: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>
   updateShareTransaction: (id: string, updates: Partial<Omit<ShareTransaction, "id">>) => Promise<{ updatedTransaction: ShareTransaction, updatedPortfolio: PortfolioItem[], zeroUnitHoldings?: Array<{ symbol: string; assetType: "stock" | "crypto"; cryptoId?: string; portfolioId: string }> }>

@@ -57,6 +57,8 @@ export interface MeroShareAccount {
   pin?: string
   /** Per-account preferred IPO application kitta. 0 = auto-detect from the IPO. */
   preferredKitta?: number
+  /** Portfolio this MeroShare account syncs into. */
+  portfolioId?: string
 }
 
 export interface NotificationSettings {
@@ -96,14 +98,25 @@ export interface SIPPlan {
 
 export interface MeroShareApplicationLog {
   id: string
-  ipoName: string
-  action: "apply" | "report-check"
+  action: "apply" | "report-check" | "login" | "sync-portfolio" | "sync-history" | "application-report" | "account-health"
+  ipoName?: string
   requestedKitta?: number
   status: "success" | "failed"
   message: string
-  source: "live-apply" | "live-auto" | "settings-test" | "live-check" | "settings-check"
+  source:
+    | "live-apply"
+    | "live-auto"
+    | "settings-test"
+    | "live-check"
+    | "settings-check"
+    | "settings"
+    | "ipo-center"
+    | "portfolio-list"
   createdAt: string
 }
+
+/** Logs are kept for this long before being pruned. */
+export const MERO_SHARE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 export interface Transaction {
   id: string
@@ -345,6 +358,33 @@ export interface ShareTransaction {
   sipGrossAmount?: number
   sipDpsCharge?: number
   sipNetAmount?: number
+}
+
+/** A MeroShare history transaction queued for price review after sync (mirrors the CSV import verification queue). */
+export interface MeroShareQueuedTransaction {
+  rowKey: string
+  symbol: string
+  type: ShareTransaction["type"]
+  quantity: number
+  date: string
+  description: string
+  price: number
+}
+
+/** Result of a MeroShare transaction-history sync. When `requiresReview` is true the caller should
+ * show the price-verification modal and re-sync with the resolved prices. */
+export interface MeroShareSyncResult {
+  fetchedCount: number
+  importedCount: number
+  skippedCount: number
+  requiresReview: boolean
+  /** Rows that were identical and combined into one transaction. */
+  mergedCount: number
+  /** Transactions already present in the portfolio (skipped as duplicates). */
+  existingCount: number
+  /** New buy/sell transactions that need a manual price. */
+  needsPriceCount: number
+  newTransactions: MeroShareQueuedTransaction[]
 }
 
 export interface UpcomingIPO {

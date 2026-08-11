@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing IPO details (company_share_id, units)" }, { status: 400 })
     }
 
-    const provider = options?.browserProvider || credentials?.browserProvider || "api"
+    const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
       const { MeroShareRestClient } = await import("../_lib/rest-api")
@@ -88,28 +88,30 @@ export async function POST(req: Request) {
       browser = await getMeroShareBrowser({ showBrowser: false, browserProvider: provider })
       const page = await browser.newPage()
       await loginToMeroShare(page, credentials)
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
       await page.goto("https://meroshare.cdsc.com.np/#/asba", { waitUntil: "networkidle2" })
-      await page.waitForTimeout(3000)
+      await sleep(3000)
 
       const dpEl = await page.waitForSelector(".select2-selection", { timeout: 15000 }).catch(() => null)
       if (dpEl) {
         await dpEl.click()
-        await page.waitForTimeout(1000)
+        await sleep(1000)
         await page.type(".select2-search__field", credentials.dpId, { delay: 50 })
-        await page.waitForTimeout(500)
+        await sleep(500)
         await page.keyboard.press("Enter")
-        await page.waitForTimeout(1000)
+        await sleep(1000)
       }
 
       await page.type("#appliedKitta", String(ipoDetails.units), { delay: 50 })
       await page.type("#crnNumber", credentials.crn, { delay: 50 })
       await page.click("#disclaimer").catch(() => {})
       await page.evaluate(() => { const btn = Array.from(document.querySelectorAll("button")).find(b => b.textContent?.includes("Proceed")); if (btn) btn.click() })
-      await page.waitForTimeout(2000)
+      await sleep(2000)
       await page.type("#transactionPIN", credentials.pin, { delay: 50 })
       await page.evaluate(() => { const btn = Array.from(document.querySelectorAll("button")).find(b => b.textContent?.includes("Apply")); if (btn) btn.click() })
 
-      await page.waitForTimeout(5000)
+      await sleep(5000)
       const successMsg = await page.evaluate(() => { const t = document.querySelector(".toast-success, .toast-error"); return t?.textContent?.trim() || null })
       await browser.close()
       browser = null

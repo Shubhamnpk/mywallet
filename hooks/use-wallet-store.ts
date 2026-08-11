@@ -27,7 +27,10 @@ import type {
   SIPPlan,
   NepseIndexItem,
   NepseIndexGraphPoint,
+  MeroShareQueuedTransaction,
 } from "@/types/wallet"
+
+import { MERO_SHARE_LOG_RETENTION_MS } from "@/types/wallet"
 
 import { calculateBalance, initializeDefaultCategories, calculateTimeEquivalent } from "@/lib/wallet-utils"
 import { generateId } from "@/lib/utils"
@@ -4176,21 +4179,24 @@ export function useWalletStore() {
 
         // Keep holding if:
         // 1. Has units > 0 (active holding), OR
-        // 2. Has sell transaction (not merger_out) and hasn't been explicitly removed (isKeptZeroHolding !== false)
-        //    By default, keep zero holdings from sell unless user explicitly removed them
-        // 3. Merger_out holdings are NEVER kept - they are removed from portfolio
-        const shouldKeep = totalUnits > 0 || (hasSellTx && !hasMergerOutTx && existing?.isKeptZeroHolding !== false)
+        // 2. A zero holding that was explicitly kept by the user (isKeptZeroHolding === true), OR
+        // 3. Just transitioned to zero from a positive position (sell confirm dialog flow).
+        //    Once kept, recompute re-adds the isKeptZeroHolding flag so it stays visible.
+        const justBecameZero = existing && existing.units > 0 && totalUnits <= 0 && hasSellTx && !hasMergerOutTx
+        const explicitlyKept = existing?.isKeptZeroHolding === true
+        const shouldKeep = totalUnits > 0 || (hasSellTx && !hasMergerOutTx && (explicitlyKept || justBecameZero))
 
         if (shouldKeep) {
-          const isZeroHolding = totalUnits <= 0 && hasSellTx && !hasMergerOutTx
+          const safeUnits = Math.max(0, totalUnits)
+          const isZeroHolding = safeUnits <= 0 && hasSellTx && !hasMergerOutTx
           newPortfolio.push({
             id: existing?.id || generateId("port"),
             portfolioId: pId,
             symbol: symbol,
             assetType,
             cryptoId,
-            units: totalUnits,
-            buyPrice: totalUnits > 0 ? totalCost / totalUnits : (existing?.buyPrice ?? 0),
+            units: safeUnits,
+            buyPrice: safeUnits > 0 ? totalCost / safeUnits : (existing?.buyPrice ?? 0),
             currentPrice: existing?.currentPrice,
             previousClose: existing?.previousClose,
             sector: existing?.sector || (assetType === "crypto" ? "Crypto" : (sectorsMap[normalizeStockSymbol(symbol)] || "Others")),
@@ -4404,23 +4410,64 @@ export function useWalletStore() {
     historyDescription: string
   }
 
-  const buildMeroShareTransactionKey = (transaction: Pick<ShareTransaction, "portfolioId" | "symbol" | "date" | "type" | "quantity" | "description">) =>
+  const buildMeroShareTransactionKey = (transaction: Pick<ShareTransaction, "portfolioId" | "symbol" | "date" | "type" | "quantity">) =>
     [
       transaction.portfolioId,
       normalizeStockSymbol(transaction.symbol),
       transaction.date,
       transaction.type,
       transaction.quantity,
-      (transaction.description || "").trim().toUpperCase(),
     ].join("|")
+
+  // REST and browser providers return the same column in different formats
+  // (API: "2026-06-11 00:00:00", DOM: "11 Jun 2026"), so dates must be
+  // canonicalized or identical rows are treated as new on every sync.
+  const canonicalizeMeroShareDate = (value: string): string => {
+    const raw = String(value ?? "").trim()
+    if (!raw) return ""
+    const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})([T\s].*)?$/)
+    if (match) return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`
+    const parsed = new Date(raw)
+    if (!Number.isNaN(parsed.getTime())) {
+      return [
+        parsed.getFullYear(),
+        String(parsed.getMonth() + 1).padStart(2, "0"),
+        String(parsed.getDate()).padStart(2, "0"),
+      ].join("-")
+    }
+    return raw
+  }
+
+  const buildMeroShareKeyWithCanonicalDate = (
+    transaction: Pick<ShareTransaction, "portfolioId" | "symbol" | "date" | "type" | "quantity">,
+  ) => buildMeroShareTransactionKey({ ...transaction, date: canonicalizeMeroShareDate(transaction.date) })
+
+  // Merge approach: MeroShare can list the same scrip, date, type and quantity as separate rows
+  // (e.g. two identical buy orders). Instead of dropping them as duplicates, combine them into a
+  // single transaction by summing quantities so no units are lost. Description is intentionally
+  // ignored so wording differences between syncs don't create false duplicates.
+  const mergeIdenticalMeroShareTransactions = (transactions: ShareTransaction[]): ShareTransaction[] => {
+    const grouped = new Map<string, ShareTransaction>()
+    for (const tx of transactions) {
+      const key = buildMeroShareKeyWithCanonicalDate(tx)
+      const existing = grouped.get(key)
+      if (existing) {
+        grouped.set(key, { ...existing, quantity: existing.quantity + tx.quantity })
+      } else {
+        grouped.set(key, { ...tx })
+      }
+    }
+    return Array.from(grouped.values())
+  }
 
   const mapMeroShareHistoryRowToTransaction = (
     row: MeroShareTransactionHistoryRow,
     portfolioId: string,
     rowIndex: number,
+    resolvedPrices?: Record<string, number>,
   ): ShareTransaction | null => {
     const symbol = normalizeStockSymbol(row.scrip)
-    const date = row.transactionDate
+    const date = canonicalizeMeroShareDate(row.transactionDate)
     const credit = Number(row.creditQuantity) || 0
     const debit = Number(row.debitQuantity) || 0
     const description = row.historyDescription || ""
@@ -4432,13 +4479,23 @@ export function useWalletStore() {
     let type: ShareTransaction["type"] = "buy"
     if (upperDescription.includes("CA-BONUS") || upperDescription.includes("BONUS")) type = "bonus"
     else if (upperDescription.includes("CA-RIGHTS")) type = "bonus"
-    else if (upperDescription.includes("IPO") || upperDescription.includes("INITIAL PUBLIC OFFERING")) type = "ipo"
     else if (upperDescription.includes("MERGER")) type = credit > 0 ? "merger_in" : "merger_out"
+    // Debit rows (including "Sell - IPO" descriptions) are sells with a variable price.
     else if (debit > 0) type = "sell"
+    else if (upperDescription.includes("IPO") || upperDescription.includes("INITIAL PUBLIC OFFERING")) type = "ipo"
 
     const sector = sectorsMap[normalizeStockSymbol(symbol)]
     const faceValue = sector === "Mutual Fund" ? 10 : 100
-    const price = type === "ipo" || type === "merger_in" ? faceValue : 0
+    const defaultPrice = type === "ipo" || type === "merger_in" ? faceValue : 0
+
+    // Same resolution as the CSV import: a per-transaction price (rowKey) wins, then the
+    // per-symbol price, then the default (face value for IPO/merger, otherwise 0).
+    const rowKey = `${symbol}__row_${rowIndex}`
+    const price = resolvedPrices && resolvedPrices[rowKey] !== undefined
+      ? resolvedPrices[rowKey]
+      : resolvedPrices && resolvedPrices[symbol] !== undefined
+        ? resolvedPrices[symbol]
+        : defaultPrice
 
     return {
       id: generateId(`stx_msh_${rowIndex}`),
@@ -4453,35 +4510,89 @@ export function useWalletStore() {
     }
   }
 
-  const importMeroShareTransactionHistoryRows = async (rowsInput: MeroShareTransactionHistoryRow[], targetPortfolioId?: string) => {
-    const portId = targetPortfolioId || activePortfolioId
-    if (!portId) {
-      throw new Error("No target portfolio selected")
-    }
-
+  /** Computes what a MeroShare history import would create without touching storage. */
+  const prepareMeroShareImport = (rowsInput: MeroShareTransactionHistoryRow[], portId: string, resolvedPrices?: Record<string, number>) => {
     const rows = Array.isArray(rowsInput) ? rowsInput : []
-    const fetchedTransactions = rows
-      .map((row, index) => mapMeroShareHistoryRowToTransaction(row, portId, index + 1))
-      .filter((transaction): transaction is ShareTransaction => Boolean(transaction))
+    const fetchedTransactions: ShareTransaction[] = []
+    const rowKeyByTxKey = new Map<string, string>()
+    rows.forEach((row, index) => {
+      const transaction = mapMeroShareHistoryRowToTransaction(row, portId, index + 1, resolvedPrices)
+      if (!transaction) return
+      const key = buildMeroShareTransactionKey(transaction)
+      // Merge keeps the first occurrence's fields, so the first rowKey wins.
+      if (!rowKeyByTxKey.has(key)) rowKeyByTxKey.set(key, `${transaction.symbol}__row_${index + 1}`)
+      fetchedTransactions.push(transaction)
+    })
+
+    // Merge identical rows first (same symbol/date/type/quantity) so duplicate MeroShare rows are
+    // combined by summing quantities instead of being dropped or re-imported as separate entries.
+    const mergedFetched = mergeIdenticalMeroShareTransactions(fetchedTransactions)
 
     const currentTransactions = shareTransactionsRef.current
-    const existingKeys = new Set(currentTransactions.map(buildMeroShareTransactionKey))
-    const newTransactions = fetchedTransactions.filter((transaction) => {
+    const isMeroShareImported = (tx: ShareTransaction) => (tx.id || "").startsWith("stx_msh_")
+
+    // Collapse any existing MeroShare-imported duplicates already in storage (e.g. from older
+    // syncs before the merge approach existed), leaving manual transactions untouched.
+    const storedMeroRaw = currentTransactions.filter(isMeroShareImported)
+    const storedMero = mergeIdenticalMeroShareTransactions(storedMeroRaw)
+    const storedManual = currentTransactions.filter(tx => !isMeroShareImported(tx))
+    const cleanedStored = [...storedManual, ...storedMero]
+
+    const existingKeys = new Set(cleanedStored.map(buildMeroShareKeyWithCanonicalDate))
+    const newTransactions = mergedFetched.filter((transaction) => {
       const key = buildMeroShareTransactionKey(transaction)
       if (existingKeys.has(key)) return false
       existingKeys.add(key)
       return true
     })
 
-    if (newTransactions.length === 0) {
+    return { rows, fetchedTransactions, newTransactions, storedMeroRaw, storedMero, cleanedStored, rowKeyByTxKey, mergedFetchedLength: mergedFetched.length }
+  }
+
+  const toMeroShareStats = (
+    fetchedTransactions: ShareTransaction[],
+    mergedFetchedLength: number,
+    newTransactions: ShareTransaction[],
+  ) => ({
+    mergedCount: Math.max(0, fetchedTransactions.length - mergedFetchedLength),
+    existingCount: Math.max(0, mergedFetchedLength - newTransactions.length),
+    needsPriceCount: newTransactions.filter((transaction) => transaction.type === "buy" || transaction.type === "sell").length,
+  })
+
+  const toQueuedTransaction = (transaction: ShareTransaction, rowKey: string): MeroShareQueuedTransaction => ({
+    rowKey,
+    symbol: transaction.symbol,
+    type: transaction.type,
+    quantity: transaction.quantity,
+    date: transaction.date,
+    description: transaction.description,
+    price: transaction.price,
+  })
+
+  const importMeroShareTransactionHistoryRows = async (rowsInput: MeroShareTransactionHistoryRow[], targetPortfolioId?: string, resolvedPrices?: Record<string, number>) => {
+    const portId = targetPortfolioId || activePortfolioId
+    if (!portId) {
+      throw new Error("No target portfolio selected")
+    }
+
+    const { rows, fetchedTransactions, newTransactions, storedMeroRaw, storedMero, cleanedStored, mergedFetchedLength } = prepareMeroShareImport(rowsInput, portId, resolvedPrices)
+    const stats = toMeroShareStats(fetchedTransactions, mergedFetchedLength, newTransactions)
+
+    // Nothing changed: no new transactions and no stored duplicates were collapsed.
+    if (newTransactions.length === 0 && storedMero.length === storedMeroRaw.length) {
       return {
         fetchedCount: rows.length,
         importedCount: 0,
         skippedCount: fetchedTransactions.length,
+        requiresReview: false,
+        mergedCount: stats.mergedCount,
+        existingCount: stats.existingCount,
+        needsPriceCount: stats.needsPriceCount,
+        newTransactions: [],
       }
     }
 
-    const updatedTransactions = [...currentTransactions, ...newTransactions]
+    const updatedTransactions = [...cleanedStored, ...newTransactions]
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     await saveDataWithIntegrity("shareTransactions", updatedTransactions)
@@ -4491,26 +4602,79 @@ export function useWalletStore() {
       fetchedCount: rows.length,
       importedCount: newTransactions.length,
       skippedCount: fetchedTransactions.length - newTransactions.length,
+      requiresReview: false,
+      mergedCount: stats.mergedCount,
+      existingCount: stats.existingCount,
+      needsPriceCount: stats.needsPriceCount,
+      newTransactions: [],
     }
   }
 
-  const syncMeroShareTransactionHistory = async (credentials: any, targetPortfolioId?: string) => {
+  const syncMeroShareTransactionHistory = async (credentials: any, targetPortfolioId?: string, resolvedPrices?: Record<string, number>) => {
+    const portId = targetPortfolioId || activePortfolioId
+    if (!portId) {
+      throw new Error("No target portfolio selected")
+    }
+
     const response = await fetch("/api/meroshare/transaction-history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         credentials,
-        options: { browserProvider: credentials?.browserProvider || "api" },
+        options: { browserProvider: credentials?.browserProvider || "rest" },
       }),
     })
 
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || "Failed to sync transaction history")
+    if (!response.ok) {
+      await logMeroShareApplication({
+        action: "sync-history",
+        status: "failed",
+        message: data.error || "Transaction history sync failed.",
+        source: "settings",
+      })
+      throw new Error(data.error || "Failed to sync transaction history")
+    }
 
     const rows = Array.isArray(data.transactions)
       ? data.transactions as MeroShareTransactionHistoryRow[]
       : []
-    return await importMeroShareTransactionHistoryRows(rows, targetPortfolioId)
+
+    await logMeroShareApplication({
+      action: "sync-history",
+      status: "success",
+      message: `Fetched ${rows.length} transaction${rows.length === 1 ? "" : "s"} from MeroShare.`,
+      source: "settings",
+    })
+
+    // Confirming a price review (or forcing an import) commits rows with the resolved prices.
+    if (resolvedPrices) {
+      return await importMeroShareTransactionHistoryRows(rows, portId, resolvedPrices)
+    }
+
+    // Preview mode: if any new buy/sell/IPO transaction exists, defer the import so the user can
+    // verify cost prices first (IPO rows are pre-filled with face value, buys/sells are blank).
+    const preview = prepareMeroShareImport(rows, portId)
+    const stats = toMeroShareStats(preview.fetchedTransactions, preview.mergedFetchedLength, preview.newTransactions)
+    const requiresReview = preview.newTransactions.some((transaction) =>
+      transaction.type === "buy" || transaction.type === "ipo" || transaction.type === "sell"
+    )
+    if (requiresReview) {
+      return {
+        fetchedCount: preview.rows.length,
+        importedCount: 0,
+        skippedCount: preview.fetchedTransactions.length - preview.newTransactions.length,
+        requiresReview: true,
+        mergedCount: stats.mergedCount,
+        existingCount: stats.existingCount,
+        needsPriceCount: stats.needsPriceCount,
+        newTransactions: preview.newTransactions.map((transaction) =>
+          toQueuedTransaction(transaction, preview.rowKeyByTxKey.get(buildMeroShareTransactionKey(transaction))!)
+        ),
+      }
+    }
+
+    return await importMeroShareTransactionHistoryRows(rows, portId)
   }
 
   const syncMeroSharePortfolio = async (credentials: any, targetPortfolioId?: string) => {
@@ -4525,56 +4689,70 @@ export function useWalletStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           credentials,
-          options: { browserProvider: credentials?.browserProvider || "api" },
+          options: { browserProvider: credentials?.browserProvider || "rest" },
         })
       })
 
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || "Failed to sync portfolio")
+      if (!response.ok) {
+        await logMeroShareApplication({
+          action: "sync-portfolio",
+          status: "failed",
+          message: data.error || "Portfolio sync failed.",
+          source: "settings",
+        })
+        throw new Error(data.error || "Failed to sync portfolio")
+      }
 
       const meroPortfolio = data.portfolio as any[]
       let updatedCount = 0
-      let addedCount = 0
+      let skippedCount = 0
 
-      // Get current portfolio items for comparison
+      // Transactions are the single source of truth: a stock only exists in the portfolio
+      // when there are transactions for it. Holdings sync therefore only refreshes live
+      // prices on transaction-backed holdings and never fabricates new stocks.
       const currentPortfolio = [...portfolio]
-      const updatedPortfolio = [...currentPortfolio]
+      const backedKeys = new Set(
+        shareTransactions
+          .filter(t => t.portfolioId === portId)
+          .map(t => getHoldingKey(portId, t.symbol, t.assetType, t.cryptoId))
+      )
 
       for (const item of meroPortfolio) {
-        const existingIdx = updatedPortfolio.findIndex(
+        const existingIdx = currentPortfolio.findIndex(
           p => p.portfolioId === portId && normalizeStockSymbol(p.symbol) === normalizeStockSymbol(item.symbol)
         )
 
-        if (existingIdx > -1) {
-          updatedPortfolio[existingIdx] = {
-            ...updatedPortfolio[existingIdx],
-            units: item.units,
+        if (existingIdx > -1 && backedKeys.has(getHoldingKey(portId, item.symbol, "stock"))) {
+          currentPortfolio[existingIdx] = {
+            ...currentPortfolio[existingIdx],
             currentPrice: item.currentPrice,
             lastUpdated: new Date().toISOString()
           }
           updatedCount++
         } else {
-          const newItem: PortfolioItem = {
-            id: generateId('port_item'),
-            portfolioId: portId,
-            symbol: item.symbol,
-            units: item.units,
-            buyPrice: 0, // Users will need to update cost manually or it stays 0
-            currentPrice: item.currentPrice,
-            lastUpdated: new Date().toISOString(),
-            sector: "Others"
-          }
-          updatedPortfolio.push(newItem)
-          addedCount++
+          skippedCount++
         }
       }
 
-      setPortfolio(updatedPortfolio)
-      await saveDataWithIntegrity("portfolio", updatedPortfolio)
+      // Drop any holdings in this portfolio that are not backed by transaction history.
+      const reconciledPortfolio = currentPortfolio.filter(
+        p => p.portfolioId !== portId || backedKeys.has(getHoldingKey(p.portfolioId, p.symbol, p.assetType, p.cryptoId))
+      )
+
+      setPortfolio(reconciledPortfolio)
+      await saveDataWithIntegrity("portfolio", reconciledPortfolio)
 
       // Trigger a price refresh to update sectors and other metadata
-      await fetchPortfolioPrices(updatedPortfolio)
-      return { updatedCount, addedCount }
+      await fetchPortfolioPrices(reconciledPortfolio)
+
+      await logMeroShareApplication({
+        action: "sync-portfolio",
+        status: "success",
+        message: `Synced ${updatedCount} holding${updatedCount === 1 ? "" : "s"} from MeroShare, skipped ${skippedCount}.`,
+        source: "settings",
+      })
+      return { updatedCount, skippedCount }
     } catch (error: any) {
       throw error
     }
@@ -4598,11 +4776,16 @@ export function useWalletStore() {
       isAutomatedEnabled: false,
     }
 
+    const retentionCutoff = Date.now() - MERO_SHARE_LOG_RETENTION_MS
+    const kept = (existingMeroShare.applicationLogs ?? []).filter(
+      (log) => new Date(log.createdAt).getTime() >= retentionCutoff,
+    )
+
     const updatedProfile: UserProfile = {
       ...currentProfile,
       meroShare: {
         ...existingMeroShare,
-        applicationLogs: [nextLog, ...(existingMeroShare.applicationLogs ?? [])].slice(0, 100),
+        applicationLogs: [nextLog, ...kept].slice(0, 200),
       },
     }
 
@@ -4610,6 +4793,27 @@ export function useWalletStore() {
     setUserProfile(updatedProfile)
     await saveDataWithIntegrity("userProfile", updatedProfile)
     return nextLog
+  }
+
+  const clearMeroShareApplicationLogs = async () => {
+    const currentProfile = userProfileRef.current
+    if (!currentProfile) return
+    const updatedProfile: UserProfile = {
+      ...currentProfile,
+      meroShare: {
+        ...(currentProfile.meroShare ?? {
+          dpId: "",
+          username: "",
+          shareFeaturesEnabled: false,
+          shareNotificationsEnabled: false,
+          isAutomatedEnabled: false,
+        }),
+        applicationLogs: [],
+      },
+    }
+    userProfileRef.current = updatedProfile
+    setUserProfile(updatedProfile)
+    await saveDataWithIntegrity("userProfile", updatedProfile)
   }
 
   const applyMeroShareIPO = async (
@@ -4680,7 +4884,7 @@ export function useWalletStore() {
         body: JSON.stringify({
           credentials,
           ipoName,
-          options: { browserProvider: credentials?.browserProvider || "api" },
+          options: { browserProvider: credentials?.browserProvider || "rest" },
         })
       })
 
@@ -4783,6 +4987,8 @@ export function useWalletStore() {
     syncMeroShareTransactionHistory,
     applyMeroShareIPO,
     checkIPOAllotment: checkIPOAllotmentWithLog,
+    logMeroShareApplication,
+    clearMeroShareApplicationLogs,
     upcomingIPOs,
     topStocks,
     marketStatus,

@@ -14,6 +14,8 @@
  * this talks to CDSC's backend directly with no extra infrastructure.
  */
 
+import https from "https"
+
 const MEROSHARE_BASE = "https://webbackend.cdsc.com.np"
 const IPO_RESULT_BASE = "https://iporesult.cdsc.com.np"
 
@@ -24,6 +26,12 @@ const DEFAULT_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
   "Content-Type": "application/json",
+}
+
+const IPO_RESULT_HEADERS: Record<string, string> = {
+  ...DEFAULT_HEADERS,
+  "Origin": "https://iporesult.cdsc.com.np",
+  "Referer": "https://iporesult.cdsc.com.np/",
 }
 
 interface RestCredentials {
@@ -69,6 +77,23 @@ interface OwnData {
   [key: string]: unknown
 }
 
+interface AccountContext {
+  demat: string
+  boid: string
+  clientCode: string
+  ownClientCode: string
+}
+
+interface BankContext {
+  bankCode: string
+  accountNumber: string
+  customerId: number
+  accountBranchId: number
+  applyBoid: string
+  bankId: number
+  crnNumber: string
+}
+
 interface IpoResultCompany {
   shareId?: number
   companyShareId?: number
@@ -90,15 +115,69 @@ export class MeroShareRestError extends Error {
   }
 }
 
+interface CachedSession {
+  token: string
+  ownData: OwnData | null
+  expiresAt: number
+}
+
+/**
+ * Server-side session cache: reuses the MeroShare Authorization token (and own
+ * detail) across requests from the same account for 3 minutes. Every use slides
+ * the expiry forward, so any action inside the window keeps the session alive.
+ * Sessions live in-process only and are dropped on the first 401/403.
+ */
+const SESSION_TTL_MS = 3 * 60 * 1000
+const sessionCache = new Map<string, CachedSession>()
+
+/** Drop the cached MeroShare session for a username (e.g. after a 401/403). */
+export function clearCachedSession(username: string): void {
+  sessionCache.delete((username || "").trim())
+}
+
 export class MeroShareRestClient {
   private authToken: string | null = null
   private ownData: OwnData | null = null
+  private context: AccountContext | null = null
+  private bankContext: BankContext | null = null
+  private dpCode = ""
+  private username = ""
+  private lastApplicableRaw = ""
+  private lastCurrentIssuesRaw = ""
+  private lastIpoResultRaw = ""
 
   private headers(): Record<string, string> {
     return {
       ...DEFAULT_HEADERS,
       ...(this.authToken ? { Authorization: this.authToken } : {}),
     }
+  }
+
+  get hasSession(): boolean {
+    return Boolean(this.authToken)
+  }
+
+  /** Reuse a cached authenticated session for the username if still fresh (sliding 3-minute TTL). */
+  restoreSession(username: string): boolean {
+    const key = (username || "").trim()
+    if (!key) return false
+    const cached = sessionCache.get(key)
+    if (!cached) return false
+    if (Date.now() >= cached.expiresAt) {
+      sessionCache.delete(key)
+      return false
+    }
+    this.authToken = cached.token
+    this.username = key
+    if (cached.ownData) this.ownData = cached.ownData
+    cached.expiresAt = Date.now() + SESSION_TTL_MS
+    return true
+  }
+
+  /** Login unless a fresh cached session already exists for the username. */
+  async ensureSession(credentials: RestCredentials): Promise<void> {
+    if (this.restoreSession((credentials.username || "").trim())) return
+    await this.login(credentials)
   }
 
   private async request(
@@ -108,20 +187,102 @@ export class MeroShareRestClient {
     headers: Record<string, string> = this.headers(),
     signal?: AbortSignal,
   ): Promise<Response> {
-    let response: Response
-    try {
-      response = await fetch(url, {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal,
-        cache: "no-store",
-      })
-    } catch (err: any) {
-      if (err?.name === "AbortError") throw err
-      throw new MeroShareRestError(`Network error contacting MeroShare API: ${err?.message ?? "unknown error"}`)
+    let lastErr: unknown
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await fetch(url, {
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+          signal,
+          cache: "no-store",
+        })
+      } catch (err: any) {
+        if (err?.name === "AbortError") throw err
+        lastErr = err
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)))
+      }
     }
-    return response
+    throw new MeroShareRestError(
+      `Network error contacting MeroShare API: ${lastErr instanceof Error ? lastErr.message : "unknown error"}`,
+    )
+  }
+
+  /** Retry a call on transient non-2xx failures (CDSC backend throttles bursts). */
+  private async withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastErr: unknown
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        return await fn()
+      } catch (err: any) {
+        const status = Number(err?.statusCode ?? err?.status ?? 0)
+        const retriable = err?.name === "AbortError"
+          ? false
+          : status === 0 || status === 500 || status === 502 || status === 503 || status === 429 || status >= 500
+        if (!retriable) throw err
+        lastErr = err
+        if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+      }
+    }
+    throw lastErr
+  }
+
+  /**
+   * Raw https request that sends ALL headers verbatim (fetch/undici silently
+   * strips forbidden headers like Origin/Referer, which the iporesult WAF requires).
+   */
+  private async requestRaw(
+    method: string,
+    url: string,
+    body?: unknown,
+    headers: Record<string, string> = this.headers(),
+  ): Promise<{ status: number; text: string }> {
+    const target = new URL(url)
+    const payload = body !== undefined ? JSON.stringify(body) : undefined
+    return new Promise((resolve, reject) => {
+      const req = https.request(
+        {
+          hostname: target.hostname,
+          path: target.pathname + target.search,
+          method,
+          headers: {
+            ...headers,
+            ...(payload !== undefined ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+          },
+        },
+        (res) => {
+          let text = ""
+          res.setEncoding("utf8")
+          res.on("data", (chunk) => (text += chunk))
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, text }))
+        },
+      )
+      req.on("error", (err) =>
+        reject(new MeroShareRestError(`Network error contacting MeroShare API: ${err.message ?? "unknown error"}`)),
+      )
+      if (payload !== undefined) req.write(payload)
+      req.end()
+    })
+  }
+
+  private async requestRawJson(
+    method: string,
+    url: string,
+    body?: unknown,
+    headers: Record<string, string> = this.headers(),
+  ): Promise<unknown> {
+    const { status, text } = await this.requestRaw(method, url, body, headers)
+    if (status < 200 || status >= 300) {
+      throw new MeroShareRestError(
+        `MeroShare ${url} failed (${status}): ${text.slice(0, 300)}`,
+        { statusCode: status, responseBody: text },
+      )
+    }
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
   }
 
   private async assertOk(response: Response, context: string): Promise<unknown> {
@@ -145,8 +306,8 @@ export class MeroShareRestClient {
     }
   }
 
-  /** Resolve the numeric client id for the given DP (matches both code and id). */
-  async getClientId(dp: string): Promise<number> {
+  /** Resolve the DP entry (code + client id) from CDSC's DP list, matching both code and local id. */
+  private async resolveDpEntry(dp: string): Promise<ClientIdData> {
     const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/capital/`)
     const data = (await this.assertOk(resp, "DP list")) as ClientIdData[]
     const match = Array.isArray(data)
@@ -155,71 +316,201 @@ export class MeroShareRestClient {
     if (!match) {
       throw new MeroShareRestError(`DP '${dp}' not found in MeroShare DP list.`)
     }
-    return match.id
+    return match
+  }
+
+  /** Resolve the numeric client id for the given DP (matches both code and id). */
+  async getClientId(dp: string): Promise<number> {
+    return (await this.resolveDpEntry(dp)).id
   }
 
   /** Login and capture the Authorization token from the response headers. */
   async login(credentials: RestCredentials): Promise<{ token: string; raw: unknown }> {
-    const clientId = await this.getClientId(credentials.dpId)
-    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShare/auth/`, {
-      clientId,
-      username: credentials.username,
-      password: credentials.password,
+    return this.withRetry(async () => {
+      const dpEntry = await this.resolveDpEntry(credentials.dpId)
+      this.dpCode = dpEntry.code || (credentials.dpId || "").trim()
+      this.username = (credentials.username || "").trim()
+      const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShare/auth/`, {
+        clientId: dpEntry.id,
+        username: credentials.username,
+        password: credentials.password,
+      })
+      if (!resp.ok) {
+        await this.assertOk(resp, "login")
+      }
+      const token = resp.headers.get("Authorization")
+      if (!token) {
+        throw new MeroShareRestError("Login succeeded but no Authorization token was returned by MeroShare.")
+      }
+      this.authToken = token
+      sessionCache.set(this.username, { token, ownData: null, expiresAt: Date.now() + SESSION_TTL_MS })
+      return { token, raw: await resp.json().catch(() => null) }
     })
-    if (!resp.ok) {
-      await this.assertOk(resp, "login")
-    }
-    const token = resp.headers.get("Authorization")
-    if (!token) {
-      throw new MeroShareRestError("Login succeeded but no Authorization token was returned by MeroShare.")
-    }
-    this.authToken = token
-    return { token, raw: await resp.json().catch(() => null) }
   }
 
   /** Load the logged-in user's own data (demat, clientCode, name). */
   async getOwnData(): Promise<OwnData> {
     if (this.ownData) return this.ownData
-    const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/ownDetail/`)
-    const data = (await this.assertOk(resp, "own detail")) as OwnData
-    this.ownData = data || {}
+    this.ownData = await this.withRetry(async () => {
+      const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/ownDetail/`)
+      const data = (await this.assertOk(resp, "own detail")) as OwnData
+      const cached = sessionCache.get(this.username)
+      if (cached) cached.ownData = data || null
+      return data || {}
+    })
     return this.ownData
   }
 
-  private async getRequiredField(...keys: string[]): Promise<string> {
+  /**
+   * Fetch the full account health payload: own detail (demat/password expiry,
+   * suspension flag, contact) plus bank details (bank name, account number,
+   * branch, CRN). Mirrors the reference `ownDetail` + `myDetail` + `bankRequest`
+   * flow. Each section degrades gracefully if its endpoint fails.
+   */
+  async getAccountHealth(): Promise<Record<string, unknown>> {
     const own = await this.getOwnData()
-    for (const key of keys) {
-      const value = own[key]
-      if (typeof value === "string" && value.trim()) return value.trim()
-      if (typeof value === "number") return String(value)
+    const ctx = await this.ensureAccountContext()
+
+    let myDetail: Record<string, unknown> | null = null
+    try {
+      myDetail = (await this.assertOk(
+        await this.request("GET", `${MEROSHARE_BASE}/api/meroShareView/myDetail/${ctx.demat}`),
+        "my bank detail",
+      )) as Record<string, unknown> | null
+    } catch {
+      myDetail = null
     }
-    throw new MeroShareRestError(`MeroShare own detail is missing required field: ${keys.join(" / ")}`)
+
+    const bankCode = String(myDetail?.bankCode ?? "").trim()
+    let bankRequest: Record<string, unknown> | null = null
+    if (bankCode) {
+      try {
+        bankRequest = (await this.assertOk(
+          await this.request("GET", `${MEROSHARE_BASE}/api/bankRequest/${bankCode}`),
+          "bank request",
+        )) as Record<string, unknown> | null
+      } catch {
+        bankRequest = null
+      }
+    }
+
+    return {
+      own: own ?? {},
+      myDetail: myDetail ?? {},
+      bank: bankRequest ?? {},
+    }
   }
 
-  private async demat(): Promise<string> {
-    return this.getRequiredField("demat", "boid")
+  /**
+   * Account identifiers, computed without any extra API calls:
+   *   demat = DP code + zero-padded 8-digit username (16100 + 00612541 -> 1610000612541)
+   *   BOID  = 130 + demat (1301610000612541)
+   * ownDetail is only used for the name and the clientCode candidates.
+   */
+  private async ensureAccountContext(): Promise<AccountContext> {
+    if (this.context) return this.context
+
+    const own = await this.getOwnData()
+    const paddedUsername = this.username.padStart(8, "0")
+    const demat = typeof own.demat === "string" && own.demat.trim()
+      ? own.demat.trim()
+      : `${this.dpCode}${paddedUsername}`
+    if (!demat) {
+      throw new MeroShareRestError("MeroShare own detail is missing the demat number.")
+    }
+
+    this.context = {
+      demat,
+      boid: String(own.boid ?? "").trim() || `130${demat}`,
+      clientCode: this.dpCode,
+      ownClientCode: String(own.clientCode ?? "").trim(),
+    }
+    return this.context
   }
 
-  private async clientCode(): Promise<string> {
-    return this.getRequiredField("clientCode")
+  /** Identifier combos for myTransaction/myPortfolio (boid/demat × clientCode) — CDSC accepts only certain pairs. */
+  private async identifierCandidates() {
+    const ctx = await this.ensureAccountContext()
+    const combos = [
+      [ctx.demat, ctx.ownClientCode],
+      [ctx.boid, ctx.ownClientCode],
+      [ctx.demat, ctx.clientCode],
+      [ctx.boid, ctx.clientCode],
+    ]
+    const seen = new Set<string>()
+    const out: { demat: string; clientCode: string }[] = []
+    for (const [demat, clientCode] of combos) {
+      const key = `${demat}|${clientCode}`
+      if (!demat || !clientCode || seen.has(key)) continue
+      seen.add(key)
+      out.push({ demat, clientCode })
+    }
+    return out
+  }
+
+  /** Bank context (myDetail + bankRequest) — only needed for IPO applications, loaded lazily. */
+  private async ensureBankContext(): Promise<BankContext> {
+    if (this.bankContext) return this.bankContext
+
+    const ctx = await this.ensureAccountContext()
+    const myDetail = (await this.assertOk(
+      await this.request("GET", `${MEROSHARE_BASE}/api/meroShareView/myDetail/${ctx.demat}`),
+      "my bank detail",
+    )) as Record<string, unknown> | null
+
+    const bankCode = String(myDetail?.bankCode ?? "").trim()
+    const bankRequest = bankCode
+      ? ((await this.assertOk(
+          await this.request("GET", `${MEROSHARE_BASE}/api/bankRequest/${bankCode}`),
+          "bank request",
+        )) as Record<string, unknown> | null)
+      : null
+
+    const nested = (key: string) =>
+      (bankRequest?.[key] as Record<string, unknown> | undefined) ?? {}
+
+    this.bankContext = {
+      bankCode,
+      accountNumber: String(myDetail?.accountNumber ?? ""),
+      customerId: Number(bankRequest?.id ?? 0),
+      accountBranchId: Number(nested("branch").id ?? 0),
+      applyBoid: String(bankRequest?.boid ?? "") || ctx.boid,
+      bankId: Number(nested("bank").id ?? 0),
+      crnNumber: String(bankRequest?.crnNumber ?? ""),
+    }
+    return this.bankContext
   }
 
   /** Fetch the full portfolio holdings. */
   async getPortfolio(): Promise<RestPortfolioRow[]> {
-    const [demat, code] = await Promise.all([this.demat(), this.clientCode()])
-    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShareView/myPortfolio/`, {
-      sortBy: "script",
-      demat: [demat],
-      clientCode: code,
-      page: 1,
-      size: 200,
-      sortAsc: true,
-    })
-    const data = (await this.assertOk(resp, "portfolio")) as { object?: unknown[] } | unknown[]
-    const rows = Array.isArray(data) ? data : (data as { object?: unknown[] })?.object ?? []
-    return (Array.isArray(rows) ? rows : [])
-      .map((raw) => this.mapPortfolioRow(raw as Record<string, unknown>))
-      .filter((row) => row.symbol)
+    const candidates = await this.identifierCandidates()
+    let anyOk = false
+    let lastError: Error | null = null
+    for (const { demat, clientCode } of candidates) {
+      try {
+        const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShareView/myPortfolio/`, {
+          sortBy: "script",
+          demat: [demat],
+          clientCode,
+          page: 1,
+          size: 200,
+          sortAsc: true,
+        })
+        const data = (await this.assertOk(resp, "portfolio")) as { object?: unknown[] } | unknown[]
+        const rows = Array.isArray(data) ? data : (data as { object?: unknown[] })?.object ?? []
+        const mapped = (Array.isArray(rows) ? rows : [])
+          .map((raw) => this.mapPortfolioRow(raw as Record<string, unknown>))
+          .filter((row) => row.symbol)
+        anyOk = true
+        if (mapped.length > 0) {
+          return mapped
+        }
+      } catch (err: any) {
+        lastError = err
+      }
+    }
+    if (!anyOk && lastError) throw lastError
+    return []
   }
 
   private mapPortfolioRow(raw: Record<string, unknown>): RestPortfolioRow {
@@ -234,7 +525,7 @@ export class MeroShareRestClient {
     }
 
     const symbol = String(
-      raw.symbol ?? raw.scrip ?? raw.stockSymbol ?? raw.shareSymbol ?? raw["stockSymbol"] ?? "",
+      raw.symbol ?? raw.script ?? raw.scrip ?? raw.stockSymbol ?? raw.shareSymbol ?? raw["stockSymbol"] ?? "",
     ).trim().toUpperCase()
 
     return {
@@ -250,22 +541,40 @@ export class MeroShareRestClient {
 
   /** Fetch share transaction history, optionally filtered by symbol. */
   async getTransactions(symbol?: string): Promise<RestTransactionRow[]> {
-    const [demat, code] = await Promise.all([this.demat(), this.clientCode()])
-    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShareView/myTransaction/`, {
-      boid: demat,
-      clientCode: code,
-      script: symbol || null,
-      fromDate: null,
-      toDate: null,
-      requestTypeScript: Boolean(symbol),
-      page: 1,
-      size: 200,
-    })
-    const data = (await this.assertOk(resp, "transaction history")) as { object?: unknown[] } | unknown[]
-    const rows = Array.isArray(data) ? data : (data as { object?: unknown[] })?.object ?? []
-    return (Array.isArray(rows) ? rows : [])
-      .map((raw) => this.mapTransactionRow(raw as Record<string, unknown>))
-      .filter((row) => row.scrip && row.transactionDate)
+    const candidates = await this.identifierCandidates()
+    let anyOk = false
+    let lastError: Error | null = null
+    for (const { demat, clientCode } of candidates) {
+      try {
+        const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShareView/myTransaction/`, {
+          boid: demat,
+          clientCode,
+          script: symbol || null,
+          fromDate: null,
+          toDate: null,
+          requestTypeScript: Boolean(symbol),
+          page: 1,
+          size: 200,
+        })
+        const data = (await this.assertOk(resp, "transaction history")) as Record<string, unknown>
+        const rows = Array.isArray(data)
+          ? data
+          : (data as Record<string, unknown>).transactionView
+            ?? (data as Record<string, unknown>).object
+            ?? []
+        const mapped = (Array.isArray(rows) ? rows : [])
+          .map((raw) => this.mapTransactionRow(raw as Record<string, unknown>))
+          .filter((row) => row.scrip && row.transactionDate)
+        anyOk = true
+        if (mapped.length > 0) {
+          return mapped
+        }
+      } catch (err: any) {
+        lastError = err
+      }
+    }
+    if (!anyOk && lastError) throw lastError
+    return []
   }
 
   private mapTransactionRow(raw: Record<string, unknown>): RestTransactionRow {
@@ -288,12 +597,12 @@ export class MeroShareRestClient {
     }
 
     return {
-      scrip: str(["scrip", "symbol", "stockSymbol", "shareSymbol"]).toUpperCase(),
+      scrip: str(["script", "scrip", "symbol", "stockSymbol", "shareSymbol"]).toUpperCase(),
       transactionDate: str(["transactionDate", "txnDate", "tranDate", "date"]),
       creditQuantity: num(["creditQuantity", "creditQty", "buyQty", "qtyCredit"]),
       debitQuantity: num(["debitQuantity", "debitQty", "sellQty", "qtyDebit"]),
-      balanceAfterTransaction: num(["balanceAfterTransaction", "balanceQty", "balance", "closingBalance"]),
-      historyDescription: str(["historyDescription", "description", "remarks", "narrative", "transactionDescription"]),
+      balanceAfterTransaction: num(["balanceAfterTransaction", "balanceQty", "balance", "closingBalance", "balAfterTrans"]),
+      historyDescription: str(["historyDescription", "historyDesc", "description", "remarks", "narrative", "transactionDescription"]),
       ...raw,
     }
   }
@@ -307,23 +616,63 @@ export class MeroShareRestClient {
         { key: "companyIssue.assignedToClient.name", value: "", alias: "Issue Manager" },
       ],
       page: 1,
-      size: 10,
+      size: 50,
       searchRoleViewConstants: "VIEW_APPLICABLE_SHARE",
       filterDateParams: [
         { key: "minIssueOpenDate", condition: "", alias: "", value: "" },
         { key: "maxIssueCloseDate", condition: "", alias: "", value: "" },
       ],
     })
-    const data = (await this.assertOk(resp, "applicable shares")) as { object?: unknown[] }
-    return Array.isArray(data?.object) ? data.object : []
+    const data = (await this.assertOk(resp, "applicable shares")) as unknown
+    if (typeof data === "string") {
+      const snippet = data.slice(0, 200)
+      throw new MeroShareRestError(`Applicable shares returned a non-JSON response: ${snippet}`)
+    }
+    const rows = Array.isArray(data)
+      ? data
+      : (data as { object?: unknown[] })?.object
+        ?? (data as { data?: unknown[] })?.data
+        ?? []
+    this.lastApplicableRaw = JSON.stringify(data).slice(0, 600)
+    return Array.isArray(rows) ? rows : []
+  }
+
+  /** Fetch all currently open issues (the MeroShare app's "Current Issue" list). */
+  async getCurrentIssues(): Promise<unknown[]> {
+    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShare/companyShare/currentIssue`, {
+      filterFieldParams: [
+        { key: "companyIssue.companyISIN.script", alias: "Scrip" },
+        { key: "companyIssue.companyISIN.company.name", alias: "Company Name" },
+        { key: "companyIssue.assignedToClient.name", value: "", alias: "Issue Manager" },
+      ],
+      page: 1,
+      size: 200,
+      searchRoleViewConstants: "VIEW_OPEN_SHARE",
+      filterDateParams: [
+        { key: "minIssueOpenDate", condition: "", alias: "", value: "" },
+        { key: "maxIssueCloseDate", condition: "", alias: "", value: "" },
+      ],
+    })
+    const data = (await this.assertOk(resp, "current issues")) as unknown
+    if (typeof data === "string") {
+      const snippet = data.slice(0, 200)
+      throw new MeroShareRestError(`Current issues returned a non-JSON response: ${snippet}`)
+    }
+    const rows = Array.isArray(data)
+      ? data
+      : (data as { object?: unknown[] })?.object
+        ?? (data as { data?: unknown[] })?.data
+        ?? []
+    this.lastCurrentIssuesRaw = JSON.stringify(data).slice(0, 600)
+    return Array.isArray(rows) ? rows : []
   }
 
   /** Check whether the account is eligible to apply for the given IPO. */
   async canApplyToIpo(companyShareId: number | string): Promise<boolean> {
-    const demat = await this.demat()
+    const ctx = await this.ensureAccountContext()
     const resp = await this.request(
       "GET",
-      `${MEROSHARE_BASE}/api/meroShare/applicantForm/customerType/${companyShareId}/${demat}`,
+      `${MEROSHARE_BASE}/api/meroShare/applicantForm/customerType/${companyShareId}/${ctx.demat}`,
     )
     if (!resp.ok) {
       return false
@@ -332,78 +681,7 @@ export class MeroShareRestClient {
     return data?.message === "Customer can apply."
   }
 
-  /** GET /api/meroShareView/myDetail/{BOID} — the user's bank + account details. */
-  private async getMyDetail(): Promise<Record<string, unknown>> {
-    const boid = await this.getRequiredField("boid", "demat")
-    const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShareView/myDetail/${boid}`)
-    const data = (await this.assertOk(resp, "my bank detail")) as Record<string, unknown>
-    return data ?? {}
-  }
-
-  /** GET /api/bankRequest/{BANK_CODE} — account branch, bank and CRN. */
-  private async getBankRequest(bankCode: string): Promise<Record<string, unknown>> {
-    const resp = await this.request("GET", `${MEROSHARE_BASE}/api/bankRequest/${bankCode}`)
-    const data = (await this.assertOk(resp, "bank request")) as Record<string, unknown>
-    return data ?? {}
-  }
-
-  /** GET /api/meroShare/bank/ — the list of banks (first entry is used by nepse_tools). */
-  private async getBankListView(): Promise<Record<string, unknown>> {
-    const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/bank/`)
-    const data = (await this.assertOk(resp, "bank list")) as Record<string, unknown>[] | Record<string, unknown>
-    return Array.isArray(data) ? (data[0] ?? {}) : data ?? {}
-  }
-
-  /** GET /api/meroShare/bank/{BANK_ID} — account branch id, account number, bank id, customer id. */
-  private async getBankDetailView(bankId: number): Promise<Record<string, unknown>> {
-    const resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/bank/${bankId}`)
-    const data = (await this.assertOk(resp, "bank detail view")) as Record<string, unknown>
-    return data ?? {}
-  }
-
-  /** Resolve the numeric bank/account ids required by the CDSC apply payload. */
-  private async resolveBankApplyContext() {
-    const myDetail = await this.getMyDetail()
-    const bankCode = String(myDetail.bankCode ?? myDetail["bankCode"] ?? "")
-
-    let bankRequest: Record<string, unknown> = {}
-    let bankListView: Record<string, unknown> = {}
-    let bankDetailView: Record<string, unknown> = {}
-
-    if (bankCode) {
-      bankRequest = await this.getBankRequest(bankCode).catch(() => ({}))
-    }
-
-    try {
-      bankListView = await this.getBankListView()
-    } catch {
-      bankListView = {}
-    }
-    const bankId = Number(
-      (bankRequest.bank as Record<string, unknown> | undefined)?.id
-        ?? bankListView.id
-        ?? (bankDetailView.bankId as number | undefined)
-        ?? 0,
-    )
-
-    if (bankId) {
-      bankDetailView = await this.getBankDetailView(bankId).catch(() => ({}))
-    }
-
-    return {
-      accountBranchId: Number(
-        (bankRequest.accountBranch as Record<string, unknown> | undefined)?.id
-          ?? bankDetailView.accountBranchId
-          ?? 0,
-      ),
-      accountNumber: String(bankDetailView.accountNumber ?? myDetail.accountNumber ?? ""),
-      bankId,
-      crnNumber: String(bankRequest.crnNumber ?? ""),
-      customerId: Number(bankDetailView.id ?? 0),
-    }
-  }
-
-  /** Apply for an IPO with the standard payload (mirrors nepse_tools apply_for_ipo). */
+  /** Apply for an IPO with the standard payload (mirrors the reference Python flow). */
   async applyForIpo(
     credentials: RestCredentials,
     opts: { companyShareId: number | string; number_of_shares: number },
@@ -417,56 +695,167 @@ export class MeroShareRestClient {
     credentials: RestCredentials,
     opts: { companyShareId: number | string; number_of_shares: number },
   ): Promise<Record<string, unknown>> {
-    const [demat, code] = await Promise.all([this.demat(), this.clientCode()])
+    const ctx = await this.ensureAccountContext()
+    const bank = await this.ensureBankContext().catch(() => null)
     const pin = credentials.pin
     if (!pin) {
       throw new MeroShareRestError("Transaction PIN is required to apply for an IPO.")
     }
 
-    // CDSC requires the bank context (branch, bank, account, CRN) to be valid on apply.
-    const bank = await this.resolveBankApplyContext().catch(() => null)
-
-    // Mirrors the exact nepse_tools payload shape (clientCode is not part of it).
+    // Mirrors the exact reference payload:
+    //   boid = bankRequest.boid (applyBoid), demat = ownDetail.demat,
+    //   accountBranchId = bankRequest.branch.id, customerId = bankRequest.id,
+    //   bankId = bankRequest.bank.id, accountNumber = myDetail.accountNumber.
     return {
       accountBranchId: bank?.accountBranchId || null,
       accountNumber: bank?.accountNumber || null,
       appliedKitta: String(opts.number_of_shares),
       bankId: bank?.bankId || null,
-      boid: demat,
+      boid: bank?.applyBoid || ctx.boid,
       companyShareId: String(opts.companyShareId),
       crnNumber: credentials.crn || bank?.crnNumber || null,
       customerId: bank?.customerId || null,
-      demat,
+      demat: ctx.demat,
       transactionPIN: pin,
     }
   }
 
   /** List companies that have uploaded IPO results on the iporesult host. */
   async getIpoResultCompanyList(): Promise<IpoResultCompany[]> {
-    const resp = await this.request("GET", `${IPO_RESULT_BASE}/result/companyShares/fileUploaded`, undefined, {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "User-Agent": DEFAULT_HEADERS["User-Agent"],
+    const data = await this.requestRawJson("GET", `${IPO_RESULT_BASE}/result/companyShares/fileUploaded`, undefined, IPO_RESULT_HEADERS)
+    if (typeof data === "string") {
+      const snippet = data.slice(0, 200)
+      throw new MeroShareRestError(
+        `IPO result company list returned a non-JSON response (possible WAF block): ${snippet}`,
+      )
+    }
+    const rows = Array.isArray(data)
+      ? data
+      : (data as { object?: unknown[] })?.object
+        ?? (data as { companyShareList?: unknown[] })?.companyShareList
+        ?? (data as { data?: unknown[] })?.data
+        ?? []
+    this.lastIpoResultRaw = JSON.stringify(data).slice(0, 600)
+    const mapped = (Array.isArray(rows) ? rows : []).map((row) => {
+      const entry = row as IpoResultCompany
+      if (entry.shareId === undefined && entry.companyShareId === undefined) {
+        const id = (row as { id?: unknown })?.id
+        if (id !== undefined && id !== null) return { ...entry, shareId: Number(id) }
+      }
+      return entry
     })
-    const data = (await this.assertOk(resp, "IPO result company list")) as unknown
-    const rows = Array.isArray(data) ? data : (data as { object?: unknown[] })?.object ?? []
-    return (Array.isArray(rows) ? rows : []) as IpoResultCompany[]
+    return mapped as IpoResultCompany[]
   }
 
-  /** Check IPO allotment for the given company share id and BOID/demat. */
+  /** Fetch the logged-in user's ASBA application report (My ASBA -> Application Report). */
+  async getApplicationReports(): Promise<Record<string, unknown>[]> {
+    return this.withRetry(async () => {
+      const resp = await this.request("POST", `${MEROSHARE_BASE}/api/meroShare/applicantForm/active/search/`, {
+        filterFieldParams: [
+          { key: "companyShare.companyIssue.companyISIN.script", alias: "Scrip" },
+          { key: "companyShare.companyIssue.companyISIN.company.name", alias: "Company Name" },
+        ],
+        page: 1,
+        size: 200,
+        searchRoleViewConstants: "VIEW_APPLICANT_FORM_COMPLETE",
+        filterDateParams: [
+          { key: "appliedDate", condition: "", alias: "", value: "" },
+          { key: "appliedDate", condition: "", alias: "", value: "" },
+        ],
+      })
+      const data = (await this.assertOk(resp, "application report")) as unknown
+      if (typeof data === "string") {
+        throw new MeroShareRestError(`Application report returned a non-JSON response: ${data.slice(0, 200)}`)
+      }
+      const rows = Array.isArray(data)
+        ? data
+        : (data as { object?: unknown[] })?.object
+          ?? (data as { data?: unknown[] })?.data
+          ?? []
+      return (Array.isArray(rows) ? rows : []) as Record<string, unknown>[]
+    })
+  }
+
+  /** Fetch the full detail of a single ASBA application (applied/allotted kitta, dates, remarks). */
+  async getApplicationDetail(applicantFormId: number | string): Promise<Record<string, unknown>> {
+    return this.withRetry(async () => {
+      const id = String(applicantFormId)
+      let resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/applicantForm/report/detail/${id}`)
+      if (!resp.ok) {
+        resp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/migrated/applicantForm/report/${id}`)
+      }
+      const data = (await this.assertOk(resp, "application detail")) as unknown
+      if (typeof data === "string") {
+        throw new MeroShareRestError(`Application detail returned a non-JSON response: ${data.slice(0, 200)}`)
+      }
+      return (data ?? {}) as Record<string, unknown>
+    })
+  }
+
+  /** Check allotment via the user's own ASBA application report (like the MeroShare app). */
+  async checkAllotmentViaApplicationReport(
+    identifier: string | number,
+  ): Promise<{ matched: boolean; statusName?: string; isAllotted: boolean; allottedQuantity: number; row?: Record<string, unknown> }> {
+    const needleRaw = String(identifier).trim()
+    const needleCode = needleRaw.toUpperCase()
+    const needle = this.normalizeCompanyName(needleRaw)
+    const reports = await this.getApplicationReports()
+    const match = reports
+      .map((row) => {
+        const fields = [
+          row.scrip,
+          row.companyName,
+          row.name,
+          row["companyIssue"],
+          row["company"],
+        ].filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+        if (fields.some((field) => field.trim().toUpperCase() === needleCode)) return { row, score: 1 }
+        const score = Math.max(0, ...fields.map((field) => this.companyMatchScore(needle, this.normalizeCompanyName(field))))
+        return score > 0 ? { row, score } : null
+      })
+      .filter((m): m is { row: Record<string, unknown>; score: number } => m !== null)
+      .sort((a, b) => b.score - a.score)[0]
+
+    if (!match) {
+      return { matched: false, isAllotted: false, allottedQuantity: 0 }
+    }
+    const row = match.row
+    const formId = Number(row.applicantFormId ?? 0)
+    let detail: Record<string, unknown> | null = null
+    if (formId > 0) {
+      try {
+        detail = await this.getApplicationDetail(formId)
+      } catch {
+        detail = null
+      }
+    }
+    const statusName = String(detail?.statusName ?? row.statusName ?? row["status"] ?? "").trim()
+    const stageName = String(detail?.stageName ?? "").trim()
+    const allotted = Number(detail?.receivedKitta ?? row.receivedKitta ?? row["allottedQuantity"] ?? row["allottedKitta"] ?? 0)
+    const isAllotted = Boolean(
+      Number.isFinite(allotted) && allotted > 0 || /allot/i.test(stageName) && /result/i.test(stageName),
+    )
+    return {
+      matched: true,
+      statusName,
+      isAllotted,
+      allottedQuantity: Number.isFinite(allotted) ? allotted : 0,
+      row: { ...row, ...(detail ?? {}) },
+    }
+  }
+
+  /** Check IPO allotment for the given company share id and 16-digit BOID. */
   async checkAllotment(companyShareId: number | string, boid?: string): Promise<unknown> {
-    const demat = boid ?? (await this.demat())
-    const resp = await this.request(
+    const ctx = await this.ensureAccountContext()
+    const looksLikeBoid = (value: string) => /^130\d{13}$/.test(value)
+    const boidValue = boid ?? (looksLikeBoid(ctx.boid) ? ctx.boid : looksLikeBoid(ctx.demat) ? ctx.demat : ctx.boid)
+    const data = await this.requestRawJson(
       "POST",
       `${IPO_RESULT_BASE}/result/result/check`,
-      { companyShareId: Number(companyShareId), boid: demat },
-      {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": DEFAULT_HEADERS["User-Agent"],
-      },
+      { companyShareId: Number(companyShareId), boid: boidValue },
+      IPO_RESULT_HEADERS,
     )
-    return this.assertOk(resp, "IPO allotment check")
+    return data
   }
 
   /** Resolve an IPO company share id from a scrip/name via the applicable list, then the results list. */
@@ -475,44 +864,139 @@ export class MeroShareRestClient {
     const numeric = Number(identifier)
     if (Number.isFinite(numeric) && numeric > 0) return numeric
 
-    const needle = String(identifier).trim().toLowerCase()
+    const needleRaw = String(identifier).trim()
+    const needleCode = needleRaw.toUpperCase()
+    const needle = this.normalizeCompanyName(needleRaw)
+
+    const scoreCandidate = (
+      candidate: Record<string, unknown>,
+      idKeys: string[],
+    ): { id: number; score: number } | null => {
+      const fields = [
+        candidate.scrip,
+        candidate.companyName,
+        candidate.name,
+        candidate.companyIssue,
+        candidate["company"],
+      ].filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      if (fields.some((field) => field.trim().toUpperCase() === needleCode)) {
+        const id = Number(idKeys.map((key) => candidate[key]).find((v) => v !== undefined && v !== null))
+        if (Number.isFinite(id) && id > 0) return { id, score: 1 }
+      }
+      const score = Math.max(0, ...fields.map((field) => this.companyMatchScore(needle, this.normalizeCompanyName(field))))
+      if (score === 0) return null
+      const id = Number(idKeys.map((key) => candidate[key]).find((v) => v !== undefined && v !== null))
+      return Number.isFinite(id) && id > 0 ? { id, score } : null
+    }
 
     // Open IPOs are only present in the applicable-shares list (e.g. for applying).
-    const applicable = await this.getApplicableShares().catch(() => [] as unknown[])
-    const applicableMatch = (applicable as Record<string, unknown>[]).find((share) => {
-      const haystack = [
-        share.companyShareId,
-        share.scrip,
-        share["companyName"],
-        share.name,
-        share["companyIssue"],
-      ]
-        .filter((v) => v !== undefined && v !== null)
-        .map((v) => (typeof v === "object" ? JSON.stringify(v) : String(v)))
-        .join(" ")
-        .toLowerCase()
-      return haystack.includes(needle) || haystack.includes(needle.replace(/\s+/g, ""))
-    })
-    if (applicableMatch) {
-      return Number(applicableMatch.companyShareId)
+    let applicable: unknown[] = []
+    let applicableError: string | null = null
+    try {
+      applicable = await this.getApplicableShares()
+    } catch (err: any) {
+      applicableError = err?.message ?? String(err)
     }
+    const applicableMatches = (applicable as Record<string, unknown>[])
+      .map((share) => scoreCandidate(share, ["companyShareId", "shareId"]))
+      .filter((match): match is { id: number; score: number } => match !== null)
+      .sort((a, b) => b.score - a.score)
+    if (applicableMatches.length > 0) return applicableMatches[0].id
+
+    // All currently open issues (the app's "Current Issue" list) — covers open IPOs.
+    let current: unknown[] = []
+    let currentError: string | null = null
+    try {
+      current = await this.getCurrentIssues()
+    } catch (err: any) {
+      currentError = err?.message ?? String(err)
+    }
+    const currentMatches = (current as Record<string, unknown>[])
+      .map((share) => scoreCandidate(share, ["companyShareId", "shareId"]))
+      .filter((match): match is { id: number; score: number } => match !== null)
+      .sort((a, b) => b.score - a.score)
+    if (currentMatches.length > 0) return currentMatches[0].id
+
+    // The user's own ASBA applications (My ASBA -> Application Report).
+    let reports: Record<string, unknown>[] = []
+    let reportsError: string | null = null
+    try {
+      reports = await this.getApplicationReports()
+    } catch (err: any) {
+      reportsError = err?.message ?? String(err)
+    }
+    const reportMatches = reports
+      .map((share) => scoreCandidate(share, ["companyShareId", "shareId"]))
+      .filter((match): match is { id: number; score: number } => match !== null)
+      .sort((a, b) => b.score - a.score)
+    if (reportMatches.length > 0) return reportMatches[0].id
 
     // Closed IPOs / result checks are in the uploaded-results list.
     const companies = await this.getIpoResultCompanyList()
-    const match = companies.find((company) => {
-      const haystack = [
-        company.shareId,
-        company.companyShareId,
-        company.scrip,
-        company.companyName,
-        company.name,
-      ].filter(Boolean).join(" ").toLowerCase()
-      return haystack.includes(needle)
-    })
+    const resultMatches = companies
+      .map((company) => scoreCandidate(company, ["shareId", "companyShareId"]))
+      .filter((match): match is { id: number; score: number } => match !== null)
+      .sort((a, b) => b.score - a.score)
+    if (resultMatches.length > 0) return resultMatches[0].id
 
-    if (!match) {
-      throw new MeroShareRestError(`Could not resolve '${identifier}' to a MeroShare IPO company.`)
+    const suggestions = [...(applicable as Record<string, unknown>[]), ...(companies as Record<string, unknown>[])]
+      .map((entry) => String(entry.companyName ?? entry.name ?? entry.scrip ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 3)
+    const summary = (rows: Record<string, unknown>[]) =>
+      rows.length === 0
+        ? "empty"
+        : rows
+            .map((entry) => String(entry.companyName ?? entry.name ?? entry.scrip ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(" | ") || "(rows without names)"
+    throw new MeroShareRestError(
+      `Could not resolve '${identifier}' to a MeroShare IPO company. ` +
+        `Applicable: ${summary(applicable as Record<string, unknown>[])} | Current: ${summary(current as Record<string, unknown>[])} | Report: ${summary(reports)} | Results: ${summary(companies as Record<string, unknown>[])}` +
+        (applicableError ? ` | Applicable fetch error: ${applicableError.slice(0, 200)}` : "") +
+        (currentError ? ` | Current fetch error: ${currentError.slice(0, 200)}` : "") +
+        (reportsError ? ` | Report fetch error: ${reportsError.slice(0, 200)}` : ""),
+    )
+  }
+
+  /** Normalize a company name for fuzzy matching (mirrors the frontend's normalizeIpoName). */
+  private normalizeCompanyName(value: string): string {
+    return String(value)
+      .toLowerCase()
+      .replace(/\b(limited|ltd|public|private|pvt|co|company|inc|corporation|corp|ipo|fpo|ordinary|share|shares|unit|units|promoter|right|rights|bonus)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  /** Levenshtein similarity in [0,1] (1 = identical). */
+  private levenshteinSimilarity(a: string, b: string): number {
+    if (a === b) return 1
+    if (!a.length || !b.length) return 0
+    const prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+    for (let i = 1; i <= a.length; i++) {
+      const curr = [i]
+      for (let j = 1; j <= b.length; j++) {
+        curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      }
+      for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
     }
-    return Number(match.shareId ?? match.companyShareId)
+    return 1 - prev[b.length] / Math.max(a.length, b.length)
+  }
+
+  /** Fuzzy score in [0,1] for a normalized needle against a candidate string. */
+  private companyMatchScore(needle: string, candidate: string): number {
+    if (!needle || !candidate) return 0
+    if (needle === candidate) return 1
+    const needleTokens = needle.split(" ").filter(Boolean)
+    const candidateTokens = new Set(candidate.split(" ").filter(Boolean))
+    if (needleTokens.length && needleTokens.every((token) => candidateTokens.has(token))) return 0.9
+    const union = new Set([...needleTokens, ...candidateTokens])
+    const intersection = needleTokens.filter((token) => candidateTokens.has(token)).length
+    const jaccard = union.size ? intersection / union.size : 0
+    if (jaccard >= 0.5) return 0.5 + 0.4 * jaccard
+    const lev = this.levenshteinSimilarity(needle, candidate)
+    return lev >= 0.75 ? lev : 0
   }
 }

@@ -164,7 +164,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
 export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: StockDeepLinkPayload | null; onDeepLinkHandled?: () => void }) {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
-    const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows} = portfolioData
+    const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows,logMeroShareApplication} = portfolioData
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap,sectorsMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
@@ -1104,6 +1104,13 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                 createdPortfolio.id
             )
 
+            void logMeroShareApplication({
+                action: "sync-history",
+                status: "success",
+                message: `Imported ${syncResult.importedCount} transaction${syncResult.importedCount === 1 ? "" : "s"} into "${portfolioName}".`,
+                source: "portfolio-list",
+            })
+
             return { portfolioName, syncResult }
         })()
 
@@ -1116,7 +1123,13 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
 
         try {
             await promise
-        } catch (_error) {
+        } catch (error: any) {
+            void logMeroShareApplication({
+                action: "sync-history",
+                status: "failed",
+                message: error?.message || "Failed to create portfolio from MeroShare.",
+                source: "portfolio-list",
+            })
             // The toast already renders the failure; keep the app from surfacing a runtime overlay.
         } finally {
             setIsCreatingMeroSharePortfolio(false)

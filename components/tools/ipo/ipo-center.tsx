@@ -33,6 +33,7 @@ import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { compactAmount } from "@/lib/money-format"
 import { UpcomingIPO } from "@/types/wallet"
 import { IPODetailModal } from "@/components/tools/portfolio/modals/ipo-detail-modal"
+import { MyApplicationsTab } from "@/components/tools/ipo/my-applications-tab"
 import {
   mutualFundsApi,
   formatMoney,
@@ -44,7 +45,7 @@ import {
 } from "@/lib/mutual-funds"
 
 type StatusFilter = "all" | "open" | "upcoming" | "closed"
-type CenterTab = "live" | "pipeline"
+type CenterTab = "live" | "pipeline" | "applications"
 
 const STATUS_META: Record<string, { label: string; className: string; dot: string; icon: React.ComponentType<{ className?: string }> }> = {
   open: { label: "Open Now", className: "text-success bg-success/10 border-success/25", dot: "bg-success", icon: CheckCircle2 },
@@ -63,6 +64,7 @@ const ISSUE_TYPE_LABEL: Record<ApplicationIssueType, string> = {
 const TAB_DEFS: Array<{ key: CenterTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { key: "live", label: "Live", icon: Rocket },
   { key: "pipeline", label: "Pipeline", icon: ClipboardList },
+  { key: "applications", label: "Applications", icon: FileText },
 ]
 
 function normalizeIpoName(value?: string) {
@@ -530,6 +532,8 @@ export function IpoCenter() {
             </div>
           )}
         </div>
+      ) : tab === "applications" ? (
+        <MyApplicationsTab />
       ) : (
         <PipelineTab
           isLoading={isSebonLoading}

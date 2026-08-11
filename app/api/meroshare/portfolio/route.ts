@@ -11,7 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
     }
 
-    const provider = options?.browserProvider || credentials?.browserProvider || "api"
+    const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
       const { MeroShareRestClient } = await import("../_lib/rest-api")
