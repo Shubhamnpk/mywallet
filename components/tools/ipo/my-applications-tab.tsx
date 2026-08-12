@@ -234,12 +234,12 @@ export function MyApplicationsTab() {
                   <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Applied</p>
                   <p className="text-sm font-black font-mono">{row.appliedKitta || 0}</p>
                 </div>
-                <div className="hidden md:block text-right shrink-0">
-                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Allotted</p>
-                  <p className={cn("text-sm font-black font-mono", allotted ? "text-success" : "text-muted-foreground/70")}>
-                    {row.receivedKitta || 0}
-                  </p>
-                </div>
+                {allotted && (
+                  <div className="hidden md:block text-right shrink-0">
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Allotted</p>
+                    <p className="text-sm font-black font-mono text-success">{row.receivedKitta}</p>
+                  </div>
+                )}
                 <Badge className={cn("shrink-0 text-[10px] h-6 px-2.5 font-bold border", statusTone(status))}>
                   {status}
                 </Badge>

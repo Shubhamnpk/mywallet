@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket, Wallet, Megaphone } from "lucide-react"
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket, Wallet, Megaphone, FileSpreadsheet, Link2, ArrowRight, ShieldCheck, Building2, Check } from "lucide-react"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, Label, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,11 +14,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNepseData } from "@/hooks/use-nepse-data"
-import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint } from "@/types/wallet"
+import { PortfolioItem, ShareTransaction, Portfolio, NepseDisclosure, NepseIndexItem, NepseIndexGraphPoint, MeroShareAccount } from "@/types/wallet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
@@ -92,6 +94,43 @@ const stripHtml = (value?: string) => {
 
 const isPdfLikeUrl = (url: string) => /\.pdf(\?|#|$)/i.test(url)
 
+type PriceReviewQueueItem = {
+    id?: string
+    symbol: string
+    type: string
+    defaultPrice: number
+    date?: string
+    quantity?: number
+    description?: string
+    priceOptional?: boolean
+}
+
+const portfolioMeroShareAccounts = (meroShare?: {
+    accounts?: MeroShareAccount[]
+    dpId?: string
+    username?: string
+    password?: string
+    crn?: string
+    pin?: string
+}): MeroShareAccount[] => {
+    if (meroShare?.accounts?.length) return meroShare.accounts
+
+    if (meroShare?.dpId || meroShare?.username) {
+        return [{
+            id: "legacy-primary",
+            label: "Primary account",
+            role: "primary" as const,
+            dpId: meroShare.dpId || "",
+            username: meroShare.username || "",
+            password: meroShare.password || "",
+            crn: meroShare.crn || "",
+            pin: meroShare.pin || "",
+        }]
+    }
+
+    return []
+}
+
 function parseCsvLine(line: string): string[] {
     const fields: string[] = []
     let current = ""
@@ -164,7 +203,7 @@ const portfolioItemSyncSignature = (entry: PortfolioItem) =>
 export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: StockDeepLinkPayload | null; onDeepLinkHandled?: () => void }) {
     const portfolioData = usePortfolioData()
     const nepseData = useNepseData()
-    const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows,logMeroShareApplication} = portfolioData
+    const {isLoaded,portfolio,shareTransactions,deletePortfolioItem,fetchPortfolioPrices,addShareTransaction,deleteShareTransaction,deleteMultipleShareTransactions,recomputePortfolio,importShareData,userProfile,portfolios,activePortfolioId,addPortfolio,switchPortfolio,deletePortfolio,updatePortfolio,clearPortfolioHistory,updateUserProfile,getFaceValue,toggleZeroHolding,updateShareTransaction,importMeroShareTransactionHistoryRows,syncMeroShareTransactionHistory,logMeroShareApplication} = portfolioData
     const {refreshMarketData,upcomingIPOs,isIPOsLoading,topStocks,marketStatus,marketSummary,marketSummaryHistory,marketIndices,marketIndexGraph,noticesBundle,disclosures,exchangeMessages,scripNamesMap,sectorsMap} = nepseData
     const isShareFeaturesEnabled = Boolean(userProfile?.meroShare?.shareFeaturesEnabled)
     const hasMeroShareLoginCredentials = Boolean(
@@ -198,6 +237,10 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
     const [pendingImport, setPendingImport] = useState<{ type: string, data: string } | null>(null)
     const [isImporting, setIsImporting] = useState(false)
     const [importProgress, setImportProgress] = useState("")
+    const [showImportGuide, setShowImportGuide] = useState(false)
+    const [showMeroSharePicker, setShowMeroSharePicker] = useState(false)
+    const [showMeroShareCreate, setShowMeroShareCreate] = useState(false)
+    const [meroShareForm, setMeroShareForm] = useState({ label: "", dpId: "", username: "", password: "" })
     const importAbortRef = useRef<AbortController | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [isCreatingMeroSharePortfolio, setIsCreatingMeroSharePortfolio] = useState(false)
@@ -270,10 +313,54 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
     const [expandedIPOs, setExpandedIPOs] = useState<Set<string>>(new Set())
     const statsScrollContainerRef = useRef<HTMLDivElement>(null)
     const [currentStatsCardIndex, setCurrentStatsCardIndex] = useState(0)
+    const [dps, setDps] = useState<{ id: string, name: string, code: string }[]>([])
+    const [isLoadingDps, setIsLoadingDps] = useState(false)
+    const [isDpListOpen, setIsDpListOpen] = useState(false)
+    const [dpSearch, setDpSearch] = useState("")
+    const [isSavingMeroShareAccount, setIsSavingMeroShareAccount] = useState(false)
+    const [isPriceReviewOpen, setIsPriceReviewOpen] = useState(false)
+    const [priceReviewQueue, setPriceReviewQueue] = useState<PriceReviewQueueItem[]>([])
+    const [reviewPrices, setReviewPrices] = useState<Record<string, string>>({})
+    const [reviewTransactionPrices, setReviewTransactionPrices] = useState<Record<string, string>>({})
+    const [priceReviewStats, setPriceReviewStats] = useState<{
+        fetchedCount: number
+        mergedCount: number
+        existingCount: number
+        needsPriceCount: number
+    } | null>(null)
+    const [reviewSyncContext, setReviewSyncContext] = useState<{
+        credentials: { dpId: string, username: string, password: string, browserProvider?: string }
+        portfolioId: string
+        accountLabel: string
+    } | null>(null)
+
+    useEffect(() => {
+        const fetchDps = async () => {
+            setIsLoadingDps(true)
+            try {
+                const response = await fetch("/data/dps.json")
+                if (response.ok) {
+                    const data = await response.json()
+                    setDps(data)
+                }
+            } catch {
+                console.warn("Failed to load DPS list")
+            } finally {
+                setIsLoadingDps(false)
+            }
+        }
+        fetchDps()
+    }, [])
 
     useEffect(() => {
         if (!isStockDetailOpen) setStockDetailInitialTab(undefined)
     }, [isStockDetailOpen])
+
+    const filteredDps = useMemo(() => {
+        const query = dpSearch.trim().toLowerCase()
+        if (!query) return dps
+        return dps.filter((dp) => `${dp.name} ${dp.id} ${dp.code}`.toLowerCase().includes(query))
+    }, [dps, dpSearch])
 
     useEffect(() => {
         if (!deepLink?.symbol) return
@@ -1136,6 +1223,218 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
         }
     }
 
+    const linkAndSyncMeroShareAccount = async (account: MeroShareAccount) => {
+        const targetPortfolioId = activePortfolioId
+        if (!targetPortfolioId) {
+            toast.error("No active portfolio to import into")
+            return
+        }
+
+        const credentials = {
+            dpId: account.dpId,
+            username: account.username,
+            password: account.password || "",
+            browserProvider: userProfile?.meroShare?.browserProvider,
+        }
+
+        const existingAccounts = portfolioMeroShareAccounts(userProfile?.meroShare)
+        if (existingAccounts.find(a => a.id === account.id)?.portfolioId !== targetPortfolioId) {
+            await updateUserProfile({
+                meroShare: {
+                    ...(userProfile?.meroShare || { dpId: "", username: "", isAutomatedEnabled: false }),
+                    accounts: existingAccounts.map(a =>
+                        a.id === account.id ? { ...a, portfolioId: targetPortfolioId } : a
+                    ),
+                },
+            })
+        }
+
+        const loadingToast = toast.loading(`Fetching transaction history for "${account.label}"...`)
+        try {
+            const result = await syncMeroShareTransactionHistory(credentials, targetPortfolioId)
+
+            if (result.requiresReview) {
+                const queue: PriceReviewQueueItem[] = []
+                const initialPrices: Record<string, string> = {}
+                const initialTransactionPrices: Record<string, string> = {}
+                const queuedSymbols = new Set<string>()
+
+                for (const tx of result.newTransactions) {
+                    const isIpo = tx.type === "ipo"
+                    const isSell = tx.type === "sell"
+                    if (!isIpo && !isSell && tx.type !== "buy") continue
+
+                    if (!queuedSymbols.has(tx.symbol)) {
+                        queuedSymbols.add(tx.symbol)
+                        queue.push({
+                            id: tx.symbol,
+                            symbol: tx.symbol,
+                            defaultPrice: isIpo ? tx.price : 0,
+                            type: isIpo ? "IPO" : isSell ? "Sell" : "Buy",
+                        })
+                        initialPrices[tx.symbol] = isIpo && tx.price > 0 ? String(tx.price) : ""
+                    }
+                    queue.push({
+                        id: tx.rowKey,
+                        symbol: tx.symbol,
+                        defaultPrice: isIpo ? tx.price : 0,
+                        type: isIpo ? "IPO" : isSell ? "Sell" : "Buy",
+                        priceOptional: !isIpo,
+                        date: tx.date,
+                        quantity: tx.quantity,
+                        description: tx.description,
+                    })
+                    initialTransactionPrices[tx.rowKey] = isIpo && tx.price > 0 ? String(tx.price) : ""
+                }
+
+                setPriceReviewQueue(queue)
+                setReviewPrices(initialPrices)
+                setReviewTransactionPrices(initialTransactionPrices)
+                setPriceReviewStats({
+                    fetchedCount: result.fetchedCount,
+                    mergedCount: result.mergedCount,
+                    existingCount: result.existingCount,
+                    needsPriceCount: result.needsPriceCount,
+                })
+                setReviewSyncContext({ credentials, portfolioId: targetPortfolioId, accountLabel: account.label })
+                setIsPriceReviewOpen(true)
+                toast.success(`Found ${result.newTransactions.length} new transaction${result.newTransactions.length === 1 ? "" : "s"} to verify`, {
+                    description: result.mergedCount > 0
+                        ? `${result.mergedCount} duplicate row${result.mergedCount === 1 ? "" : "s"} merged, ${result.existingCount} already exist. Each buy/sell has its own price input — IPO buys are pre-filled with face value.`
+                        : "Each buy/sell has its own price input — IPO buys are pre-filled with face value.",
+                })
+            } else if (result.importedCount > 0) {
+                toast.success(
+                    `${account.label} linked: imported ${result.importedCount}, skipped ${result.skippedCount} duplicate${result.skippedCount === 1 ? "" : "s"}.`
+                )
+            } else {
+                toast.success(
+                    `${account.label} linked. No new transactions (${result.skippedCount} duplicate${result.skippedCount === 1 ? "" : "s"}).`
+                )
+            }
+        } catch (err: any) {
+            toast.error(err?.message || "Failed to sync MeroShare account.")
+        } finally {
+            toast.dismiss(loadingToast)
+        }
+    }
+
+    const clearPriceReview = () => {
+        setIsPriceReviewOpen(false)
+        setPriceReviewQueue([])
+        setReviewPrices({})
+        setReviewTransactionPrices({})
+        setPriceReviewStats(null)
+        setReviewSyncContext(null)
+    }
+
+    const confirmPriceReview = async () => {
+        if (!reviewSyncContext) return
+        const { credentials, portfolioId } = reviewSyncContext
+        const loadingToast = toast.loading("Saving transactions with cost prices...")
+        try {
+            const resolved: Record<string, number> = {}
+            Object.entries(reviewPrices).forEach(([symbol, price]) => {
+                resolved[symbol] = parseFloat(price) || 0
+            })
+            Object.entries(reviewTransactionPrices).forEach(([id, price]) => {
+                const parsed = parseFloat(price)
+                if (Number.isFinite(parsed) && parsed > 0) {
+                    resolved[id] = parsed
+                }
+            })
+
+            const result = await syncMeroShareTransactionHistory(credentials, portfolioId, resolved)
+            clearPriceReview()
+            toast.success(`Imported ${result.importedCount} transaction${result.importedCount === 1 ? "" : "s"} with cost prices.`)
+        } catch (err: any) {
+            toast.error(err?.message || "Failed to import transactions with prices.")
+        } finally {
+            toast.dismiss(loadingToast)
+        }
+    }
+
+    const handleConnectMeroShare = () => {
+        const existingAccounts = portfolioMeroShareAccounts(userProfile?.meroShare)
+        setShowImportGuide(false)
+
+        if (existingAccounts.length === 0) {
+            setShowMeroShareCreate(true)
+            return
+        }
+
+        if (existingAccounts.length === 1) {
+            void linkAndSyncMeroShareAccount(existingAccounts[0])
+            return
+        }
+
+        setShowMeroSharePicker(true)
+    }
+
+    const saveMeroShareAccount = async () => {
+        if (!meroShareForm.dpId.trim() || !meroShareForm.username.trim() || !meroShareForm.password.trim()) {
+            toast.error("Incomplete account", {
+                description: "Fill DP, username, and password before saving this account."
+            })
+            return
+        }
+
+        setIsSavingMeroShareAccount(true)
+        try {
+            const response = await fetch("/api/meroshare/test-login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    credentials: {
+                        dpId: meroShareForm.dpId.trim(),
+                        username: meroShareForm.username.trim(),
+                        password: meroShareForm.password,
+                        browserProvider: userProfile?.meroShare?.browserProvider,
+                    },
+                    options: { showBrowser: false, browserProvider: userProfile?.meroShare?.browserProvider },
+                }),
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.error || "Login failed")
+
+            const profileName = (data.user_name || "").trim()
+            const existingAccounts = portfolioMeroShareAccounts(userProfile?.meroShare)
+            const newAccount: MeroShareAccount = {
+                id: `mero_${Date.now()}`,
+                label: profileName || meroShareForm.label.trim() || (existingAccounts.length === 0 ? "Primary account" : "Secondary account"),
+                role: existingAccounts.length === 0 ? "primary" : "secondary",
+                dpId: meroShareForm.dpId.trim(),
+                username: meroShareForm.username.trim(),
+                password: meroShareForm.password,
+            }
+            const nextAccounts = [...existingAccounts, newAccount]
+            const primaryAccount = nextAccounts.find(a => a.role === "primary") || nextAccounts[0]
+
+            updateUserProfile({
+                meroShare: {
+                    ...(userProfile?.meroShare || { isAutomatedEnabled: false }),
+                    dpId: primaryAccount?.dpId || "",
+                    username: primaryAccount?.username || "",
+                    password: primaryAccount?.password || "",
+                    crn: primaryAccount?.crn || "",
+                    pin: primaryAccount?.pin || "",
+                    accounts: nextAccounts,
+                },
+            })
+
+            setShowMeroShareCreate(false)
+            setMeroShareForm({ label: "", dpId: "", username: "", password: "" })
+            void linkAndSyncMeroShareAccount(newAccount)
+        } catch (error: any) {
+            setMeroShareForm(prev => ({ ...prev, password: "" }))
+            toast.error("Verification failed", {
+                description: error?.message || "Could not log in to MeroShare. Please check your credentials and re-fill the form."
+            })
+        } finally {
+            setIsSavingMeroShareAccount(false)
+        }
+    }
+
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleImportDemo = async (fileName: string) => {
@@ -1325,6 +1624,8 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
         fileInputRef.current.value = ""
         fileInputRef.current.click()
     }
+
+    const openImportGuide = () => setShowImportGuide(true)
 
     const toggleTxSelection = (id: string) => {
         setSelectedTxs(prev =>
@@ -4634,6 +4935,22 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                 onConfirm={handleConfirmImport}
             />
 
+            {/* MeroShare Sync Price Review Modal */}
+            <ImportVerificationModal
+                open={isPriceReviewOpen}
+                onOpenChange={(open) => {
+                    if (!open) clearPriceReview()
+                    else setIsPriceReviewOpen(true)
+                }}
+                importQueue={priceReviewQueue}
+                importPrices={reviewPrices}
+                setImportPrices={setReviewPrices}
+                importTransactionPrices={reviewTransactionPrices}
+                setImportTransactionPrices={setReviewTransactionPrices}
+                stats={priceReviewStats}
+                onConfirm={confirmPriceReview}
+            />
+
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Summary Cards Column */}
@@ -5400,7 +5717,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                     variant="secondary"
                                     size="sm"
                                     className="h-8 font-medium bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
-                                    onClick={triggerFileUpload}
+                                    onClick={openImportGuide}
                                     disabled={isImporting}
                                     title="Import Data"
                                 >
@@ -5458,7 +5775,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                                 <Plus className="w-4 h-4 mr-2" />
                                                 New Transaction
                                             </Button>
-                                            <Button variant="default" className="font-bold shadow-lg bg-primary/90" onClick={triggerFileUpload} disabled={isImporting}>
+                                            <Button variant="default" className="font-bold shadow-lg bg-primary/90" onClick={openImportGuide} disabled={isImporting}>
                                                 {isImporting ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
                                                 {importProgress || "Import My Data"}
                                             </Button>
@@ -5977,6 +6294,232 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                     </p>
                 </div>
             )}
+
+            <Dialog open={showMeroShareCreate} onOpenChange={setShowMeroShareCreate}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Link2 className="h-5 w-5 text-primary" />
+                            Add MeroShare account
+                        </DialogTitle>
+                        <DialogDescription>
+                            Save your MeroShare login, then connect it to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import transactions.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-3 py-2">
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Label (optional)</label>
+                            <Input
+                                value={meroShareForm.label}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, label: e.target.value }))}
+                                placeholder="Primary account"
+                            />
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold flex items-center gap-1.5">
+                                <Building2 className="w-3 h-3" /> Depository Participant (DP)
+                            </label>
+                            <Popover open={isDpListOpen} onOpenChange={setIsDpListOpen}>
+                                <PopoverAnchor asChild>
+                                    <Input
+                                        value={dpSearch !== "" ? dpSearch : (() => {
+                                            const selectedDp = dps.find((dp) => dp.id === meroShareForm.dpId || dp.code === meroShareForm.dpId)
+                                            return selectedDp ? `${selectedDp.name} (${selectedDp.code})` : ""
+                                        })()}
+                                        onChange={(e) => {
+                                            setDpSearch(e.target.value)
+                                            if (e.target.value.trim() !== "") setIsDpListOpen(true)
+                                        }}
+                                        placeholder={isLoadingDps ? "Loading DP list..." : "Search bank or DP..."}
+                                        role="combobox"
+                                        aria-expanded={isDpListOpen}
+                                    />
+                                </PopoverAnchor>
+                                <PopoverContent
+                                        className="p-0 w-[var(--radix-popover-trigger-width)] min-w-64 max-w-[calc(100vw-3rem)]"
+                                        align="start"
+                                        onOpenAutoFocus={(event) => event.preventDefault()}
+                                    >
+                                    <Command className="w-full">
+                                        <CommandList className="max-h-[240px] overflow-y-auto">
+                                            <CommandEmpty>No DP found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {filteredDps.map((dp) => (
+                                                    <CommandItem
+                                                        key={dp.id}
+                                                        value={`${dp.name} ${dp.id} ${dp.code}`}
+                                                        onSelect={() => {
+                                                            setMeroShareForm(prev => ({ ...prev, dpId: dp.code }))
+                                                            setDpSearch("")
+                                                            setIsDpListOpen(false)
+                                                        }}
+                                                        className="flex items-center justify-between"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">{dp.name}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Code: {dp.code}
+                                                            </span>
+                                                        </div>
+                                                        <Check
+                                                            className={cn(
+                                                                "h-4 w-4",
+                                                                meroShareForm.dpId === dp.code ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Username</label>
+                            <Input
+                                value={meroShareForm.username}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, username: e.target.value }))}
+                                placeholder="your username"
+                            />
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Password</label>
+                            <Input
+                                type="password"
+                                value={meroShareForm.password}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, password: e.target.value }))}
+                                placeholder="••••••••"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowMeroShareCreate(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={saveMeroShareAccount} disabled={isSavingMeroShareAccount}>
+                            {isSavingMeroShareAccount ? "Verifying & Connecting..." : "Save & Connect"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showMeroSharePicker} onOpenChange={setShowMeroSharePicker}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Link2 className="h-5 w-5 text-primary" />
+                            Choose a MeroShare account
+                        </DialogTitle>
+                        <DialogDescription>
+                            Pick the account to link to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import its transactions.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-2 py-2">
+                        {portfolioMeroShareAccounts(userProfile?.meroShare).map((account) => {
+                            const linkedPortfolio = portfolios.find(p => p.id === account.portfolioId)
+                            return (
+                                <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => { setShowMeroSharePicker(false); void linkAndSyncMeroShareAccount(account) }}
+                                    className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+                                >
+                                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                        <Link2 className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold truncate">{account.label}</p>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                            {account.username || account.dpId || "MeroShare"}
+                                            {account.portfolioId
+                                                ? ` • linked to ${linkedPortfolio?.name || "another portfolio"}`
+                                                : " • not linked yet"}
+                                        </p>
+                                    </div>
+                                    <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                                </button>
+                            )
+                        })}
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowMeroSharePicker(false)}>
+                            Cancel
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showImportGuide} onOpenChange={setShowImportGuide}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Upload className="h-5 w-5 text-primary" />
+                            Import Data
+                        </DialogTitle>
+                        <DialogDescription>
+                            Bring transactions into your portfolio. Your files never leave your device.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-3 py-2">
+                        <button
+                            type="button"
+                            onClick={() => { setShowImportGuide(false); triggerFileUpload() }}
+                            disabled={isImporting}
+                            className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                        >
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                <FileSpreadsheet className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">MeroShare CSV</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                                    Portfolio snapshot or transaction history exported from MeroShare.
+                                </p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => handleConnectMeroShare()}
+                            disabled={isImporting}
+                            className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                        >
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                <Link2 className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">Connect MeroShare account</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                                    Link a saved MeroShare account to this portfolio and import its transactions directly.
+                                </p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        </button>
+                    </div>
+
+                    <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-xs space-y-1.5">
+                        <p className="font-bold flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-primary" /> How importing works
+                        </p>
+                        <p className="text-muted-foreground">1. Pick a source above and choose your file.</p>
+                        <p className="text-muted-foreground">2. Review and confirm the detected rows and prices.</p>
+                        <p className="text-muted-foreground">3. Everything is saved locally in your wallet.</p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowImportGuide(false)}>
+                            Cancel
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

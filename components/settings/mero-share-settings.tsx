@@ -11,7 +11,8 @@ import { useWalletData } from "@/contexts/wallet-data-context"
 import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download, Banknote, History, CircleCheck, CircleX, ChevronLeft, ChevronRight, SlidersHorizontal, ListFilter, HeartPulse, CreditCard, MapPin, Hash, CalendarClock, Phone, FileText, ShieldCheck, Pencil } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { toast } from "sonner"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronDown, ChevronsUpDown, Plus } from "lucide-react"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import {
     Command,
     CommandEmpty,
@@ -40,6 +41,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDateTime } from "@/lib/app-calendar"
@@ -171,8 +182,10 @@ export function MeroShareSettings() {
     const { isDeveloperMode } = useDeveloperMode()
     const [accounts, setAccounts] = useState<MeroShareAccount[]>(() => getMeroShareAccounts(userProfile?.meroShare))
     const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
+    const [accountToDelete, setAccountToDelete] = useState<MeroShareAccount | null>(null)
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
     const [accountForm, setAccountForm] = useState<MeroShareAccount>(emptyAccountForm)
+    const [showAdvancedFields, setShowAdvancedFields] = useState(false)
     const [showDisableDialog, setShowDisableDialog] = useState(false)
     const [isDisablingShare, setIsDisablingShare] = useState(false)
     const [confirmClearLogs, setConfirmClearLogs] = useState(false)
@@ -807,19 +820,7 @@ export function MeroShareSettings() {
 
     return (
         <div className="space-y-6">
-            <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-                <CardHeader>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                            <Shield className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <CardTitle>Mero Share Credentials</CardTitle>
-                            <CardDescription>Set up your account to apply from open IPO cards</CardDescription>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
+            <div className="space-y-6">
                     <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
                         <div className="space-y-1">
                             <Label className="text-sm font-bold flex items-center gap-2">
@@ -834,144 +835,6 @@ export function MeroShareSettings() {
                             checked={formData.shareFeaturesEnabled}
                             onCheckedChange={toggleShareFeatures}
                         />
-                    </div>
-                    {formData.shareFeaturesEnabled && (
-                    <>
-                    <div className="space-y-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <Label className="text-sm font-bold">MeroShare Accounts</Label>
-                            </div>
-                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={testConnection}
-                                    disabled={isTesting || !isLoginReady}
-                                    className="border-primary/20 hover:bg-primary/5"
-                                >
-                                    {isTesting ? "Testing..." : "Test Connection"}
-                                </Button>
-                                <Button type="button" onClick={openAddAccountDialog}>
-                                    Add Account
-                                </Button>
-                            </div>
-                        </div>
-
-                        {accounts.length === 0 ? (
-                            <div className="rounded-xl border border-dashed bg-muted/30 p-5 text-center">
-                                <p className="text-sm font-semibold">No MeroShare account added</p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    Add an account to enable login testing, portfolio sync, and IPO apply actions.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="grid gap-3">
-                                {accounts.map((account) => {
-                                    const dp = dps.find(item => item.id === account.dpId || item.code === account.dpId)
-                                    const isPrimary = account.role === "primary"
-
-                                    return (
-                                        <div key={account.id} className="rounded-xl border bg-background/60 p-4">
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                                <div className="min-w-0 space-y-1">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <p className="font-semibold">{account.label || account.username}</p>
-                                                        <Badge variant={isPrimary ? "default" : "secondary"}>
-                                                            {isPrimary ? "Primary" : "Secondary"}
-                                                        </Badge>
-                                                    </div>
-                                                    <p className="truncate text-xs text-muted-foreground">
-                                                        {dp?.name || `DP ${account.dpId}`} | {account.username}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {account.crn && account.pin
-                                                            ? "Ready for IPO apply and result checks"
-                                                            : "Ready for result checks; add CRN and PIN to apply"}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {account.portfolioId
-                                                            ? `Linked portfolio: ${portfolios.find(p => p.id === account.portfolioId)?.name || "—"}`
-                                                            : "No linked portfolio — data syncs into the selected portfolio"}
-                                                    </p>
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {!isPrimary && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => setAccountRole(account.id, "primary")}
-                                                        >
-                                                            Make Primary
-                                                        </Button>
-                                                    )}
-                                                    {isPrimary && accounts.length > 1 && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => setAccountRole(account.id, "secondary")}
-                                                        >
-                                                            Make Secondary
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="gap-1.5"
-                                                        onClick={() => openHealthModal(account)}
-                                                    >
-                                                        <HeartPulse className="w-3.5 h-3.5 text-primary" />
-                                                        Check Health
-                                                    </Button>
-                                                    <Button type="button" variant="outline" size="icon" title="Edit" onClick={() => openEditAccountDialog(account)}>
-                                                        <Pencil className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button type="button" variant="destructive" size="icon" title="Remove" onClick={() => deleteAccount(account.id)}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                                <Label className="text-sm font-bold flex items-center gap-2">
-                                    Share Currency
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                    {(formData.shareCurrencyMode || "npr") === "auto"
-                                        ? userProfile?.currency && userProfile.currency !== "NPR"
-                                            ? `Portfolio amounts display in ${userProfile.currency}.`
-                                            : "Set a non-NPR profile currency to see converted amounts."
-                                        : "Shows all share amounts in NPR."}
-                                </p>
-                            </div>
-                            <Select
-                                value={formData.shareCurrencyMode || "npr"}
-                                onValueChange={(value) => updateShareCurrencyMode(value as "npr" | "auto")}
-                            >
-                                <SelectTrigger className="w-[170px] h-9 bg-background/50">
-                                    <SelectValue placeholder="Select display currency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="npr">रु NPR (Default)</SelectItem>
-                                    <SelectItem value="auto">
-                                        {userProfile?.currency && userProfile.currency !== "NPR"
-                                            ? `Auto (${userProfile.currency})`
-                                            : "Auto (Follow profile)"}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
 
                     {/* legacy inline credential fields removed; accounts are edited in the modal
@@ -1115,46 +978,198 @@ export function MeroShareSettings() {
                         </div>
                     </div>
                     */}
-                    </>
-                    )}
-                </CardContent>
-            </Card>
+            </div>
+
+            {formData.shareFeaturesEnabled && (
+                <Card className="border-primary/20">
+                    <CardHeader className="pb-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="space-y-0.5">
+                                <CardTitle className="text-base">MeroShare Accounts</CardTitle>
+                                <CardDescription className="text-xs">Manage DP, username and password for each linked account</CardDescription>
+                            </div>
+                            <div className="flex w-full flex-row gap-2 sm:w-auto">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={testConnection}
+                                    disabled={isTesting || !isLoginReady}
+                                    className="flex-1 sm:flex-none border-primary/20 hover:bg-primary/5"
+                                >
+                                    {isTesting ? "Testing..." : "Test Connection"}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={openAddAccountDialog}
+                                    className="flex-1 sm:flex-none gap-1.5"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Add Account
+                                </Button>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {accounts.length === 0 ? (
+                            <div className="rounded-xl border border-dashed bg-muted/30 p-5 text-center">
+                                <p className="text-sm font-semibold">No MeroShare account added</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Add an account to enable login testing, portfolio sync, and IPO apply actions.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-3">
+                                {accounts.map((account) => {
+                                    const dp = dps.find(item => item.id === account.dpId || item.code === account.dpId)
+                                    const isPrimary = account.role === "primary"
+
+                                    return (
+                                        <div key={account.id} className="rounded-xl border bg-background/60 p-4">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0 space-y-1">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="font-semibold">{account.label || account.username}</p>
+                                                        <Badge variant={isPrimary ? "default" : "secondary"}>
+                                                            {isPrimary ? "Primary" : "Secondary"}
+                                                        </Badge>
+                                                    </div>
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        {dp?.name || `DP ${account.dpId}`} | {account.username}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {account.crn && account.pin
+                                                            ? "Ready for IPO apply and result checks"
+                                                            : "Ready for result checks; add CRN and PIN to apply"}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {account.portfolioId
+                                                            ? `Linked portfolio: ${portfolios.find(p => p.id === account.portfolioId)?.name || "—"}`
+                                                            : "No linked portfolio — data syncs into the selected portfolio"}
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {!isPrimary && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setAccountRole(account.id, "primary")}
+                                                        >
+                                                            Make Primary
+                                                        </Button>
+                                                    )}
+                                                    {isPrimary && accounts.length > 1 && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setAccountRole(account.id, "secondary")}
+                                                        >
+                                                            Make Secondary
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-1.5"
+                                                        onClick={() => openHealthModal(account)}
+                                                    >
+                                                        <HeartPulse className="w-3.5 h-3.5 text-primary" />
+                                                        Check Health
+                                                    </Button>
+                                                    <Button type="button" variant="outline" size="icon" title="Edit" onClick={() => openEditAccountDialog(account)}>
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <Button type="button" variant="destructive" size="icon" title="Remove" onClick={() => setAccountToDelete(account)}>
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {formData.shareFeaturesEnabled && (
+                <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                            <Label className="text-sm font-bold flex items-center gap-2">
+                                Share Currency
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {(formData.shareCurrencyMode || "npr") === "auto"
+                                    ? userProfile?.currency && userProfile.currency !== "NPR"
+                                        ? `Portfolio amounts display in ${userProfile.currency}.`
+                                        : "Set a non-NPR profile currency to see converted amounts."
+                                    : "Shows all share amounts in NPR."}
+                            </p>
+                        </div>
+                        <Select
+                            value={formData.shareCurrencyMode || "npr"}
+                            onValueChange={(value) => updateShareCurrencyMode(value as "npr" | "auto")}
+                        >
+                            <SelectTrigger className="w-[170px] h-9 bg-background/50">
+                                <SelectValue placeholder="Select display currency" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="npr">NPR (Default)</SelectItem>
+                                <SelectItem value="auto">
+                                    {userProfile?.currency && userProfile.currency !== "NPR"
+                                        ? `Auto (${userProfile.currency})`
+                                        : "Auto"}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            <AlertDialog open={accountToDelete !== null} onOpenChange={(open) => { if (!open) setAccountToDelete(null) }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove MeroShare account?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {accountToDelete
+                                ? `"${accountToDelete.label || accountToDelete.username}" will be removed from your linked accounts. You can add it again later.`
+                                : ""}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                                if (accountToDelete) deleteAccount(accountToDelete.id)
+                                setAccountToDelete(null)
+                            }}
+                        >
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <Dialog open={isAccountDialogOpen} onOpenChange={setIsAccountDialogOpen}>
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>{editingAccountId ? "Edit MeroShare Account" : "Add MeroShare Account"}</DialogTitle>
-                        <DialogDescription>
-                            DP, username, and password are enough for result checks. CRN and PIN are only needed when applying.
-                        </DialogDescription>
+                        <DialogTitle className="text-left">{editingAccountId ? "Edit MeroShare Account" : "Add MeroShare Account"}</DialogTitle>
                     </DialogHeader>
 
                     <div className="grid gap-4 py-2">
-                        <div className="grid gap-2 sm:grid-cols-[1fr_160px]">
-                            <div className="space-y-2">
-                                <Label htmlFor="mero-account-label">Account Label</Label>
-                                <Input
-                                    id="mero-account-label"
-                                    placeholder="Primary account"
-                                    value={accountForm.label}
-                                    onChange={(e) => setAccountForm(prev => ({ ...prev, label: e.target.value }))}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Account Type</Label>
-                                <Select
-                                    value={accountForm.role}
-                                    onValueChange={(value) => setAccountForm(prev => ({ ...prev, role: value as "primary" | "secondary" }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="primary">Primary</SelectItem>
-                                        <SelectItem value="secondary">Secondary</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="mero-account-label">Account Label</Label>
+                            <Input
+                                id="mero-account-label"
+                                placeholder="Primary account"
+                                value={accountForm.label}
+                                onChange={(e) => setAccountForm(prev => ({ ...prev, label: e.target.value }))}
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -1277,45 +1292,78 @@ export function MeroShareSettings() {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="mero-account-kitta" className="flex items-center gap-2">
-                                <Rocket className="w-3 h-3" /> Preferred Kitta <span className="text-xs font-normal text-muted-foreground">(optional)</span>
-                            </Label>
-                            <Input
-                                id="mero-account-kitta"
-                                type="number"
-                                min="0"
-                                placeholder="0 = Auto-detect minimum"
-                                value={accountForm.preferredKitta || ""}
-                                onChange={(e) => setAccountForm(prev => ({ ...prev, preferredKitta: parseInt(e.target.value) || 0 }))}
-                            />
-                            <p className="text-[10px] text-muted-foreground italic">
-                                Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount from this account.
-                            </p>
-                        </div>
+                        <Collapsible open={showAdvancedFields} onOpenChange={setShowAdvancedFields}>
+                            <div className="rounded-lg border overflow-hidden">
+                                <CollapsibleTrigger asChild>
+                                    <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors">
+                                        <span className="text-sm font-semibold flex items-center gap-2">
+                                            <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+                                            Advanced Fields
+                                        </span>
+                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${showAdvancedFields ? "rotate-180" : ""}`} />
+                                    </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                    <div className="px-4 pb-4 space-y-4">
+                                        <div className="space-y-2">
+                                            <Label>Account Type</Label>
+                                            <Select
+                                                value={accountForm.role}
+                                                onValueChange={(value) => setAccountForm(prev => ({ ...prev, role: value as "primary" | "secondary" }))}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="primary">Primary</SelectItem>
+                                                    <SelectItem value="secondary">Secondary</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="mero-account-portfolio" className="flex items-center gap-2">
-                                <Sparkles className="w-3 h-3" /> Linked Portfolio <span className="text-xs font-normal text-muted-foreground">(optional)</span>
-                            </Label>
-                            <Select
-                                value={accountForm.portfolioId || "__none__"}
-                                onValueChange={(value) => setAccountForm(prev => ({ ...prev, portfolioId: value === "__none__" ? "" : value }))}
-                            >
-                                <SelectTrigger id="mero-account-portfolio" className="w-full">
-                                    <SelectValue placeholder="Not linked — pick during sync" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none__">Not linked</SelectItem>
-                                    {portfolios.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <p className="text-[10px] text-muted-foreground italic">
-                                MeroShare holdings and history for this account will sync into this portfolio.
-                            </p>
-                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="mero-account-kitta" className="flex items-center gap-2">
+                                                <Rocket className="w-3 h-3" /> Preferred Kitta <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                                            </Label>
+                                            <Input
+                                                id="mero-account-kitta"
+                                                type="number"
+                                                min="0"
+                                                placeholder="0 = Auto-detect minimum"
+                                                value={accountForm.preferredKitta || ""}
+                                                onChange={(e) => setAccountForm(prev => ({ ...prev, preferredKitta: parseInt(e.target.value) || 0 }))}
+                                            />
+                                            <p className="text-[10px] text-muted-foreground italic">
+                                                Leave at 0 to automatically use the minimum quantity from each IPO. Set a specific number (e.g., 20, 50) to always apply for that amount from this account.
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="mero-account-portfolio" className="flex items-center gap-2">
+                                                <Sparkles className="w-3 h-3" /> Linked Portfolio <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                                            </Label>
+                                            <Select
+                                                value={accountForm.portfolioId || "__none__"}
+                                                onValueChange={(value) => setAccountForm(prev => ({ ...prev, portfolioId: value === "__none__" ? "" : value }))}
+                                            >
+                                                <SelectTrigger id="mero-account-portfolio" className="w-full">
+                                                    <SelectValue placeholder="Not linked — pick during sync" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none__">Not linked</SelectItem>
+                                                    {portfolios.map(p => (
+                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <p className="text-[10px] text-muted-foreground italic">
+                                                MeroShare holdings and history for this account will sync into this portfolio.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </CollapsibleContent>
+                            </div>
+                        </Collapsible>
                     </div>
 
                     <DialogFooter>
@@ -1338,7 +1386,7 @@ export function MeroShareSettings() {
                             <div className="w-8 h-8 bg-info/20 rounded-lg flex items-center justify-center text-info">
                                 <RefreshCw className={cn("w-4 h-4", isSyncingHistory && "animate-spin")} />
                             </div>
-                            <div>
+                            <div className="space-y-0.5">
                                 <CardTitle className="text-base">MeroShare Sync</CardTitle>
                                 <CardDescription className="text-xs text-info/60">Import transaction history from MeroShare</CardDescription>
                             </div>
@@ -1393,36 +1441,40 @@ export function MeroShareSettings() {
                 </CardHeader>
             </Card>
 
+            {isDeveloperMode && (
             <Card className={formData.browserProvider === "rest" ? "border-primary/40" : "border-dashed border-primary/30 bg-primary/5"}>
                 <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${formData.browserProvider === "rest" ? "bg-green-500/20 text-green-500" : "bg-primary/20 text-primary"}`}>
-                                    <Fingerprint className="w-5 h-5" />
-                                </div>
-                                <CardTitle className="text-base">Automation Runtime</CardTitle>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${formData.browserProvider === "rest" ? "bg-green-500/20 text-green-500" : "bg-primary/20 text-primary"}`}>
+                                <Fingerprint className="w-5 h-5" />
                             </div>
-                            <CardDescription className="text-xs ml-11">How MeroShare actions run on your account</CardDescription>
+                            <div className="space-y-0.5">
+                                <CardTitle className="text-base">Automation Runtime</CardTitle>
+                                <CardDescription className="text-xs">How MeroShare actions run on your account</CardDescription>
+                            </div>
                         </div>
-                        <Select
-                            value={formData.browserProvider}
-                            onValueChange={(value) => updateBrowserProvider(value as "api" | "rest" | "auto" | "browserless" | "local")}
-                        >
-                            <SelectTrigger className="w-[210px] h-9 bg-background/70">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="rest">Direct REST · Recommended</SelectItem>
-                                <SelectItem value="api">Self Hosted API</SelectItem>
-                                <SelectItem value="auto">Auto (Browserless → Local)</SelectItem>
-                                <SelectItem value="browserless">Browserless API</SelectItem>
-                                <SelectItem value="local">Local Chrome</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <div className="w-full sm:w-auto">
+                            <Select
+                                value={formData.browserProvider}
+                                onValueChange={(value) => updateBrowserProvider(value as "api" | "rest" | "auto" | "browserless" | "local")}
+                            >
+                                <SelectTrigger className="w-full sm:w-[210px] h-9 bg-background/70">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="rest">Direct REST</SelectItem>
+                                    <SelectItem value="api">Self Hosted API</SelectItem>
+                                    <SelectItem value="auto">Auto (Browserless → Local)</SelectItem>
+                                    <SelectItem value="browserless">Browserless API</SelectItem>
+                                    <SelectItem value="local">Local Chrome</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
+            )}
 
             <Dialog open={showHealthModal} onOpenChange={setShowHealthModal}>
                 <DialogContent className="sm:max-w-lg">
@@ -1713,7 +1765,7 @@ export function MeroShareSettings() {
                         <>
                             <div className="flex flex-wrap items-center gap-2">
                                 <Select value={logTypeFilter} onValueChange={(value) => setLogTypeFilter(value)}>
-                                    <SelectTrigger className="w-[170px] h-8 text-xs bg-background/70">
+                                    <SelectTrigger className="flex-1 min-w-0 h-8 text-xs bg-background/70 sm:flex-none sm:w-[170px]">
                                         <ListFilter className="w-3.5 h-3.5 text-muted-foreground mr-1.5 shrink-0" />
                                         <SelectValue />
                                     </SelectTrigger>
@@ -1723,14 +1775,14 @@ export function MeroShareSettings() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <div className="flex rounded-lg border bg-background/70 overflow-hidden">
+                                <div className="flex flex-1 min-w-0 rounded-lg border bg-background/70 overflow-hidden sm:flex-none">
                                     {logTimeOptions.map((option) => (
                                         <button
                                             key={option.value}
                                             type="button"
                                             onClick={() => setLogTimeFilter(option.value)}
                                             className={cn(
-                                                "px-2.5 h-8 text-xs font-medium transition-colors",
+                                                "flex-1 sm:flex-none px-1.5 sm:px-2.5 h-8 text-xs font-medium transition-colors whitespace-nowrap",
                                                 logTimeFilter === option.value
                                                     ? "bg-primary text-primary-foreground"
                                                     : "text-muted-foreground hover:bg-muted",
@@ -1740,7 +1792,7 @@ export function MeroShareSettings() {
                                         </button>
                                     ))}
                                 </div>
-                                <div className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
                                     <SlidersHorizontal className="w-3 h-3" />
                                     {loadedLogs.length} of {filteredLogs.length} on this page
                                 </div>
@@ -1803,25 +1855,40 @@ export function MeroShareSettings() {
                                         >
                                             <ChevronLeft className="w-3.5 h-3.5" />
                                         </Button>
-                                        {logPageNumbers.map((item, index) =>
-                                            item === "ellipsis" ? (
-                                                <span key={`ellipsis-${index}`} className="px-1 text-xs text-muted-foreground">…</span>
-                                            ) : (
-                                                <button
-                                                    key={item}
-                                                    type="button"
-                                                    onClick={() => goToLogPage(item)}
-                                                    className={cn(
-                                                        "min-w-7 h-7 px-1.5 rounded-md text-xs font-medium transition-colors",
-                                                        item === logPage
-                                                            ? "bg-primary text-primary-foreground"
-                                                            : "text-muted-foreground hover:bg-muted",
-                                                    )}
-                                                >
-                                                    {item}
-                                                </button>
-                                            )
-                                        )}
+                                        <Select
+                                            value={String(logPage)}
+                                            onValueChange={(value) => goToLogPage(parseInt(value, 10))}
+                                        >
+                                            <SelectTrigger className="h-7 w-auto px-2 gap-1 text-xs sm:hidden" aria-label="Go to page">
+                                                <SelectValue placeholder={`Page ${logPage}`} />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-56">
+                                                {Array.from({ length: totalLogPages }, (_, i) => i + 1).map((page) => (
+                                                    <SelectItem key={page} value={String(page)}>Page {page}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <div className="hidden sm:flex items-center gap-1">
+                                            {logPageNumbers.map((item, index) =>
+                                                item === "ellipsis" ? (
+                                                    <span key={`ellipsis-${index}`} className="px-1 text-xs text-muted-foreground">…</span>
+                                                ) : (
+                                                    <button
+                                                        key={item}
+                                                        type="button"
+                                                        onClick={() => goToLogPage(item)}
+                                                        className={cn(
+                                                            "min-w-7 h-7 px-1.5 rounded-md text-xs font-medium transition-colors",
+                                                            item === logPage
+                                                                ? "bg-primary text-primary-foreground"
+                                                                : "text-muted-foreground hover:bg-muted",
+                                                        )}
+                                                    >
+                                                        {item}
+                                                    </button>
+                                                )
+                                            )}
+                                        </div>
                                         <Button
                                             variant="outline"
                                             size="icon"

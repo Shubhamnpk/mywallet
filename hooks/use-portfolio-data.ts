@@ -41,6 +41,7 @@ export function usePortfolioData() {
       deleteMultipleShareTransactions: wallet.deleteMultipleShareTransactions,
       recomputePortfolio: wallet.recomputePortfolio,
       importShareData: wallet.importShareData,
+      importData: wallet.importData,
     }),
     [
       wallet.isLoaded,
@@ -76,6 +77,7 @@ export function usePortfolioData() {
       wallet.deleteMultipleShareTransactions,
       wallet.recomputePortfolio,
       wallet.importShareData,
+      wallet.importData,
     ],
   )
 }
