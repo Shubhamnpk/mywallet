@@ -3,30 +3,34 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText} from "lucide-react"
+import {Receipt,PiggyBank,Target,CreditCard,TrendingUp,FolderOpen,Briefcase,LayoutGrid,Clock,Trash2,Landmark,Scan,ArrowLeft,Calculator,ArrowLeftRight,Gamepad2,FileText,BarChart3} from "lucide-react"
 import { TransactionsList } from "@/components/transactions/transactions-list"
-import { BudgetsList } from "@/components/budgets/budgets-list"
-import { EnhancedGoalsList } from "@/components/goals/goals-list"
-import { DebtCreditManagement } from "@/components/debt-credit/debt-credit-management"
-import { InsightsPanel } from "@/components/insights/insights-panel"
-import { CategoriesManagement } from "@/components/categories/categories-management"
-import { PortfolioList } from "@/components/portfolio/portfolio-list"
+import { BudgetsList } from "@/components/tools/budgets/budgets-list"
+import { EnhancedGoalsList } from "@/components/tools/goals/goals-list"
+import { DebtCreditManagement } from "@/components/tools/debt-credit/debt-credit-management"
+import { InsightsPanel } from "@/components/tools/insights/insights-panel"
+import { CategoriesManagement } from "@/components/tools/categories/categories-management"
+import { PortfolioList } from "@/components/tools/portfolio/portfolio-list"
 import { ShiftTracker } from "@/components/tools/shift-tracker"
 import { BrokerLeaderboard } from "@/components/tools/broker-leaderboard"
 import { ScannerTool } from "@/components/tools/scanner/scan-tool"
 import { CalculatorTool } from "@/components/tools/calculator-tool"
 import { CurrencyConverterTool } from "@/components/tools/currency-converter-tool"
 import { GamesTool } from "@/components/tools/games-tool"
-import { DocumentTools } from "@/components/tools/document-tools"
+import { DocumentTools } from "@/components/tools/documents/document-tools"
+import { MutualFundsTool } from "@/components/tools/mutual-funds/mutual-funds-tool"
+import ReceiptScanner from "@/components/tools/scanner/receipt-dialog"
+import { CurrencyConverterDialog } from "@/components/dashboard/currency-converter-dialog"
 import { SessionManager } from "@/lib/session-manager"
 import { cn } from "@/lib/utils"
+import { STOCK_DEEP_LINK_EVENT, type StockDeepLinkPayload } from "@/lib/stock-deep-link"
 
 type TabDef = {
   value: string
   label: string
   icon: React.ComponentType<{ className?: string }>
   description: string
-  badge?: null
+  badge?: string | null
 }
 
 function pickTab(defs: TabDef[], value: string): TabDef {
@@ -48,6 +52,7 @@ const MOBILE_TOOLS_GROUP = [
   "currency-converter",
   "games",
   "document-tools",
+  "mutual-funds",
 ] as const
 
 const DESKTOP_TOOLS_GROUP = [
@@ -61,9 +66,10 @@ const DESKTOP_TOOLS_GROUP = [
   "currency-converter",
   "games",
   "document-tools",
+  "mutual-funds",
 ] as const
 
-const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools", "calculator", "currency-converter", "games", "document-tools"])
+const KNOWN_TAB_VALUES = new Set(["transactions", "budgets", "goals", "categories", "debt-credit", "portfolio", "insights", "shift-tracker", "broker-training", "scanner", "tools", "calculator", "currency-converter", "games", "document-tools", "mutual-funds"])
 
 function useDelayedTooltip(delay: number = 3000) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -114,23 +120,44 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     return requestedTab && KNOWN_TAB_VALUES.has(requestedTab) ? requestedTab : "transactions"
   })
   const toolsContentRef = useRef<HTMLDivElement>(null)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [isConverterOpen, setIsConverterOpen] = useState(false)
+  const [stockDeepLink, setStockDeepLink] = useState<StockDeepLinkPayload | null>(null)
+  const DESKTOP_DIALOG_TOOLS = new Set(["scanner", "calculator", "currency-converter"])
 
   useEffect(() => {
     const syncFromLocation = () => {
-      const requestedTab = new URLSearchParams(window.location.search).get("tab")
+      const url = new URL(window.location.href)
+      const requestedTab = url.searchParams.get("tab")
       if (requestedTab && KNOWN_TAB_VALUES.has(requestedTab)) {
         setActiveTab(requestedTab)
+      }
+      const stock = url.searchParams.get("stock")
+      if (stock) {
+        setStockDeepLink({
+          symbol: stock,
+          portfolioId: url.searchParams.get("portfolio") || undefined,
+          tab: url.searchParams.get("stockTab") || undefined,
+        })
       }
     }
     const syncFromEvent = (event: Event) => {
       const tab = (event as CustomEvent<string>).detail
       if (tab && KNOWN_TAB_VALUES.has(tab)) setActiveTab(tab)
     }
+    const syncFromStockEvent = (event: Event) => {
+      const payload = (event as CustomEvent<StockDeepLinkPayload>).detail
+      if (!payload?.symbol) return
+      setActiveTab("portfolio")
+      setStockDeepLink(payload)
+    }
     window.addEventListener("popstate", syncFromLocation)
     window.addEventListener("mywallet:navigate-tab", syncFromEvent)
+    window.addEventListener(STOCK_DEEP_LINK_EVENT, syncFromStockEvent)
     return () => {
       window.removeEventListener("popstate", syncFromLocation)
       window.removeEventListener("mywallet:navigate-tab", syncFromEvent)
+      window.removeEventListener(STOCK_DEEP_LINK_EVENT, syncFromStockEvent)
     }
   }, [])
 
@@ -157,8 +184,18 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
   }, [activeTab, onMobileFullscreenChange])
 
   useEffect(() => {
-    if (!SessionManager.isSessionValid()) {
-      window.dispatchEvent(new CustomEvent("wallet-session-expired"))
+    const validateSession = () => {
+      if (!SessionManager.isSessionValid()) {
+        window.dispatchEvent(new CustomEvent("wallet-session-expired"))
+      }
+    }
+    validateSession()
+    const handleClick = () => {
+      setTimeout(validateSession, 100)
+    }
+    document.addEventListener("click", handleClick)
+    return () => {
+      document.removeEventListener("click", handleClick)
     }
   }, [])
 
@@ -248,6 +285,13 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
       label: "Documents",
       icon: FileText,
       description: "Store and manage important documents",
+      badge: "Beta",
+    },
+    {
+      value: "mutual-funds",
+      label: "Mutual Funds",
+      icon: BarChart3,
+      description: "Explore mutual fund NAV, performance & returns",
     },
   ]
 
@@ -282,6 +326,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
         <TabsTrigger
           key={tab.value}
           value={tab.value}
+          data-tour={`tab-${tab.value}`}
           className={cn(
             "flex flex-col items-center gap-1.5 p-2.5 sm:p-3 relative rounded-lg transition-all",
             isDesktopToolsActive
@@ -308,6 +353,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
       <TabsTrigger
         key={tab.value}
         value={tab.value}
+        data-tour={`tab-${tab.value}`}
         className="flex flex-col items-center gap-1.5 p-2.5 sm:p-3 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-border/30 relative rounded-lg transition-all"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -316,7 +362,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           <tab.icon className="w-4 h-4 shrink-0" />
           <span className="font-medium text-sm">{tab.label}</span>
           {tab.badge && (
-            <Badge variant="secondary" className="text-xs h-5 px-1.5"></Badge>
+            <Badge variant="secondary" className="text-xs h-5 px-1.5">{tab.badge}</Badge>
           )}
         </div>
         {showTooltip && (
@@ -338,6 +384,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "currency-converter"),
     pickTab(allTabs, "games"),
     pickTab(allTabs, "document-tools"),
+    pickTab(allTabs, "mutual-funds"),
   ]
 
   const mobileHubCards: TabDef[] = [
@@ -352,6 +399,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
     pickTab(allTabs, "currency-converter"),
     pickTab(allTabs, "games"),
     pickTab(allTabs, "document-tools"),
+    pickTab(allTabs, "mutual-funds"),
   ]
 
   const isFullscreen = !!mobileFullscreenTab
@@ -377,6 +425,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
+                    data-tour={`tab-${tab.value}`}
                     className="flex flex-col items-center justify-end p-0 h-14 w-16 gap-1.5 data-[state=active]:bg-transparent transition-all duration-300 ease-out flex-1 group"
                   >
                     <div
@@ -403,6 +452,7 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
 
             <TabsTrigger
               value="tools"
+              data-tour="tab-tools"
               className="flex flex-col items-center justify-end p-0 h-14 w-16 gap-1.5 data-[state=active]:bg-transparent transition-all duration-300 ease-out flex-1 group"
             >
               <div
@@ -454,7 +504,10 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           </TabsContent>
 
           <TabsContent value="portfolio" className="space-y-4">
-            <PortfolioList />
+            <PortfolioList
+              deepLink={stockDeepLink}
+              onDeepLinkHandled={() => setStockDeepLink(null)}
+            />
           </TabsContent>
 
           <TabsContent value="insights" className="space-y-4">
@@ -485,8 +538,12 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
             <GamesTool />
           </TabsContent>
 
-          <TabsContent value="document-tools" className="space-y-4">
+          <TabsContent value="document-tools" className="space-y-4 px-3 sm:px-0">
             <DocumentTools />
+          </TabsContent>
+
+          <TabsContent value="mutual-funds" className="space-y-4 px-3 sm:px-0">
+            <MutualFundsTool />
           </TabsContent>
 
           <TabsContent
@@ -494,12 +551,20 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
             value="tools"
             className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-4 duration-300"
           >
-            <div className="hidden lg:grid lg:grid-cols-3 gap-4">
+            <div className="hidden lg:grid lg:grid-cols-4 gap-4">
               {desktopHubCards.map((tool) => (
                 <button
                   key={tool.value}
                   type="button"
-                  onClick={() => setActiveTab(tool.value)}
+                  onClick={() => {
+                    if (DESKTOP_DIALOG_TOOLS.has(tool.value)) {
+                      if (tool.value === "scanner") setIsScannerOpen(true)
+                      else if (tool.value === "calculator") window.dispatchEvent(new CustomEvent("open-calculator-panel"))
+                      else if (tool.value === "currency-converter") setIsConverterOpen(true)
+                    } else {
+                      setActiveTab(tool.value)
+                    }
+                  }}
                   className="flex flex-col items-center justify-center p-6 bg-card/80 border border-border/60 rounded-xl shadow-sm hover:bg-muted/30 transition-all active:scale-[0.99] text-center"
                 >
                   <div className="p-3 bg-primary/10 rounded-full mb-3 text-primary">
@@ -531,6 +596,16 @@ export function MainTabs({ mobileFullscreenTab, onMobileFullscreenChange }: Main
           </TabsContent>
         </div>
       </Tabs>
-    </div>
+
+      <ReceiptScanner
+        isOpen={isScannerOpen}
+        onOpenChange={setIsScannerOpen}
+        onTransactionData={(data) => {
+          setIsScannerOpen(false)
+        }}
+      />
+
+      <CurrencyConverterDialog isOpen={isConverterOpen} onOpenChange={setIsConverterOpen} />
+    </div>  
   )
 }

@@ -13,7 +13,7 @@ function getBrowserlessEndpoint() {
   return `wss://${region}.browserless.io?token=${encodeURIComponent(token)}`
 }
 
-export type MeroShareBrowserProvider = "auto" | "browserless" | "local"
+export type MeroShareBrowserProvider = "api" | "auto" | "browserless" | "local"
 
 const BLOCKED_RESOURCE_TYPES = new Set([
   "image", "font", "media", "stylesheet", "texttrack", "imageset",

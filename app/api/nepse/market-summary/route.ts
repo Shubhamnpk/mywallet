@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
-const URL = "https://shubhamnpk.github.io/yonepse/data/market/summary.json"
+const NEPSE_API = process.env.NEPSE_API_URL || "http://130.210.4.183:8000"
 
 export async function GET() {
   try {
-    const response = await fetch(URL, {
-      next: { revalidate: 600 },
-      signal: AbortSignal.timeout(8000),
+    const response = await fetch(`${NEPSE_API}/api/v1/market/summary`, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10000),
     })
 
     if (!response.ok) {
@@ -18,8 +18,8 @@ export async function GET() {
       })
     }
 
-    const data = await response.json()
-    if (!Array.isArray(data)) {
+    const result = await response.json()
+    if (!result?.success || !Array.isArray(result.data)) {
       return errorResponse({
         status: 502,
         code: "UPSTREAM_ERROR",
@@ -27,7 +27,7 @@ export async function GET() {
       })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(result.data)
   } catch {
     return errorResponse({
       status: 503,

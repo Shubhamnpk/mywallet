@@ -179,7 +179,7 @@ export function MobileSettingsPage({ onClose, initialView = "main" }: MobileSett
       icon: <Bell className="w-6 h-6" />,
       iconBg: "bg-amber-600",
       title: "Notifications",
-      subtitle: "Reminders • Browser permission • Delivery",
+      subtitle: "Reminders • Browser permission",
       category: "account",
       keywords: ["notifications", "alerts", "reminders", "budget alerts", "goals", "permission"]
     },

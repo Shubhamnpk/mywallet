@@ -27,6 +27,9 @@ import { ExportDialog } from "@/components/tools/export-dialog";
 import {
   STORAGE_RATE,
   STORAGE_TIME_FMT,
+  STORAGE_PAY_TO_WALLET,
+  STORAGE_META,
+  type ShiftTrackerMeta,
   SHIFT_STORAGE_UPDATED_EVENT,
   type Shift,
   todayStr,
@@ -211,6 +214,7 @@ export function ShiftTracker() {
 
   const [selectedShifts, setSelectedShifts] = useState<Set<number>>(new Set());
   const [settingsRate, setSettingsRate] = useState("12.20");
+  const [payToWallet, setPayToWallet] = useState(true);
   const [paymentSearchTerm, setPaymentSearchTerm] = useState("");
   const [paymentTypeFilter, setPaymentTypeFilter] =
     useState<PaymentTypeFilter>("all-types");
@@ -290,15 +294,26 @@ export function ShiftTracker() {
 
   useEffect(() => {
     try {
-      // Use new storage functions that handle migration
       const shifts = getShiftsFromStorage();
       const p = localStorage.getItem(STORAGE_PAYMENTS);
-      const r = localStorage.getItem(STORAGE_RATE);
-      const tf = localStorage.getItem(STORAGE_TIME_FMT) as TimeFmt | null;
       if (shifts.length > 0) setShifts(shifts);
       if (p) setPayments(JSON.parse(p));
-      if (r) setRateInput(r);
-      if (tf === "12h" || tf === "24h") setTimeFormat(tf);
+
+      const metaRaw = localStorage.getItem(STORAGE_META);
+      if (metaRaw) {
+        const meta: ShiftTrackerMeta = JSON.parse(metaRaw);
+        setRateInput(meta.rate);
+        if (meta.timeFormat === "12h" || meta.timeFormat === "24h") setTimeFormat(meta.timeFormat);
+        if (typeof meta.payToWallet === "boolean") setPayToWallet(meta.payToWallet);
+      } else {
+        // fallback to old individual keys
+        const r = localStorage.getItem(STORAGE_RATE);
+        const tf = localStorage.getItem(STORAGE_TIME_FMT) as TimeFmt | null;
+        const pw = localStorage.getItem(STORAGE_PAY_TO_WALLET);
+        if (r) setRateInput(r);
+        if (tf === "12h" || tf === "24h") setTimeFormat(tf);
+        if (pw !== null) setPayToWallet(pw === "true");
+      }
     } catch {
       /* ignore */
     }
@@ -318,9 +333,13 @@ export function ShiftTracker() {
   const saveStorage = useCallback(() => {
     saveShiftsToStorage(shifts);
     localStorage.setItem(STORAGE_PAYMENTS, JSON.stringify(payments));
-    localStorage.setItem(STORAGE_RATE, rateInput);
-    localStorage.setItem(STORAGE_TIME_FMT, timeFormat);
-  }, [shifts, payments, rateInput, timeFormat]);
+    const meta: ShiftTrackerMeta = { rate: rateInput, timeFormat, payToWallet };
+    localStorage.setItem(STORAGE_META, JSON.stringify(meta));
+    // clean up old individual keys after migration
+    localStorage.removeItem(STORAGE_RATE);
+    localStorage.removeItem(STORAGE_TIME_FMT);
+    localStorage.removeItem(STORAGE_PAY_TO_WALLET);
+  }, [shifts, payments, rateInput, timeFormat, payToWallet]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -363,11 +382,43 @@ export function ShiftTracker() {
   );
 
   const paidForShift = useCallback(
-    (id: number) =>
-      payments
-        .filter((p) => p.type === "shift" && String(p.periodKey) === String(id))
-        .reduce((sum, p) => sum + p.amount, 0),
-    [payments],
+    (id: number) => {
+      const shift = shifts.find((s) => s.id === id);
+      if (!shift) return 0;
+      return payments.reduce((sum, payment) => {
+        let coveredShifts: Shift[];
+        switch (payment.type) {
+          case "shift":
+            coveredShifts = shifts.filter((s) => String(s.id) === String(payment.periodKey));
+            break;
+          case "day":
+            coveredShifts = shifts.filter((s) => s.date === payment.periodKey);
+            break;
+          case "week":
+            coveredShifts = shifts.filter((s) => weekKey(s.date) === payment.periodKey);
+            break;
+          case "month":
+            coveredShifts = shifts.filter((s) => monthKey(s.date) === payment.periodKey);
+            break;
+          case "all":
+            coveredShifts = shifts;
+            break;
+          default:
+            coveredShifts = [];
+        }
+        if (!coveredShifts.length) return sum;
+        const coveredEarn = coveredShifts.reduce(
+          (acc, s) => acc + s.hours * getShiftRate(s), 0,
+        );
+        if (coveredEarn <= 0) return sum;
+        const matchedEarn = coveredShifts
+          .filter((s) => s.id === id)
+          .reduce((acc, s) => acc + s.hours * getShiftRate(s), 0);
+        if (matchedEarn <= 0) return sum;
+        return sum + payment.amount * (matchedEarn / coveredEarn);
+      }, 0);
+    },
+    [payments, shifts, getShiftRate, weekKey, monthKey],
   );
 
   const shiftEarned = useCallback(
@@ -483,15 +534,17 @@ export function ShiftTracker() {
   ) => {
     const payDate = todayStr();
     let walletTransactionId: string | undefined;
-    try {
-      walletTransactionId = await recordIncomeForPayment(
-        amount,
-        label,
-        payDate,
-      );
-    } catch {
-      toast.error("Could not add income to your wallet.");
-      return;
+    if (payToWallet) {
+      try {
+        walletTransactionId = await recordIncomeForPayment(
+          amount,
+          label,
+          payDate,
+        );
+      } catch {
+        toast.error("Could not add income to your wallet.");
+        return;
+      }
     }
     const payment: ShiftPayment = {
       id: Date.now(),
@@ -503,7 +556,7 @@ export function ShiftTracker() {
       walletTransactionId,
     };
     setPayments((prev) => [payment, ...prev]);
-    toast.success("Marked paid — income added to transactions");
+    toast.success("Marked paid" + (payToWallet ? " - income added to transactions" : ""));
   };
 
   const markShiftPaid = async (id: number) => {
@@ -513,15 +566,17 @@ export function ShiftTracker() {
     if (owed <= 0) return;
     const payDate = todayStr();
     let walletTransactionId: string | undefined;
-    try {
-      walletTransactionId = await recordIncomeForPayment(
-        owed,
-        shiftPaymentLabel(shift),
-        payDate,
-      );
-    } catch {
-      toast.error("Could not add income to your wallet.");
-      return;
+    if (payToWallet) {
+      try {
+        walletTransactionId = await recordIncomeForPayment(
+          owed,
+          shiftPaymentLabel(shift),
+          payDate,
+        );
+      } catch {
+        toast.error("Could not add income to your wallet.");
+        return;
+      }
     }
     setPayments((prev) => [
       {
@@ -535,7 +590,7 @@ export function ShiftTracker() {
       },
       ...prev,
     ]);
-    toast.success("Shift paid — income added to transactions");
+    toast.success("Shift paid" + (payToWallet ? " - income added to transactions" : ""));
   };
 
   const undoPaid = async (paymentId: number) => {
@@ -1042,7 +1097,7 @@ export function ShiftTracker() {
         <CardContent className="px-4 sm:px-6 pt-0">
           {!payments.length ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No payments yet — use &quot;Mark paid&quot; on a period or shift.
+              No payments yet - use &quot;Mark paid&quot; on a period or shift.
               Each payment adds an income transaction to your wallet.
             </p>
           ) : (
@@ -1262,6 +1317,7 @@ export function ShiftTracker() {
         }}
         defaultRateInput={rateInput}
         initialShift={editShift}
+        institutions={uniqueInstitutions}
         onSave={(shift) => {
           if (editShift) {
             // Update existing shift
@@ -1289,6 +1345,7 @@ export function ShiftTracker() {
         rate={getRate()}
         timeFormat={timeFormat}
         currencySymbol={currencySymbol}
+        calendarSystem={calendarSystem}
       />
 
       {/* Settings */}
@@ -1299,7 +1356,7 @@ export function ShiftTracker() {
             "animate-in fade-in-0 zoom-in-95 duration-300",
           )}
         >
-          <DialogHeader className="p-6 pb-4 space-y-2 border-b border-border/60 bg-muted/20">
+          <DialogHeader className="p-6 pb-4 space-y-2 border-b border-border/60 bg-muted/20 text-left">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner">
                 <Settings className="h-5 w-5" />
@@ -1308,7 +1365,7 @@ export function ShiftTracker() {
                 <DialogTitle className="text-xl font-semibold tracking-tight">
                   Shift Tracker Settings
                 </DialogTitle>
-                <DialogDescription className="text-sm text-muted-foreground leading-snug">
+                <DialogDescription className="text-sm text-muted-foreground leading-snug hidden sm:block">
                   Adjust your hourly rate and time format preferences for shift
                   tracking.
                 </DialogDescription>
@@ -1336,35 +1393,69 @@ export function ShiftTracker() {
                 </p>
               </div>
 
-              <div>
-                <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
-                  Time format
-                </Label>
-                <div className="mt-2 flex w-fit gap-0.5 rounded-xl border bg-muted/30 p-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                      timeFormat === "12h"
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setTimeFormat("12h")}
-                  >
-                    12h
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                      timeFormat === "24h"
-                        ? "bg-background text-foreground shadow-sm border border-border"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setTimeFormat("24h")}
-                  >
-                    24h
-                  </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
+                    Time format
+                  </Label>
+                  <div className="mt-2 flex w-full gap-0.5 rounded-xl border bg-muted/30 p-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        timeFormat === "12h"
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setTimeFormat("12h")}
+                    >
+                      12h
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        timeFormat === "24h"
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setTimeFormat("24h")}
+                    >
+                      24h
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">
+                    Payout
+                  </Label>
+                  <div className="mt-2 flex w-full gap-0.5 rounded-xl border bg-muted/30 p-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        payToWallet
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setPayToWallet(true)}
+                    >
+                      Add to wallet
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 rounded-lg px-1 py-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
+                        !payToWallet
+                          ? "bg-background text-foreground shadow-sm border border-border"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setPayToWallet(false)}
+                    >
+                      None
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1410,21 +1501,6 @@ export function ShiftTracker() {
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex gap-3 p-6 pt-0 border-t border-border/40 bg-muted/10">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 h-12 rounded-2xl font-semibold border-muted/60"
-              onClick={() => {
-                const v = parseFloat(settingsRate);
-                if (!Number.isNaN(v)) setRateInput(settingsRate);
-                setSettingsOpen(false);
-              }}
-            >
-              Done
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1472,7 +1548,7 @@ export function ShiftTracker() {
                 <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3.5 py-3">
                   <div className="flex items-center gap-3 text-sm">
                     <span className="font-medium tabular-nums">{formatTimeValue(detailShift.start)}</span>
-                    <span className="text-muted-foreground/40">—</span>
+                    <span className="text-muted-foreground/40">-</span>
                     <span className="font-medium tabular-nums">{formatTimeValue(detailShift.end)}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1776,7 +1852,7 @@ function PeriodsBody({
   if (!shifts.length) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        No shifts yet — tap + to log your first shift.
+        No shifts yet - tap + to log your first shift.
       </p>
     );
   }

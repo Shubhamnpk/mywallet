@@ -5,6 +5,14 @@
 export const STORAGE_SHIFTS = "mywallet_wt_shifts_v2";
 export const STORAGE_RATE = "mywallet_wt_rate_v1";
 export const STORAGE_TIME_FMT = "mywallet_wt_timefmt_v1";
+export const STORAGE_PAY_TO_WALLET = "mywallet_wt_paywallet_v1";
+export const STORAGE_META = "mywallet_wt_meta_v1";
+
+export interface ShiftTrackerMeta {
+  rate: string
+  timeFormat: "12h" | "24h"
+  payToWallet: boolean
+}
 
 /** Fired when shifts in localStorage change from outside the tracker (e.g. floating log). */
 export const SHIFT_STORAGE_UPDATED_EVENT = "wallet-shift-shifts-updated";

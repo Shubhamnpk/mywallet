@@ -61,7 +61,7 @@ export function DocumentPreviewModal({
                     </div>
                 </DialogHeader>
                 <div className="relative flex-1 min-h-0 bg-muted/10">
-                    <DocumentPreview url={url} sourceUrl={sourceUrl} />
+                    <DocumentPreview key={url ?? "none"} url={url} sourceUrl={sourceUrl} />
                 </div>
             </DialogContent>
         </Dialog>

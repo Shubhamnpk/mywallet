@@ -31,7 +31,7 @@ export function TimeTooltip({ amount, children }: TimeTooltipProps) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center gap-1 cursor-help">
+          <div className="inline-flex items-center gap-1 cursor-help">
             {children}
             <HelpCircle className="w-3 h-3 text-white" />
           </div>

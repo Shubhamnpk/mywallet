@@ -43,3 +43,10 @@ public/worker-*.js
 
 .playwright-mcp
 public/sw.js
+public/test-compression/
+test-compression/
+/graphify-out/
+docs/browser-extension.md
+
+# local-only internal audit / sensitive docs — never push
+/.local/

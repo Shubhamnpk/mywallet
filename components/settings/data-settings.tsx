@@ -21,6 +21,7 @@ import { SecureKeyManager } from "@/lib/key-manager"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "@/lib/storage"
 import { DEFAULT_BACKUP_PIN } from "@/lib/backup"
+import { getDocuments } from "@/lib/document-storage"
 
 export function DataSettings() {
   const {
@@ -67,11 +68,72 @@ export function DataSettings() {
   const [backupSizeMode, setBackupSizeMode] = useState<"essential" | "full">("essential")
   const [pendingDropboxContent, setPendingDropboxContent] = useState<string | null>(null)
   const [pendingDecryptedBackup, setPendingDecryptedBackup] = useState<any | null>(null)
+  const [documentCount, setDocumentCount] = useState(0)
+  const [documentTotalSize, setDocumentTotalSize] = useState(0)
   const [dropboxBackupPinAction, setDropboxBackupPinAction] = useState<"pull">("pull")
   const [dropboxLocalPinAction, setDropboxLocalPinAction] = useState<"import" | "push">("import")
   const dropboxAppKey = Dropbox.getDropboxAppKey()
   const hasDropboxConfig = Boolean(dropboxAppKey)
   const backupSizeModeKey = "wallet_dropbox_backup_size_mode"
+
+  const submitDropboxBackupPin = () => {
+    const pin = dropboxBackupPin.trim()
+    if (!pin) {
+      setDropboxBackupPinError("Please enter the backup PIN.")
+      toast({
+        title: "PIN Required",
+        description: "Please enter the backup PIN.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (pin.length !== 6) {
+      setDropboxBackupPinError("PIN must be 6 digits.")
+      toast({
+        title: "Invalid PIN",
+        description: "PIN must be 6 digits.",
+        variant: "destructive",
+      })
+      return
+    }
+    const content = pendingDropboxContent
+    if (!content) {
+      setShowDropboxBackupPinPrompt(false)
+      setDropboxBackupPin("")
+      setDropboxBackupPinError(null)
+      toast({
+        title: "Backup Missing",
+        description: "Please try pulling again.",
+        variant: "destructive",
+      })
+      return
+    }
+    void (async () => {
+      setIsDropboxPulling(true)
+      try {
+        const { restoreEncryptedBackup } = await import("@/lib/backup")
+        const decrypted = await restoreEncryptedBackup(content, pin)
+        setPendingDropboxContent(null)
+        setShowDropboxBackupPinPrompt(false)
+        setDropboxBackupPin("")
+        setDropboxBackupPinError(null)
+        setRememberedDropboxBackupPin(pin)
+        setIsDropboxPulling(false)
+        await runDropboxImport(decrypted)
+      } catch (error) {
+        setIsDropboxPulling(false)
+        const message = error instanceof Error ? error.message : "Failed to decrypt backup."
+        setDropboxBackupPin("")
+        setDropboxBackupPinError(`${message} Please re-enter the backup PIN.`)
+        toast({
+          title: "Invalid Backup PIN",
+          description: message,
+          variant: "destructive",
+        })
+      }
+    })()
+  }
+
   const nonEssentialBackupKeys = [
     "qrScanHistory",
     "receiptScanHistory",
@@ -93,6 +155,8 @@ export function DataSettings() {
     "deleted_categories",
     "deleted_shareTransactions",
     "deleted_portfolios",
+    "deleted_documents",
+    "deleted_persons",
   ] as const
   const TOMBSTONE_LABELS: Record<(typeof TOMBSTONE_KEYS)[number], string> = {
     deleted_transactions: "Transactions",
@@ -104,6 +168,8 @@ export function DataSettings() {
     deleted_categories: "Categories",
     deleted_shareTransactions: "Share Transactions",
     deleted_portfolios: "Portfolios",
+    deleted_documents: "Documents",
+    deleted_persons: "Persons",
   }
 
   const getDropboxSession = () => {
@@ -282,10 +348,23 @@ export function DataSettings() {
           reject(new Error(event.data?.error || "Dropbox authorization failed"))
         }
       }
+      const POLL_START = Date.now()
+      const POLL_TIMEOUT = 30_000
       const timer = window.setInterval(() => {
-        if (authWindow.closed && !resolved) {
+        if (resolved) return
+        if (Date.now() - POLL_START > POLL_TIMEOUT) {
           cleanup()
-          reject(new Error("Dropbox authorization cancelled"))
+          reject(new Error("Dropbox authorization timed out"))
+          return
+        }
+        const session = getDropboxSession()
+        if (session?.accessToken && !Dropbox.isDropboxAccessTokenExpired(session, 60_000)) {
+          resolved = true
+          cleanup()
+          setHasDropboxToken(true)
+          setDropboxNeedsReconnect(false)
+          setDropboxError(null)
+          resolve(session.accessToken)
         }
       }, 500)
 
@@ -343,6 +422,18 @@ export function DataSettings() {
     if (storedMode === "full" || storedMode === "essential") {
       setBackupSizeMode(storedMode)
     }
+  }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const docs = await getDocuments()
+        setDocumentCount(docs.length)
+        setDocumentTotalSize(docs.reduce((sum, d) => sum + (d.size || 0), 0))
+      } catch {
+        // document vault not available
+      }
+    })()
   }, [])
 
   const handleDropboxConnect = async () => {
@@ -535,6 +626,8 @@ export function DataSettings() {
   const buildBackupData = async (mode: "essential" | "full") => {
     const customCategoriesOnly = categories.filter((category) => !category?.isDefault)
     const tombstones = await loadTombstones()
+    const { serializeDocumentVault } = await import("@/lib/document-storage")
+    const documentVault = await serializeDocumentVault()
     const data: any = {
       exportDate: new Date().toISOString(),
       version: "2.0",
@@ -554,6 +647,7 @@ export function DataSettings() {
         portfolios: true,
         activePortfolioId: true,
         shiftTracker: true,
+        documentVault: true,
       },
       userProfile,
       transactions,
@@ -573,6 +667,7 @@ export function DataSettings() {
       shiftPayments: JSON.parse(localStorage.getItem("mywallet_wt_pay_v1") || "[]"),
       shiftRate: Number(localStorage.getItem("mywallet_wt_rate_v1") || "0") || 12.20,
       shiftTimeFormat: localStorage.getItem("mywallet_wt_timefmt_v1") || "12h",
+      documentVault,
     }
 
     const showScrollbars = localStorage.getItem("wallet_show_scrollbars") !== "false"
@@ -658,9 +753,18 @@ export function DataSettings() {
       ? remoteData.emergencyFund
       : emergencyFund
 
+    const mergedSipPlans = mergeById(
+      userProfile?.sipPlans ?? [],
+      Array.isArray(remoteData?.userProfile?.sipPlans) ? remoteData.userProfile.sipPlans : [],
+    )
+    const mergedUserProfile = {
+      ...(remoteData?.userProfile ?? userProfile ?? {}),
+      sipPlans: mergedSipPlans,
+    }
+
     return {
       ...remoteData,
-      userProfile: remoteData?.userProfile ?? userProfile,
+      userProfile: mergedUserProfile,
       transactions: mergedTransactions,
       budgets: mergedBudgets,
       goals: mergedGoals,
@@ -693,34 +797,35 @@ export function DataSettings() {
     }
   }
 
-  const runDropboxImport = async (decrypted: any, localPinOverride?: string) => {
+  const runDropboxImport = async (decrypted: any) => {
     setIsDropboxPulling(true)
     try {
       const requiresUnlock = SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid()
-      const localPin = localPinOverride ?? rememberedWalletPin ?? undefined
-      if (requiresUnlock && !localPin) {
-        setPendingDecryptedBackup(decrypted)
-        setDropboxLocalPinAction("import")
-        setDropboxLocalPinError(null)
-        setShowDropboxLocalPinPrompt(true)
-        return
-      }
-      if (requiresUnlock && localPin) {
-        const validation = await SecurePinManager.validatePin(localPin)
-        if (!validation.success) {
+
+      if (requiresUnlock) {
+        if (rememberedWalletPin) {
+          const validation = await SecurePinManager.validatePin(rememberedWalletPin)
+          if (validation.success) {
+            SecureKeyManager.cacheSessionPin(rememberedWalletPin)
+          } else {
+            setRememberedWalletPin(null)
+            setPendingDecryptedBackup(decrypted)
+            setDropboxLocalPinAction("import")
+            setDropboxLocalPinError(null)
+            setShowDropboxLocalPinPrompt(true)
+            return
+          }
+        } else {
           setPendingDecryptedBackup(decrypted)
           setDropboxLocalPinAction("import")
-          setDropboxLocalPin("")
-          setDropboxLocalPinError("That PIN decrypted the backup, but it is not this wallet's current PIN. Enter your current wallet PIN to finish importing.")
+          setDropboxLocalPinError(null)
           setShowDropboxLocalPinPrompt(true)
           return
         }
-        SecureKeyManager.cacheSessionPin(localPin)
-        setRememberedWalletPin(localPin)
       }
 
       const merged = await mergeDropboxData(decrypted)
-      await importData(merged, localPin)
+      await importData(merged, rememberedWalletPin || undefined)
       if (merged?.tombstones) {
         await persistTombstones(merged.tombstones)
       }
@@ -798,7 +903,9 @@ export function DataSettings() {
       return
     }
 
-    const pinToUse = overridePin || rememberedWalletPin || (SecurePinManager.hasPin() && !SecureKeyManager.isKeyCacheValid() ? "" : DEFAULT_BACKUP_PIN)
+    const cachedPin = SecureKeyManager.getCachedSessionPin()
+    const pinToUse = overridePin || rememberedWalletPin || cachedPin ||
+      (SecurePinManager.hasPin() ? "" : DEFAULT_BACKUP_PIN)
     if (!pinToUse) {
       setDropboxLocalPinAction("push")
       setDropboxLocalPinError(null)
@@ -865,7 +972,7 @@ export function DataSettings() {
           const decrypted = await restoreEncryptedBackup(content, DEFAULT_BACKUP_PIN)
           setIsDropboxPulling(false)
           setRememberedDropboxBackupPin(DEFAULT_BACKUP_PIN)
-          await runDropboxImport(decrypted, DEFAULT_BACKUP_PIN)
+          await runDropboxImport(decrypted)
           return
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
@@ -889,18 +996,25 @@ export function DataSettings() {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (message.toLowerCase().includes("decryption failed")) {
-          setPendingDropboxContent(content)
-          setDropboxBackupPinAction("pull")
-          setDropboxBackupPinError(null)
-          setIsDropboxPulling(false)
-          setShowDropboxBackupPinPrompt(true)
-          return
+          // Cached PIN failed. Try default backup PIN before prompting.
+          try {
+            decrypted = await restoreEncryptedBackup(content, DEFAULT_BACKUP_PIN)
+            setRememberedDropboxBackupPin(DEFAULT_BACKUP_PIN)
+          } catch {
+            setPendingDropboxContent(content)
+            setDropboxBackupPinAction("pull")
+            setDropboxBackupPinError(null)
+            setIsDropboxPulling(false)
+            setShowDropboxBackupPinPrompt(true)
+            return
+          }
+        } else {
+          throw error
         }
-        throw error
       }
 
       setIsDropboxPulling(false)
-      await runDropboxImport(decrypted, pinToUse)
+      await runDropboxImport(decrypted)
     } catch (error) {
       if (isDropboxAuthorizationError(error)) {
         markDropboxReconnectRequired(getDropboxReconnectMessage(error, "download"))
@@ -929,14 +1043,37 @@ export function DataSettings() {
     const totalBudgets = budgets.length
     const totalGoals = goals.length
     const totalPortfolios = portfolios.length
-    const dataSize = new Blob([JSON.stringify({ userProfile, transactions, budgets, goals })]).size
+    const walletDataSize = new Blob([JSON.stringify({
+      userProfile, transactions, budgets, goals, debtAccounts,
+      creditAccounts, debtCreditTransactions, categories,
+      emergencyFund, portfolio, shareTransactions, portfolios,
+    })]).size
+    const totalSize = walletDataSize + documentTotalSize
+
+    const formatSize = (bytes: number) => {
+      if (bytes >= 1048576) return `${Math.round(bytes / 1048576)} MB`
+      if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+      return `${bytes} B`
+    }
+
+    const formatExact = (bytes: number) => {
+      if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`
+      if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`
+      return `${bytes} B`
+    }
 
     return {
       totalTransactions,
       totalBudgets,
       totalGoals,
       totalPortfolios,
-      dataSize: `${(dataSize / 1024).toFixed(2)} KB`,
+      dataSize: formatSize(walletDataSize),
+      walletDataExact: formatExact(walletDataSize),
+      documentCount,
+      documentTotalSize: documentTotalSize,
+      documentExact: formatExact(documentTotalSize),
+      totalSize: formatSize(totalSize),
+      totalExact: formatExact(totalSize),
     }
   }
 
@@ -953,7 +1090,7 @@ export function DataSettings() {
           <CardDescription>Current wallet data snapshot</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-lg border bg-muted p-3 text-center">
               <p className="text-2xl font-bold text-primary">{stats.totalTransactions}</p>
               <p className="text-xs text-muted-foreground">Transactions</p>
@@ -966,13 +1103,21 @@ export function DataSettings() {
               <p className="text-2xl font-bold text-primary">{stats.totalGoals}</p>
               <p className="text-xs text-muted-foreground">Goals</p>
             </div>
-            <div className="rounded-lg border bg-muted p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{stats.totalPortfolios}</p>
-              <p className="text-xs text-muted-foreground">Portfolios</p>
-            </div>
-            <div className="rounded-lg border bg-muted p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{stats.dataSize}</p>
-              <p className="text-xs text-muted-foreground">Approx Size</p>
+            {stats.totalPortfolios > 0 && (
+              <div className="rounded-lg border bg-muted p-3 text-center">
+                <p className="text-2xl font-bold text-primary">{stats.totalPortfolios}</p>
+                <p className="text-xs text-muted-foreground">Portfolios</p>
+              </div>
+            )}
+            {stats.documentCount > 0 && (
+              <div className="rounded-lg border bg-muted p-3 text-center">
+                <p className="text-2xl font-bold text-primary">{stats.documentCount}</p>
+                <p className="text-xs text-muted-foreground">Documents</p>
+              </div>
+            )}
+            <div className="rounded-lg border bg-muted p-3 text-center" title={`Wallet: ${stats.walletDataExact} | Documents: ${stats.documentExact} | Total: ${stats.totalExact}`}>
+              <p className="text-2xl font-bold text-primary">{stats.totalSize}</p>
+              <p className="text-xs text-muted-foreground">Total Data</p>
             </div>
           </div>
         </CardContent>
@@ -986,30 +1131,26 @@ export function DataSettings() {
           </CardTitle>
           <CardDescription>Export your data securely or restore it with guided import</CardDescription>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h3 className="font-semibold">Export Data</h3>
-                  <p className="text-sm text-muted-foreground">Create encrypted backup</p>
-                </div>
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+            <div className="flex flex-1 items-center justify-between rounded-lg border px-4 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Export Data</p>
+                <p className="text-xs text-muted-foreground">Create encrypted backup</p>
               </div>
-              <Button onClick={() => handleCreateBackup("download")}>
-                <Download className="mr-2 h-4 w-4" />
+              <Button size="sm" onClick={() => handleCreateBackup("download")}>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
                 Export
               </Button>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h3 className="font-semibold">Import Data</h3>
-                  <p className="text-sm text-muted-foreground">Restore from backup</p>
-                </div>
+            <div className="flex flex-1 items-center justify-between rounded-lg border px-4 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Import Data</p>
+                <p className="text-xs text-muted-foreground">Restore from backup</p>
               </div>
-              <Button variant="outline" onClick={() => setShowImportModal(true)}>
-                <Upload className="mr-2 h-4 w-4" />
+              <Button size="sm" variant="outline" onClick={() => setShowImportModal(true)}>
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Import
               </Button>
             </div>
@@ -1118,29 +1259,33 @@ export function DataSettings() {
                 </>
               )}
 
-              <Button onClick={() => void handleDropboxDisconnect()} variant="outline" size="sm" className="w-full">
-                Disconnect Dropbox
-              </Button>
+              {hasDropboxToken && (
+                <Button onClick={() => void handleDropboxDisconnect()} variant="outline" size="sm" className="w-full">
+                  Disconnect Dropbox
+                </Button>
+              )}
             </div>
           )}
 
           {!hasDropboxToken ? (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {dropboxNeedsReconnect
-                  ? "Your Dropbox session expired or was revoked. Reconnect to resume backups."
-                  : "Connect your Dropbox account to enable manual backup uploads and downloads."}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {dropboxNeedsReconnect
+                    ? "Your Dropbox session expired or was revoked. Reconnect to resume backups."
+                    : "Connect your Dropbox account to enable manual backup uploads and downloads."}
+                </p>
+                <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting} className="shrink-0">
+                  <Cloud className="mr-2 h-4 w-4" />
+                  {isDropboxConnecting ? "Connecting..." : dropboxNeedsReconnect ? "Reconnect Dropbox" : "Connect Dropbox"}
+                </Button>
+              </div>
               {dropboxError && (
                 <Alert variant="destructive">
                   <AlertTitle>Dropbox error</AlertTitle>
                   <AlertDescription className="break-words text-xs">{dropboxError}</AlertDescription>
                 </Alert>
               )}
-              <Button onClick={handleDropboxConnect} disabled={!hasDropboxConfig || isDropboxConnecting}>
-                <Cloud className="mr-2 h-4 w-4" />
-                {isDropboxConnecting ? "Connecting..." : dropboxNeedsReconnect ? "Reconnect Dropbox" : "Connect Dropbox"}
-              </Button>
             </div>
           ) : (
             <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
@@ -1191,7 +1336,12 @@ export function DataSettings() {
               <p className="text-xs text-muted-foreground">
                 Usually this is your wallet PIN from the device that created the backup.
               </p>
-              <div className="flex justify-center py-1">
+              <div className="flex justify-center py-1" onKeyDown={(e) => {
+                if (e.key === "Enter" && dropboxBackupPin.length === 6) {
+                  e.preventDefault()
+                  submitDropboxBackupPin()
+                }
+              }}>
                 <InputOTP
                   id="dropbox-backup-pin"
                   maxLength={6}
@@ -1231,63 +1381,7 @@ export function DataSettings() {
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  const pin = dropboxBackupPin.trim()
-                  if (!pin) {
-                    setDropboxBackupPinError("Please enter the backup PIN.")
-                    toast({
-                      title: "PIN Required",
-                      description: "Please enter the backup PIN.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  if (pin.length !== 6) {
-                    setDropboxBackupPinError("PIN must be 6 digits.")
-                    toast({
-                      title: "Invalid PIN",
-                      description: "PIN must be 6 digits.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  const content = pendingDropboxContent
-                  if (!content) {
-                    setShowDropboxBackupPinPrompt(false)
-                    setDropboxBackupPin("")
-                    setDropboxBackupPinError(null)
-                    toast({
-                      title: "Backup Missing",
-                      description: "Please try pulling again.",
-                      variant: "destructive",
-                    })
-                    return
-                  }
-                  void (async () => {
-                    setIsDropboxPulling(true)
-                    try {
-                      const { restoreEncryptedBackup } = await import("@/lib/backup")
-                      const decrypted = await restoreEncryptedBackup(content, pin)
-                      setPendingDropboxContent(null)
-                      setShowDropboxBackupPinPrompt(false)
-                      setDropboxBackupPin("")
-                      setDropboxBackupPinError(null)
-                      setRememberedDropboxBackupPin(pin)
-                      setIsDropboxPulling(false)
-                      await runDropboxImport(decrypted, pin)
-                    } catch (error) {
-                      setIsDropboxPulling(false)
-                      const message = error instanceof Error ? error.message : "Failed to decrypt backup."
-                      setDropboxBackupPin("")
-                      setDropboxBackupPinError(`${message} Please re-enter the backup PIN.`)
-                      toast({
-                        title: "Invalid Backup PIN",
-                        description: message,
-                        variant: "destructive",
-                      })
-                    }
-                  })()
-                }}
+                onClick={submitDropboxBackupPin}
                 className="flex-1"
               >
                 Continue
@@ -1403,11 +1497,26 @@ export function DataSettings() {
                     })
                     return
                   }
-                  setShowDropboxLocalPinPrompt(false)
-                  setDropboxLocalPin("")
-                  setDropboxLocalPinError(null)
-                  setPendingDecryptedBackup(null)
-                  void runDropboxImport(decrypted, pin)
+                  void (async () => {
+                    const validation = await SecurePinManager.validatePin(pin)
+                    if (!validation.success) {
+                      setDropboxLocalPin("")
+                      setDropboxLocalPinError("That PIN is not correct. Please re-enter your current wallet PIN.")
+                      toast({
+                        title: "Invalid Wallet PIN",
+                        description: "Please enter the correct PIN to continue.",
+                        variant: "destructive",
+                      })
+                      return
+                    }
+                    SecureKeyManager.cacheSessionPin(pin)
+                    setRememberedWalletPin(pin)
+                    setShowDropboxLocalPinPrompt(false)
+                    setDropboxLocalPin("")
+                    setDropboxLocalPinError(null)
+                    setPendingDecryptedBackup(null)
+                    void runDropboxImport(decrypted)
+                  })()
                 }}
                 className="flex-1"
               >

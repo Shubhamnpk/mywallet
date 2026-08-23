@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
+import { OTPInput } from "input-otp"
 import { SessionManager } from "@/lib/session-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
@@ -50,6 +51,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
   const [confirmNewRegularPin, setConfirmNewRegularPin] = useState("")
   const [newPinStep, setNewPinStep] = useState<"new" | "confirm">("new")
   const [isSettingNewPin, setIsSettingNewPin] = useState(false)
+  const pinInputRef = useRef<React.ComponentRef<typeof OTPInput>>(null)
 
   // Get current auth status based on mode
   const getCurrentAuthStatus = () => {
@@ -160,7 +162,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
   }
 
   const handleSubmit = async () => {
-    if (isSubmitting || pin.length !== 6) return
+    if (isSubmitting || pin.length !== 6 || currentAuthStatus.isLocked) return
 
     setIsSubmitting(true)
     try {
@@ -185,10 +187,16 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
     setPin("") // Clear the PIN input
     setErrorMessage(emergencyMode ? "Incorrect Emergency PIN" : "Incorrect PIN")
 
+    // Keep the input focused so the keyboard stays open and typing works immediately
+    requestAnimationFrame(() => {
+      pinInputRef.current?.focus()
+    })
+
     // Remove error state after animation completes
     setTimeout(() => {
       setPinError(false)
       setErrorMessage(null)
+      pinInputRef.current?.focus()
     }, 600) // Match animation duration
   }
 
@@ -385,10 +393,11 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
               <div className="flex justify-center">
                 <InputOTP
+                  ref={pinInputRef}
                   maxLength={6}
                   value={pin}
                   onChange={setPin}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || currentAuthStatus.isLocked}
                   className={pinError ? "animate-shake" : ""}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && pin.length === 6) {
@@ -499,6 +508,9 @@ export function SessionGuard({ children }: SessionGuardProps) {
     pathname === "/welcome" ||
     pathname === "/releases" ||
     pathname === "/roadmap" ||
+    pathname === "/features" ||
+    pathname === "/about" ||
+    pathname === "/contributors" ||
     pathname === "/dropbox-callback" ||
     pathname === "/onboarding"
 

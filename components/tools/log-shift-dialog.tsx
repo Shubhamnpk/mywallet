@@ -5,6 +5,7 @@ import { Clock, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,8 @@ export interface LogShiftDialogProps {
   defaultRateInput?: string;
   /** When provided, dialog enters edit mode for the given shift. */
   initialShift?: Shift;
+  /** Existing institution names, used to suggest while typing. */
+  institutions?: string[];
 }
 
 export function LogShiftDialog({
@@ -41,6 +44,7 @@ export function LogShiftDialog({
   onSave,
   defaultRateInput,
   initialShift,
+  institutions = [],
 }: LogShiftDialogProps) {
   const { userProfile } = useWalletData();
   const currencySymbol = getCurrencySymbol(
@@ -250,12 +254,11 @@ export function LogShiftDialog({
             <Label htmlFor="log-shift-institution" className="text-xs text-muted-foreground font-medium">
               Institution
             </Label>
-            <Input
-              id="log-shift-institution"
-              placeholder="e.g. ABC School, XYZ Corp"
+            <SearchableCombobox
               value={formInstitution}
-              onChange={(e) => setFormInstitution(e.target.value)}
-              className="h-10 rounded-lg border-muted/60 text-sm"
+              onChange={setFormInstitution}
+              options={institutions}
+              placeholder="e.g. ABC School, XYZ Corp"
             />
           </div>
 
@@ -284,7 +287,7 @@ export function LogShiftDialog({
               <>
                 <div className="flex items-center gap-2">
                   <span className="font-medium tabular-nums">{preview.startTime}</span>
-                  <span className="text-muted-foreground/40">—</span>
+                  <span className="text-muted-foreground/40">-</span>
                   <span className="font-medium tabular-nums">{preview.endTime}</span>
                   <span className="h-3.5 w-px bg-current opacity-20" />
                   <span className="font-medium tabular-nums">{preview.hours.toFixed(1)}h</span>

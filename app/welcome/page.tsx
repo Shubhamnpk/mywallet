@@ -2,7 +2,7 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { Wallet } from "lucide-react"
-import { WelcomePageClient } from "@/components/welcome/welcome-page-client"
+import { WelcomePageClient } from "@/components/public-pages/welcome"
 
 const siteUrl = "https://mywalletnp.vercel.app"
 const welcomePath = "/welcome"

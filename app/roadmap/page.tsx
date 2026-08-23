@@ -1,5 +1,5 @@
 import roadmapData from "@/data/roadmap.json"
-import { RoadmapPageClient, type RoadmapData } from "@/components/roadmap/roadmap-page-client"
+import { RoadmapPageClient, type RoadmapData } from "@/components/public-pages/roadmap"
 
 export const metadata = {
   title: "Roadmap | MyWallet",

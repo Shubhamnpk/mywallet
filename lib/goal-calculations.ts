@@ -37,7 +37,7 @@ function getGoalTransactionsCached(goalId: string, transactions: Transaction[]):
     .reduce((total, tx) => total + tx.amount, 0)
     
   // Withdrawals: actual === 0 (spendFromGoal) OR goal_transfer income (addFromGoal)
-  // Exclude "Goal Investment" — investments are still the user's asset, not spending
+  // Exclude "Goal Investment" - investments are still the user's asset, not spending
   const spent = goalTransactions
     .filter(tx => 
       (tx.actual === 0 || 

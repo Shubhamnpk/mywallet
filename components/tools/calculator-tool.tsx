@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Calculator, History, X } from "lucide-react"
+import { useState, useCallback, useRef } from "react"
+import { Calculator, History, X, Delete } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,68 @@ const CALC_BUTTONS = [
   "1", "2", "3", "+", "%",
   "0", "00", ".", "-", "=",
 ]
+
+function BackspaceButton({ onDelete, onClearAll }: { onDelete: () => void; onClearAll: () => void }) {
+  const [isLongPressing, setIsLongPressing] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFiredRef = useRef(false)
+
+  const startLongPress = useCallback(() => {
+    longPressFiredRef.current = false
+    setIsLongPressing(true)
+    timerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true
+      onClearAll()
+      setIsLongPressing(false)
+    }, 600)
+  }, [onClearAll])
+
+  const endLongPress = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    setIsLongPressing(false)
+  }, [])
+
+  const handleClick = useCallback(() => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      return
+    }
+    onDelete()
+  }, [onDelete])
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      onClick={handleClick}
+      onPointerDown={startLongPress}
+      onPointerUp={endLongPress}
+      onPointerLeave={endLongPress}
+      onPointerCancel={endLongPress}
+      aria-label="Delete last character. Hold to clear all."
+      title="Tap to delete last, hold to clear all"
+      className={cn(
+        "relative h-12 rounded-xl text-lg font-semibold transition-all duration-150 ease-out overflow-hidden",
+        "hover:scale-105 hover:shadow-md active:scale-95 active:shadow-sm",
+        "focus:ring-2 focus:ring-primary/20 focus:outline-none",
+        "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
+        isLongPressing && "scale-95 bg-red-50 dark:bg-red-950/20"
+      )}
+    >
+      <Delete className="h-5 w-5" />
+      <span
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-red-500/70 transition-transform duration-500 ease-linear",
+          isLongPressing ? "scale-x-100" : "scale-x-0"
+        )}
+      />
+    </Button>
+  )
+}
 
 export function CalculatorTool() {
   const [expression, setExpression] = useState("")
@@ -186,6 +248,13 @@ export function CalculatorTool() {
         ) : (
           <div className="grid grid-cols-5 gap-2">
             {CALC_BUTTONS.map((btn, i) => (
+              btn === "Del" ? (
+                <BackspaceButton
+                  key={btn}
+                  onDelete={() => handleInput("Del")}
+                  onClearAll={() => handleInput("C")}
+                />
+              ) : (
               <Button
                 key={btn}
                 variant={btn === "=" ? "default" : "outline"}
@@ -195,7 +264,7 @@ export function CalculatorTool() {
                   "h-12 rounded-xl text-lg font-semibold transition-all duration-150 ease-out",
                   "hover:scale-105 hover:shadow-md active:scale-95 active:shadow-sm",
                   "focus:ring-2 focus:ring-primary/20 focus:outline-none",
-                  (btn === "C" || btn === "Del") && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
+                  btn === "C" && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20",
                   ["/", "*", "+", "-", "%"].includes(btn) && "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10",
                   btn === "=" && "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg",
                   "animate-in slide-in-from-bottom-1 fade-in-0"
@@ -205,6 +274,7 @@ export function CalculatorTool() {
               >
                 {btn}
               </Button>
+              )
             ))}
           </div>
         )}

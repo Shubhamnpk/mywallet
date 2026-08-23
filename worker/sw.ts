@@ -32,6 +32,25 @@ interface NotificationPayload {
   url?: string;
 }
 
+const APP_ORIGIN = self.location.origin;
+
+/**
+ * Only allow navigation targets inside this app's own origin. Push payloads and
+ * page messages are untrusted input; a malicious URL here would otherwise let a
+ * crafted notification open a phishing page via clients.openWindow().
+ */
+function toSafeUrl(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) return "/";
+  try {
+    const url = new URL(value, APP_ORIGIN);
+    if (url.origin !== APP_ORIGIN) return "/";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+}
+
 // Original push notification logic
 self.addEventListener("push", (event) => {
   let payload: NotificationPayload = {}
@@ -50,7 +69,7 @@ self.addEventListener("push", (event) => {
     badge: payload.badge || "/image.png",
     tag,
     data: {
-      url: payload.url || "/",
+      url: toSafeUrl(payload.url),
     },
   }
 

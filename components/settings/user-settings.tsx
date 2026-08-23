@@ -11,14 +11,15 @@ import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { CalendarDays, LogOut, Trash2, Save, PencilLine, Camera, X, ImageIcon } from "lucide-react"
+import { CalendarDays, LogOut, Trash2, Save, PencilLine, Camera, X, ImageIcon, Shield, Download, Loader2, FileText } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { useAchievements } from "@/hooks/use-achievements"
-import { AchievementsProfile } from "@/components/achievements/achievements-profile"
+import { AchievementsProfile } from "@/components/tools/achievements/achievements-profile"
 import { compressImageToDataUrl } from "@/lib/image-utils"
 import { getCalendarSystem } from "@/lib/app-calendar"
+import { deleteAllDocuments, downloadAllDocumentsAsZip, getDocumentCount } from "@/lib/document-storage"
 
 const normalizeProfileFormData = (profile: any) => ({
   ...profile,
@@ -90,6 +91,8 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [showAvatarDialog, setShowAvatarDialog] = useState(false)
   const [showWorkDataDialog, setShowWorkDataDialog] = useState(false)
+  const [showDocVaultDialog, setShowDocVaultDialog] = useState(false)
+  const [docVaultAction, setDocVaultAction] = useState<"downloading" | "deleting" | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -639,11 +642,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   <div className="text-sm text-warning/70">Days per Month</div>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">Time wallet is disabled. Enable it to view your work information.</p>
-              </div>
-            )
+            ) : null
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -721,6 +720,107 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         </CardContent>
       </Card>
 
+      {/* Document Vault */}
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Document Vault</CardTitle>
+              <CardDescription>Store and manage important documents</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20">
+            <div className="space-y-1">
+              <Label htmlFor="document-vault-toggle" className="text-sm font-medium">Enable Document Vault</Label>
+              <p className="text-xs text-muted-foreground">
+                Adds a document management tab to your dashboard for storing images, PDFs, and notes
+              </p>
+            </div>
+            <Switch
+              id="document-vault-toggle"
+              checked={userProfile?.settings?.documentVaultEnabled ?? false}
+              onCheckedChange={(enabled) => {
+                if (enabled) {
+                  updateUserProfile({
+                    settings: { ...(userProfile?.settings || {}), documentVaultEnabled: true },
+                  })
+                } else {
+                  setShowDocVaultDialog(true)
+                }
+              }}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={showDocVaultDialog} onOpenChange={(v) => { if (!v && !docVaultAction) setShowDocVaultDialog(false) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider">
+              <FileText className="h-4 w-4" /> Disable Document Vault?
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              You have documents stored in the vault. What would you like to do with them?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 py-2">
+            <Button variant="outline" className="h-9 text-xs justify-start gap-2 font-bold"
+              disabled={!!docVaultAction}
+              onClick={async () => {
+                setDocVaultAction("downloading")
+                try {
+                  const count = await getDocumentCount()
+                  if (count === 0) { toast({ title: "No documents to download" }); return }
+                  const zip = await downloadAllDocumentsAsZip()
+                  const url = URL.createObjectURL(zip)
+                  const a = document.createElement("a")
+                  a.href = url
+                  a.download = `documents-${new Date().toISOString().slice(0, 10)}.zip`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                  toast({ title: `Downloaded ${count} documents` })
+                } catch { toast({ title: "Failed to download documents", variant: "destructive" }) }
+                await deleteAllDocuments()
+                updateUserProfile({ settings: { ...(userProfile?.settings || {}), documentVaultEnabled: false } })
+                setShowDocVaultDialog(false)
+                setDocVaultAction(null)
+              }}>
+              <Download className="h-4 w-4" />
+              {docVaultAction === "downloading" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Download all as ZIP & disable
+            </Button>
+            <Button variant="destructive" className="h-9 text-xs justify-start gap-2 font-bold"
+              disabled={!!docVaultAction}
+              onClick={async () => {
+                setDocVaultAction("deleting")
+                try {
+                  await deleteAllDocuments()
+                  toast({ title: "All documents deleted" })
+                } catch { toast({ title: "Failed to delete documents", variant: "destructive" }) }
+                updateUserProfile({ settings: { ...(userProfile?.settings || {}), documentVaultEnabled: false } })
+                setShowDocVaultDialog(false)
+                setDocVaultAction(null)
+              }}>
+              <Trash2 className="h-4 w-4" />
+              {docVaultAction === "deleting" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Delete all documents permanently
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="secondary" size="sm" className="h-8 text-xs" disabled={!!docVaultAction}
+              onClick={() => setShowDocVaultDialog(false)}>
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Achievements Profile */}
       <Card className="hidden md:block border-0 shadow-sm bg-gradient-to-br from-card to-card/50">
         <CardHeader className="pb-4">
@@ -748,7 +848,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         </CardContent>
       </Card>
 
-      {/* Unsaved Changes Panel — redesigned */}
+      {/* Unsaved Changes Panel - redesigned */}
       {editMode && hasChanges && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl animate-in slide-in-from-bottom-8 fade-in duration-300">
           <div className="relative rounded-2xl bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border border-primary/20 dark:border-primary/20 shadow-[0_8px_40px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)] overflow-hidden">
@@ -768,7 +868,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   </div>
                 </div>
 
-                {/* Middle: changed field chips — scrollable on mobile */}
+                {/* Middle: changed field chips - scrollable on mobile */}
                 <div className="flex-1 flex gap-1.5 overflow-x-auto min-w-0 flex-nowrap scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none]">
                   {changedFields.map((f) => (
                     <span

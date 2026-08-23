@@ -4,18 +4,21 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { RefreshCw, ExternalLink, Github, User, Heart, Building, Info, BookOpen, LifeBuoy, Code2, ShieldCheck, Trash2 } from "lucide-react"
+import { RefreshCw, ExternalLink, Github, User, Heart, Building, Info, BookOpen, LifeBuoy, Code2, ShieldCheck, Trash2, Sparkles } from "lucide-react"
 import { useState, useRef } from "react"
 import { toast } from 'sonner'
 import { usePWAUpdate } from '@/components/pwa/usePWAUpdate'
 import { Switch } from '@/components/ui/switch'
 import packageJson from '../../package.json'
 import releasesData from "@/data/releases.json"
+import Image from "next/image"
 import Link from "next/link"
+import { ContributorsTributeModal } from "@/components/settings/contributors-tribute-modal"
 
 export function AboutSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [clearingCache, setClearingCache] = useState(false)
+  const [tributeOpen, setTributeOpen] = useState(false)
   const tapTriggered = useRef(false)
   const {
     isSupported,
@@ -301,15 +304,13 @@ export function AboutSettings() {
             <User className="w-5 h-5" />
             Developer
           </CardTitle>
-          <CardDescription>Built and maintained by Shubham Niraual</CardDescription>
+          <CardDescription>Built and maintained by Shubham Niraula</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <User className="w-6 h-6 text-primary" />
-            </div>
+            <Image src="https://avatars.githubusercontent.com/u/150024127" alt="Shubham Niraula" width={48} height={48} className="rounded-full" />
             <div>
-              <p className="font-medium">Shubham Niraual</p>
+              <p className="font-medium">Shubham Niraula</p>
               <p className="text-sm text-muted-foreground">Full-stack developer from Nepal</p>
             </div>
           </div>
@@ -371,6 +372,48 @@ export function AboutSettings() {
         </CardContent>
       </Card>
 
+      {/* Open Source Tribute */}
+      <Card className="relative overflow-hidden">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Heart className="w-5 h-5 text-primary" />
+            Open Source
+          </CardTitle>
+          <CardDescription>A tribute to the helping hands behind MyWallet</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setTributeOpen(true)}
+              className="group rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 p-4 text-left transition-all duration-300 hover:border-primary/40 hover:shadow-md"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-white shadow-sm transition-transform duration-300 group-hover:scale-105">
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold">The Helping Hands</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5 leading-snug">
+                    Contributors, services &amp; open source packages
+                  </span>
+                </span>
+                <ExternalLink className="w-4 h-4 shrink-0 text-muted-foreground transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-primary" />
+              </div>
+            </button>
+            <Button variant="outline" className="justify-start h-auto p-4" onClick={handleGithubLink}>
+              <Github className="w-4 h-4 mr-3 shrink-0" />
+              <span className="text-left">
+                <span className="block font-medium">Contribute</span>
+                <span className="block text-sm text-muted-foreground">Report issues or send improvements</span>
+              </span>
+              <ExternalLink className="w-4 h-4 ml-auto" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* GitHub */}
       <Card>
         <CardHeader className="pb-4">
@@ -393,6 +436,8 @@ export function AboutSettings() {
           </div>
         </CardContent>
       </Card>
+
+      <ContributorsTributeModal open={tributeOpen} onOpenChange={setTributeOpen} />
     </div>
   )
 }

@@ -18,9 +18,9 @@ Thank you for your interest in contributing to MyWallet! We welcome contribution
    pnpm test
    ```
 
-5. **Commit Your Changes**: Write clear, concise commit messages.
+5. **Commit Your Changes**: Write clear, concise commit messages using [Conventional Commits](https://www.conventionalcommits.org/) format (releases are automated via release-please).
    ```
-   git commit -m "Add feature: description of changes"
+   git commit -m "feat: add your feature description"
    ```
 
 6. **Submit a Pull Request**: Push your branch to your fork and create a pull request against the main branch.
@@ -28,9 +28,10 @@ Thank you for your interest in contributing to MyWallet! We welcome contribution
 ## Code Standards
 
 - **TypeScript**: Use TypeScript for all new code. Follow the existing patterns in the codebase.
+- **Type Checking**: Ensure `pnpm typecheck` passes (strict mode).
 - **Linting**: Ensure your code passes ESLint checks.
-- **Formatting**: Use Prettier for consistent code formatting.
-- **Testing**: Write unit tests for new features and bug fixes.
+- **Testing**: Write unit tests for new features and bug fixes (`pnpm test`). Add Playwright E2E coverage for critical flows when appropriate (`pnpm test:e2e`).
+- **Security**: Run `pnpm audit` before submitting; never commit secrets or tokens.
 - **Documentation**: Update documentation for any new features or changes.
 
 ## Reporting Issues

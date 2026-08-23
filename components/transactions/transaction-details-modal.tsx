@@ -15,7 +15,6 @@ import { Clock, Calendar, Tag, FileText, TrendingUp, TrendingDown, Trash2, Penci
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import type { Category, Transaction, UserProfile } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
-import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
@@ -383,7 +382,6 @@ export function TransactionDetailsModal({
                 label="Amount"
                 value={formAmount}
                 onChange={setFormAmount}
-                currencySymbol={getCurrencySymbol(userProfile.currency, userProfile.customCurrency)}
                 required
               />
               <div className="grid grid-cols-2 gap-3">

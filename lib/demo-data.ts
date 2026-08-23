@@ -136,7 +136,7 @@ function generateUserProfile(monthsBack: number): UserProfile {
 function generateTransactions(count: number, monthsBack: number): Transaction[] {
   const transactions: Transaction[] = []
 
-  // Salary — one per month on a fixed day
+  // Salary - one per month on a fixed day
   const salaryDay = Math.min(28, Math.max(1, randomInRange(25, 28)))
   for (let m = monthsBack - 1; m >= 0; m--) {
     const d = new Date(NOW.getFullYear(), NOW.getMonth() - m, salaryDay)
@@ -146,7 +146,7 @@ function generateTransactions(count: number, monthsBack: number): Transaction[] 
       id: generateId("tx"),
       type: "income",
       amount: salary,
-      description: `Monthly Salary — ${d.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
+      description: `Monthly Salary - ${d.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
       category: "Salary",
       date: d.toISOString(),
       actual: salary,
@@ -179,7 +179,7 @@ function generateTransactions(count: number, monthsBack: number): Transaction[] 
       id: generateId("tx"),
       type: "income",
       amount,
-      description: `${cat.name} — ${new Date(randomDate(monthsBack)).toLocaleDateString("en-US", { month: "short" })}`,
+      description: `${cat.name} - ${new Date(randomDate(monthsBack)).toLocaleDateString("en-US", { month: "short" })}`,
       category: cat.name,
       date: randomDate(monthsBack),
       actual: amount,

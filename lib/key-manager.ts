@@ -109,15 +109,21 @@ export class SecureKeyManager {
   }
 
   static cacheSessionPin(pin: string): void {
-    // Backward-compatible API for old callers. The PIN is intentionally not cached.
-    // Successful getMasterKey(pin) calls cache the derived CryptoKey in memory instead.
-    void pin
-    this.clearSessionPin()
+    try {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(this.SESSION_PIN_KEY, pin)
+      }
+    } catch {
+    }
   }
 
   static getCachedSessionPin(): string | null {
-    this.clearSessionPin()
-    return null
+    try {
+      if (typeof window === "undefined") return null
+      return sessionStorage.getItem(this.SESSION_PIN_KEY)
+    } catch {
+      return null
+    }
   }
 
   static clearSessionPin(): void {
@@ -219,7 +225,7 @@ export class SecureKeyManager {
 
         const encryptedPayload = value.substring(10)
 
-        // Already encrypted with the default key — nothing to do.
+        // Already encrypted with the default key - nothing to do.
         try {
           await SecureWallet.decryptData(encryptedPayload, defaultKey)
           continue

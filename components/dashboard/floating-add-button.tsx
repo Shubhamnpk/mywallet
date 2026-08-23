@@ -182,6 +182,12 @@ export function FloatingAddButton({
     })
   }, [clampCalculatorPosition, getNearestCalculatorEdge])
 
+  useEffect(() => {
+    const handler = () => openCalculator()
+    window.addEventListener("open-calculator-panel", handler)
+    return () => window.removeEventListener("open-calculator-panel", handler)
+  }, [openCalculator])
+
   const handleMainAction = useCallback(() => {
     if (isExpanded) {
       setIsExpanded(false);
@@ -632,6 +638,7 @@ export function FloatingAddButton({
 
       {/* Main FAB */}
       <Button
+        data-tour="fab"
         onClick={handleMainAction}
         onMouseEnter={vibrateHold}
         onTouchStart={() => {

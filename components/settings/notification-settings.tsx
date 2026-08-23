@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
-import { Bell, Info, RotateCcw, ShieldAlert } from "lucide-react"
+import { useMemo } from "react"
+import { Bell, RotateCcw, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -12,7 +12,6 @@ import {
   normalizeNotificationSettings,
 } from "@/lib/notifications"
 import type { NotificationSettings } from "@/types/wallet"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { WebPushSettings } from "@/components/settings/web-push-settings"
 
 export function NotificationSettings() {
@@ -187,38 +186,11 @@ function SettingToggle({
   onCheckedChange,
   disabled = false,
 }: SettingToggleProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const hoverTimeout = useRef<ReturnType<typeof setTimeout>>()
-
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-1">
+      <div>
         <Label htmlFor={id}>{label}</Label>
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center rounded-full p-1 hover:bg-muted transition-colors"
-              onMouseEnter={() => {
-                clearTimeout(hoverTimeout.current)
-                setIsOpen(true)
-              }}
-              onMouseLeave={() => {
-                hoverTimeout.current = setTimeout(() => setIsOpen(false), 200)
-              }}
-            >
-              <Info className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            side="top"
-            className="w-72 text-sm"
-            onMouseEnter={() => clearTimeout(hoverTimeout.current)}
-            onMouseLeave={() => setIsOpen(false)}
-          >
-            {description}
-          </PopoverContent>
-        </Popover>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>

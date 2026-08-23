@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cn } from "@/lib/utils";
 import { Search, Star, MapPin, RefreshCw, Crown, Medal, Award, ExternalLink, Building, Phone, Map as MapIcon, TrendingUp, Store, ShieldCheck, Clock, DollarSign, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 import { useCalendarSystem } from "@/hooks/use-calendar-system";
+import { compactAmount } from "@/lib/money-format";
 
 interface Broker {
   id: number;
@@ -50,19 +51,7 @@ export function BrokerLeaderboard() {
   };
   const [selectedBroker, setSelectedBroker] = useState<(Broker & { topSector: string }) | null>(null);
 
-  const formatAmount = (n: number) => {
-    const abs = Math.abs(n);
-    if (calendarSystem === "BS") {
-      if (abs >= 1e11) return `रु ${(n / 1e11).toFixed(1)} kharab`;
-      if (abs >= 1e9) return `रु ${(n / 1e9).toFixed(1)} arab`;
-      if (abs >= 1e7) return `रु ${(n / 1e7).toFixed(1)} cr`;
-      return `रु ${(n / 1e5).toFixed(1)} lakh`;
-    }
-    if (abs >= 1e12) return `रु ${(n / 1e12).toFixed(1)}T`;
-    if (abs >= 1e9) return `रु ${(n / 1e9).toFixed(1)}B`;
-    if (abs >= 1e6) return `रु ${(n / 1e6).toFixed(1)}M`;
-    return `रु ${(n / 1e3).toFixed(1)}K`;
-  }
+  const formatAmount = (n: number) => compactAmount(n, calendarSystem)
 
   useEffect(() => {
     Promise.all([
@@ -452,7 +441,7 @@ export function BrokerLeaderboard() {
                     </div>
                     <div className="rounded-xl bg-muted/30 px-3 py-2.5 text-center">
                       <div className="text-[10px] text-muted-foreground">Branch Avg</div>
-                      <div className="text-sm font-bold font-mono">{selectedBroker.branchCount > 0 ? formatAmount(selectedBroker.thirtyDaysTurnover / selectedBroker.branchCount) : "—"}</div>
+                      <div className="text-sm font-bold font-mono">{selectedBroker.branchCount > 0 ? formatAmount(selectedBroker.thirtyDaysTurnover / selectedBroker.branchCount) : "-"}</div>
                     </div>
                   </div>
                 </div>

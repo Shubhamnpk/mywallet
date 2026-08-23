@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
-import { getSipDueDateAtIndex, getSipScheduleSummary } from "@/lib/sip"
+import { getSipDueDateAtIndex, getSipScheduleSummary, parseSipHistoryImportFileToCsv, resolveSipProviderQuote } from "@/lib/sip"
 
 const toLocalDateKey = (value: Date | null | undefined) =>
   value
@@ -47,5 +49,31 @@ describe("sip schedule logic", () => {
     expect(toLocalDateKey(schedule?.nextDate)).toBe("2026-02-28")
     expect(schedule?.previousDate).not.toBeNull()
     expect(toLocalDateKey(schedule?.previousDate)).toBe("2026-02-28")
+  })
+
+  it("resolves the latest quote for a symbol from provider payloads", () => {
+    const payload = [
+      { symbol: "NABIL", ltp: 950 },
+      { symbol: "HBL", ltp: 720 },
+    ]
+
+    expect(resolveSipProviderQuote(payload, "nabil")).toEqual({
+      symbol: "NABIL",
+      price: 950,
+      source: "provider",
+    })
+  })
+
+  it("normalizes transaction-history rows from the provided Excel workbook", async () => {
+    const filePath = resolve(process.cwd(), "public/demo data/mutalfund.xlsx")
+    const file = new File([readFileSync(filePath)], "mutalfund.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main",
+    })
+
+    const csv = await parseSipHistoryImportFileToCsv(file)
+
+    expect(csv).toContain("SIP Installment")
+    expect(csv).toContain("Nabil Flexi Cap Fund")
+    expect(csv).toContain("1491.28")
   })
 })

@@ -1,213 +1,130 @@
-import { NextResponse } from "next/server";
-import { getMeroShareBrowser } from "../_lib/browser";
-import { loginToMeroShare } from "../_lib/transaction-history";
+import { NextResponse } from "next/server"
+import { proxyToMeroShareApi } from "../_lib/proxy-api"
 
 export async function POST(req: Request) {
-    let browser: any = null;
-    try {
-        const { credentials, ipoName, options } = await req.json();
+  try {
+    const body = await req.json()
+    const credentials = body.credentials
+    const options = body.options
+    const ipoName = body.ipo_name || body.ipoName
 
-        if (!credentials || !credentials.dpId || !credentials.username || !credentials.password) {
-            return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 });
-        }
-
-        try {
-            browser = await getMeroShareBrowser({
-                showBrowser: Boolean(options?.showBrowser),
-                browserProvider: options?.browserProvider || credentials?.browserProvider
-            });
-            const page = await browser.newPage();
-
-            await loginToMeroShare(page, {
-                dpId: credentials.dpId,
-                username: credentials.username,
-                password: credentials.password,
-            });
-
-            // 2. Navigate to My ASBA
-            await page.goto('https://meroshare.cdsc.com.np/#/asba', { waitUntil: 'networkidle2' });
-
-            // 3. Click on "Application Report" tab
-            let reportTabFound = false;
-            try {
-                // Wait for the navigation bar or links to appear using a text-based check
-                await page.waitForFunction(() => {
-                    const elements = Array.from(document.querySelectorAll('.nav-link, .nav-item span, a span'));
-                    return elements.some(el => el.textContent?.includes('Application Report'));
-                }, { timeout: 20000 });
-
-                reportTabFound = await page.evaluate(() => {
-                    const links = Array.from(document.querySelectorAll('.nav-link, .nav-item a'));
-                    for (const link of links) {
-                        const text = link.textContent?.trim() || "";
-                        if (text.includes('Application Report')) {
-                            // If it's already active, don't click, just count as found
-                            if (link.classList.contains('active')) return true;
-
-                            (link as HTMLElement).click();
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-
-                if (reportTabFound) {
-                    await page.waitForFunction(() => {
-                        return document.querySelector('.asba-table, .company-list, .fallback-view') !== null ||
-                            document.body.textContent?.includes("Application Report")
-                    }, { timeout: 20000 });
-                }
-            } catch (tabErr) {
-                console.error("Tab selection error:", tabErr);
-            }
-
-            if (!reportTabFound) {
-                await browser.close();
-                return NextResponse.json({ error: "Could not find 'Application Report' tab even after searching. Mero Share layout might be unstable." }, { status: 404 });
-            }
-
-            // 4. Find the IPO in the report list
-            let foundReport = false;
-            try {
-                // Wait for either the table or the newer company-list cards to appear
-                await page.waitForSelector('.asba-table, .company-list', { timeout: 20000 });
-
-                foundReport = await page.evaluate((targetIpo: string) => {
-                    // Helper: Normalize name for fuzzy matching
-                    const normalize = (name: string) => {
-                        return name.toLowerCase()
-                            .replace(/\b(limited|ltd|public|private|pvt|co|company|inc)\b/g, '') // Remove suffixes
-                            .replace(/[().,-]/g, '') // Remove punctuation
-                            .replace(/\s+/g, ' ') // Collapse spaces
-                            .trim();
-                    };
-
-                    const targetNormalized = normalize(targetIpo);
-
-                    // Helper: Check match (Exact OR Fuzzy)
-                    const isMatch = (candidate: string) => {
-                        if (!candidate) return false;
-                        const candNorm = normalize(candidate);
-                        return candNorm.includes(targetNormalized) || targetNormalized.includes(candNorm);
-                    };
-
-                    // Try Card-based layout (.company-list)
-                    const cards = Array.from(document.querySelectorAll('.company-list'));
-                    if (cards.length > 0) {
-                        for (const card of cards) {
-                            const nameEl = card.querySelector('.company-name span[tooltip="Company Name"]') || card.querySelector('.company-name');
-                            const cardText = nameEl?.textContent?.trim() || "";
-
-                            if (isMatch(cardText)) {
-                                // Find the specific button that has "report" icon or text inside action-buttons
-                                const buttons = Array.from(card.querySelectorAll('.action-buttons button'));
-                                const reportBtn = buttons.find(btn => btn.textContent?.toLowerCase().includes('report')) || card.querySelector('.btn-issue');
-
-                                if (reportBtn) {
-                                    (reportBtn as HTMLElement).click();
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-
-                    // Try Table-based layout (.asba-table)
-                    const rows = Array.from(document.querySelectorAll('.asba-table tbody tr'));
-                    for (const row of rows) {
-                        const rowText = row.textContent?.trim() || "";
-                        const companyName = rowText.split('\n')[0].trim();
-
-                        if (isMatch(companyName)) {
-                            // Find report button/icon
-                            const reportBtn = row.querySelector('.btn-report, .ca-report, .ca.report, i.mdi-file-document') ||
-                                Array.from(row.querySelectorAll('button')).find(btn => btn.innerHTML.includes('mdi-file-document'));
-
-                            if (reportBtn) {
-                                (reportBtn as HTMLElement).click();
-                                return true;
-                            }
-                        }
-                    }
-
-                    return false;
-                }, ipoName);
-
-            } catch (findErr) {
-                console.error("Error finding IPO in list:", findErr);
-            }
-
-            if (!foundReport) {
-                await browser.close();
-                return NextResponse.json({ error: `Application report for "${ipoName}" not found in your Mero Share account.` }, { status: 404 });
-            }
-
-            // 5. Check Allotment Status in the Report Detail Page
-            await page.waitForSelector('.asba-report-detail, .modal-content, .card-body, .row', { timeout: 15000 });
-            await page.waitForFunction(() => {
-                return document.querySelectorAll('.form-group').length > 0 &&
-                    document.querySelector('.form-group label') !== null
-            }, { timeout: 15000 });
-
-            const reportData = await page.evaluate(() => {
-                const data: any = {};
-
-                // Mero Share Detail Page has multiple sections with .form-group
-                const formGroups = Array.from(document.querySelectorAll('.form-group'));
-
-                formGroups.forEach(group => {
-                    const labelEl = group.querySelector('label');
-                    const labelText = labelEl?.textContent?.trim() || "";
-
-                    if (labelText) {
-                        // Value can be in .form-value span (top section) or .input-group label (bottom section)
-                        const valueEl = group.querySelector('.form-value span') || group.querySelector('.input-group label');
-                        const valueText = valueEl?.textContent?.trim() || "";
-
-                        if (valueText) {
-                            data[labelText] = valueText;
-                        }
-                    }
-                });
-
-                // Specifically look for Allotment Status
-                // Labels seen in Mero Share: "Status", "Allotment Status"
-                const statusValue = data['Status'] || data['Allotment Status'] || "Unknown";
-                const lowerStatus = statusValue.toLowerCase();
-
-                // Determine if allotted
-                // "Verified" means application is success but result is not yet published
-                const isAllotted = lowerStatus.includes('alloted') && !lowerStatus.includes('not');
-                const isVerified = lowerStatus === 'verified';
-                const isNotAllotted = lowerStatus.includes('..');
-
-                let finalStatus = statusValue;
-                if (isVerified) {
-                    finalStatus = "Application Verified (Result Pending)";
-                } else if (isNotAllotted) {
-                    finalStatus = "Not Allotted";
-                }
-
-                // Get allotted quantity if available
-                const allottedQuantity = data['Allotted Quantity'] || (isAllotted ? (data['Applied Quantity'] || "0") : "0");
-
-                return {
-                    status: finalStatus,
-                    isAllotted,
-                    allottedQuantity,
-                    allDetails: data
-                };
-            });
-
-            await browser.close();
-            return NextResponse.json({ success: true, ...reportData });
-
-        } catch (innerError: any) {
-            console.error("Puppeteer Allotment Error:", innerError);
-            if (browser) await browser.close();
-            return NextResponse.json({ error: innerError.message || "An error occurred during allotment check." }, { status: 500 });
-        }
-
-    } catch (_error: any) {
-        return NextResponse.json({ error: "Invalid request data" }, { status: 400 });
+    if (!credentials?.dpId || !credentials?.username || !credentials?.password) {
+      return NextResponse.json({ error: "Missing Mero Share credentials" }, { status: 400 })
     }
+    if (!ipoName) {
+      return NextResponse.json({ error: "Missing ipo_name" }, { status: 400 })
+    }
+
+    const provider = options?.browserProvider || credentials?.browserProvider || "rest"
+
+    if (provider === "rest") {
+      const { runWithSessionRecovery } = await import("../_lib/rest-api")
+      const username = String(credentials.username || "").trim()
+
+      return await runWithSessionRecovery(username, async (client) => {
+        await client.ensureSession(credentials)
+        const result = await client.checkAllotmentViaApplicationReport(ipoName)
+        const user_name = (await client.getOwnData())?.name || credentials.username
+        if (!result.matched) {
+          return NextResponse.json({
+            success: true,
+            status: "No Application",
+            is_allotted: false,
+            allotted_quantity: "0",
+            user_name,
+            details: null,
+            message: `No MeroShare application found for '${ipoName}'. Did you apply for this IPO?`,
+          })
+        }
+        return NextResponse.json({
+          success: true,
+          status: result.isAllotted ? "Allotted" : "Not Allotted",
+          is_allotted: result.isAllotted,
+          allotted_quantity: String(result.allottedQuantity ?? 0),
+          user_name,
+          details: result.row ?? null,
+          message: result.isAllotted
+            ? `Congratulations! You have been allotted ${result.allottedQuantity ?? 0} shares.`
+            : `Not allotted in this round (status: ${result.statusName || "N/A"}).`,
+        })
+      })
+    }
+
+    if (provider === "api") {
+      const payload: any = { credentials: { dpId: credentials.dpId, username: credentials.username, password: credentials.password }, ipoName }
+      const data = await proxyToMeroShareApi("/check-allotment", payload)
+      return NextResponse.json({
+        success: data.success,
+        status: data.status,
+        is_allotted: data.is_allotted,
+        allotted_quantity: data.allotted_quantity,
+        user_name: data.user_name,
+        details: data.all_details,
+        message: data.message,
+      })
+    }
+
+    const { getMeroShareBrowser } = await import("../_lib/browser")
+    const { loginToMeroShare } = await import("../_lib/transaction-history")
+
+    let browser: any = null
+    try {
+      browser = await getMeroShareBrowser({ showBrowser: false, browserProvider: provider })
+      const page = await browser.newPage()
+      await loginToMeroShare(page, credentials)
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+      await page.goto("https://meroshare.cdsc.com.np/#/asba", { waitUntil: "networkidle2" })
+      await sleep(3000)
+
+      const ipoDropdown = await page.waitForSelector("select", { timeout: 10000 }).catch(() => null)
+      if (ipoDropdown) {
+        const options = await page.evaluate((name: string) => {
+          const selects = Array.from(document.querySelectorAll("select"))
+          for (const sel of selects) {
+            for (const opt of Array.from(sel.options)) {
+              if (opt.text.toLowerCase().includes(name.toLowerCase())) {
+                sel.value = opt.value
+                sel.dispatchEvent(new Event("change", { bubbles: true }))
+                return true
+              }
+            }
+          }
+          return false
+        }, ipoName)
+      }
+
+      await page.evaluate(() => { const btn = Array.from(document.querySelectorAll("button")).find(b => b.textContent?.includes("Search") || b.textContent?.includes("View")); if (btn) btn.click() })
+      await sleep(3000)
+
+      const result = await page.evaluate(() => {
+        const table = document.querySelector("table")
+        if (!table) return null
+        const rows = table.querySelectorAll("tbody tr")
+        if (rows.length === 0) return null
+        const cells = rows[0].querySelectorAll("td")
+        return {
+          status: cells[3]?.textContent?.trim() || "",
+          isAllotted: (cells[3]?.textContent?.trim() || "").toLowerCase().includes("allotted"),
+          allottedQuantity: cells[4]?.textContent?.trim() || "0",
+        }
+      })
+
+      await browser.close()
+      browser = null
+      return NextResponse.json({
+        success: true,
+        status: result?.status || "No data found",
+        is_allotted: result?.isAllotted || false,
+        allotted_quantity: result?.allottedQuantity || "0",
+        message: result ? `Status: ${result.status}` : "No application record found.",
+      })
+    } finally {
+      if (browser) await browser.close()
+    }
+  } catch (error: any) {
+    const { describeMeroShareFailure } = await import("../_lib/rest-api")
+    const failure = describeMeroShareFailure(error, "Allotment check failed")
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status })
+  }
 }

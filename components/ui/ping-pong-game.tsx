@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { RotateCcw, Play, Pause, Cpu, Users, X } from "lucide-react"
+import { RotateCcw, Play, Pause, Cpu, Users, X, Keyboard } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface PingPongGameProps {
@@ -46,10 +46,12 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
   const animRef = useRef<number>(0)
   const gsRef = useRef<GameState>(initialGameState())
   const keysRef = useRef<Set<string>>(new Set())
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768
+  const pauseToggleRef = useRef<() => void>(() => {})
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 768)
 
   const [phase, setPhase] = useState<"menu" | "playing">("menu")
   const [gameMode, setGameMode] = useState<"normal" | "ai">("normal")
+  const [showHelp, setShowHelp] = useState(false)
   const [display, setDisplay] = useState<{ score1: number; score2: number; isPlaying: boolean; isPaused: boolean; winner: string | null }>({
     score1: 0, score2: 0, isPlaying: false, isPaused: false, winner: null,
   })
@@ -177,15 +179,57 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
   }, [gameMode, draw])
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => keysRef.current.add(e.key.toLowerCase())
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPhase("menu")
+        return
+      }
+      const key = e.key.toLowerCase()
+      if (key === " " || key === "p") {
+        e.preventDefault()
+        if (!e.repeat) pauseToggleRef.current()
+        return
+      }
+      if (["arrowup", "arrowdown", "w", "s", "i", "k"].includes(key)) {
+        e.preventDefault()
+      }
+      keysRef.current.add(key)
+    }
     const handleKeyUp = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase())
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener("resize", handleResize)
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
       window.removeEventListener("keyup", handleKeyUp)
+      window.removeEventListener("resize", handleResize)
     }
   }, [])
+
+  const movePaddleToPointer = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const y = ((clientY - rect.top) / rect.height) * CANVAS_H
+    const gs = gsRef.current
+    const clampedY = Math.max(0, Math.min(CANVAS_H - PADDLE_H, y - PADDLE_H / 2))
+    if (gameMode === "ai") {
+      gs.p1Y = clampedY
+    } else {
+      const x = ((clientX - rect.left) / rect.width) * CANVAS_W
+      if (x < CANVAS_W / 2) {
+        gs.p1Y = clampedY
+      } else {
+        gs.p2Y = clampedY
+      }
+    }
+  }, [gameMode])
+
+  const handleCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === "mouse" && e.buttons === 0) return
+    movePaddleToPointer(e.clientX, e.clientY)
+  }, [movePaddleToPointer])
 
   useEffect(() => {
     animRef.current = requestAnimationFrame(gameLoop)
@@ -210,16 +254,19 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
     setDisplay((prev) => ({ ...prev, isPaused: gsRef.current.isPaused }))
   }, [])
 
+  pauseToggleRef.current = togglePause
+
   const resetGame = useCallback(() => {
     gsRef.current = initialGameState()
     setDisplay({ score1: 0, score2: 0, isPlaying: false, isPaused: false, winner: null })
+    setShowHelp(false)
   }, [])
 
   if (!isOpen) return null
 
   if (phase === "menu") {
     return (
-      <Card className="w-full max-w-md mx-auto border-border/40">
+      <Card className="w-full max-w-lg mx-auto border-border/40">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <span className="text-info font-black">Ping</span>
@@ -279,7 +326,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto border-border/40">
+    <Card className="w-full max-w-lg mx-auto border-border/40">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <span className="text-info font-black">Ping</span>
@@ -301,25 +348,95 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
               <><Cpu className="w-3 h-3 mr-1" /> vs AI</>
             )}
           </Badge>
+          {!isMobile && (
+            <button
+              onClick={() => setShowHelp((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[10px] font-bold border transition-all",
+                showHelp
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+              )}
+              aria-label="Toggle keyboard shortcuts"
+              aria-expanded={showHelp}
+            >
+              <Keyboard className="w-3 h-3" />
+              {showHelp ? "Hide Shortcuts" : "Shortcuts"}
+            </button>
+          )}
         </div>
+
+        {showHelp && !isMobile && (
+          <div className="rounded-xl border border-border/40 bg-muted/10 p-3 space-y-2 animate-in slide-in-from-top-1 fade-in duration-150">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Keyboard className="w-3 h-3" /> Keyboard Controls
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+              {gameMode === "normal" ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Player 1 - up / down</span>
+                    <span className="flex gap-1">
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">W</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">S</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">↑</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">↓</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">Player 2 - up / down</span>
+                    <span className="flex gap-1">
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">I</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">K</kbd>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Move paddle - up / down</span>
+                  <span className="flex gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">W</kbd>
+                    <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">S</kbd>
+                    <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">↑</kbd>
+                    <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">↓</kbd>
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Pause / resume</span>
+                <span className="flex gap-1">
+                  <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">Space</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">P</kbd>
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Drag paddle (mouse)</span>
+                <span className="text-muted-foreground/70">Click & drag</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-center">
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
             height={CANVAS_H}
-            className="border border-border/30 rounded-xl w-full max-w-[400px] shadow-lg"
+            onPointerDown={handleCanvasPointerMove}
+            onPointerMove={handleCanvasPointerMove}
+            className="border border-border/30 rounded-xl w-full max-w-[400px] shadow-lg touch-none select-none cursor-pointer"
           />
         </div>
 
-        {isMobile && gameMode === "normal" && (
-          <div className="grid grid-cols-2 gap-3">
+        {isMobile && (
+          <div className={cn("grid gap-3", gameMode === "normal" ? "grid-cols-2" : "grid-cols-1 max-w-[180px] mx-auto")}>
             <div className="space-y-1">
               <div className="text-[10px] font-bold text-muted-foreground text-center">Player 1</div>
               <div className="flex gap-2 justify-center">
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("w")}
                   onTouchEnd={() => keysRef.current.delete("w")}
+                  onTouchCancel={() => keysRef.current.delete("w")}
                   onMouseDown={() => keysRef.current.add("w")}
                   onMouseUp={() => keysRef.current.delete("w")}
                   onMouseLeave={() => keysRef.current.delete("w")}
@@ -327,35 +444,40 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
                   onTouchStart={() => keysRef.current.add("s")}
                   onTouchEnd={() => keysRef.current.delete("s")}
+                  onTouchCancel={() => keysRef.current.delete("s")}
                   onMouseDown={() => keysRef.current.add("s")}
                   onMouseUp={() => keysRef.current.delete("s")}
                   onMouseLeave={() => keysRef.current.delete("s")}
                 >↓</Button>
               </div>
             </div>
-            <div className="space-y-1">
-              <div className="text-[10px] font-bold text-muted-foreground text-center">Player 2</div>
-              <div className="flex gap-2 justify-center">
-                <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
-                  onTouchStart={() => keysRef.current.add("i")}
-                  onTouchEnd={() => keysRef.current.delete("i")}
-                  onMouseDown={() => keysRef.current.add("i")}
-                  onMouseUp={() => keysRef.current.delete("i")}
-                  onMouseLeave={() => keysRef.current.delete("i")}
-                >↑</Button>
-                <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
-                  onTouchStart={() => keysRef.current.add("k")}
-                  onTouchEnd={() => keysRef.current.delete("k")}
-                  onMouseDown={() => keysRef.current.add("k")}
-                  onMouseUp={() => keysRef.current.delete("k")}
-                  onMouseLeave={() => keysRef.current.delete("k")}
-                >↓</Button>
+            {gameMode === "normal" && (
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-muted-foreground text-center">Player 2</div>
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
+                    onTouchStart={() => keysRef.current.add("i")}
+                    onTouchEnd={() => keysRef.current.delete("i")}
+                    onTouchCancel={() => keysRef.current.delete("i")}
+                    onMouseDown={() => keysRef.current.add("i")}
+                    onMouseUp={() => keysRef.current.delete("i")}
+                    onMouseLeave={() => keysRef.current.delete("i")}
+                  >↑</Button>
+                  <Button size="sm" className="h-10 w-10 rounded-xl text-lg"
+                    onTouchStart={() => keysRef.current.add("k")}
+                    onTouchEnd={() => keysRef.current.delete("k")}
+                    onTouchCancel={() => keysRef.current.delete("k")}
+                    onMouseDown={() => keysRef.current.add("k")}
+                    onMouseUp={() => keysRef.current.delete("k")}
+                    onMouseLeave={() => keysRef.current.delete("k")}
+                  >↓</Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {!isMobile && (
+        {!isMobile && !showHelp && (
           <div className="text-[10px] text-muted-foreground bg-muted/20 p-2 rounded-lg text-center font-medium">
             P1: <kbd className="px-1 py-0.5 bg-muted rounded font-mono text-[9px]">W</kbd> <kbd className="px-1 py-0.5 bg-muted rounded font-mono text-[9px]">S</kbd>
             {gameMode === "normal" ? <> | P2: <kbd className="px-1 py-0.5 bg-muted rounded font-mono text-[9px]">I</kbd> <kbd className="px-1 py-0.5 bg-muted rounded font-mono text-[9px]">K</kbd></> : null}
@@ -392,8 +514,9 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
         </div>
 
         {display.winner && (
-          <div className="text-center text-sm font-bold text-success py-1">
-            🎉 {display.winner} Wins! 🎉
+          <div className="text-center py-3 px-4 rounded-xl bg-success/10 border border-success/20 animate-in zoom-in-95 fade-in duration-200">
+            <div className="text-lg font-black text-success">🎉 {display.winner} Wins! 🎉</div>
+            <div className="text-[10px] text-muted-foreground font-medium mt-0.5">Click Play Again to start a new round</div>
           </div>
         )}
       </CardContent>

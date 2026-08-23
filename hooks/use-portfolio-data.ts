@@ -8,6 +8,7 @@ export function usePortfolioData() {
 
   return useMemo(
     () => ({
+      isLoaded: wallet.isLoaded,
       portfolio: wallet.portfolio,
       shareTransactions: wallet.shareTransactions,
       portfolios: wallet.portfolios,
@@ -32,6 +33,7 @@ export function usePortfolioData() {
       syncMeroSharePortfolio: wallet.syncMeroSharePortfolio,
       importMeroShareTransactionHistoryRows: wallet.importMeroShareTransactionHistoryRows,
       syncMeroShareTransactionHistory: wallet.syncMeroShareTransactionHistory,
+      logMeroShareApplication: wallet.logMeroShareApplication,
       getFaceValue: wallet.getFaceValue,
       addShareTransaction: wallet.addShareTransaction,
       updateShareTransaction: wallet.updateShareTransaction,
@@ -39,8 +41,10 @@ export function usePortfolioData() {
       deleteMultipleShareTransactions: wallet.deleteMultipleShareTransactions,
       recomputePortfolio: wallet.recomputePortfolio,
       importShareData: wallet.importShareData,
+      importData: wallet.importData,
     }),
     [
+      wallet.isLoaded,
       wallet.portfolio,
       wallet.shareTransactions,
       wallet.portfolios,
@@ -65,6 +69,7 @@ export function usePortfolioData() {
       wallet.syncMeroSharePortfolio,
       wallet.importMeroShareTransactionHistoryRows,
       wallet.syncMeroShareTransactionHistory,
+      wallet.logMeroShareApplication,
       wallet.getFaceValue,
       wallet.addShareTransaction,
       wallet.updateShareTransaction,
@@ -72,6 +77,7 @@ export function usePortfolioData() {
       wallet.deleteMultipleShareTransactions,
       wallet.recomputePortfolio,
       wallet.importShareData,
+      wallet.importData,
     ],
   )
 }
