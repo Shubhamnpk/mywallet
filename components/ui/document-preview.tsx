@@ -21,7 +21,7 @@ const PDF_SIDE_PADDING = 32
 
 const isImageUrl = (url: string | null): boolean => {
     if (!url) return false
-    return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*|#.*)?$/i.test(url)
+    return /\.(png|jpe?g|webp|bmp|svg)(\?.*|#.*)?$/i.test(url)
 }
 
 type DocumentPreviewProps = {

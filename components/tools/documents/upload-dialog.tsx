@@ -25,7 +25,7 @@ import {
 import { ACCEPTED_TYPES, DOCUMENT_TYPES, detectDocumentType } from "./document-utils"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
-const ALLOWED_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|bmp|pdf)$/i
+const ALLOWED_EXTENSIONS = /\.(jpg|jpeg|png|webp|bmp|pdf)$/i
 
 export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, onUploaded }: {
   open: boolean

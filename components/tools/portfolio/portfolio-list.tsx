@@ -3079,7 +3079,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                     {intradayChartData.length === 0 && marketIndices.length > 0 && (
                     <CardContent className="px-3 sm:px-4 pb-3">
                         <div className="space-y-1.5">
-                            {marketIndices.filter((idx: { id?: number }) => idx.id !== 58).map((idx: { id?: number; index?: string; currentValue?: number; change?: number; perChange?: number }) => {
+                            {marketIndices.filter((idx: { id?: number }) => idx.id !== 58).slice(0, 3).map((idx: { id?: number; index?: string; currentValue?: number; change?: number; perChange?: number }) => {
                                 const isUp = (idx.perChange ?? 0) >= 0
                                 return (
                                     <div key={idx.id} className="flex items-center justify-between">

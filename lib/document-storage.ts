@@ -5,6 +5,7 @@ import { SecureWallet } from "./security"
 import { SecureKeyManager } from "./key-manager"
 import { loadFromLocalStorage, saveToLocalStorage } from "./storage"
 import { compressBlob, decompressBlob } from "./compression"
+import { compressImage } from "./image-compression"
 import { recordDeletion, type TombstoneRecord } from "./tombstones"
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
@@ -210,6 +211,22 @@ function txDone(tx: IDBTransaction): Promise<void> {
   })
 }
 
+/**
+ * Run image pages through browser-image-compression (resize + quality targeting)
+ * before the gzip + encrypt pipeline. Non-images (PDFs) pass through untouched.
+ * Falls back to the original blob on any failure.
+ */
+async function precompressPageBlob(blob: Blob): Promise<Blob> {
+  if (!blob.type.startsWith("image/")) return blob
+  try {
+    const file = blob instanceof File ? blob : new File([blob], "page", { type: blob.type })
+    const result = await compressImage(file, "document")
+    return result.file
+  } catch {
+    return blob
+  }
+}
+
 async function readStore(storeName: string, key: string, mimeType: string): Promise<Blob | null> {
   const enc = await getEncryptionKey()
   if (!enc) return null
@@ -249,7 +266,8 @@ export async function saveDocument(doc: StoredDocument, pages: SavePage[]): Prom
     const pageId = `p${i}`
     const db = await openDB()
 
-    const { blob: compressedBlob, originalType } = await compressBlob(p.blob)
+    const sourceBlob = await precompressPageBlob(p.blob)
+    const { blob: compressedBlob, originalType } = await compressBlob(sourceBlob)
     const base64 = await blobToBase64(compressedBlob)
     const encrypted = await SecureWallet.encryptData(base64, key)
     const blobTx = db.transaction(BLOB_STORE, "readwrite")
@@ -324,7 +342,8 @@ export async function updateDocumentBlob(
   if (!enc) throw new Error("No encryption key available")
   const key = enc.key
 
-  const { blob: compressedBlob, originalType } = await compressBlob(newBlob)
+  const sourceBlob = await precompressPageBlob(newBlob)
+  const { blob: compressedBlob, originalType } = await compressBlob(sourceBlob)
   const base64 = await blobToBase64(compressedBlob)
   const encrypted = await SecureWallet.encryptData(base64, key)
 
@@ -383,7 +402,8 @@ export async function addDocumentPage(
   if (!enc) throw new Error("No encryption key available")
   const key = enc.key
 
-  const { blob: compressedBlob, originalType } = await compressBlob(blob)
+  const sourceBlob = await precompressPageBlob(blob)
+  const { blob: compressedBlob, originalType } = await compressBlob(sourceBlob)
   const base64 = await blobToBase64(compressedBlob)
   const encrypted = await SecureWallet.encryptData(base64, key)
   const db = await openDB()
