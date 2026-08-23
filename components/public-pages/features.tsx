@@ -146,7 +146,7 @@ export function FeaturesPageClient() {
 
             <div className="flex items-center gap-3 mt-8">
               <Link
-                href="/welcome?start=1"
+                href="/?start=1"
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground text-sm hover:bg-primary/90 transition-all duration-300 hover:scale-105 shadow-lg"
               >
                 Get Started
@@ -281,7 +281,7 @@ export function FeaturesPageClient() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                href="/welcome?start=1"
+                href="/?start=1"
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-8 py-4 font-semibold text-primary-foreground text-lg hover:bg-primary/90 transition-all duration-300 hover:scale-105 shadow-lg"
               >
                 Get Started Free

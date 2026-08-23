@@ -13,14 +13,10 @@ import { DeleteCategoryDialog } from "./delete-category-dialog"
 import type { Category } from "@/types/wallet"
 import { getCalendarMonthKey } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
-import { useCategories } from "@/contexts/categories-context"
-import { useTransactions } from "@/contexts/transactions-context"
-import { useUser } from "@/contexts/user-context"
+import { useWalletData } from "@/contexts/wallet-data-context"
 
 export function CategoriesManagement() {
-  const { categories, addCategory, updateCategory, deleteCategory } = useCategories()
-  const { transactions } = useTransactions()
-  const { userProfile } = useUser()
+  const { categories, addCategory, updateCategory, deleteCategory, transactions, userProfile } = useWalletData()
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<"all" | "income" | "expense">("all")
   const [sortBy, setSortBy] = useState<"usage" | "amount" | "transactions" | "name">("usage")

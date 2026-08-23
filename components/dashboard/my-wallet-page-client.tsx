@@ -159,7 +159,7 @@ export function MyWalletPageClient() {
 
   useEffect(() => {
     if (!userProfile && showOnboarding) {
-      router.replace("/welcome")
+      router.replace("/")
     }
   }, [userProfile, showOnboarding, router])
 

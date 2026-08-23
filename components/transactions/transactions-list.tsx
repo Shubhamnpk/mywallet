@@ -17,9 +17,7 @@ import type { Transaction } from "@/types/wallet"
 import { formatCurrency, getCurrencySymbol } from "@/lib/utils"
 import { getTimeEquivalentBreakdown } from "@/lib/wallet-utils"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useTransactions } from "@/contexts/transactions-context"
-import { useUser } from "@/contexts/user-context"
-import { useCategories } from "@/contexts/categories-context"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDate } from "@/lib/app-calendar"
 
@@ -81,9 +79,7 @@ interface TransactionsListProps {
 export function TransactionsList({
   fetchTransactions,
 }: TransactionsListProps) {
-  const { transactions: contextTransactions, deleteTransaction: contextDeleteTransaction, updateTransaction, calculateTimeEquivalent } = useTransactions()
-  const { userProfile } = useUser()
-  const { categories: allCategories } = useCategories()
+  const { transactions: contextTransactions, deleteTransaction: contextDeleteTransaction, updateTransaction, calculateTimeEquivalent, userProfile, categories: allCategories } = useWalletData()
   const calendarSystem = useCalendarSystem()
   if (!userProfile) return null
   const [transactions, setTransactions] = useState<Transaction[]>(contextTransactions)

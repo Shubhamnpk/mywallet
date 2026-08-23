@@ -45,8 +45,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useWalletData } from "@/contexts/wallet-data-context";
-import { useTransactions } from "@/contexts/transactions-context";
-import { useUser } from "@/contexts/user-context";
 import { getCurrencySymbol } from "@/lib/currency";
 import { cn, formatMoney } from "@/lib/utils";
 import { toast } from "sonner";
@@ -154,9 +152,7 @@ function mname(m: string) {
 }
 
 export function ShiftTracker() {
-  const { addTransaction } = useTransactions();
-  const { userProfile } = useUser();
-  const { deleteTransaction, categories } = useWalletData();
+  const { addTransaction, userProfile, deleteTransaction, categories } = useWalletData();
   const isMobile = useIsMobile();
 
   const addIncome = useCallback(

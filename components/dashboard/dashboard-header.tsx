@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShareModal } from "@/components/dashboard/share-modal"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { useUser } from "@/contexts/user-context"
+
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -79,7 +79,6 @@ type HeaderBillRow = {
 }
 
 export function DashboardHeader() {
-  const { userProfile } = useUser()
   const router = useRouter()
   const calendarSystem = useCalendarSystem()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
@@ -105,7 +104,7 @@ export function DashboardHeader() {
       return {}
     }
   })
-  const { budgets, goals, upcomingIPOs } = useWalletData()
+  const { userProfile, budgets, goals, upcomingIPOs } = useWalletData()
   const isIpoApplyConfigured = Boolean(
     userProfile?.meroShare?.shareFeaturesEnabled &&
     userProfile?.meroShare?.dpId &&
@@ -429,10 +428,10 @@ export function DashboardHeader() {
 
   const navigateToTab = (tab: string) => {
     if (typeof window !== "undefined") {
-      window.history.pushState(null, "", `/?tab=${tab}`)
+      window.history.pushState(null, "", `/dashboard?tab=${tab}`)
       window.dispatchEvent(new CustomEvent("mywallet:navigate-tab", { detail: tab }))
     } else {
-      router.push(`/?tab=${tab}`)
+      router.push(`/dashboard?tab=${tab}`)
     }
   }
 

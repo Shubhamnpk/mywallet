@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
 export default function OnboardingPage() {
-  redirect("/welcome?start=1")
+  redirect("/?start=1")
 }

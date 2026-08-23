@@ -6,7 +6,7 @@ import packageJson from "../../package.json"
 
 const productLinks = [
   { href: "/features", label: "Features" },
-  { href: "/welcome#how-it-works", label: "How it works" },
+  { href: "/#how-it-works", label: "How it works" },
   { href: "/roadmap", label: "Roadmap" },
   { href: "/releases", label: "Release notes" },
   { href: "/contributors", label: "Contributors" },
@@ -14,8 +14,8 @@ const productLinks = [
 ]
 
 const startLinks = [
-  { href: "/welcome?start=1", label: "Get Started" },
-  { href: "/", label: "Dashboard" },
+  { href: "/?start=1", label: "Get Started" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/settings?tab=about", label: "App Info" },
 ]
 

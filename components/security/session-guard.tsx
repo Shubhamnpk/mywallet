@@ -500,12 +500,12 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
 export function SessionGuard({ children }: SessionGuardProps) {
   const pathname = usePathname()
-  const { isAuthenticated, hasPin, validatePin, validateEmergencyPin } = useAuthentication()
+  const { hasPin, validatePin, validateEmergencyPin } = useAuthentication()
   const [sessionInvalidated, setSessionInvalidated] = useState(false)
   const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
   const [showNewPinSetup, setShowNewPinSetup] = useState(false)
   const isPublicRoute =
-    pathname === "/welcome" ||
+    pathname === "/" ||
     pathname === "/releases" ||
     pathname === "/roadmap" ||
     pathname === "/features" ||
@@ -536,19 +536,22 @@ export function SessionGuard({ children }: SessionGuardProps) {
     }
   }, [hasPin])
 
-  const showPinScreen = hasPin && (!isAuthenticated || (sessionInvalidated && !SessionManager.isSessionValid()))
-
   // Public pages shouldn't require wallet unlock because they don't need access to private wallet data.
   if (isPublicRoute) {
     return <>{children}</>
   }
 
-  // If no PIN is required or user is authenticated with valid session, show children
-  if (!hasPin || (isAuthenticated && !showPinScreen && !showNewPinSetup)) {
+  // No PIN set — no lock screen needed
+  if (!hasPin) {
     return <>{children}</>
   }
 
-  // Show PIN screen when no active session or not authenticated
+  // Valid session exists — let them through immediately (no flash)
+  if (!sessionInvalidated && SessionManager.isSessionValid()) {
+    return <>{children}</>
+  }
+
+  // Session invalidated (expiry event or focus check) — need PIN
   return (
     <SessionPinScreen
       onUnlock={async (pin: string, emergencyMode?: boolean) => {
@@ -563,7 +566,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
             setSessionInvalidated(false)
           }
         } else {
-          throw new Error("PIN validation failed") // Throw error to trigger visual feedback
+          throw new Error("PIN validation failed")
         }
       }}
       onEmergencyPinUsed={() => {
@@ -575,8 +578,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
         setShowNewPinSetup(false)
         setEmergencyPinUsed(false)
       }}
-      onError={() => {
-      }}
+      onError={() => {}}
       showNewPinSetup={showNewPinSetup}
     />
   )

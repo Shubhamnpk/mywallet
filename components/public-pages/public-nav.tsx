@@ -35,7 +35,7 @@ export function PublicNav() {
         }`}
       >
         <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-5">
-          <Link href="/welcome" className="group flex shrink-0 items-center gap-2.5">
+            <Link href="/" className="group flex shrink-0 items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent shadow-sm transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               <Wallet className="h-4 w-4 text-primary-foreground" />
             </span>
@@ -72,7 +72,7 @@ export function PublicNav() {
               <Github className="h-4 w-4" />
             </a>
             <Link
-              href="/welcome?start=1"
+              href="/?start=1"
               className="group inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-primary to-primary/85 px-4 py-2 text-sm font-bold text-primary-foreground shadow-md shadow-primary/20 transition-all duration-300 hover:shadow-lg hover:shadow-primary/30 hover:brightness-110"
             >
               Get Started
@@ -119,7 +119,7 @@ export function PublicNav() {
                 GitHub
               </a>
               <Link
-                href="/welcome?start=1"
+                href="/?start=1"
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"
               >
                 Get Started

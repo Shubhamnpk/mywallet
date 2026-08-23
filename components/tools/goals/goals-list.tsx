@@ -31,8 +31,7 @@ import {
 } from "lucide-react"
 import { GoalDialog } from "./goal-dialog"
 import { getGoalIcon } from "@/lib/goal-icons"
-import { useGoals } from "@/contexts/goals-context"
-import { useUser } from "@/contexts/user-context"
+
 import type { Goal, Transaction, UserProfile } from "@/types/wallet"
 import { cn, formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
@@ -55,9 +54,7 @@ type FilterType = "all" | "active" | "completed" | "overdue"
 type SortType = "progress" | "target-date" | "amount" | "name"
 
 export function EnhancedGoalsList() {
-  const { goals, addGoal, updateGoal, deleteGoal, transferToGoal, useGoalForInvestment } = useGoals()
-  const { userProfile } = useUser()
-  const { balance, transactions } = useWalletData()
+  const { goals, addGoal, updateGoal, deleteGoal, transferToGoal, useGoalForInvestment, userProfile, balance, transactions } = useWalletData()
   const calendarSystem = useCalendarSystem()
   if (!userProfile) return null
 

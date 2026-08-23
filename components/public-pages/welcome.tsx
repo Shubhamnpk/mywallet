@@ -1,12 +1,12 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo, startTransition } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Wallet, TrendingUp, Target, Shield, Smartphone, Brain, Check, Sparkles, Clock, DollarSign, Monitor, Tablet, Download, Home, UserCheck } from 'lucide-react';
 import OnboardingFlow from '@/components/onboarding/onboarding-flow';
-import { useWalletData } from '@/contexts/wallet-data-context';
+import { completeOnboarding } from '@/lib/onboarding';
 import { PublicLayout } from '@/components/public-pages/public-layout';
 import { PublicBackground } from './public-background';
 
@@ -24,24 +24,29 @@ export function WelcomePageClient() {
     () => isWelcomeStartMode(searchParams.get('start')),
     [searchParams],
   );
-  const { userProfile, handleOnboardingComplete, setShowOnboarding } = useWalletData();
   const [activeFeature, setActiveFeature] = useState(0);
   const [hasExistingAccount, setHasExistingAccount] = useState(false);
-
-  useEffect(() => {
-    if (isStartMode) {
-      setShowOnboarding(true);
-    }
-  }, [isStartMode, setShowOnboarding]);
+  const [returningUserName, setReturningUserName] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('userProfile');
+    if (stored) {
+      try {
+        const profile = JSON.parse(stored);
+        setHasExistingAccount(true);
+        setReturningUserName(profile?.name?.trim() ?? null);
+      } catch {
+        setHasExistingAccount(true);
+      }
+    }
+  }, []);
 
-    const storedUserProfile = window.localStorage.getItem('userProfile');
-    startTransition(() => {
-      setHasExistingAccount(Boolean(userProfile) || Boolean(storedUserProfile));
-    });
-  }, [userProfile]);
+  useEffect(() => {
+    if (hasExistingAccount && !isStartMode) {
+      router.replace('/dashboard');
+    }
+  }, [hasExistingAccount, isStartMode, router]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -49,6 +54,14 @@ export function WelcomePageClient() {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  if (hasExistingAccount && !isStartMode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+      </div>
+    );
+  }
 
   const features = [
     {
@@ -91,17 +104,16 @@ export function WelcomePageClient() {
     "24/7 customer support"
   ];
 
-  const returningUserName = userProfile?.name?.trim();
   const showReturningUserCard = hasExistingAccount && !isStartMode;
-  const headerCtaHref = showReturningUserCard ? '/' : '/welcome?start=1';
+  const headerCtaHref = showReturningUserCard ? '/dashboard' : '/?start=1';
   const headerCtaLabel = showReturningUserCard ? 'Dashboard' : 'Start';
 
-  if (isStartMode && !userProfile) {
+  if (isStartMode && !hasExistingAccount) {
     return (
       <OnboardingFlow
         onComplete={(profile) => {
-          handleOnboardingComplete(profile);
-          router.replace('/');
+          completeOnboarding(profile);
+          router.replace('/dashboard');
         }}
       />
     );
@@ -135,7 +147,7 @@ export function WelcomePageClient() {
 
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <Link
-                      href="/"
+                      href="/dashboard"
                       className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                     >
                       <Home className="h-4 w-4" />
@@ -180,13 +192,13 @@ export function WelcomePageClient() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 justify-start items-center mb-16">
-                  <Link href={showReturningUserCard ? '/' : '/welcome?start=1'} className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
+                  <Link href={showReturningUserCard ? '/dashboard' : '/?start=1'} className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 inline-flex items-center gap-2">
                     {showReturningUserCard ? 'Back to Dashboard' : 'Get Started Free'}
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
                   {showReturningUserCard ? (
                     <Link
-                      href="/welcome?start=1"
+                      href="/?start=1"
                       className="px-8 py-4 bg-secondary text-secondary-foreground border border-border rounded-lg font-semibold text-lg hover:bg-muted transition-all duration-300"
                     >
                       Start onboarding
@@ -708,7 +720,7 @@ export function WelcomePageClient() {
                   Join over 100,000 users who have transformed their financial lives with MyWallet. Start your journey today.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/welcome?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
+                  <Link href="/?start=1" className="px-10 py-5 bg-primary text-primary-foreground rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-center">
                     Try Web Version
                   </Link>
                   <button
