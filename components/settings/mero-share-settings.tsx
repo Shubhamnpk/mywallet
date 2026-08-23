@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useWalletData } from "@/contexts/wallet-data-context"
-import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download, Banknote, History, CircleCheck, CircleX, ChevronLeft, ChevronRight, SlidersHorizontal, ListFilter, HeartPulse, CreditCard, MapPin, Hash, CalendarClock, Phone, FileText, ShieldCheck, Pencil } from "lucide-react"
+import { Shield, Lock, User, Key, Building2, Fingerprint, Eye, EyeOff, AlertCircle, Rocket, RefreshCw, Sparkles, Trash2, Loader2, Download, Banknote, History, CircleCheck, CircleX, ChevronLeft, ChevronRight, SlidersHorizontal, ListFilter, HeartPulse, CreditCard, MapPin, Hash, CalendarClock, Phone, FileText, ShieldCheck, Pencil, MoreVertical } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Check, ChevronDown, ChevronsUpDown, Plus } from "lucide-react"
@@ -51,6 +51,13 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { formatAppDateTime } from "@/lib/app-calendar"
@@ -752,8 +759,8 @@ export function MeroShareSettings() {
                 setIsPriceReviewOpen(true)
                 toast.success(`Found ${result.newTransactions.length} new transaction${result.newTransactions.length === 1 ? "" : "s"} to verify`, {
                     description: result.mergedCount > 0
-                        ? `${result.mergedCount} duplicate row${result.mergedCount === 1 ? "" : "s"} merged, ${result.existingCount} already exist. Each buy/sell has its own price input — IPO buys are pre-filled with face value.`
-                        : "Each buy/sell has its own price input — IPO buys are pre-filled with face value.",
+                        ? `${result.mergedCount} duplicate row${result.mergedCount === 1 ? "" : "s"} merged, ${result.existingCount} already exist. Each buy/sell has its own price input - IPO buys are pre-filled with face value.`
+                        : "Each buy/sell has its own price input - IPO buys are pre-filled with face value.",
                 })
             } else if (result.importedCount > 0) {
                 toast.success(`History synced. Imported ${result.importedCount}, skipped ${result.skippedCount} duplicate${result.skippedCount === 1 ? "" : "s"}.`)
@@ -824,7 +831,6 @@ export function MeroShareSettings() {
                     <div className="flex items-center justify-between p-4 rounded-xl bg-primary/5 border border-primary/20">
                         <div className="space-y-1">
                             <Label className="text-sm font-bold flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-primary" />
                                 Enable Share Features
                             </Label>
                             <p className="text-xs text-muted-foreground">
@@ -1037,54 +1043,47 @@ export function MeroShareSettings() {
                                                         {dp?.name || `DP ${account.dpId}`} | {account.username}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {account.crn && account.pin
-                                                            ? "Ready for IPO apply and result checks"
-                                                            : "Ready for result checks; add CRN and PIN to apply"}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
                                                         {account.portfolioId
-                                                            ? `Linked portfolio: ${portfolios.find(p => p.id === account.portfolioId)?.name || "—"}`
-                                                            : "No linked portfolio — data syncs into the selected portfolio"}
+                                                            ? `Linked portfolio: ${portfolios.find(p => p.id === account.portfolioId)?.name || "-"}`
+                                                            : "No linked portfolio - data syncs into the selected portfolio"}
                                                     </p>
                                                 </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {!isPrimary && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => setAccountRole(account.id, "primary")}
-                                                        >
-                                                            Make Primary
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground" title="Account actions" aria-label="Account actions">
+                                                            <MoreVertical className="w-4 h-4" />
                                                         </Button>
-                                                    )}
-                                                    {isPrimary && accounts.length > 1 && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => setAccountRole(account.id, "secondary")}
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48">
+                                                        {!isPrimary && (
+                                                            <DropdownMenuItem onClick={() => setAccountRole(account.id, "primary")}>
+                                                                Make Primary
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {isPrimary && accounts.length > 1 && (
+                                                            <DropdownMenuItem onClick={() => setAccountRole(account.id, "secondary")}>
+                                                                Make Secondary
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuItem onClick={() => openHealthModal(account)}>
+                                                            <HeartPulse className="w-4 h-4 mr-2" />
+                                                            Check Health
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => openEditAccountDialog(account)}>
+                                                            <Pencil className="w-4 h-4 mr-2" />
+                                                            Edit
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            variant="destructive"
+                                                            onClick={() => setAccountToDelete(account)}
+                                                           
                                                         >
-                                                            Make Secondary
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="gap-1.5"
-                                                        onClick={() => openHealthModal(account)}
-                                                    >
-                                                        <HeartPulse className="w-3.5 h-3.5 text-primary" />
-                                                        Check Health
-                                                    </Button>
-                                                    <Button type="button" variant="outline" size="icon" title="Edit" onClick={() => openEditAccountDialog(account)}>
-                                                        <Pencil className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button type="button" variant="destructive" size="icon" title="Remove" onClick={() => setAccountToDelete(account)}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
+                                                            <Trash2 className="w-4 h-4 mr-2" />
+                                                            Remove
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
                                         </div>
                                     )
@@ -1347,7 +1346,7 @@ export function MeroShareSettings() {
                                                 onValueChange={(value) => setAccountForm(prev => ({ ...prev, portfolioId: value === "__none__" ? "" : value }))}
                                             >
                                                 <SelectTrigger id="mero-account-portfolio" className="w-full">
-                                                    <SelectValue placeholder="Not linked — pick during sync" />
+                                                    <SelectValue placeholder="Not linked - pick during sync" />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="__none__">Not linked</SelectItem>
@@ -1431,7 +1430,7 @@ export function MeroShareSettings() {
                     <p className="text-[10px] text-muted-foreground italic flex items-center gap-1.5 opacity-70">
                         <AlertCircle className="w-3 h-3 text-info" />
                         {portfolios.length === 0
-                            ? "Create a portfolio first — MeroShare data will be imported into it."
+                            ? "Create a portfolio first - MeroShare data will be imported into it."
                             : getPrimaryAccount(accounts)?.portfolioId
                                 ? `Syncing into ${portfolios.find(p => p.id === resolveSyncPortfolioId())?.name || "linked portfolio"} (${getPrimaryAccount(accounts)?.label || "primary account"}).`
                                 : portfolios.length === 1
@@ -1611,7 +1610,7 @@ export function MeroShareSettings() {
                                 </Label>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     Refresh live prices for holdings backed by transaction history. No new stocks are
-                                    created — transactions are the single source of truth.
+                                    created - transactions are the single source of truth.
                                 </p>
                             </div>
                             <Button

@@ -522,14 +522,14 @@ export function EnhancedGoalsList() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
-                                  <DropdownMenuItem onClick={() => handleEditGoal(goal)} className="cursor-pointer">
+                                  <DropdownMenuItem onClick={() => handleEditGoal(goal)}>
                                     <Edit className="w-4 h-4 mr-2" />
                                     Edit Goal
                                   </DropdownMenuItem>
                                   {!isCompleted && (
                                     <DropdownMenuItem
                                       onClick={() => setTransferDialog({ open: true, goalId: goal.id, goalName: goal.title || goal.name || "" })}
-                                      className="cursor-pointer"
+                                     
                                     >
                                       <Send className="w-4 h-4 mr-2" />
                                       Add Money
@@ -538,7 +538,7 @@ export function EnhancedGoalsList() {
                                   <DropdownMenuItem
                                     variant="destructive"
                                     onClick={() => handleDeleteGoal(goal.id)}
-                                    className="cursor-pointer"
+                                   
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Delete Goal

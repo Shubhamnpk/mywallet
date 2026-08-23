@@ -10,7 +10,7 @@ export const SIP_REMINDER_DAY_OPTIONS = [1, 3, 7] as const
 
 const toStartOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate())
 
-/** YYYY-MM-DD in the user's local calendar. Never use toISOString().slice(0, 10) — that is UTC and shifts dates in most time zones. */
+/** YYYY-MM-DD in the user's local calendar. Never use toISOString().slice(0, 10) - that is UTC and shifts dates in most time zones. */
 const toLocalDateKey = (value: Date) => {
   const y = value.getFullYear()
   const m = `${value.getMonth() + 1}`.padStart(2, "0")

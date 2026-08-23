@@ -6,6 +6,15 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 
 ## ✨ What's New
 
+### Version 2.1.1.0 (August 2026) - Security & Quality Hardening
+- **MeroShare Session Hardening**: Cached server sessions now verify the full credential fingerprint before reuse — username-only session theft is no longer possible.
+- **Service Worker Hardening**: Notification URLs are same-origin enforced at push, message, and click time; forged cross-origin notifications can no longer open arbitrary pages.
+- **Extension Bridge Hardening**: Removed the credential-exposing bridge action; MeroShare credentials never leave the app/extension boundary, and bridge messages validate origin.
+- **PDF Proxy Hardening**: Domain allowlist, private-IP blocking, redirect re-validation, response size caps, and content-type checks.
+- **Safe Calculator Engine**: The quick-add calculator now uses a sandboxed recursive-descent parser (`lib/calculator-math.ts`) instead of dynamic evaluation.
+- **Session Cookie Hardening**: `Secure` + `SameSite=Strict` always set.
+- **Quality Infrastructure**: Playwright E2E suite, security scanning script (`pnpm audit`), bundle analyzer (`pnpm analyze`), image optimization re-enabled with `sharp`, and dependency cleanup.
+
 ### Version 2.1.0.0 (May 27, 2026)
 - **Welcome Back Flow**: Returning users now get a clearer recovery path from the welcome page straight back to the dashboard.
 - **MeroShare Automation & Extension Bridge**: Added remote Browserless browser support for IPO automation and a global companion extension bridge for seamless sync.
@@ -82,39 +91,40 @@ A comprehensive, secure, and user-friendly personal finance management applicati
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **Framework**: Next.js 16.2.3 with App Router
-- **UI Library**: React 18.2.0
-- **Language**: TypeScript 5
+- **Framework**: Next.js 16.2.9 with App Router
+- **UI Library**: React 18.3.1
+- **Language**: TypeScript 5 (strict mode)
 - **Styling**: Tailwind CSS 4.1.9
 - **Components**: Radix UI (comprehensive component library)
 - **Icons**: Lucide React
-- **Fonts**: Geist
+- **Fonts**: Geist (via `next/font`)
 - **Theme**: next-themes for dark/light mode
 
 ### Data & State
-- **State Management**: React Context with custom hooks
-- **Data Fetching**: TanStack Query (React Query)
+- **State Management**: React Context with domain slices (user, transactions, budgets, goals, categories)
 - **Forms**: React Hook Form with Zod validation
-- **Storage**: Local Storage with encryption (SecureWallet)
+- **Storage**: Local Storage with encryption (AES-256-GCM via SecureWallet)
 - **Caching**: Redis (Upstash) for push notifications
 
 ### Features & Integrations
 - **Charts**: Recharts 2.15.4
 - **Date Handling**: date-fns 4.1.0, nepali-date-converter 3.4.0
 - **OCR**: Tesseract.js 6.0.1 for receipt scanning
-- **QR Codes**: jsqr, qrcode, react-qr-code
-- **PDF**: pdfjs-dist, @react-pdf-viewer
+- **QR Codes**: jsqr, react-qr-code
+- **PDF**: @react-pdf-viewer
 - **Automation**: Puppeteer Core for MeroShare automation
+- **Images**: sharp for optimized image processing
 
 ### PWA & Performance
 - **Service Worker**: Serwist 9.5.7 (next-generation service worker)
 - **Build**: Webpack (forced for Serwist compatibility)
-- **Analytics**: Vercel Analytics
+- **Bundle Analysis**: @next/bundle-analyzer (`pnpm analyze`)
 
 ### Testing & Quality
-- **Testing**: Vitest 3.2.4 with React Testing Library
-- **Linting**: ESLint 9.39.4 with React and React Hooks plugins
-- **Formatting**: Prettier 3.6.2
+- **Unit Testing**: Vitest 3.2.6
+- **E2E Testing**: Playwright (`pnpm test:e2e`)
+- **Security Scanning**: pnpm audit + custom secret scanner (`pnpm audit`, `pnpm lint:security`)
+- **Linting**: ESLint 9 with React, React Hooks, and Security plugins
 - **Type Checking**: TypeScript strict mode
 
 ## 🚀 Getting Started
@@ -234,9 +244,14 @@ mywallet-app/
 │   ├── ui/                       # Reusable UI components (Radix UI)
 │   └── welcome/                  # Welcome components
 ├── contexts/                     # React contexts
-│   └── wallet-data-context.tsx   # Global wallet data context
+│   ├── wallet-data-context.tsx     # Global wallet data context
+│   ├── domain-providers.tsx        # Domain provider composition root
+│   ├── user-context.tsx            # User profile slice
+│   ├── transactions-context.tsx    # Transactions slice
+│   ├── budgets-context.tsx         # Budgets slice
+│   ├── goals-context.tsx           # Goals slice
+│   └── categories-context.tsx      # Categories slice
 ├── hooks/                        # Custom React hooks
-│   ├── nepse/                    # NEPSE data hooks
 │   ├── use-accessibility.ts     # Accessibility features
 │   ├── use-achievements.tsx     # Achievement system
 │   ├── use-authentication.ts    # Authentication logic
@@ -246,12 +261,13 @@ mywallet-app/
 │   ├── use-privacy-mode.tsx     # Privacy mode
 │   ├── use-service-worker.ts    # Service worker management
 │   ├── use-toast.ts             # Toast notifications
-│   └── use-wallet-data.ts       # Main wallet data hook
+│   └── use-wallet-store.ts      # Main wallet state store
 ├── lib/                          # Utility functions
 │   ├── push/                     # Push notification utilities
 │   ├── api-error.ts              # API error handling
 │   ├── backup.ts                 # Backup management
 │   ├── biometric-key.ts          # Biometric authentication
+│   ├── calculator-math.ts        # Sandboxed calculator expression engine
 │   ├── categories.ts             # Category utilities
 │   ├── currency.ts               # Currency conversion
 │   ├── data-integrity.ts         # Data validation
@@ -264,7 +280,7 @@ mywallet-app/
 │   ├── notifications.ts          # Notification management
 │   ├── portfolio-colors.ts       # Portfolio color mapping
 │   ├── secure-pin-manager.ts     # PIN management
-│   ├── security.ts               # Security utilities
+│   ├── security.ts               # Security utilities (AES-256-GCM)
 │   ├── session-manager.ts       # Session management
 │   ├── shift-tracker-storage.ts  # Work shift tracking
 │   ├── sip.ts                    # SIP plan management
@@ -275,7 +291,14 @@ mywallet-app/
 │   └── wallet-utils.ts           # Wallet utilities
 ├── scripts/                      # Build and utility scripts
 │   ├── generate-vapid-keys.cjs  # VAPID key generation
+│   ├── scrape-dps.mjs           # Dividend data scraping
+│   ├── security-scan.mjs        # Secret scanning + pnpm audit
+│   ├── start-e2e-server.mjs     # E2E dev server bootstrap
 │   └── sync-manifest-version.mjs # Manifest version sync
+├── tests/                        # Unit tests (Vitest)
+│   └── unit/                     # Unit test suites
+├── e2e/                          # End-to-end tests (Playwright)
+├── browser-extension/            # Companion browser extension
 ├── types/                        # TypeScript type definitions
 │   ├── nepali-date.d.ts          # Nepali date types
 │   ├── wallet.ts                 # Main wallet types
@@ -283,8 +306,8 @@ mywallet-app/
 ├── worker/                       # Service worker
 │   └── sw.ts                     # Service worker implementation
 ├── public/                       # Static assets
-├── .eslintrc.json                # ESLint configuration
 ├── eslint.config.mjs             # ESLint flat config
+├── playwright.config.ts          # Playwright E2E configuration
 ├── next.config.mjs               # Next.js configuration
 ├── package.json                  # Dependencies and scripts
 ├── tsconfig.json                 # TypeScript configuration
@@ -302,9 +325,9 @@ We welcome contributions! Please follow these steps:
 5. Open a Pull Request
 
 ### Development Guidelines
-- Follow TypeScript best practices
-- Use ESLint and Prettier for code formatting
-- Write meaningful commit messages
+- Follow TypeScript best practices (strict mode is enforced)
+- Run `pnpm typecheck && pnpm test` before pushing
+- Write meaningful commit messages (Conventional Commits — releases are automated via release-please)
 - Add tests for new features
 - Update documentation as needed
 

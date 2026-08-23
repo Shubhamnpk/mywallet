@@ -295,16 +295,16 @@ export const mutualFundsApi = {
 }
 
 export function formatMoney(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  if (value === null || value === undefined || Number.isNaN(value)) return "-"
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value)
 }
 
 export function formatNav(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  if (value === null || value === undefined || Number.isNaN(value)) return "-"
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
 
 export function formatPct(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  if (value === null || value === undefined || Number.isNaN(value)) return "-"
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`
 }

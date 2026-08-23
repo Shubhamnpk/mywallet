@@ -848,7 +848,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
         </CardContent>
       </Card>
 
-      {/* Unsaved Changes Panel — redesigned */}
+      {/* Unsaved Changes Panel - redesigned */}
       {editMode && hasChanges && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl animate-in slide-in-from-bottom-8 fade-in duration-300">
           <div className="relative rounded-2xl bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border border-primary/20 dark:border-primary/20 shadow-[0_8px_40px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)] overflow-hidden">
@@ -868,7 +868,7 @@ export function UserProfileSettings({ highlightQuery = "" }: { highlightQuery?: 
                   </div>
                 </div>
 
-                {/* Middle: changed field chips — scrollable on mobile */}
+                {/* Middle: changed field chips - scrollable on mobile */}
                 <div className="flex-1 flex gap-1.5 overflow-x-auto min-w-0 flex-nowrap scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none]">
                   {changedFields.map((f) => (
                     <span

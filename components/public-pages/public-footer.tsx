@@ -1,13 +1,15 @@
 "use client"
 
 import Link from "next/link"
-import { Wallet, Github, Heart, ExternalLink, ArrowUp, Building } from "lucide-react"
+import { Wallet, Github, Heart, ExternalLink, ArrowUp, Building, Tag } from "lucide-react"
+import packageJson from "../../package.json"
 
 const productLinks = [
   { href: "/features", label: "Features" },
   { href: "/welcome#how-it-works", label: "How it works" },
   { href: "/roadmap", label: "Roadmap" },
   { href: "/releases", label: "Release notes" },
+  { href: "/contributors", label: "Contributors" },
   { href: "/about", label: "About" },
 ]
 
@@ -48,7 +50,7 @@ export function PublicFooter() {
         <div className="py-14">
           
           <div className="grid gap-10 md:grid-cols-6">
-            {/* Brand — wider */}
+            {/* Brand - wider */}
             <div className="md:col-span-2">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/15 to-accent/15 ring-1 ring-primary/10">
@@ -82,7 +84,7 @@ export function PublicFooter() {
 
             {/* Product links */}
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/70 mb-4">Product</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/80 mb-4">Product</h3>
               <ul className="space-y-3">
                 {productLinks.map((link) => (
                   <li key={link.href}>
@@ -99,7 +101,7 @@ export function PublicFooter() {
 
             {/* Start links */}
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/70 mb-4">Get started</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/80 mb-4">Get started</h3>
               <ul className="space-y-3">
                 {startLinks.map((link) => (
                   <li key={link.href}>
@@ -116,7 +118,7 @@ export function PublicFooter() {
 
             {/* Mini CTA */}
             <div className="md:col-span-1">
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/70 mb-4">From Nepal</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/80 mb-4">From Nepal</h3>
               <div className="bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl p-4 border border-border/60 text-center">
                 <Heart className="w-5 h-5 text-primary mx-auto mb-2" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -137,6 +139,14 @@ export function PublicFooter() {
             </span>
           </div>
           <div className="flex items-center gap-4">
+            <Link
+              href="/releases"
+              title="View release notes"
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
+            >
+              <Tag className="h-3 w-3" />
+              v{packageJson.version}
+            </Link>
             <Link href="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               About
             </Link>

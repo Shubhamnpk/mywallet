@@ -292,7 +292,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
               ))}
               <p className="text-[10px] text-muted-foreground/60">
                 {faces === 2
-                  ? "Add both sides — or just one if you don't have the other yet."
+                  ? "Add both sides - or just one if you don't have the other yet."
                   : "Tip: editing (rotate/crop) happens after upload in the viewer."}
               </p>
             </div>
@@ -355,7 +355,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
                       className="w-full h-8 rounded-lg border border-border/40 bg-background px-2 text-xs font-bold"
                     >
                       <option value="auto">
-                        Auto-detect{name && detected ? ` — ${detected.label}${detected.faces === 2 ? " (2 sides)" : ""}` : ""}
+                        Auto-detect{name && detected ? ` - ${detected.label}${detected.faces === 2 ? " (2 sides)" : ""}` : ""}
                       </option>
                       {DOCUMENT_TYPES.map((t) => (
                         <option key={t.key} value={t.key}>
@@ -366,7 +366,7 @@ export function UploadDialog({ open, onOpenChange, persons, selectedPersonId, on
                     {detected && typeKey === "auto" && (
                       <p className="text-[10px] text-primary/80 font-bold flex items-center gap-1">
                         <Layers className="h-3 w-3" />
-                        Detected {detected.label} — {faces === 2 ? "add front & back" : "single page"}
+                        Detected {detected.label} - {faces === 2 ? "add front & back" : "single page"}
                       </p>
                     )}
                   </div>

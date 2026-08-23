@@ -18,10 +18,10 @@ export async function POST(req: Request) {
     const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
-      const { MeroShareRestClient, clearCachedSession } = await import("../_lib/rest-api")
+      const { runWithSessionRecovery } = await import("../_lib/rest-api")
       const username = String(credentials.username || "").trim()
 
-      const runFlow = async (client: InstanceType<typeof MeroShareRestClient>) => {
+      return await runWithSessionRecovery(username, async (client) => {
         await client.ensureSession(credentials)
         const result = await client.checkAllotmentViaApplicationReport(ipoName)
         const user_name = (await client.getOwnData())?.name || credentials.username
@@ -47,21 +47,7 @@ export async function POST(req: Request) {
             ? `Congratulations! You have been allotted ${result.allottedQuantity ?? 0} shares.`
             : `Not allotted in this round (status: ${result.statusName || "N/A"}).`,
         })
-      }
-
-      let client = new MeroShareRestClient()
-      try {
-        return await runFlow(client)
-      } catch (error: any) {
-        const status = Number(error?.statusCode ?? 0)
-        const unauthorized = status === 401 || status === 403 || /unauthorized/i.test(String(error?.message ?? ""))
-        if (unauthorized && !/login failed/i.test(String(error?.message ?? ""))) {
-          clearCachedSession(username)
-          client = new MeroShareRestClient()
-          return await runFlow(client)
-        }
-        throw error
-      }
+      })
     }
 
     if (provider === "api") {
@@ -137,6 +123,8 @@ export async function POST(req: Request) {
       if (browser) await browser.close()
     }
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error?.message || "Allotment check failed" }, { status: 500 })
+    const { describeMeroShareFailure } = await import("../_lib/rest-api")
+    const failure = describeMeroShareFailure(error, "Allotment check failed")
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status })
   }
 }

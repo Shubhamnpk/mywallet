@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { toast } from "sonner"
-import { useCallback, useState } from "react"
+import { useCallback, useState, useMemo } from "react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { MeroShareAccount } from "@/types/wallet"
 import { useRouter } from "next/navigation"
 
 
@@ -24,19 +26,42 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
     const [isApplying, setIsApplying] = useState(false)
     const [isCheckingResult, setIsCheckingResult] = useState(false)
     const [hasAppliedInSession, setHasAppliedInSession] = useState(false)
+    const meroShareAccounts = useMemo<MeroShareAccount[]>(() => {
+        if (userProfile?.meroShare?.accounts?.length) return userProfile.meroShare.accounts
+        if (userProfile?.meroShare?.dpId || userProfile?.meroShare?.username) {
+            return [{
+                id: "legacy-primary",
+                label: "Primary account",
+                role: "primary" as const,
+                dpId: userProfile.meroShare.dpId || "",
+                username: userProfile.meroShare.username || "",
+                password: userProfile.meroShare.password || "",
+                crn: userProfile.meroShare.crn || "",
+                pin: userProfile.meroShare.pin || "",
+            }]
+        }
+        return []
+    }, [userProfile?.meroShare])
+    const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+    const selectedAccount = useMemo(
+        () =>
+            meroShareAccounts.find(account => account.id === selectedAccountId) ||
+            meroShareAccounts.find(account => account.role === "primary") ||
+            meroShareAccounts[0],
+        [meroShareAccounts, selectedAccountId]
+    )
     const hasMeroShareLoginCredentials = Boolean(
-        userProfile?.meroShare?.dpId &&
-        userProfile?.meroShare?.username &&
-        userProfile?.meroShare?.password
+        selectedAccount?.dpId &&
+        selectedAccount?.username &&
+        selectedAccount?.password
     )
     const hasMeroShareApplyCredentials = Boolean(
         hasMeroShareLoginCredentials &&
-        userProfile?.meroShare?.crn &&
-        userProfile?.meroShare?.pin
+        selectedAccount?.crn &&
+        selectedAccount?.pin
     )
     const canUseMeroShare = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareLoginCredentials)
     const canApplyFromCard = Boolean(userProfile?.meroShare?.shareFeaturesEnabled && hasMeroShareApplyCredentials)
-    const primaryMeroShareAccount = userProfile?.meroShare?.accounts?.find(account => account.role === "primary")
     const normalizeIpoName = (value?: string) =>
         (value || "")
             .toLowerCase()
@@ -61,7 +86,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         source: "live-apply" = "live-apply",
         closeOnSuccess = true
     ) => {
-        const credentials = userProfile?.meroShare
+        const credentials = selectedAccount
         if (!userProfile?.meroShare?.shareFeaturesEnabled) {
             toast.error("Share features are disabled.", {
                 description: "Open Settings > MeroShare and enable Share Features first."
@@ -70,7 +95,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         }
         if (!canApplyFromCard) {
             toast.error("MeroShare setup is incomplete.", {
-                description: "Add CRN and transaction PIN in Settings > MeroShare to apply."
+                description: `Add CRN and transaction PIN for ${credentials?.label || "this account"} in Settings > MeroShare to apply.`
             })
             return
         }
@@ -83,7 +108,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         const promise = applyMeroShareIPO(
             credentials,
             ipo?.company || "",
-            primaryMeroShareAccount?.preferredKitta || 0,
+            credentials.preferredKitta || 0,
             source,
             { showBrowser: false }
         )
@@ -104,10 +129,10 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                 return err.message
             }
         })
-    }, [applyMeroShareIPO, canApplyFromCard, ipo?.company, onOpenChange, userProfile?.meroShare])
+    }, [applyMeroShareIPO, canApplyFromCard, ipo?.company, onOpenChange, selectedAccount, userProfile?.meroShare?.shareFeaturesEnabled])
 
     const handleCheckAllotment = async () => {
-        const credentials = userProfile?.meroShare
+        const credentials = selectedAccount
         if (!canUseMeroShare) {
             toast.error("Mero Share setup required", { description: "Please setup your credentials in Settings to check allotment." })
             return
@@ -292,7 +317,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                         <Calendar className="w-3 h-3" /> Open
                                     </span>
                                     <span className="text-sm font-black text-foreground">
-                                        {ipo.date_range.split(/ to | - |-|–|—/)[0]?.trim()}
+                                        {ipo.date_range.split(/ to | - |-|–|-/)[0]?.trim()}
                                     </span>
                                     {ipo.openingDay && (
                                         <span className="text-[10px] font-bold text-primary/60 uppercase">
@@ -305,7 +330,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
                                         <Clock className="w-3 h-3" /> Close
                                     </span>
                                     <span className="text-sm font-black text-foreground/80">
-                                        {ipo.date_range.split(/ to | - |-|–|—/)[1]?.trim() || "N/A"}
+                                        {ipo.date_range.split(/ to | - |-|–|-/)[1]?.trim() || "N/A"}
                                     </span>
                                     {ipo.closingDay && (
                                         <span className="text-[10px] font-bold text-muted-foreground/60 uppercase">
@@ -332,6 +357,25 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
 
                     {/* Sticky Footer */}
                     <div className="p-3 sm:p-4 bg-muted/15 backdrop-blur-0 border-t border-primary/5 shrink-0 relative z-20">
+                        {meroShareAccounts.length > 1 && (
+                            <div className="mb-2.5 flex items-center gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground shrink-0">Apply with</span>
+                                <Select value={selectedAccount?.id} onValueChange={setSelectedAccountId}>
+                                    <SelectTrigger className="h-8 flex-1 rounded-xl text-[11px] font-bold border-primary/20 bg-background/60">
+                                        <SelectValue placeholder="Choose account" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {meroShareAccounts.map((account) => (
+                                            <SelectItem key={account.id} value={account.id} className="text-xs">
+                                                {account.label}
+                                                {account.username ? ` (${account.username})` : ""}
+                                                {account.role === "primary" ? " · primary" : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2 sm:gap-3">
                             <Button
                                 variant="outline"

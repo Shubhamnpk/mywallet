@@ -145,7 +145,7 @@ function generatePlainText(
 
   const body = rows.map((r) => {
     const cells = [r.date];
-    if (hasInstCol) cells.push(r.inst || "—");
+    if (hasInstCol) cells.push(r.inst || "-");
     cells.push(r.time, r.hours);
     if (showNotes) cells.push(r.note);
     if (showRate) cells.push(r.amount);
@@ -304,7 +304,7 @@ function generatePNG(
 
     const vals: Record<string, string> = {
       date: formatDateForExport(sh.date, calendarSystem),
-      inst: sh.institution || "—",
+      inst: sh.institution || "-",
       time: `${fmtTime(sh.start)} - ${fmtTime(sh.end)}`,
       hours: fmtHM(sh.hours),
       note: showNotes && sh.note ? sh.note : "",
@@ -677,7 +677,7 @@ export function ExportDialog({
             <div>{filteredShifts.length} shift{filteredShifts.length !== 1 ? "s" : ""}</div>
             {filteredShifts.length > 0 && (
               <div>
-                {formatAppDate(filteredShifts[filteredShifts.length - 1].date, calendarSystem)} — {formatAppDate(filteredShifts[0].date, calendarSystem)}
+                {formatAppDate(filteredShifts[filteredShifts.length - 1].date, calendarSystem)} - {formatAppDate(filteredShifts[0].date, calendarSystem)}
               </div>
             )}
           </div>

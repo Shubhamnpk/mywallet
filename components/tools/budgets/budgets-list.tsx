@@ -422,14 +422,14 @@ export function BudgetsList() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem onClick={() => handleEditBudget(budget)} className="cursor-pointer">
+                              <DropdownMenuItem onClick={() => handleEditBudget(budget)}>
                                 <Edit className="w-4 h-4 mr-2" />
                                 Edit Budget
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 variant="destructive"
                                 onClick={() => deleteBudget(budget.id)}
-                                className="cursor-pointer"
+                               
                               >
                                 <Trash2 className="w-4 h-4 mr-2" />
                                 Delete Budget

@@ -340,7 +340,7 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
                           />
                           <CompactStat
                             label="LTP"
-                            value={ltp != null ? formatNav(ltp) : "—"}
+                            value={ltp != null ? formatNav(ltp) : "-"}
                             tone={ltpTrendPositive ? "text-success" : "text-error"}
                             hint="NEPSE traded"
                           />
@@ -371,9 +371,9 @@ export function SchemeDetailModal({ scheme, schemeDetail, manager, onOpenChange,
                         <SectionLabel icon={Building2} title="Scheme Structure" />
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
                           <CompactStat label="Face Value" value={formatNav(faceValue)} hint="per unit" />
-                          <CompactStat label="Units" value={schemeDetail?.units != null ? compactAmount(schemeDetail.units, calendarSystem) : "—"} />
-                          <CompactStat label="Paid-up" value={paidUp != null ? compactAmount(paidUp, calendarSystem) : "—"} />
-                          <CompactStat label="Matures" value={maturity ? formatDate(maturity) : "—"} hint={scheme?.time_to_mature ?? undefined} />
+                          <CompactStat label="Units" value={schemeDetail?.units != null ? compactAmount(schemeDetail.units, calendarSystem) : "-"} />
+                          <CompactStat label="Paid-up" value={paidUp != null ? compactAmount(paidUp, calendarSystem) : "-"} />
+                          <CompactStat label="Matures" value={maturity ? formatDate(maturity) : "-"} hint={scheme?.time_to_mature ?? undefined} />
                         </div>
 
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -1019,7 +1019,7 @@ function ReturnsTab({ returns, all }: { returns: SchemeReturns | null; all: Arra
               </p>
             </div>
             <p className={cn("text-sm font-mono font-black pl-2", r.value != null && (r.value >= 0 ? "text-success" : "text-error"))}>
-              {r.value === null ? "—" : formatPct(r.value)}
+              {r.value === null ? "-" : formatPct(r.value)}
             </p>
           </div>
         )
@@ -1113,12 +1113,12 @@ function HoldingsTab({ holdings }: { holdings: HoldingsRow[] }) {
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-black truncate">{h.symbol}</p>
-                  <p className="text-[9px] text-muted-foreground truncate">{h.name || "—"}</p>
+                  <p className="text-[9px] text-muted-foreground truncate">{h.name || "-"}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-xs font-mono font-black">{compactAmount(h.marketValue, calendarSystem)}</p>
                   <p className="text-[9px] text-muted-foreground/70">
-                    {h.shares.toLocaleString()} sh · {h.ltp != null ? formatNav(h.ltp) : "—"} LTP
+                    {h.shares.toLocaleString()} sh · {h.ltp != null ? formatNav(h.ltp) : "-"} LTP
                   </p>
                 </div>
               </div>

@@ -225,7 +225,7 @@ export class SecureKeyManager {
 
         const encryptedPayload = value.substring(10)
 
-        // Already encrypted with the default key — nothing to do.
+        // Already encrypted with the default key - nothing to do.
         try {
           await SecureWallet.decryptData(encryptedPayload, defaultKey)
           continue

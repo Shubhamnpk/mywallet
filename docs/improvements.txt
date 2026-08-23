@@ -1,3 +1,0 @@
-1. the expense shown in the blace crad is flase and its only calculates the actual cash balnce not the totla expasenc including dept - done 
-2. either user can crate adept account or they can just use thier goal account when thier wallet balnce is inficuent 
-3. we can impove the portfolio 

@@ -18,39 +18,40 @@ export async function POST(req: Request) {
     const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
-      const { MeroShareRestClient } = await import("../_lib/rest-api")
-      const client = new MeroShareRestClient()
-      await client.login({
-        dpId: credentials.dpId,
-        username: credentials.username,
-        password: credentials.password,
-        crn: credentials.crn,
-        pin: credentials.pin,
-      })
-      const companyShareId = await client.resolveCompanyShareId(ipoDetails.company_share_id)
-      let alreadyApplied = false
-      let data: unknown
-      try {
-        data = await client.applyForIpo(
-          {
-            dpId: credentials.dpId,
-            username: credentials.username,
-            password: credentials.password,
-            crn: credentials.crn,
-            pin: credentials.pin,
-          },
-          { companyShareId, number_of_shares: Number(ipoDetails.units) || 10 },
-        )
-      } catch (error: any) {
-        const message = String(error?.message || error || "")
-        if (/already/i.test(message) || /duplicate/i.test(message)) {
-          alreadyApplied = true
-          data = error?.responseBody ?? null
-        } else {
-          throw error
+      const { runWithSessionRecovery } = await import("../_lib/rest-api")
+      const username = String(credentials.username || "").trim()
+      return await runWithSessionRecovery(username, async (client) => {
+        await client.ensureSession({
+          dpId: credentials.dpId,
+          username: credentials.username,
+          password: credentials.password,
+          crn: credentials.crn,
+          pin: credentials.pin,
+        })
+        const companyShareId = await client.resolveCompanyShareId(ipoDetails.company_share_id)
+        let alreadyApplied = false
+        let data: unknown
+        try {
+          data = await client.applyForIpo(
+            {
+              dpId: credentials.dpId,
+              username: credentials.username,
+              password: credentials.password,
+              crn: credentials.crn,
+              pin: credentials.pin,
+            },
+            { companyShareId, number_of_shares: Number(ipoDetails.units) || 10 },
+          )
+        } catch (error: any) {
+          const message = String(error?.message || error || "")
+          if (/already/i.test(message) || /duplicate/i.test(message)) {
+            alreadyApplied = true
+            data = error?.responseBody ?? null
+          } else {
+            throw error
+          }
         }
-      }
-      const user_name = (await client.getOwnData())?.name || credentials.username
+        const user_name = (await client.getOwnData())?.name || credentials.username
       return NextResponse.json({
         success: true,
         application_id: (data as any)?.id ?? null,
@@ -61,9 +62,10 @@ export async function POST(req: Request) {
         user_name,
         details: data,
       })
-    }
+    })
+  }
 
-    if (provider === "api") {
+  if (provider === "api") {
       const payload: any = {
         dp_id: credentials.dpId,
         username: credentials.username,
@@ -120,6 +122,8 @@ export async function POST(req: Request) {
       if (browser) await browser.close()
     }
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error?.message || "IPO application failed" }, { status: 500 })
+    const { describeMeroShareFailure } = await import("../_lib/rest-api")
+    const failure = describeMeroShareFailure(error, "IPO application failed")
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status })
   }
 }

@@ -6,8 +6,9 @@ Use this checklist after each lint/refactor batch to confirm behavior is still c
 
 - Run `pnpm typecheck` and confirm success.
 - Run `pnpm test` and confirm success.
-- Run `pnpm lint` and confirm no new errors.
+- Run `pnpm audit` and confirm no new high/critical findings.
 - Start app with `pnpm dev`.
+- (Optional) Run `pnpm test:e2e` for the Playwright smoke suite.
 
 ## 1) Session and Security Flow
 

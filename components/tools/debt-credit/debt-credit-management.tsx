@@ -571,7 +571,7 @@ export function DebtCreditManagement() {
                                           setActiveTab("debt")
                                           setShowAddDialog(true)
                                         }}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Edit className="w-4 h-4 mr-2" />
                                         Edit
@@ -583,7 +583,7 @@ export function DebtCreditManagement() {
                                           accountName: debt.name,
                                           accountType: "debt",
                                         })}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Banknote className="w-4 h-4 mr-2" />
                                         Quick Pay
@@ -591,7 +591,7 @@ export function DebtCreditManagement() {
                                       <DropdownMenuItem
                                         variant="destructive"
                                         onClick={() => deleteDebtAccount(debt.id)}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Archive className="w-4 h-4 mr-2" />
                                         Archive
@@ -906,21 +906,21 @@ export function DebtCreditManagement() {
                                           setActiveTab("lend")
                                           setShowAddDialog(true)
                                         }}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Edit className="w-4 h-4 mr-2" />
                                         Edit
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         onClick={() => setPaymentDialog({ open: true, accountId: debt.id, accountName: debt.contactName || debt.name, accountType: "debt" })}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Banknote className="w-4 h-4 mr-2" />
                                         Record Payment
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         onClick={() => setDebtDetailsDialog({ open: true, accountId: debt.id })}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Clock className="w-4 h-4 mr-2" />
                                         History
@@ -928,7 +928,7 @@ export function DebtCreditManagement() {
                                       <DropdownMenuItem
                                         variant="destructive"
                                         onClick={() => deleteDebtAccount(debt.id)}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Archive className="w-4 h-4 mr-2" />
                                         Archive
@@ -1099,7 +1099,7 @@ export function DebtCreditManagement() {
                                           setActiveTab("credit")
                                           setShowAddDialog(true)
                                         }}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Edit className="w-4 h-4 mr-2" />
                                         Edit
@@ -1111,7 +1111,7 @@ export function DebtCreditManagement() {
                                           accountName: credit.name,
                                           accountType: "credit",
                                         })}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Banknote className="w-4 h-4 mr-2" />
                                         Quick Pay
@@ -1119,7 +1119,7 @@ export function DebtCreditManagement() {
                                       <DropdownMenuItem
                                         variant="destructive"
                                         onClick={() => deleteCreditAccount(credit.id)}
-                                        className="cursor-pointer"
+                                       
                                       >
                                         <Trash2 className="w-4 h-4 mr-2" />
                                         Delete
@@ -1223,7 +1223,7 @@ export function DebtCreditManagement() {
                                   <DropdownMenuContent align="end" className="w-44">
                                     <DropdownMenuItem
                                       onClick={() => setCreditDetailsDialog({ open: true, accountId: credit.id })}
-                                      className="cursor-pointer"
+                                     
                                     >
                                       <Clock className="w-4 h-4 mr-2" />
                                       Full History
@@ -1231,7 +1231,7 @@ export function DebtCreditManagement() {
                                     <DropdownMenuItem
                                       variant="destructive"
                                       onClick={() => deleteCreditAccount(credit.id)}
-                                      className="cursor-pointer"
+                                     
                                     >
                                       <Trash2 className="w-4 h-4 mr-2" />
                                       Delete

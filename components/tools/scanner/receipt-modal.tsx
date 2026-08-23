@@ -464,7 +464,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-muted/40 px-4 py-3">
                       <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Amount</div>
-                      <div className="text-xl font-bold font-mono mt-0.5">{currencySymbol} {extractedData.amount || '—'}</div>
+                      <div className="text-xl font-bold font-mono mt-0.5">{currencySymbol} {extractedData.amount || '-'}</div>
                     </div>
                     <div className="rounded-xl bg-muted/40 px-4 py-3">
                       <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Merchant</div>
@@ -610,7 +610,7 @@ const ReceiptScannerModal: React.FC<ReceiptScannerModalProps> = ({
                         </div>
                         {item.scanType === 'receipt' ? (
                           <>
-                            <div className="text-sm font-medium">{currencySymbol} {item.data.amount || '—'}</div>
+                            <div className="text-sm font-medium">{currencySymbol} {item.data.amount || '-'}</div>
                             <div className="text-xs text-muted-foreground truncate">{item.data.merchant || 'Unknown merchant'}</div>
                           </>
                         ) : (

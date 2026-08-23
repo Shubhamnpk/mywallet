@@ -395,6 +395,7 @@ export function MyWalletExtensionBridge() {
     }
 
     const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
       if (event.source !== window) return
       const payload = event.data
       if (!payload || payload.source !== EXTENSION_SOURCE || payload.type !== "REQUEST") return

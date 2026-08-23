@@ -19,7 +19,7 @@ function getTourSteps(isDesktop: boolean): TourStep[] {
         targetSelector: '[data-tour="header-greeting"]',
         title: "Welcome to MyWallet",
         description:
-          "Your personal finance dashboard. Manage transactions, track budgets, set goals, and explore powerful tools — all in one place.",
+          "Your personal finance dashboard. Manage transactions, track budgets, set goals, and explore powerful tools - all in one place.",
         position: "bottom",
       },
       {
@@ -97,14 +97,14 @@ function getTourSteps(isDesktop: boolean): TourStep[] {
       targetSelector: '[data-tour="income-card"]',
       title: "Income",
       description:
-        "Your total income for the period — money coming in, shown in the green card.",
+        "Your total income for the period - money coming in, shown in the green card.",
       position: "bottom",
     },
     {
       targetSelector: '[data-tour="expenses-card"]',
       title: "Expenses",
       description:
-        "Your total expenses — money going out, shown in the red card.",
+        "Your total expenses - money going out, shown in the red card.",
       position: "bottom",
     },
     {

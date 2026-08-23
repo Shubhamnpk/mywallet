@@ -1,14 +1,13 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from "react"
-import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, ExternalLink, Rocket, Wallet, Megaphone, FileSpreadsheet, Link2, ArrowRight, ShieldCheck, Building2, Check } from "lucide-react"
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, Label, LineChart, Line, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { Plus, RefreshCcw, TrendingUp, TrendingDown, Trash2, Search, History, Download, Upload, FileText, ArrowUpRight, ArrowDownLeft, Gift, Share2, PieChart as PieChartIcon, LayoutGrid, List, Info, ChevronDown, ChevronUp, Activity, BarChart3, Sparkles, ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, MoreVertical, Edit3, BellRing, Calendar, Rocket, Wallet, FileSpreadsheet, Link2, ArrowRight, ShieldCheck, Building2, Check } from "lucide-react"
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, Label, LineChart, Line, Area, AreaChart, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/components/ui/carousel"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePortfolioData } from "@/hooks/use-portfolio-data"
@@ -19,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { DocumentPreviewModal } from "@/components/ui/document-preview-modal"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -180,7 +179,7 @@ type ImportQueueItem = {
 }
 
 
-/** Stable snapshot for sync — avoids setState loops when `portfolio` is re-created with new object references each render. */
+/** Stable snapshot for sync - avoids setState loops when `portfolio` is re-created with new object references each render. */
 const portfolioItemSyncSignature = (entry: PortfolioItem) =>
     [
         entry.id,
@@ -225,6 +224,8 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
     const [isAddingTransaction, setIsAddingTransaction] = useState(false)
     const [isCreatePortfolioOpen, setIsCreatePortfolioOpen] = useState(false)
+    const [connectAccountId, setConnectAccountId] = useState("")
+    const [meroShareCreateMode, setMeroShareCreateMode] = useState<"connect" | "create-portfolio">("connect")
     const [isEditPortfolioOpen, setIsEditPortfolioOpen] = useState(false)
     const [isSebonNoticesOpen, setIsSebonNoticesOpen] = useState(false)
     const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null)
@@ -685,7 +686,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
         [portfolio]
     )
 
-    // `fetchPortfolioPrices` from context is not useCallback-stable — listing it in deps re-ran this effect every render and could exceed React's max update depth.
+    // `fetchPortfolioPrices` from context is not useCallback-stable - listing it in deps re-ran this effect every render and could exceed React's max update depth.
     const portfolioRef = useRef(portfolio)
     const fetchPortfolioPricesRef = useRef(fetchPortfolioPrices)
 
@@ -1141,7 +1142,54 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
         toast.info("Zero holdings feature disabled. Sold stocks will be auto-removed.")
     }
 
+    const createPortfolioFromAccount = async (account: MeroShareAccount, color?: string, accountsOverride?: MeroShareAccount[]) => {
+        const existingAccounts = accountsOverride || portfolioMeroShareAccounts(userProfile?.meroShare)
+        const mergedAccounts = existingAccounts.some(a => a.id === account.id)
+            ? existingAccounts
+            : [...existingAccounts, account]
+
+        const createdPortfolio = await addPortfolio(
+            account.label,
+            `Linked to MeroShare account "${account.label}"`,
+            color
+        )
+
+        await updateUserProfile({
+            meroShare: {
+                ...(userProfile?.meroShare || { dpId: "", username: "", isAutomatedEnabled: false }),
+                accounts: mergedAccounts.map(a =>
+                    a.id === account.id ? { ...a, portfolioId: createdPortfolio.id } : a
+                ),
+            },
+        })
+
+        await switchPortfolio(createdPortfolio.id)
+        toast.success(`Portfolio "${createdPortfolio.name}" created and connected to MeroShare`)
+        void syncAccountToPortfolio(account, createdPortfolio.id)
+        return createdPortfolio
+    }
+
     const handleCreatePortfolio = async () => {
+        const connectAccount = connectAccountId
+            ? portfolioMeroShareAccounts(userProfile?.meroShare).find(a => a.id === connectAccountId) || null
+            : null
+
+        if (connectAccount) {
+            try {
+                await createPortfolioFromAccount(connectAccount, newPortfolio.color)
+                setNewPortfolio({
+                    name: "",
+                    description: "",
+                    color: "#3b82f6"
+                })
+                setIsCreatePortfolioOpen(false)
+                setConnectAccountId("")
+            } catch (error) {
+                toast.error("Failed to create portfolio")
+            }
+            return
+        }
+
         if (!newPortfolio.name.trim()) {
             toast.error("Please enter a portfolio name")
             return
@@ -1223,13 +1271,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
         }
     }
 
-    const linkAndSyncMeroShareAccount = async (account: MeroShareAccount) => {
-        const targetPortfolioId = activePortfolioId
-        if (!targetPortfolioId) {
-            toast.error("No active portfolio to import into")
-            return
-        }
-
+    const syncAccountToPortfolio = async (account: MeroShareAccount, portfolioId: string) => {
         const credentials = {
             dpId: account.dpId,
             username: account.username,
@@ -1237,21 +1279,9 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
             browserProvider: userProfile?.meroShare?.browserProvider,
         }
 
-        const existingAccounts = portfolioMeroShareAccounts(userProfile?.meroShare)
-        if (existingAccounts.find(a => a.id === account.id)?.portfolioId !== targetPortfolioId) {
-            await updateUserProfile({
-                meroShare: {
-                    ...(userProfile?.meroShare || { dpId: "", username: "", isAutomatedEnabled: false }),
-                    accounts: existingAccounts.map(a =>
-                        a.id === account.id ? { ...a, portfolioId: targetPortfolioId } : a
-                    ),
-                },
-            })
-        }
-
         const loadingToast = toast.loading(`Fetching transaction history for "${account.label}"...`)
         try {
-            const result = await syncMeroShareTransactionHistory(credentials, targetPortfolioId)
+            const result = await syncMeroShareTransactionHistory(credentials, portfolioId)
 
             if (result.requiresReview) {
                 const queue: PriceReviewQueueItem[] = []
@@ -1296,12 +1326,12 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                     existingCount: result.existingCount,
                     needsPriceCount: result.needsPriceCount,
                 })
-                setReviewSyncContext({ credentials, portfolioId: targetPortfolioId, accountLabel: account.label })
+                setReviewSyncContext({ credentials, portfolioId, accountLabel: account.label })
                 setIsPriceReviewOpen(true)
                 toast.success(`Found ${result.newTransactions.length} new transaction${result.newTransactions.length === 1 ? "" : "s"} to verify`, {
                     description: result.mergedCount > 0
-                        ? `${result.mergedCount} duplicate row${result.mergedCount === 1 ? "" : "s"} merged, ${result.existingCount} already exist. Each buy/sell has its own price input — IPO buys are pre-filled with face value.`
-                        : "Each buy/sell has its own price input — IPO buys are pre-filled with face value.",
+                        ? `${result.mergedCount} duplicate row${result.mergedCount === 1 ? "" : "s"} merged, ${result.existingCount} already exist. Each buy/sell has its own price input - IPO buys are pre-filled with face value.`
+                        : "Each buy/sell has its own price input - IPO buys are pre-filled with face value.",
                 })
             } else if (result.importedCount > 0) {
                 toast.success(
@@ -1316,6 +1346,44 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
             toast.error(err?.message || "Failed to sync MeroShare account.")
         } finally {
             toast.dismiss(loadingToast)
+        }
+    }
+
+    const linkAndSyncMeroShareAccount = async (account: MeroShareAccount, accountsOverride?: MeroShareAccount[]) => {
+        const targetPortfolioId = activePortfolioId
+        if (!targetPortfolioId) {
+            toast.error("No active portfolio to import into")
+            return
+        }
+
+        const existingAccounts = accountsOverride || portfolioMeroShareAccounts(userProfile?.meroShare)
+        if (existingAccounts.find(a => a.id === account.id)?.portfolioId !== targetPortfolioId) {
+            await updateUserProfile({
+                meroShare: {
+                    ...(userProfile?.meroShare || { dpId: "", username: "", isAutomatedEnabled: false }),
+                    accounts: existingAccounts.map(a =>
+                        a.id === account.id ? { ...a, portfolioId: targetPortfolioId } : a
+                    ),
+                },
+            })
+        }
+
+        await syncAccountToPortfolio(account, targetPortfolioId)
+    }
+
+    const unlinkMeroShareAccount = async (account: MeroShareAccount) => {
+        try {
+            await updateUserProfile({
+                meroShare: {
+                    ...(userProfile?.meroShare || { dpId: "", username: "", isAutomatedEnabled: false }),
+                    accounts: portfolioMeroShareAccounts(userProfile?.meroShare).map(a =>
+                        a.id === account.id ? { ...a, portfolioId: undefined } : a
+                    ),
+                },
+            })
+            toast.success(`${account.label} unlinked from "${portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}"`)
+        } catch (err: any) {
+            toast.error(err?.message || "Failed to unlink account.")
         }
     }
 
@@ -1357,14 +1425,10 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
     const handleConnectMeroShare = () => {
         const existingAccounts = portfolioMeroShareAccounts(userProfile?.meroShare)
         setShowImportGuide(false)
+        setMeroShareCreateMode("connect")
 
         if (existingAccounts.length === 0) {
             setShowMeroShareCreate(true)
-            return
-        }
-
-        if (existingAccounts.length === 1) {
-            void linkAndSyncMeroShareAccount(existingAccounts[0])
             return
         }
 
@@ -1424,7 +1488,11 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
 
             setShowMeroShareCreate(false)
             setMeroShareForm({ label: "", dpId: "", username: "", password: "" })
-            void linkAndSyncMeroShareAccount(newAccount)
+            if (meroShareCreateMode === "create-portfolio") {
+                void createPortfolioFromAccount(newAccount, undefined, nextAccounts)
+                return
+            }
+            void linkAndSyncMeroShareAccount(newAccount, nextAccounts)
         } catch (error: any) {
             setMeroShareForm(prev => ({ ...prev, password: "" }))
             toast.error("Verification failed", {
@@ -2937,7 +3005,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
             <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4 md:mb-8 md:grid-cols-5">
                 {nepseIndexData && (
                 <Card
-                    className="col-span-2 md:col-span-1 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 focus-within:ring-2 focus-within:ring-primary/30"
+                    className="col-span-2 md:col-span-1 gap-0 py-0 bg-card/40 backdrop-blur-sm border-muted/50 shadow-md text-left overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 focus-within:ring-2 focus-within:ring-primary/30"
                     role="button"
                     tabIndex={0}
                     onClick={() => handleOpenMarketSector("")}
@@ -2948,7 +3016,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                         }
                     }}
                 >
-                    <CardHeader className="pb-0 px-2 pt-2 sm:px-3 sm:pt-3">
+                    <CardHeader className="pb-2.5 px-2 pt-2 sm:px-3 sm:pt-3">
                         <div className="flex items-center justify-between gap-1">
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-1">
                                 <span className={cn("inline-block w-1.5 h-1.5 rounded-full", marketStatusMeta.dotClass)} />
@@ -2971,28 +3039,23 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                         </div>
                     </CardHeader>
                     {intradayChartData.length > 0 && (
-                    <CardContent className="px-1 pb-1 sm:px-2 sm:pb-2">
+                    <CardContent className="px-0 pb-0 flex-1 min-h-0">
                         {(() => {
                             const chartColor = nepseIndexData?.isPositive ? "#10b981" : "#ef4444"
-                            const lineGradId = "nepseLineGrad"
                             const fillGradId = "nepseFillGrad"
                             return (
-                            <div className="h-[48px]">
+                            <div className="h-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={intradayChartData} margin={{ top: 1, right: 0, left: 0, bottom: 0 }}>
+                                    <AreaChart data={intradayChartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                                         <defs>
-                                            <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
-                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.4} />
-                                                <stop offset="50%" stopColor={chartColor} stopOpacity={0.9} />
-                                                <stop offset="100%" stopColor={chartColor} stopOpacity={1} />
-                                            </linearGradient>
                                             <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.15} />
-                                                <stop offset="100%" stopColor={chartColor} stopOpacity={0.005} />
+                                                <stop offset="0%" stopColor={chartColor} stopOpacity={0.3} />
+                                                <stop offset="75%" stopColor={chartColor} stopOpacity={0.08} />
+                                                <stop offset="100%" stopColor={chartColor} stopOpacity={0.12} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis dataKey="time" hide />
-                                        <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} hide />
+                                        <YAxis domain={['dataMin', 'dataMax']} hide />
                                         <Tooltip content={({ active, payload, label }) => {
                                             if (!active || !payload || payload.length === 0) return null
                                             const value = payload[0]?.value as number | undefined
@@ -3005,9 +3068,8 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                                 </div>
                                             )
                                         }} />
-                                        <Area type="monotone" dataKey="value" fill={`url(#${fillGradId})`} stroke="none" />
-                                        <Line type="monotone" dataKey="value" stroke={`url(#${lineGradId})`} strokeWidth={1.5} dot={false} activeDot={{ r: 2.5, strokeWidth: 0, fill: chartColor }} />
-                                    </LineChart>
+                                        <Area type="monotone" dataKey="value" stroke={chartColor} strokeWidth={1.5} fill={`url(#${fillGradId})`} dot={false} activeDot={{ r: 2.5, strokeWidth: 0, fill: chartColor }} />
+                                    </AreaChart>
                                 </ResponsiveContainer>
                             </div>
                             )
@@ -3024,7 +3086,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                         <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider truncate">{idx.index}</span>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-black font-mono text-foreground/80">
-                                                {typeof idx.currentValue === "number" ? idx.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                                                {typeof idx.currentValue === "number" ? idx.currentValue.toLocaleString(getNumberFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                                             </span>
                                             <span className={cn("text-[9px] font-black", isUp ? "text-success" : "text-error")}>
                                                 {isUp ? "+" : ""}{typeof idx.perChange === "number" ? idx.perChange.toFixed(2) : "0"}%
@@ -3743,6 +3805,323 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
             </Card>
         )
     }
+
+    const portfolioDialogs = (
+        <>
+            <Dialog open={showMeroShareCreate} onOpenChange={setShowMeroShareCreate}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Link2 className="h-5 w-5 text-primary" />
+                            Add MeroShare account
+                        </DialogTitle>
+                        <DialogDescription>
+                            Save your MeroShare login, then connect it to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import transactions.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-3 py-2">
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Label (optional)</label>
+                            <Input
+                                value={meroShareForm.label}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, label: e.target.value }))}
+                                placeholder="Primary account"
+                            />
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold flex items-center gap-1.5">
+                                <Building2 className="w-3 h-3" /> Depository Participant (DP)
+                            </label>
+                            <Popover open={isDpListOpen} onOpenChange={setIsDpListOpen}>
+                                <PopoverAnchor asChild>
+                                    <Input
+                                        value={dpSearch !== "" ? dpSearch : (() => {
+                                            const selectedDp = dps.find((dp) => dp.id === meroShareForm.dpId || dp.code === meroShareForm.dpId)
+                                            return selectedDp ? `${selectedDp.name} (${selectedDp.code})` : ""
+                                        })()}
+                                        onChange={(e) => {
+                                            setDpSearch(e.target.value)
+                                            if (e.target.value.trim() !== "") setIsDpListOpen(true)
+                                        }}
+                                        placeholder={isLoadingDps ? "Loading DP list..." : "Search bank or DP..."}
+                                        role="combobox"
+                                        aria-expanded={isDpListOpen}
+                                    />
+                                </PopoverAnchor>
+                                <PopoverContent
+                                    className="p-0 w-[var(--radix-popover-trigger-width)] min-w-64 max-w-[calc(100vw-3rem)]"
+                                    align="start"
+                                    onOpenAutoFocus={(event) => event.preventDefault()}
+                                >
+                                    <Command className="w-full">
+                                        <CommandList className="max-h-[240px] overflow-y-auto">
+                                            <CommandEmpty>No DP found.</CommandEmpty>
+                                            <CommandGroup>
+                                                {filteredDps.map((dp) => (
+                                                    <CommandItem
+                                                        key={dp.id}
+                                                        value={`${dp.name} ${dp.id} ${dp.code}`}
+                                                        onSelect={() => {
+                                                            setMeroShareForm(prev => ({ ...prev, dpId: dp.code }))
+                                                            setDpSearch("")
+                                                            setIsDpListOpen(false)
+                                                        }}
+                                                        className="flex items-center justify-between"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">{dp.name}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Code: {dp.code}
+                                                            </span>
+                                                        </div>
+                                                        <Check
+                                                            className={cn(
+                                                                "h-4 w-4",
+                                                                meroShareForm.dpId === dp.code ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Username</label>
+                            <Input
+                                value={meroShareForm.username}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, username: e.target.value }))}
+                                placeholder="your username"
+                            />
+                        </div>
+                        <div className="grid gap-1.5">
+                            <label className="text-xs font-semibold">Password</label>
+                            <Input
+                                type="password"
+                                value={meroShareForm.password}
+                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, password: e.target.value }))}
+                                placeholder="••••••••"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowMeroShareCreate(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={saveMeroShareAccount} disabled={isSavingMeroShareAccount}>
+                            {isSavingMeroShareAccount ? "Verifying & Connecting..." : "Save & Connect"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showMeroSharePicker} onOpenChange={setShowMeroSharePicker}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Link2 className="h-5 w-5 text-primary" />
+                            Choose a MeroShare account
+                        </DialogTitle>
+                        <DialogDescription>
+                            Pick the account to link to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import its transactions.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-2 py-2">
+                        {portfolioMeroShareAccounts(userProfile?.meroShare).map((account) => {
+                            const linkedPortfolio = portfolios.find(p => p.id === account.portfolioId)
+                            return (
+                                <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => { setShowMeroSharePicker(false); void linkAndSyncMeroShareAccount(account) }}
+                                    className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+                                >
+                                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                        <Link2 className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold truncate">{account.label}</p>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                            {account.username || account.dpId || "MeroShare"}
+                                            {account.portfolioId
+                                                ? ` • linked to ${linkedPortfolio?.name || "another portfolio"}`
+                                                : " • not linked yet"}
+                                        </p>
+                                    </div>
+                                    <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                                </button>
+                            )
+                        })}
+
+                        <button
+                            type="button"
+                            onClick={() => { setShowMeroSharePicker(false); setMeroShareCreateMode("connect"); setShowMeroShareCreate(true) }}
+                            className="group flex items-center gap-3 rounded-xl border border-dashed p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
+                        >
+                            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                <Plus className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">Use a different account</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">Connect with new MeroShare credentials</p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        </button>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowMeroSharePicker(false)}>
+                            Cancel
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showImportGuide} onOpenChange={setShowImportGuide}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Upload className="h-5 w-5 text-primary" />
+                            Import Data
+                        </DialogTitle>
+                        <DialogDescription>
+                            Bring transactions into your portfolio. Your files never leave your device.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-3 py-2">
+                        <button
+                            type="button"
+                            onClick={() => { setShowImportGuide(false); triggerFileUpload() }}
+                            disabled={isImporting}
+                            className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                        >
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                <FileSpreadsheet className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">Import CSV</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                                    Portfolio snapshot or transaction history exported from MeroShare.
+                                </p>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        </button>
+
+                        <div className="flex items-center gap-3 py-0.5">
+                            <div className="h-px flex-1 bg-border" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">or</span>
+                            <div className="h-px flex-1 bg-border" />
+                        </div>
+
+                        {(() => {
+                            const linkedAccount = portfolioMeroShareAccounts(userProfile?.meroShare)
+                                .find(a => a.portfolioId === activePortfolioId)
+                            if (!linkedAccount) {
+                                return (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleConnectMeroShare()}
+                                        disabled={isImporting}
+                                        className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                                    >
+                                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                            <Link2 className="w-5 h-5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold">Connect MeroShare</p>
+                                        </div>
+                                        <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                                    </button>
+                                )
+                            }
+                            return (
+                                <div className="flex items-center gap-3 rounded-xl border p-3">
+                                    <div className="min-w-0 flex-1 flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                            <Link2 className="w-5 h-5" />
+                                        </div>
+                                        <span className="text-sm font-bold truncate">{linkedAccount.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={isImporting}
+                                            title="Unlink this account from the portfolio"
+                                            className="h-8 font-bold rounded-xl border-muted/50 text-muted-foreground hover:text-error hover:border-error/40"
+                                            onClick={() => { void unlinkMeroShareAccount(linkedAccount) }}
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                                            Unlink
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            disabled={isImporting}
+                                            className="h-8 font-bold bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary active:bg-primary/30 active:text-primary focus-visible:text-primary border border-primary/20 rounded-xl shrink-0"
+                                            onClick={() => { setShowImportGuide(false); void linkAndSyncMeroShareAccount(linkedAccount) }}
+                                        >
+                                            <RefreshCcw className="w-3.5 h-3.5 mr-1.5" />
+                                            Sync
+                                        </Button>
+                                    </div>
+                                </div>
+                            )
+                        })()}
+                    </div>
+
+                    <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-xs space-y-1.5">
+                        <p className="font-bold flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-primary" /> How importing works
+                        </p>
+                        <p className="text-muted-foreground">1. Pick a source above and choose your file.</p>
+                        <p className="text-muted-foreground">2. Review and confirm the detected rows and prices.</p>
+                        <p className="text-muted-foreground">3. Everything is saved locally in your wallet.</p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowImportGuide(false)}>
+                            Cancel
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <ImportVerificationModal
+                open={isImportModalOpen}
+                onOpenChange={(open) => {
+                    if (!open) clearImportState()
+                    else setIsImportModalOpen(true)
+                }}
+                importQueue={importQueue}
+                importPrices={importPrices}
+                setImportPrices={setImportPrices}
+                importTransactionPrices={importTransactionPrices}
+                setImportTransactionPrices={setImportTransactionPrices}
+                onConfirm={handleConfirmImport}
+            />
+
+            <ImportVerificationModal
+                open={isPriceReviewOpen}
+                onOpenChange={(open) => {
+                    if (!open) clearPriceReview()
+                    else setIsPriceReviewOpen(true)
+                }}
+                importQueue={priceReviewQueue}
+                importPrices={reviewPrices}
+                setImportPrices={setReviewPrices}
+                importTransactionPrices={reviewTransactionPrices}
+                setImportTransactionPrices={setReviewTransactionPrices}
+                stats={priceReviewStats}
+                onConfirm={confirmPriceReview}
+            />
+        </>
+    )
 
     if (isIpoCenterOpen) {
         return (
@@ -4497,7 +4876,15 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                             newPortfolio={newPortfolio}
                             setNewPortfolio={setNewPortfolio}
                             onCreate={handleCreatePortfolio}
-                        />
+                            meroShareAccounts={portfolioMeroShareAccounts(userProfile?.meroShare)}
+                            connectAccountId={connectAccountId}
+                            onConnectAccountChange={setConnectAccountId}
+                            onAddMeroShareAccount={() => {
+                                    setMeroShareCreateMode("create-portfolio")
+                                    setIsCreatePortfolioOpen(false)
+                                    setTimeout(() => setShowMeroShareCreate(true), 150)
+                                }}
+                            />
                     </div>
 
 
@@ -4752,6 +5139,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                         </div>
                     </div>
                 </div >
+                {portfolioDialogs}
             </>
         )
     }
@@ -4764,6 +5152,14 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                 newPortfolio={newPortfolio}
                 setNewPortfolio={setNewPortfolio}
                 onCreate={handleCreatePortfolio}
+                meroShareAccounts={portfolioMeroShareAccounts(userProfile?.meroShare)}
+                connectAccountId={connectAccountId}
+                onConnectAccountChange={setConnectAccountId}
+                onAddMeroShareAccount={() => {
+                    setMeroShareCreateMode("create-portfolio")
+                    setIsCreatePortfolioOpen(false)
+                    setTimeout(() => setShowMeroShareCreate(true), 150)
+                }}
             />
 
             <EditPortfolioModal
@@ -4920,37 +5316,6 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                 }}
             />
 
-            {/* Import Price Modal */}
-            <ImportVerificationModal
-                open={isImportModalOpen}
-                onOpenChange={(open) => {
-                    if (!open) clearImportState()
-                    else setIsImportModalOpen(true)
-                }}
-                importQueue={importQueue}
-                importPrices={importPrices}
-                setImportPrices={setImportPrices}
-                importTransactionPrices={importTransactionPrices}
-                setImportTransactionPrices={setImportTransactionPrices}
-                onConfirm={handleConfirmImport}
-            />
-
-            {/* MeroShare Sync Price Review Modal */}
-            <ImportVerificationModal
-                open={isPriceReviewOpen}
-                onOpenChange={(open) => {
-                    if (!open) clearPriceReview()
-                    else setIsPriceReviewOpen(true)
-                }}
-                importQueue={priceReviewQueue}
-                importPrices={reviewPrices}
-                setImportPrices={setReviewPrices}
-                importTransactionPrices={reviewTransactionPrices}
-                setImportTransactionPrices={setReviewTransactionPrices}
-                stats={priceReviewStats}
-                onConfirm={confirmPriceReview}
-            />
-
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Summary Cards Column */}
@@ -4982,7 +5347,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                     {showSoldStocks ? <ArrowUpRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
                                 </div>
                             </div>
-                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black tracking-tight font-mono">
+                            <CardTitle className="text-xs sm:text-lg lg:text-base font-black tracking-tight font-mono">
                                 {money(showSoldStocks ? soldPortfolioStats.totalSoldValue : currentValue)}
                             </CardTitle>
                         </CardHeader>
@@ -5022,7 +5387,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
                                 {showSoldStocks ? "Today Value" : "Today's Move"}
                             </CardDescription>
-                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
+                            <CardTitle className="text-xs sm:text-lg lg:text-base font-black font-mono flex items-center gap-1">
                                 <span className={showSoldStocks || todayChange >= 0 ? "text-success" : "text-error"}>
                                     {showSoldStocks
                                         ? `${money(soldPortfolioStats.totalSoldTodayValue)}`
@@ -5035,14 +5400,22 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                 {showSoldStocks ? (
                                     <div className={cn(
                                         "text-[8px] sm:text-[9px] font-black px-1 py-0.5 rounded border",
-                                        soldPortfolioStats.soldValueDifference >= 0
+                                        soldPortfolioStats.soldValueDifference > 0
                                             ? "text-error bg-error/10 border-error/20"
-                                            : "text-success bg-success/10 border-success/20"
+                                            : soldPortfolioStats.soldValueDifference < 0
+                                                ? "text-success bg-success/10 border-success/20"
+                                                : "text-muted-foreground bg-muted/30 border-muted/40"
                                     )}>
-                                        {soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}
-                                        {`${soldPortfolioStats.soldValueDifference >= 0 ? "+" : ""}${shareCurrency.moneySigned(soldPortfolioStats.soldValueDifference)}`}
-                                        {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
-                                        {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
+                                        {soldPortfolioStats.soldValueDifference === 0 ? (
+                                            <>0 (0.0%)</>
+                                        ) : (
+                                            <>
+                                                {soldPortfolioStats.soldValueDifference > 0 ? "+" : ""}
+                                                {shareCurrency.moneySigned(soldPortfolioStats.soldValueDifference)}
+                                                {" "}({soldPortfolioStats.soldValueDifferencePercentage >= 0 ? "+" : ""}
+                                                {soldPortfolioStats.soldValueDifferencePercentage.toFixed(1)}%)
+                                            </>
+                                        )}
                                     </div>
                                 ) : todayChange >= 0 ? (
                                     <div className="text-[8px] sm:text-[9px] font-black text-success bg-success/10 px-1 py-0.5 rounded border border-success/20">
@@ -5070,7 +5443,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                             <CardDescription className="text-[8px] sm:text-[9px] uppercase tracking-widest font-bold text-muted-foreground mb-0.5">
                                 {showSoldStocks ? "Sold Spread" : "Total Stake"}
                             </CardDescription>
-                            <CardTitle className="text-sm sm:text-lg lg:text-base font-black font-mono">
+                            <CardTitle className="text-xs sm:text-lg lg:text-base font-black font-mono">
                                 {showSoldStocks
                                     ? `${soldPortfolioStats.soldScrips} Scrips`
                                     : `${money(totalInvestment)}`}
@@ -5092,7 +5465,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
 
                 {/* Sector/Stock Distribution Chart */}
                 <Card className={cn(
-                    "lg:col-span-3 border-muted/50 shadow-xl overflow-hidden relative bg-card/20 backdrop-blur-sm border-2 border-primary/5 transition-all p-0 lg:py-6 gap-0 lg:gap-6",
+                    "lg:col-span-3 border-muted/50 shadow-none overflow-hidden relative bg-card/20 backdrop-blur-sm border-2 border-primary/5 transition-all p-0 lg:py-6 gap-0 lg:gap-6",
                     !isChartExpanded && "lg:block"
                 )}>
                     <CardHeader className="pb-0 pt-2.5 sm:pt-6 px-4 sm:px-6">
@@ -5635,11 +6008,13 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                             />
                         </div>
                         <Button
-                            variant={showSoldStocks ? "default" : "outline"}
+                            variant="outline"
                             size="sm"
                             className={cn(
                                 "h-10 px-3 rounded-xl font-bold transition-all",
-                                showSoldStocks ? "bg-primary/10 text-primary border-primary/20" : "border-muted/50"
+                                showSoldStocks
+                                    ? "bg-primary text-accent-foreground border-primary hover:bg-primary/90 hover:text-accent-foreground active:bg-primary active:text-accent-foreground focus-visible:text-accent-foreground dark:bg-primary dark:border-primary dark:hover:bg-primary/90 dark:hover:text-accent-foreground"
+                                    : "border-muted/50 text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5 active:text-primary focus-visible:text-primary"
                             )}
                             onClick={() => setShowSoldStocks(!showSoldStocks)}
                         >
@@ -5714,9 +6089,8 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                             </div>
                             <div className="flex gap-2 text-left">
                                 <Button
-                                    variant="secondary"
                                     size="sm"
-                                    className="h-8 font-medium bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
+                                    className="h-8 font-medium bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary active:bg-primary/30 active:text-primary focus-visible:text-primary border border-primary/20"
                                     onClick={openImportGuide}
                                     disabled={isImporting}
                                     title="Import Data"
@@ -6295,231 +6669,7 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                 </div>
             )}
 
-            <Dialog open={showMeroShareCreate} onOpenChange={setShowMeroShareCreate}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Link2 className="h-5 w-5 text-primary" />
-                            Add MeroShare account
-                        </DialogTitle>
-                        <DialogDescription>
-                            Save your MeroShare login, then connect it to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import transactions.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-3 py-2">
-                        <div className="grid gap-1.5">
-                            <label className="text-xs font-semibold">Label (optional)</label>
-                            <Input
-                                value={meroShareForm.label}
-                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, label: e.target.value }))}
-                                placeholder="Primary account"
-                            />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <label className="text-xs font-semibold flex items-center gap-1.5">
-                                <Building2 className="w-3 h-3" /> Depository Participant (DP)
-                            </label>
-                            <Popover open={isDpListOpen} onOpenChange={setIsDpListOpen}>
-                                <PopoverAnchor asChild>
-                                    <Input
-                                        value={dpSearch !== "" ? dpSearch : (() => {
-                                            const selectedDp = dps.find((dp) => dp.id === meroShareForm.dpId || dp.code === meroShareForm.dpId)
-                                            return selectedDp ? `${selectedDp.name} (${selectedDp.code})` : ""
-                                        })()}
-                                        onChange={(e) => {
-                                            setDpSearch(e.target.value)
-                                            if (e.target.value.trim() !== "") setIsDpListOpen(true)
-                                        }}
-                                        placeholder={isLoadingDps ? "Loading DP list..." : "Search bank or DP..."}
-                                        role="combobox"
-                                        aria-expanded={isDpListOpen}
-                                    />
-                                </PopoverAnchor>
-                                <PopoverContent
-                                        className="p-0 w-[var(--radix-popover-trigger-width)] min-w-64 max-w-[calc(100vw-3rem)]"
-                                        align="start"
-                                        onOpenAutoFocus={(event) => event.preventDefault()}
-                                    >
-                                    <Command className="w-full">
-                                        <CommandList className="max-h-[240px] overflow-y-auto">
-                                            <CommandEmpty>No DP found.</CommandEmpty>
-                                            <CommandGroup>
-                                                {filteredDps.map((dp) => (
-                                                    <CommandItem
-                                                        key={dp.id}
-                                                        value={`${dp.name} ${dp.id} ${dp.code}`}
-                                                        onSelect={() => {
-                                                            setMeroShareForm(prev => ({ ...prev, dpId: dp.code }))
-                                                            setDpSearch("")
-                                                            setIsDpListOpen(false)
-                                                        }}
-                                                        className="flex items-center justify-between"
-                                                    >
-                                                        <div className="flex flex-col">
-                                                            <span className="font-medium">{dp.name}</span>
-                                                            <span className="text-xs text-muted-foreground">
-                                                                Code: {dp.code}
-                                                            </span>
-                                                        </div>
-                                                        <Check
-                                                            className={cn(
-                                                                "h-4 w-4",
-                                                                meroShareForm.dpId === dp.code ? "opacity-100" : "opacity-0"
-                                                            )}
-                                                        />
-                                                    </CommandItem>
-                                                ))}
-                                            </CommandGroup>
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        <div className="grid gap-1.5">
-                            <label className="text-xs font-semibold">Username</label>
-                            <Input
-                                value={meroShareForm.username}
-                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, username: e.target.value }))}
-                                placeholder="your username"
-                            />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <label className="text-xs font-semibold">Password</label>
-                            <Input
-                                type="password"
-                                value={meroShareForm.password}
-                                onChange={(e) => setMeroShareForm(prev => ({ ...prev, password: e.target.value }))}
-                                placeholder="••••••••"
-                            />
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowMeroShareCreate(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={saveMeroShareAccount} disabled={isSavingMeroShareAccount}>
-                            {isSavingMeroShareAccount ? "Verifying & Connecting..." : "Save & Connect"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={showMeroSharePicker} onOpenChange={setShowMeroSharePicker}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Link2 className="h-5 w-5 text-primary" />
-                            Choose a MeroShare account
-                        </DialogTitle>
-                        <DialogDescription>
-                            Pick the account to link to "{portfolios.find(p => p.id === activePortfolioId)?.name || "this portfolio"}" and import its transactions.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-2 py-2">
-                        {portfolioMeroShareAccounts(userProfile?.meroShare).map((account) => {
-                            const linkedPortfolio = portfolios.find(p => p.id === account.portfolioId)
-                            return (
-                                <button
-                                    key={account.id}
-                                    type="button"
-                                    onClick={() => { setShowMeroSharePicker(false); void linkAndSyncMeroShareAccount(account) }}
-                                    className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
-                                >
-                                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                                        <Link2 className="w-4 h-4" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-bold truncate">{account.label}</p>
-                                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                                            {account.username || account.dpId || "MeroShare"}
-                                            {account.portfolioId
-                                                ? ` • linked to ${linkedPortfolio?.name || "another portfolio"}`
-                                                : " • not linked yet"}
-                                        </p>
-                                    </div>
-                                    <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                                </button>
-                            )
-                        })}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowMeroSharePicker(false)}>
-                            Cancel
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={showImportGuide} onOpenChange={setShowImportGuide}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Upload className="h-5 w-5 text-primary" />
-                            Import Data
-                        </DialogTitle>
-                        <DialogDescription>
-                            Bring transactions into your portfolio. Your files never leave your device.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-3 py-2">
-                        <button
-                            type="button"
-                            onClick={() => { setShowImportGuide(false); triggerFileUpload() }}
-                            disabled={isImporting}
-                            className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
-                        >
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                                <FileSpreadsheet className="w-5 h-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-bold">MeroShare CSV</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                                    Portfolio snapshot or transaction history exported from MeroShare.
-                                </p>
-                            </div>
-                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => handleConnectMeroShare()}
-                            disabled={isImporting}
-                            className="group flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
-                        >
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                                <Link2 className="w-5 h-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-bold">Connect MeroShare account</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                                    Link a saved MeroShare account to this portfolio and import its transactions directly.
-                                </p>
-                            </div>
-                            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                        </button>
-                    </div>
-
-                    <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-xs space-y-1.5">
-                        <p className="font-bold flex items-center gap-1.5">
-                            <ShieldCheck className="w-3.5 h-3.5 text-primary" /> How importing works
-                        </p>
-                        <p className="text-muted-foreground">1. Pick a source above and choose your file.</p>
-                        <p className="text-muted-foreground">2. Review and confirm the detected rows and prices.</p>
-                        <p className="text-muted-foreground">3. Everything is saved locally in your wallet.</p>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowImportGuide(false)}>
-                            Cancel
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {portfolioDialogs}
         </div>
     )
 }

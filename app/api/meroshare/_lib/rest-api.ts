@@ -15,6 +15,7 @@
  */
 
 import https from "https"
+import { createHash } from "crypto"
 
 const MEROSHARE_BASE = "https://webbackend.cdsc.com.np"
 const IPO_RESULT_BASE = "https://iporesult.cdsc.com.np"
@@ -119,6 +120,8 @@ interface CachedSession {
   token: string
   ownData: OwnData | null
   expiresAt: number
+  /** SHA-256 of dpId:username:password — proves the requester knows the password, not just the username. */
+  credHash: string
 }
 
 /**
@@ -130,9 +133,84 @@ interface CachedSession {
 const SESSION_TTL_MS = 3 * 60 * 1000
 const sessionCache = new Map<string, CachedSession>()
 
+/**
+ * Per-username login mutex: concurrent flows (portfolio sync + IPO center +
+ * application report) all need an authenticated session, but CDSC throttles
+ * repeated logins hard. The first caller logs in; everyone else waits on the
+ * same promise and then picks the token up from the session cache.
+ */
+const loginLocks = new Map<string, Promise<void>>()
+
+/** Hard ceiling for a single upstream HTTP call so hung CDSC connections fail fast instead of stalling routes. */
+const REQUEST_TIMEOUT_MS = 45_000
+
+/**
+ * Fingerprint the submitted credentials. Cached sessions can only be restored
+ * when this hash matches, so knowing a victim's username + DP code alone is
+ * not enough to reuse their live MeroShare token.
+ */
+function credentialHash(credentials: RestCredentials): string {
+  return createHash("sha256")
+    .update(`${(credentials.dpId || "").trim()}:${(credentials.username || "").trim()}:${credentials.password ?? ""}`)
+    .digest("hex")
+}
+
 /** Drop the cached MeroShare session for a username (e.g. after a 401/403). */
 export function clearCachedSession(username: string): void {
   sessionCache.delete((username || "").trim())
+}
+
+export interface MeroShareFailure {
+  status: number
+  message: string
+}
+
+/**
+ * Translate an upstream MeroShare failure into an honest HTTP status and a
+ * user-actionable message, instead of every route returning a blanket 500.
+ */
+export function describeMeroShareFailure(error: unknown, fallbackMessage = "MeroShare request failed"): MeroShareFailure {
+  const raw = String((error as any)?.message ?? "")
+  const status = Number((error as any)?.statusCode ?? 0)
+  if (/login failed|invalid credential|incorrect|wrong password/i.test(raw)) {
+    return { status: 401, message: "MeroShare rejected these credentials. Check DP/username/password in Settings." }
+  }
+  if (status === 429 || /rate.?limit|throttl|too many/i.test(raw)) {
+    return { status: 429, message: "MeroShare is rate-limiting requests right now. Wait a few seconds and try again." }
+  }
+  if (status === 401 || status === 403) {
+    return { status: 401, message: "Your MeroShare session expired mid-request. Please retry." }
+  }
+  if (/timeout|timed out|aborted/i.test(raw)) {
+    return { status: 504, message: "MeroShare took too long to respond. Please try again shortly." }
+  }
+  if (status >= 500 || status === 0 || /network error/i.test(raw)) {
+    return { status: 502, message: "MeroShare is temporarily unavailable. Please try again in a moment." }
+  }
+  return { status: 500, message: raw || fallbackMessage }
+}
+
+/**
+ * Run a flow with automatic recovery when the cached session dies mid-run:
+ * clears the cached token and retries once with a fresh client/login.
+ */
+export async function runWithSessionRecovery<T>(
+  username: string,
+  run: (client: MeroShareRestClient) => Promise<T>,
+): Promise<T> {
+  let client = new MeroShareRestClient()
+  try {
+    return await run(client)
+  } catch (error: any) {
+    const status = Number(error?.statusCode ?? 0)
+    const unauthorized = status === 401 || status === 403 || /unauthorized/i.test(String(error?.message ?? ""))
+    if (unauthorized && !/login failed/i.test(String(error?.message ?? ""))) {
+      clearCachedSession(username)
+      client = new MeroShareRestClient()
+      return await run(client)
+    }
+    throw error
+  }
 }
 
 export class MeroShareRestClient {
@@ -157,9 +235,13 @@ export class MeroShareRestClient {
     return Boolean(this.authToken)
   }
 
-  /** Reuse a cached authenticated session for the username if still fresh (sliding 3-minute TTL). */
-  restoreSession(username: string): boolean {
-    const key = (username || "").trim()
+  /**
+   * Reuse a cached authenticated session for the username if still fresh
+   * (sliding 3-minute TTL) AND the submitted credentials match the ones the
+   * session was originally created with. Prevents username-only session theft.
+   */
+  restoreSession(credentials: RestCredentials): boolean {
+    const key = (credentials.username || "").trim()
     if (!key) return false
     const cached = sessionCache.get(key)
     if (!cached) return false
@@ -167,17 +249,40 @@ export class MeroShareRestClient {
       sessionCache.delete(key)
       return false
     }
+    if (cached.credHash !== credentialHash(credentials)) {
+      // Credentials don't match the live session — do NOT leak it. Force a fresh login.
+      return false
+    }
     this.authToken = cached.token
     this.username = key
+    this.dpCode = (credentials.dpId || "").trim()
     if (cached.ownData) this.ownData = cached.ownData
     cached.expiresAt = Date.now() + SESSION_TTL_MS
     return true
   }
 
-  /** Login unless a fresh cached session already exists for the username. */
+  /** Login unless a fresh cached session already exists for these exact credentials. Concurrent callers share one login. */
   async ensureSession(credentials: RestCredentials): Promise<void> {
-    if (this.restoreSession((credentials.username || "").trim())) return
-    await this.login(credentials)
+    const key = (credentials.username || "").trim()
+    if (this.restoreSession(credentials)) return
+
+    const inFlight = loginLocks.get(key)
+    if (inFlight) {
+      try {
+        await inFlight
+      } catch {
+        // The shared login failed; fall through and try our own so the error surfaces from this call.
+      }
+      if (this.restoreSession(credentials)) return
+    }
+
+    const loginPromise: Promise<void> = this.login(credentials).then(
+      () => undefined,
+    ).finally(() => {
+      if (loginLocks.get(key) === loginPromise) loginLocks.delete(key)
+    })
+    loginLocks.set(key, loginPromise)
+    await loginPromise
   }
 
   private async request(
@@ -188,27 +293,36 @@ export class MeroShareRestClient {
     signal?: AbortSignal,
   ): Promise<Response> {
     let lastErr: unknown
+    const timeoutSignal = signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await fetch(url, {
           method,
           headers,
           body: body !== undefined ? JSON.stringify(body) : undefined,
-          signal,
+          signal: timeoutSignal,
           cache: "no-store",
         })
       } catch (err: any) {
         if (err?.name === "AbortError") throw err
         lastErr = err
+        if (err?.name === "TimeoutError") break
         if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)))
       }
     }
+    const timedOut = lastErr instanceof Error && (lastErr.name === "TimeoutError" || /timeout/i.test(lastErr.message))
     throw new MeroShareRestError(
-      `Network error contacting MeroShare API: ${lastErr instanceof Error ? lastErr.message : "unknown error"}`,
+      timedOut
+        ? `MeroShare API request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s`
+        : `Network error contacting MeroShare API: ${lastErr instanceof Error ? lastErr.message : "unknown error"}`,
     )
   }
 
-  /** Retry a call on transient non-2xx failures (CDSC backend throttles bursts). */
+  /**
+   * Retry a call on transient non-2xx failures with exponential backoff plus jitter.
+   * CDSC throttles bursts (429/500/502/503), so tight fixed delays fail together -
+   * spreading attempts out and randomising them lets one caller slip through.
+   */
   private async withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
     let lastErr: unknown
     for (let attempt = 0; attempt < attempts; attempt++) {
@@ -221,7 +335,11 @@ export class MeroShareRestClient {
           : status === 0 || status === 500 || status === 502 || status === 503 || status === 429 || status >= 500
         if (!retriable) throw err
         lastErr = err
-        if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+        if (attempt < attempts - 1) {
+          const backoff = Math.min(400 * Math.pow(2, attempt), 3200)
+          const jitter = Math.round(Math.random() * backoff * 0.5)
+          await new Promise((resolve) => setTimeout(resolve, backoff + jitter))
+        }
       }
     }
     throw lastErr
@@ -260,6 +378,9 @@ export class MeroShareRestClient {
       req.on("error", (err) =>
         reject(new MeroShareRestError(`Network error contacting MeroShare API: ${err.message ?? "unknown error"}`)),
       )
+      req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+        req.destroy(new MeroShareRestError(`MeroShare API request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s`))
+      })
       if (payload !== undefined) req.write(payload)
       req.end()
     })
@@ -343,7 +464,12 @@ export class MeroShareRestClient {
         throw new MeroShareRestError("Login succeeded but no Authorization token was returned by MeroShare.")
       }
       this.authToken = token
-      sessionCache.set(this.username, { token, ownData: null, expiresAt: Date.now() + SESSION_TTL_MS })
+      sessionCache.set(this.username, {
+        token,
+        ownData: null,
+        expiresAt: Date.now() + SESSION_TTL_MS,
+        credHash: credentialHash(credentials),
+      })
       return { token, raw: await resp.json().catch(() => null) }
     })
   }
@@ -428,7 +554,7 @@ export class MeroShareRestClient {
     return this.context
   }
 
-  /** Identifier combos for myTransaction/myPortfolio (boid/demat × clientCode) — CDSC accepts only certain pairs. */
+  /** Identifier combos for myTransaction/myPortfolio (boid/demat × clientCode) - CDSC accepts only certain pairs. */
   private async identifierCandidates() {
     const ctx = await this.ensureAccountContext()
     const combos = [
@@ -448,7 +574,7 @@ export class MeroShareRestClient {
     return out
   }
 
-  /** Bank context (myDetail + bankRequest) — only needed for IPO applications, loaded lazily. */
+  /** Bank context (myDetail + bankRequest) - only needed for IPO applications, loaded lazily. */
   private async ensureBankContext(): Promise<BankContext> {
     if (this.bankContext) return this.bankContext
 
@@ -903,7 +1029,7 @@ export class MeroShareRestClient {
       .sort((a, b) => b.score - a.score)
     if (applicableMatches.length > 0) return applicableMatches[0].id
 
-    // All currently open issues (the app's "Current Issue" list) — covers open IPOs.
+    // All currently open issues (the app's "Current Issue" list) - covers open IPOs.
     let current: unknown[] = []
     let currentError: string | null = null
     try {

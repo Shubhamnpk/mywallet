@@ -534,7 +534,7 @@ export function SIPSetupModal({
       }
 
       if (createdCount > 0 || importReview.existingToDelete.length > 0) {
-        // Clear stale custom selections — the old transaction IDs may have been deleted
+        // Clear stale custom selections - the old transaction IDs may have been deleted
         setSelectedTransactionIds(new Set())
         if (createdCount > 0 && existingPlan) {
           await importSipPlanFromProvider(existingPlan.id, { notes: `Imported ${createdCount} transactions from ${importReview.fileName}` })

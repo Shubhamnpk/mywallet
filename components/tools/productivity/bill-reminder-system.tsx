@@ -317,7 +317,7 @@ export function BillReminderSystem({ userProfile }: BillReminderSystemProps) {
                 />
               </div>
 
-              {/* Frequency selector — only shown when recurring */}
+              {/* Frequency selector - only shown when recurring */}
               {newBill.isRecurring && (
                 <div className="space-y-1.5">
                   <Label className="text-sm font-semibold">Frequency</Label>

@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import {
   Wallet, TrendingUp, Target, Shield, Smartphone, Brain,
   LineChart, Bitcoin, Calculator, Mic, Camera, Clock,
@@ -10,6 +9,7 @@ import {
   ScrollText, Eye, BellRing, Cog, Dock, Star,
 } from "lucide-react"
 import Link from "next/link"
+import { PublicBackground } from "./public-background"
 
 interface Feature {
   icon: typeof Wallet
@@ -117,25 +117,10 @@ const categories: Category[] = [
 ]
 
 export function FeaturesPageClient() {
-  const [scrollY, setScrollY] = useState(0)
-
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY)
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
-
   return (
     <div className="relative">
-      {/* Animated background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/4 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
-        <div
-          className="absolute top-1/2 left-1/2 w-[800px] h-[800px] bg-primary/3 rounded-full blur-3xl"
-          style={{ transform: `translate(-50%, -50%) scale(${1 + scrollY * 0.0003})` }}
-        />
-      </div>
+      {/* Static background */}
+      <PublicBackground />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 space-y-16">
 

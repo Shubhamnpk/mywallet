@@ -22,23 +22,28 @@ export async function POST(req: Request) {
 
   if (provider === "rest") {
     try {
-      const { MeroShareRestClient } = await import("../_lib/rest-api")
-      const client = new MeroShareRestClient()
-      await client.login({
-        dpId: credentials.dpId,
-        username: credentials.username,
-        password: credentials.password,
+      const { runWithSessionRecovery, describeMeroShareFailure } = await import("../_lib/rest-api")
+      const username = String(credentials.username || "").trim()
+      const { profileName, transactions } = await runWithSessionRecovery(username, async (client) => {
+        await client.ensureSession({
+          dpId: credentials.dpId,
+          username: credentials.username,
+          password: credentials.password,
+        })
+        const profileName = (await client.getOwnData())?.name || credentials.username
+        const rows = await client.getTransactions()
+        return {
+          profileName,
+          transactions: rows.map((row) => ({
+            scrip: row.scrip,
+            transactionDate: row.transactionDate,
+            creditQuantity: row.creditQuantity,
+            debitQuantity: row.debitQuantity,
+            balanceAfterTransaction: row.balanceAfterTransaction,
+            historyDescription: row.historyDescription,
+          })),
+        }
       })
-      const profileName = (await client.getOwnData())?.name || credentials.username
-      const rows = await client.getTransactions()
-      const transactions = rows.map((row) => ({
-        scrip: row.scrip,
-        transactionDate: row.transactionDate,
-        creditQuantity: row.creditQuantity,
-        debitQuantity: row.debitQuantity,
-        balanceAfterTransaction: row.balanceAfterTransaction,
-        historyDescription: row.historyDescription,
-      }))
       return NextResponse.json({
         success: true,
         profileName,
@@ -50,9 +55,9 @@ export async function POST(req: Request) {
       })
     } catch (error: any) {
       console.error("MeroShare REST Transaction History Error:", error)
-      return NextResponse.json({
-        error: error?.message || "An error occurred during transaction history sync.",
-      }, { status: 500 })
+      const { describeMeroShareFailure } = await import("../_lib/rest-api")
+      const failure = describeMeroShareFailure(error, "An error occurred during transaction history sync.")
+      return NextResponse.json({ error: failure.message }, { status: failure.status })
     }
   }
 

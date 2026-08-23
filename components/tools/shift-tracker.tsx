@@ -556,7 +556,7 @@ export function ShiftTracker() {
       walletTransactionId,
     };
     setPayments((prev) => [payment, ...prev]);
-    toast.success("Marked paid" + (payToWallet ? " — income added to transactions" : ""));
+    toast.success("Marked paid" + (payToWallet ? " - income added to transactions" : ""));
   };
 
   const markShiftPaid = async (id: number) => {
@@ -590,7 +590,7 @@ export function ShiftTracker() {
       },
       ...prev,
     ]);
-    toast.success("Shift paid" + (payToWallet ? " — income added to transactions" : ""));
+    toast.success("Shift paid" + (payToWallet ? " - income added to transactions" : ""));
   };
 
   const undoPaid = async (paymentId: number) => {
@@ -1097,7 +1097,7 @@ export function ShiftTracker() {
         <CardContent className="px-4 sm:px-6 pt-0">
           {!payments.length ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No payments yet — use &quot;Mark paid&quot; on a period or shift.
+              No payments yet - use &quot;Mark paid&quot; on a period or shift.
               Each payment adds an income transaction to your wallet.
             </p>
           ) : (
@@ -1548,7 +1548,7 @@ export function ShiftTracker() {
                 <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3.5 py-3">
                   <div className="flex items-center gap-3 text-sm">
                     <span className="font-medium tabular-nums">{formatTimeValue(detailShift.start)}</span>
-                    <span className="text-muted-foreground/40">—</span>
+                    <span className="text-muted-foreground/40">-</span>
                     <span className="font-medium tabular-nums">{formatTimeValue(detailShift.end)}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1852,7 +1852,7 @@ function PeriodsBody({
   if (!shifts.length) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        No shifts yet — tap + to log your first shift.
+        No shifts yet - tap + to log your first shift.
       </p>
     );
   }

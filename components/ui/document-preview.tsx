@@ -14,9 +14,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
  *  without re-rendering the canvas (the visual scale is a CSS transform). */
 const BASE_RENDER_SCALE = 2
 
-/** Gap between stacked PDF pages (layout px) — must match the flex `gap-4` in the render. */
+/** Gap between stacked PDF pages (layout px) - must match the flex `gap-4` in the render. */
 const PDF_PAGE_GAP = 16
-/** Total horizontal padding around the PDF at fit (px, on screen) — mirrors the DocumentViewer. */
+/** Total horizontal padding around the PDF at fit (px, on screen) - mirrors the DocumentViewer. */
 const PDF_SIDE_PADDING = 32
 
 const isImageUrl = (url: string | null): boolean => {

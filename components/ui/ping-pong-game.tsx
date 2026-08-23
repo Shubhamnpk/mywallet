@@ -375,7 +375,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
               {gameMode === "normal" ? (
                 <>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">Player 1 — up / down</span>
+                    <span className="text-muted-foreground">Player 1 - up / down</span>
                     <span className="flex gap-1">
                       <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">W</kbd>
                       <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">S</kbd>
@@ -384,7 +384,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">Player 2 — up / down</span>
+                    <span className="text-muted-foreground">Player 2 - up / down</span>
                     <span className="flex gap-1">
                       <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">I</kbd>
                       <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">K</kbd>
@@ -393,7 +393,7 @@ export function PingPongGame({ isOpen, onClose }: PingPongGameProps) {
                 </>
               ) : (
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">Move paddle — up / down</span>
+                  <span className="text-muted-foreground">Move paddle - up / down</span>
                   <span className="flex gap-1">
                     <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">W</kbd>
                     <kbd className="px-1.5 py-0.5 bg-muted rounded font-mono text-[9px] border border-border/40">S</kbd>

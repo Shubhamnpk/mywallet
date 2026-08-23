@@ -38,7 +38,7 @@ type FamilyInfo = {
 }
 
 function formatBsDate(value?: string) {
-  if (!value) return "—"
+  if (!value) return "-"
   const parts = String(value).split("/")
   if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]} BS`
   return value

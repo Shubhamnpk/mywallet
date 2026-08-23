@@ -288,7 +288,7 @@ function HeatMapContent({
                   <div className="flex justify-between gap-6">
                     <span>Avg Purchase Cost:</span>
                     <span className="font-bold text-foreground">
-                      {item.hasValidCost ? `${money(item.totalCost / item.totalUnits, { maximumFractionDigits: 2 })}` : '—'}
+                      {item.hasValidCost ? `${money(item.totalCost / item.totalUnits, { maximumFractionDigits: 2 })}` : '-'}
                     </span>
                   </div>
                   <div className="flex justify-between gap-6 border-t border-border/20 pt-1 mt-1">
@@ -311,7 +311,7 @@ function HeatMapContent({
                   ) : (
                     <div className="flex justify-between gap-6">
                       <span>Total Return:</span>
-                      <span className="font-bold text-muted-foreground/60">— (no cost data)</span>
+                      <span className="font-bold text-muted-foreground/60">- (no cost data)</span>
                     </div>
                   )}
                 </div>
@@ -633,7 +633,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                   <div className="flex flex-col">
                     <span className="text-muted-foreground text-[9px] font-black uppercase tracking-wider">Avg Cost / Unit</span>
                     <span className="font-black text-foreground text-xs">
-                      {selectedItem.hasValidCost ? `${money(selectedItem.totalCost / selectedItem.totalUnits, { maximumFractionDigits: 2 })}` : '—'}
+                      {selectedItem.hasValidCost ? `${money(selectedItem.totalCost / selectedItem.totalUnits, { maximumFractionDigits: 2 })}` : '-'}
                     </span>
                   </div>
                   <div className="flex flex-col">
@@ -649,7 +649,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                         {selectedItem.returnAmount >= 0 ? '+' : ''}{moneySigned(selectedItem.returnAmount, { maximumFractionDigits: 2 })} ({selectedItem.returnPercent >= 0 ? '+' : ''}{selectedItem.returnPercent.toFixed(2)}%)
                       </span>
                     ) : (
-                      <span className="font-black text-xs text-muted-foreground/60">— (no cost data available)</span>
+                      <span className="font-black text-xs text-muted-foreground/60">- (no cost data available)</span>
                     )}
                   </div>
                 </div>
@@ -672,9 +672,9 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                 <PieChart className="w-3.5 h-3.5" /> Tile Size
               </p>
               <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
-                <p><span className="font-semibold text-foreground">Value Allocation</span> — Each tile&apos;s area represents its share of your total portfolio value. Larger tiles = bigger holdings.</p>
-                <p><span className="font-semibold text-foreground">Units Count</span> — Tile size reflects the number of shares/coins held, regardless of price.</p>
-                <p><span className="font-semibold text-foreground">Net Returns</span> — Tile size reflects the absolute profit or loss amount. Larger tiles = bigger gains or losses.</p>
+                <p><span className="font-semibold text-foreground">Value Allocation</span> - Each tile&apos;s area represents its share of your total portfolio value. Larger tiles = bigger holdings.</p>
+                <p><span className="font-semibold text-foreground">Units Count</span> - Tile size reflects the number of shares/coins held, regardless of price.</p>
+                <p><span className="font-semibold text-foreground">Net Returns</span> - Tile size reflects the absolute profit or loss amount. Larger tiles = bigger gains or losses.</p>
               </div>
             </div>
 
@@ -683,8 +683,8 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                 <Activity className="w-3.5 h-3.5" /> Tile Color
               </p>
               <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
-                <p><span className="font-semibold text-foreground">Daily %</span> — Colors show today&apos;s price change. Green = up, Red = down. Intensity reflects how big the move was.</p>
-                <p><span className="font-semibold text-foreground">Total %</span> — Colors show your total return since purchase. Green = profit, Red = loss. Intensity reflects the return magnitude.</p>
+                <p><span className="font-semibold text-foreground">Daily %</span> - Colors show today&apos;s price change. Green = up, Red = down. Intensity reflects how big the move was.</p>
+                <p><span className="font-semibold text-foreground">Total %</span> - Colors show your total return since purchase. Green = profit, Red = loss. Intensity reflects the return magnitude.</p>
               </div>
             </div>
 
@@ -693,7 +693,7 @@ export function PortfolioHeatMap({ portfolio }: PortfolioHeatMapProps) {
                 <Filter className="w-3.5 h-3.5" /> Filters
               </p>
               <div className="space-y-1.5 text-xs text-muted-foreground pl-5">
-                <p><span className="font-semibold text-foreground">All / Stocks / Crypto</span> — Show every asset type, or narrow down to just stocks or cryptocurrencies.</p>
+                <p><span className="font-semibold text-foreground">All / Stocks / Crypto</span> - Show every asset type, or narrow down to just stocks or cryptocurrencies.</p>
               </div>
             </div>
 

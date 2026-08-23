@@ -1,10 +1,27 @@
 {
-  "currentBuild": "2026.07.22",
+  "currentBuild": "2026.08.22",
   "releases": [
+    {
+      "version": "2.1.2.0",
+      "date": "2026-08-22",
+      "status": "current",
+      "category": "Feature",
+      "title": "Actual Cost Basis, MeroShare Connect Fixes, Import Redesign, and Area Charts",
+      "highlights": [
+        "Actual Cost Basis: Stock details now compute a fee-inclusive average cost per transaction - NEPSE brokerage slabs, SEBON fee and DP charges for market buys, NAV + DPS charge for SIP installments, allotment price only for IPO/bonus - with tap-to-toggle against the market average and a real Total Investment figure.",
+        "MeroShare Connect Reliability: Fixed a race condition that silently erased newly connected MeroShare accounts from settings; account linking now always writes the authoritative account list.",
+        "Import Flow Redesign: Simplified Import Data dialog with an Import CSV card, an 'or' divider, and an inline row showing the linked account name with Sync and Unlink actions.",
+        "Explicit Account Choice: Connecting never auto-links silently - existing accounts are listed in a picker with a 'Use a different account' option to add fresh credentials.",
+        "Area Chart Upgrades: Gradient-filled area charts now power stock price analysis, the NEPSE intraday sparkline, and the Market & Movers intraday graph.",
+        "Mobile Polish: One-row stat tiles and compact Best Entry/Exit cards in price analysis, News moved into the overview action row on mobile, edge-to-edge NEPSE card chart, smaller portfolio summary text, and compact SIP badge that hides the year when it is the current year.",
+        "UI Fixes: Sold Stocks toggle stays readable in light and dark modes across hover/press states, fixed double-sign display (+0) in sold mode with a neutral zero state, renamed MeroLagani button to Details, and PIN keypad keeps focus after wrong entries.",
+        "Housekeeping: Removed graphify-out build artifacts from the repository and added it to .gitignore."
+      ]
+    },
     {
       "version": "2.1.1.1",
       "date": "2026-07-22",
-      "status": "current",
+      "status": "stable",
       "category": "Feature",
       "title": "Document Vault, SIP History Import, Bulk LTP, and PDF Preview System",
       "highlights": [
@@ -14,7 +31,7 @@
         "Bulk LTP History API: New endpoint fetching historical price data for multiple symbols simultaneously with configurable month range (up to 120 months).",
         "Rhododendron Emblem: Decorative Lali Gurans flower watermark on balance cards as a Nepali brand touch.",
         "Stock Exchange PDF Preview: Replaced broken @react-pdf-viewer with iframe-based blob URL rendering for reliable document viewing, with domain-whitelist security.",
-        "Dev Settings Protection: Development configuration tab hidden from normal users — only visible in dev mode or localhost.",
+        "Dev Settings Protection: Development configuration tab hidden from normal users - only visible in dev mode or localhost.",
         "Version Bump: Transitioned to 2.1.1.1 with continued IndexedDB migration and record-level sync engine work."
       ]
     },

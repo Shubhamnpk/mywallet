@@ -1,13 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import {
-  Heart, Shield, Globe, Github, Sparkles, Wallet, Target, Zap, Building,
+import { Heart, Shield, Globe, Github, Sparkles, Wallet, Target, Zap, Building,
   Code2, Coffee, ExternalLink, Star, Clock, Quote, MapPin, ArrowRight,
   Download, CheckCircle, Users, TrendingUp, Smartphone, Eye
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import { PublicBackground } from "./public-background"
 
 const values = [
   {
@@ -59,25 +58,10 @@ const stats = [
 ]
 
 export function AboutPageClient() {
-  const [scrollY, setScrollY] = useState(0)
-
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY)
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
-
   return (
     <div className="relative">
-      {/* Animated background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse -translate-x-1/2" />
-        <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse translate-x-1/2" style={{ animationDelay: "1s" }} />
-        <div
-          className="absolute top-1/3 left-1/3 w-[500px] h-[500px] bg-primary/3 rounded-full blur-3xl"
-          style={{ transform: `translate(-50%, -50%) scale(${1 + scrollY * 0.0003})` }}
-        />
-      </div>
+      {/* Static background */}
+      <PublicBackground />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 space-y-32">
 
@@ -290,7 +274,7 @@ export function AboutPageClient() {
                   <Code2 className="w-3 h-3" />
                   Full-stack Dev
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent-foreground px-3 py-1 text-xs font-medium">
+                <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent px-3 py-1 text-xs font-medium">
                   <Coffee className="w-3 h-3" />
                   Open Source
                 </span>
@@ -403,13 +387,13 @@ export function AboutPageClient() {
                     <span className="text-muted-foreground ml-2">mywallet | MIT License</span>
                   </div>
                   <div>
-                    <p><span className="text-primary">import</span> <span className="text-accent-foreground">{'{ Wallet, TrendingUp, Target }'}</span> <span className="text-primary">from</span> <span className="text-emerald-500">'lucide-react'</span></p>
-                    <p className="mt-1"><span className="text-primary">import</span> <span className="text-accent-foreground">{'{ useState, useEffect }'}</span> <span className="text-primary">from</span> <span className="text-emerald-500">'react'</span></p>
+                    <p><span className="text-primary">import</span> <span className="text-accent">{'{ Wallet, TrendingUp, Target }'}</span> <span className="text-primary">from</span> <span className="text-emerald-500">'lucide-react'</span></p>
+                    <p className="mt-1"><span className="text-primary">import</span> <span className="text-accent">{'{ useState, useEffect }'}</span> <span className="text-primary">from</span> <span className="text-emerald-500">'react'</span></p>
                     <p className="mt-3 text-muted-foreground">{"//"} Built with ❤️ from Nepal</p>
                     <p className="text-muted-foreground">{"//"} Free forever. No data sold. No tracking.</p>
-                    <p className="mt-3"><span className="text-primary">export</span> <span className="text-primary">default</span> <span className="text-primary">function</span> <span className="text-accent-foreground">MyWallet</span>() {'{'}</p>
+                    <p className="mt-3"><span className="text-primary">export</span> <span className="text-primary">default</span> <span className="text-primary">function</span> <span className="text-accent">MyWallet</span>() {'{'}</p>
                     <p className="ml-4 text-muted-foreground">{"//"} 10K+ users · 50+ countries · 4.9 ★</p>
-                    <p className="ml-4"><span className="text-primary">return</span> <span className="text-accent-foreground">&lt;App</span> <span className="text-accent-foreground">/&gt;</span>;</p>
+                    <p className="ml-4"><span className="text-primary">return</span> <span className="text-accent">&lt;App</span> <span className="text-accent">/&gt;</span>;</p>
                     <p>{'}'}</p>
                   </div>
                 </div>

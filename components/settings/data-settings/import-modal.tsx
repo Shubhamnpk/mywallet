@@ -281,7 +281,7 @@ export function ImportModal({ isOpen, onClose, onImportComplete, onImportData }:
           setIsEncrypted(true)
           setStep("pin")
         } else {
-          // No wallet PIN set — the backup was made with the app's default security key.
+          // No wallet PIN set - the backup was made with the app's default security key.
           try {
             const { restoreEncryptedBackup } = await import("@/lib/backup")
             const decrypted = await restoreEncryptedBackup(text, DEFAULT_BACKUP_PIN)

@@ -3,7 +3,7 @@
 import type { PortfolioItem, ShareTransaction, NepseDisclosure, NepseExchangeMessage } from "@/types/wallet"
 import { Dialog, DialogContent,DialogDescription,DialogHeader,DialogTitle,} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal,ChevronDown,ChevronRight} from "lucide-react"
+import {Activity,BarChart3,TrendingDown,TrendingUp,Info,Clock,ExternalLink,X,ArrowUpRight,ArrowDownLeft,Gift,PiggyBank,CheckCircle2,Wallet,Trash2,RefreshCcw,Edit3,MoreVertical,Search,SlidersHorizontal,ChevronDown,ChevronRight,Newspaper} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { isMarketSearchDetailItem } from "@/lib/market-stock-detail"
@@ -26,8 +26,8 @@ import { toast } from "sonner"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { useShareCurrency } from "@/hooks/use-share-currency"
 import { adToBsDateKey, formatAppDate } from "@/lib/app-calendar"
-import { estimateSellLotsFees, type SellLotFeeBreakdown } from "@/lib/nepse-trade-preview"
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { createNepseTradePreview, estimateSellLotsFees, type SellLotFeeBreakdown } from "@/lib/nepse-trade-preview"
+import { CartesianGrid, Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
 type ProposedDividendRecord = {
     id: number
@@ -422,6 +422,52 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const profitLossPerc = investment > 0 ? (profitLoss / investment) * 100 : 0
     const hasCostBasis = investment > 0
     const isProfit = profitLoss >= 0
+    const [costBasisView, setCostBasisView] = useState<"actual" | "market">("actual")
+    const holdingCostBreakdown = useMemo(() => {
+        if (!item || isCrypto) return { hasFees: false, actualAvg: safeBuyPrice }
+        const relevantTxs = shareTransactions.filter(
+            (tx) =>
+                tx.portfolioId === item.portfolioId &&
+                normalizeStockSymbol(tx.symbol) === normalizeStockSymbol(item.symbol) &&
+                tx.assetType === (item.assetType || "stock") &&
+                (tx.cryptoId || "") === (item.cryptoId || "")
+        )
+        let units = 0
+        let actualCost = 0
+        let hasFees = false
+        ;[...relevantTxs]
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .forEach((t) => {
+                const qty = Number.isFinite(t.quantity) ? t.quantity : 0
+                const price = Number.isFinite(t.price) ? t.price : 0
+                if (t.type === "buy" || t.type === "ipo" || t.type === "reinvestment" || t.type === "bonus" || t.type === "gift" || t.type === "merger_in") {
+                    units += qty
+                    if (t.type === "bonus" || t.type === "gift") return
+                    const sipCharge = Math.max(0, Number(t.sipDpsCharge ?? 0))
+                    const isSipLike = t.sipGrossAmount !== undefined || t.sipDpsCharge !== undefined || /\bSIP\b/i.test(t.description)
+                    if (t.type === "buy" || t.type === "reinvestment") {
+                        if (isSipLike) {
+                            actualCost += qty * price + sipCharge
+                            if (sipCharge > 0) hasFees = true
+                        } else if (price > 0) {
+                            actualCost += createNepseTradePreview(qty, price, "buy").settlementAmount
+                            hasFees = true
+                        } else {
+                            actualCost += qty * price
+                        }
+                    } else {
+                        actualCost += qty * price
+                    }                } else if (t.type === "sell" || t.type === "merger_out") {
+                    units -= qty
+                }
+            })
+        const safeUnits = Math.max(0, units)
+        const actualAvg = safeUnits > 0 && actualCost > 0 ? actualCost / safeUnits : safeBuyPrice
+        return { hasFees, actualAvg }
+    }, [item, isCrypto, shareTransactions, safeBuyPrice])
+    const hasDualCostBasis = holdingCostBreakdown.hasFees && holdingCostBreakdown.actualAvg !== safeBuyPrice
+    const displayedBuyPrice = costBasisView === "actual" && hasDualCostBasis ? holdingCostBreakdown.actualAvg : safeBuyPrice
+    const displayedInvestment = (item?.units ?? 0) * displayedBuyPrice
     const lastExitInfo = useMemo(() => {
         if (!isZeroHolding || !item || isMarketLookupItem) return null
         const relevantTxs = shareTransactions.filter(
@@ -1640,11 +1686,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     )}
                                 </DialogDescription>
                                 {!isCrypto && existingSipPlan && (
-                                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary">
-                                        <PiggyBank className="h-3.5 w-3.5" />
+                                    <div className="mt-2 sm:mt-3 flex w-fit items-center gap-1 sm:gap-2 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 sm:px-3 sm:py-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-primary">
+                                        <PiggyBank className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                                         {existingSipPlan.status === "paused" ? "SIP Paused" : "SIP Active"}
-                                        <span className="text-primary/70">
-                                            {sipSchedule?.nextDate ? `Next ${formatSipDate(sipSchedule.nextDate.toISOString(), calendarSystem)}` : "Schedule ready"}
+                                        <span className="text-primary/70 normal-case tracking-normal text-[9px] sm:text-[10px]">
+                                            {sipSchedule?.nextDate
+                                                ? `Next ${formatAppDate(
+                                                    sipSchedule.nextDate,
+                                                    calendarSystem,
+                                                    new Date().getFullYear() === sipSchedule.nextDate.getFullYear()
+                                                        ? { month: "short", day: "numeric" }
+                                                        : { year: "numeric", month: "short", day: "numeric" }
+                                                )}`
+                                                : "Schedule ready"}
                                         </span>
                                     </div>
                                 )}
@@ -1762,7 +1816,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                     </TabsTrigger>
                                 )}
                                 {!isSoldDetailMode && (
-                                    <TabsTrigger value="notices" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
+                                    <TabsTrigger value="notices" className="hidden sm:inline-flex data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-0 h-9 text-[10px] font-black uppercase tracking-widest">
                                         News
                                     </TabsTrigger>
                                 )}
@@ -2014,7 +2068,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             Daily Move
                                                         </div>
                                                         <div className="text-xl font-black font-mono">
-                                                            {hasDailyMoveData ? `${isDailyProfit ? "+" : ""}${formatValue(dailyChange)}` : "—"}
+                                                            {hasDailyMoveData ? `${isDailyProfit ? "+" : ""}${formatValue(dailyChange)}` : "-"}
                                                         </div>
                                                         <div className={cn(
                                                             "text-[10px] font-bold",
@@ -2233,43 +2287,77 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                         </div>
                                         ) : null}
                                         {!isCrypto && (
-                                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
+                                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-2">
                                                 <Button
                                                     variant="outline"
-                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all px-2"
                                                     onClick={() => {
                                                         setActiveTab("price")
                                                         loadPriceHistory("1M")
                                                     }}
                                                 >
                                                     <BarChart3 className="w-3.5 h-3.5 mr-2" />
-                                                    Price Analysis
+                                                    Chart
                                                 </Button>
+                                                {!isSoldDetailMode && (
+                                                    <Button
+                                                        variant="outline"
+                                                        className="sm:hidden w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all px-2"
+                                                        onClick={() => setActiveTab("notices")}
+                                                    >
+                                                        <Newspaper className="w-3.5 h-3.5 mr-1.5" />
+                                                        News
+                                                    </Button>
+                                                )}
                                                 <Button
                                                     variant="outline"
-                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                                                    className="w-full rounded-xl font-bold text-[11px] uppercase tracking-widest h-10 border-primary/20 hover:bg-primary/5 hover:text-primary transition-all px-2"
                                                     onClick={() => window.open(`https://merolagani.com/CompanyDetail.aspx?symbol=${item.symbol}`, '_blank')}
                                                 >
                                                     <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                                                    MeroLagani
+                                                    Details
                                                 </Button>
                                             </div>
                                         )}
                                         {/* Investment Details */}
                                         {!isCrypto && !isMarketLookupItem && (
                                             <div className="space-y-3 bg-muted/10 rounded-2xl p-4 border border-muted/30">
-                                                <div className="flex justify-between items-center pb-2 border-b border-muted/20">
-                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                                        <Activity className="w-3.5 h-3.5 text-primary" /> Average Cost
+                                                <div
+                                                    className={cn(
+                                                        "flex justify-between items-center pb-2 border-b border-muted/20",
+                                                        hasDualCostBasis && "cursor-pointer select-none"
+                                                    )}
+                                                    onClick={() => {
+                                                        if (hasDualCostBasis) setCostBasisView((v) => (v === "actual" ? "market" : "actual"))
+                                                    }}
+                                                    title={hasDualCostBasis
+                                                        ? (costBasisView === "actual"
+                                                            ? "Actual cost - includes brokerage, SEBON & DP charges. Tap to view market average."
+                                                            : "Market average - NAV only, excluding fees. Tap to view actual cost.")
+                                                        : undefined}
+                                                >
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex flex-col gap-0.5">
+                                                        <span className="flex items-center gap-2">
+                                                            <Activity className="w-3.5 h-3.5 text-primary" />
+                                                            {hasDualCostBasis && costBasisView === "actual" ? "Actual Cost" : "Average Cost"}
+                                                            {hasDualCostBasis && <Edit3 className="w-2.5 h-2.5 text-muted-foreground/60" />}
+                                                        </span>
+                                                        {hasDualCostBasis && (
+                                                            <span className="text-[8px] font-bold text-muted-foreground/60 normal-case tracking-normal">
+                                                                {costBasisView === "actual"
+                                                                    ? "incl. brokerage · SEBON · DP"
+                                                                    : `Actual ${moneySymboled(holdingCostBreakdown.actualAvg)}`}
+                                                            </span>
+                                                        )}
                                                     </span>
-                                                    <span className="text-sm font-black font-mono">{moneySymboled(item.buyPrice)}</span>
+                                                    <span className="text-sm font-black font-mono">{moneySymboled(displayedBuyPrice)}</span>
                                                 </div>
                                                 {!isSoldDetailMode && (
                                                     <div className="flex justify-between items-center pb-2 border-b border-muted/20">
                                                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                                             <Info className="w-3.5 h-3.5 text-primary" /> Total Investment
                                                         </span>
-                                                        <span className="text-sm font-black font-mono">{moneySymboled(investment)}</span>
+                                                        <span className="text-sm font-black font-mono">{moneySymboled(displayedInvestment)}</span>
                                                     </div>
                                                 )}
                                                 <div className="flex justify-between items-center">
@@ -2712,31 +2800,31 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                             ) : (
                                                 <>
                                                     {priceHistoryStats && (
-                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Latest</p>
-                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.latest.ltp)}</p>
+                                                        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 sm:p-3">
+                                                                <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-muted-foreground">Latest</p>
+                                                                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.latest.ltp)}</p>
                                                             </div>
-                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Range Move</p>
-                                                                <p className={cn("mt-1 text-sm font-black font-mono", priceHistoryStats.change >= 0 ? "text-green-600" : "text-red-600")}>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 sm:p-3">
+                                                                <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-muted-foreground">Range Move</p>
+                                                                <p className={cn("mt-0.5 sm:mt-1 text-xs sm:text-sm font-black font-mono", priceHistoryStats.change >= 0 ? "text-green-600" : "text-red-600")}>
                                                                     {priceHistoryStats.change >= 0 ? "+" : ""}{priceHistoryStats.changePercent.toFixed(2)}%
                                                                 </p>
                                                             </div>
-                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">High</p>
-                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.high)}</p>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 sm:p-3">
+                                                                <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-muted-foreground">High</p>
+                                                                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.high)}</p>
                                                             </div>
-                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-3">
-                                                                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Low</p>
-                                                                <p className="mt-1 text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.low)}</p>
+                                                            <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 sm:p-3">
+                                                                <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-muted-foreground">Low</p>
+                                                                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm font-black font-mono">{currencySymbol} {formatValue(priceHistoryStats.low)}</p>
                                                             </div>
                                                         </div>
                                                     )}
 
                                                     <div className="h-[clamp(220px,32vh,300px)] shrink-0 rounded-xl border border-primary/10 bg-background/60 p-2">
                                                         <ResponsiveContainer width="100%" height="100%">
-                                                            <LineChart data={priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                            <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                                                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                                                 <XAxis
                                                                     dataKey="date"
@@ -2789,49 +2877,56 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         )
                                                                     }}
                                                                 />
-                                                                <Line
+                                                                <defs>
+                                                                    <linearGradient id="ltpAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="0%" stopColor="#f97316" stopOpacity={0.35} />
+                                                                        <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+                                                                    </linearGradient>
+                                                                </defs>
+                                                                <Area
                                                                     type="monotone"
                                                                     dataKey="ltp"
                                                                     name="LTP"
                                                                     stroke="#f97316"
                                                                     strokeWidth={3}
+                                                                    fill="url(#ltpAreaGradient)"
                                                                     dot={false}
                                                                     activeDot={{ r: 4, strokeWidth: 0, fill: "#f97316" }}
                                                                 />
-                                                            </LineChart>
+                                                            </AreaChart>
                                                         </ResponsiveContainer>
                                                     </div>
 
                                                     {priceHistoryStats && (
                                                         <>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                <div className="rounded-xl border border-green-500/15 bg-green-500/5 p-3">
-                                                                    <div className="flex items-center justify-between gap-3">
-                                                                        <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-300">Best Entry</p>
-                                                                        <Badge variant="outline" className="border-green-500/25 bg-green-500/10 text-[8px] font-black uppercase text-green-700 dark:text-green-300">
+                                                            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                                                <div className="rounded-xl border border-green-500/15 bg-green-500/5 p-2 sm:p-3">
+                                                                    <div className="flex items-center justify-between gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                                                                        <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-300">Best Entry</p>
+                                                                        <Badge variant="outline" className="border-green-500/25 bg-green-500/10 text-[7px] sm:text-[8px] font-black uppercase text-green-700 dark:text-green-300 px-1 sm:px-1.5">
                                                                             Lowest LTP
                                                                         </Badge>
                                                                     </div>
-                                                                    <div className="mt-2 flex items-end justify-between gap-3">
-                                                                        <p className="text-lg font-black font-mono text-green-700 dark:text-green-300">{currencySymbol} {formatValue(priceHistoryStats.bestEntry.ltp)}</p>
-                                                                        <p className="text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestEntry.date, calendarSystem)}</p>
+                                                                    <div className="mt-1.5 sm:mt-2 flex items-end justify-between gap-1.5 sm:gap-3 flex-wrap sm:flex-nowrap">
+                                                                        <p className="text-sm sm:text-lg font-black font-mono text-green-700 dark:text-green-300">{currencySymbol} {formatValue(priceHistoryStats.bestEntry.ltp)}</p>
+                                                                        <p className="text-[9px] sm:text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestEntry.date, calendarSystem)}</p>
                                                                     </div>
-                                                                    <p className="mt-2 text-[10px] font-bold text-muted-foreground">
+                                                                    <p className="mt-1 sm:mt-2 text-[9px] sm:text-[10px] font-bold text-muted-foreground leading-snug">
                                                                         Latest is {priceHistoryStats.fromBestEntry >= 0 ? "+" : ""}{priceHistoryStats.fromBestEntry.toFixed(2)}% from this point.
                                                                     </p>
                                                                 </div>
-                                                                <div className="rounded-xl border border-red-500/15 bg-red-500/5 p-3">
-                                                                    <div className="flex items-center justify-between gap-3">
-                                                                        <p className="text-[9px] font-black uppercase tracking-widest text-red-700 dark:text-red-300">Best Exit</p>
-                                                                        <Badge variant="outline" className="border-red-500/25 bg-red-500/10 text-[8px] font-black uppercase text-red-700 dark:text-red-300">
+                                                                <div className="rounded-xl border border-red-500/15 bg-red-500/5 p-2 sm:p-3">
+                                                                    <div className="flex items-center justify-between gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                                                                        <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-red-700 dark:text-red-300">Best Exit</p>
+                                                                        <Badge variant="outline" className="border-red-500/25 bg-red-500/10 text-[7px] sm:text-[8px] font-black uppercase text-red-700 dark:text-red-300 px-1 sm:px-1.5">
                                                                             Highest LTP
                                                                         </Badge>
                                                                     </div>
-                                                                    <div className="mt-2 flex items-end justify-between gap-3">
-                                                                        <p className="text-lg font-black font-mono text-red-700 dark:text-red-300">{currencySymbol} {formatValue(priceHistoryStats.bestExit.ltp)}</p>
-                                                                        <p className="text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestExit.date, calendarSystem)}</p>
+                                                                    <div className="mt-1.5 sm:mt-2 flex items-end justify-between gap-1.5 sm:gap-3 flex-wrap sm:flex-nowrap">
+                                                                        <p className="text-sm sm:text-lg font-black font-mono text-red-700 dark:text-red-300">{currencySymbol} {formatValue(priceHistoryStats.bestExit.ltp)}</p>
+                                                                        <p className="text-[9px] sm:text-[10px] font-bold text-muted-foreground">{formatAppDate(priceHistoryStats.bestExit.date, calendarSystem)}</p>
                                                                     </div>
-                                                                    <p className="mt-2 text-[10px] font-bold text-muted-foreground">
+                                                                    <p className="mt-1 sm:mt-2 text-[9px] sm:text-[10px] font-bold text-muted-foreground leading-snug">
                                                                         Latest is {priceHistoryStats.fromBestExit >= 0 ? "+" : ""}{priceHistoryStats.fromBestExit.toFixed(2)}% from this point.
                                                                     </p>
                                                                 </div>

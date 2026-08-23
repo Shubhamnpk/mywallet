@@ -1745,7 +1745,7 @@ export function useWalletStore() {
     })
 
     // Save cleared transactions to persistent storage FIRST.
-    // Only update React state if persistence confirms — otherwise on reload
+    // Only update React state if persistence confirms - otherwise on reload
     // the old sipPlanId values would reappear and the transactions would be
     // "stuck" (hidden from re-enrollment because !tx.sipPlanId would be false).
     const saved = await saveDataWithIntegrity("shareTransactions", updatedTransactions)
@@ -1756,7 +1756,7 @@ export function useWalletStore() {
       return
     }
 
-    // Persistence confirmed — safe to update React state and profile
+    // Persistence confirmed - safe to update React state and profile
     shareTransactionsRef.current = updatedTransactions
     setShareTransactions(updatedTransactions)
     updateUserProfile({ sipPlans: updatedPlans })

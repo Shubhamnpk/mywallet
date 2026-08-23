@@ -287,7 +287,7 @@ export function LogShiftDialog({
               <>
                 <div className="flex items-center gap-2">
                   <span className="font-medium tabular-nums">{preview.startTime}</span>
-                  <span className="text-muted-foreground/40">—</span>
+                  <span className="text-muted-foreground/40">-</span>
                   <span className="font-medium tabular-nums">{preview.endTime}</span>
                   <span className="h-3.5 w-px bg-current opacity-20" />
                   <span className="font-medium tabular-nums">{preview.hours.toFixed(1)}h</span>

@@ -171,7 +171,7 @@ export function ImportVerificationModal({
                         Verify Cost Prices
                     </DialogTitle>
                     <DialogDescription className="font-medium text-muted-foreground">
-                        Items needing a price are shown first. Price entry is optional — leave blank to import as-is.
+                        Items needing a price are shown first. Price entry is optional - leave blank to import as-is.
                     </DialogDescription>
                     {stats && (
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">

@@ -83,7 +83,7 @@ function parseSortableDate(value?: string) {
 }
 
 function formatBsDate(value?: string) {
-  if (!value) return "—"
+  if (!value) return "-"
   const parts = String(value).split("/")
   if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]} BS`
   return value
@@ -96,7 +96,7 @@ function shortCompany(name: string) {
 function appInitials(name: string) {
   const clean = shortCompany(name)
   const words = clean.split(/\s+/).filter(Boolean)
-  if (words.length === 0) return "—"
+  if (words.length === 0) return "-"
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
   return (words[0][0] + words[1][0]).toUpperCase()
 }
@@ -313,17 +313,17 @@ export function IpoCenter() {
   const stats = useMemo(() => {
     if (tab === "pipeline") {
       return [
-        { label: "Applications", value: pipeline?.count ?? "—", tone: "text-primary", icon: Database },
-        { label: "Total amount", value: pipeline ? compactAmount(pipelineTotal, calendarSystem) : "—", tone: "text-success", icon: Sparkles },
-        { label: "Issue types", value: appsSummary?.types.length ?? "—", tone: "text-info", icon: FileText },
-        { label: "Sectors", value: sectors.length || "—", tone: "text-warning", icon: Building2 },
+        { label: "Applications", value: pipeline?.count ?? "-", tone: "text-primary", icon: Database },
+        { label: "Total amount", value: pipeline ? compactAmount(pipelineTotal, calendarSystem) : "-", tone: "text-success", icon: Sparkles },
+        { label: "Issue types", value: appsSummary?.types.length ?? "-", tone: "text-info", icon: FileText },
+        { label: "Sectors", value: sectors.length || "-", tone: "text-warning", icon: Building2 },
       ]
     }
     return [
       { label: "Open", value: openCount, tone: "text-success", icon: CheckCircle2 },
       { label: "Upcoming", value: upcomingCount, tone: "text-info", icon: Clock },
       { label: "Closed", value: closedCount, tone: "text-muted-foreground", icon: Landmark },
-      { label: "SEBON", value: appsSummary?.total ?? "—", tone: "text-primary", icon: Database },
+      { label: "SEBON", value: appsSummary?.total ?? "-", tone: "text-primary", icon: Database },
     ]
   }, [tab, pipeline, pipelineTotal, appsSummary, sectors, openCount, upcomingCount, closedCount, calendarSystem])
 

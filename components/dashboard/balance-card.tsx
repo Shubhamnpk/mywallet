@@ -446,7 +446,7 @@ export function CombinedBalanceCard() {
             />
           </div>
 
-          {/* Net Worth Card — Credit Card Style */}
+          {/* Net Worth Card - Credit Card Style */}
           <div data-carousel-card="1" className="flex-shrink-0 ml-4" style={{ width: 'calc(50% - 8px)', scrollSnapAlign: 'start' }}>
             <div className={`relative rounded-xl overflow-hidden h-full md:min-h-[170px] shadow-lg hover:shadow-xl transition-all duration-300 select-none ${
               netWorth >= 0

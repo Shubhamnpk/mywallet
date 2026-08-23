@@ -625,7 +625,7 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
   // Tap-to-flip detection. useZoomPan calls preventDefault() on pointerdown for
   // mouse, which cancels the synthesized `click`, so onClick={toggleFlip} never
   // fires. We detect a genuine tap (small movement, short duration) via pointer
-  // events instead — these still fire even when pointerdown is canceled. A fast
+  // events instead - these still fire even when pointerdown is canceled. A fast
   // horizontal swipe (left → back, right → front) also flips the card, like the
   // tap interaction but as a swipe gesture.
   const flipTapRef = useRef<{ x: number; y: number; t: number } | null>(null)

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { RefreshCw, Loader2, FileText, Landmark, CheckCircle2, Calendar, AlertCircle, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import type { MeroShareAccount } from "@/types/wallet"
@@ -64,11 +65,11 @@ function displayStatus(row: MeroShareApplicationRow) {
   if (row.receivedKitta > 0) return "ALLOTTED"
   if (rawUpper === "ALLOTTED" || rawUpper === "NOT ALLOTTED") return rawUpper
   if (row.stageName === "ALLOTMENT_RESULT_UPLOADED") return "NOT ALLOTTED"
-  return raw || "—"
+  return raw || "-"
 }
 
 function formatDate(value?: string) {
-  if (!value) return "—"
+  if (!value) return "-"
   const t = new Date(value).getTime()
   if (Number.isNaN(t)) return value.split("T")[0] || value
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(t)
@@ -87,13 +88,20 @@ function StatBox({ label, value, tone, icon: Icon }: { label: string; value: num
 export function MyApplicationsTab() {
   const { userProfile, logMeroShareApplication } = useWalletData()
   const accounts = useMemo(() => getAccounts(userProfile?.meroShare), [userProfile?.meroShare])
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const selectedAccount = useMemo(
+    () =>
+      accounts.find((account) => account.id === selectedAccountId) ||
+      accounts.find((account) => account.role === "primary") ||
+      accounts[0],
+    [accounts, selectedAccountId]
+  )
   const [rows, setRows] = useState<MeroShareApplicationRow[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const primary = accounts.find((account) => account.role === "primary") || accounts[0]
-    if (!primary?.dpId || !primary?.username || !primary?.password) {
+    if (!selectedAccount?.dpId || !selectedAccount?.username || !selectedAccount?.password) {
       setError("Save your MeroShare credentials in Settings first.")
       setRows(null)
       return
@@ -105,7 +113,7 @@ export function MyApplicationsTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          credentials: primary,
+          credentials: selectedAccount,
           options: { browserProvider: userProfile?.meroShare?.browserProvider || "rest" },
         }),
       })
@@ -125,7 +133,7 @@ export function MyApplicationsTab() {
       void logMeroShareApplication({
         action: "application-report",
         status: "success",
-        message: `Loaded ${loaded.length} application${loaded.length === 1 ? "" : "s"} from MeroShare report.`,
+        message: `Loaded ${loaded.length} application${loaded.length === 1 ? "" : "s"} from ${selectedAccount.label || "MeroShare"}.`,
         source: "ipo-center",
       })
     } catch (err: any) {
@@ -134,7 +142,7 @@ export function MyApplicationsTab() {
     } finally {
       setLoading(false)
     }
-  }, [accounts, userProfile?.meroShare?.browserProvider])
+  }, [accounts, selectedAccount, userProfile?.meroShare?.browserProvider])
 
   useEffect(() => {
     void load()
@@ -167,6 +175,26 @@ export function MyApplicationsTab() {
           Refresh
         </Button>
       </div>
+
+      {accounts.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground shrink-0">Account</span>
+          <Select value={selectedAccount?.id} onValueChange={setSelectedAccountId}>
+            <SelectTrigger className="h-8 flex-1 rounded-xl text-[11px] font-bold border-primary/20 bg-background/60">
+              <SelectValue placeholder="Choose account" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((account) => (
+                <SelectItem key={account.id} value={account.id} className="text-xs">
+                  {account.label}
+                  {account.username ? ` (${account.username})` : ""}
+                  {account.role === "primary" ? " · primary" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {rows !== null && rows.length > 0 && (
         <div className="grid grid-cols-4 gap-2">

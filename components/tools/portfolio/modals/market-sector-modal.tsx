@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { BarChart3, TrendingUp, TrendingDown, Loader2, ChevronRight } from "lucide-react"
-import { ResponsiveContainer, LineChart, Line, Area, XAxis, YAxis, Tooltip } from "recharts"
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn, getNumberFormatLocale } from "@/lib/utils"
 import { TopStockItem, NepseIndexGraphPoint, NepseIndexDetail } from "@/types/wallet"
@@ -356,20 +355,14 @@ export function MarketSectorModal({
                             ) : (
                                 (() => {
                                     const chartColor = chartStats?.isPositive ? "#10b981" : "#ef4444"
-                                    const lineGradId = `sectorLineGrad-${selectedSector}`
                                     const fillGradId = `sectorFillGrad-${selectedSector}`
                                     return (
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                                            <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                                                 <defs>
-                                                    <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
-                                                        <stop offset="0%" stopColor={chartColor} stopOpacity={0.4} />
-                                                        <stop offset="50%" stopColor={chartColor} stopOpacity={0.9} />
-                                                        <stop offset="100%" stopColor={chartColor} stopOpacity={1} />
-                                                    </linearGradient>
                                                     <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="0%" stopColor={chartColor} stopOpacity={0.2} />
-                                                        <stop offset="100%" stopColor={chartColor} stopOpacity={0.005} />
+                                                        <stop offset="0%" stopColor={chartColor} stopOpacity={0.3} />
+                                                        <stop offset="100%" stopColor={chartColor} stopOpacity={0.02} />
                                                     </linearGradient>
                                                 </defs>
                                                 <XAxis dataKey="time" hide />
@@ -391,9 +384,8 @@ export function MarketSectorModal({
                                                         )
                                                     }}
                                                 />
-                                                <Area type="monotone" dataKey="value" fill={`url(#${fillGradId})`} stroke="none" />
-                                                <Line type="monotone" dataKey="value" stroke={`url(#${lineGradId})`} strokeWidth={2} dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: chartColor }} />
-                                            </LineChart>
+                                                <Area type="monotone" dataKey="value" stroke={chartColor} strokeWidth={2} fill={`url(#${fillGradId})`} dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: chartColor }} />
+                                            </AreaChart>
                                         </ResponsiveContainer>
                                     )
                                 })()

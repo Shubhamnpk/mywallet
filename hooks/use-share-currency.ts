@@ -144,7 +144,7 @@ export function useShareCurrency(): ShareCurrencyState {
   /** Format an NPR amount compactly (NPR units when disabled, K/M/B/T when enabled). */
   const moneyCompact = useCallback(
     (amountNpr: number | null | undefined) => {
-      if (amountNpr === null || amountNpr === undefined || !Number.isFinite(amountNpr)) return `${symbol}—`
+      if (amountNpr === null || amountNpr === undefined || !Number.isFinite(amountNpr)) return `${symbol}-`
       if (!enabled) return compactAmount(amountNpr, calendarSystem, 2)
       const converted = convertNpr(amountNpr)
       const abs = Math.abs(converted)

@@ -2,13 +2,23 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { CalendarDays, CheckCircle2, Globe, History, Rocket, Sparkles, Tag, TrendingUp } from "lucide-react"
+import { CalendarDays, CheckCircle2, Globe, History, Rocket, Sparkles, Tag, TrendingUp, Github, ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatAppDate } from "@/lib/app-calendar"
 import { cn } from "@/lib/utils"
 import { PublicLayout } from "@/components/public-pages/public-layout"
+import { PublicBackground } from "./public-background"
+
+type GithubRelease = {
+  tag_name: string
+  name: string | null
+  published_at: string | null
+  html_url: string
+  body: string | null
+  prerelease: boolean
+}
 
 type ReleaseStatus = "current" | "stable"
 type ReleaseCategory = "Feature" | "Bugfix" | "Improvement" | "Major" | "UX" | "Security" | "Performance"
@@ -53,22 +63,32 @@ function getReleaseSpanLabel(releases: ReleaseItem[]) {
 }
 
 const categoryColors: Record<ReleaseCategory, string> = {
-  Feature: "bg-blue-500/10 text-blue-700 border-blue-200 dark:text-blue-300",
-  Bugfix: "bg-red-500/10 text-red-700 border-red-200 dark:text-red-300",
-  Improvement: "bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:text-emerald-300",
-  Major: "bg-violet-500/10 text-violet-700 border-violet-200 dark:text-violet-300",
+  Feature: "bg-info/10 text-info border-info/25",
+  Bugfix: "bg-error/10 text-error border-error/25",
+  Improvement: "bg-success/10 text-success border-success/25",
+  Major: "bg-primary/10 text-primary border-primary/25",
   UX: "bg-pink-500/10 text-pink-700 border-pink-200 dark:text-pink-300",
-  Security: "bg-amber-500/10 text-amber-700 border-amber-200 dark:text-amber-300",
+  Security: "bg-warning/10 text-warning border-warning/25",
   Performance: "bg-cyan-500/10 text-cyan-700 border-cyan-200 dark:text-cyan-300",
 }
 
 export function ReleasesPageClient({ data, currentVersion }: { data: ReleasesData; currentVersion: string }) {
-  const [scrollY, setScrollY] = useState(0)
+  const [githubReleases, setGithubReleases] = useState<GithubRelease[] | null>(null)
+  const [githubError, setGithubError] = useState(false)
 
   useEffect(() => {
-    const onScroll = () => setScrollY(window.scrollY)
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
+    let cancelled = false
+    fetch("https://api.github.com/repos/Shubhamnpk/mywallet/releases?per_page=8")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((json) => {
+        if (!cancelled && Array.isArray(json)) setGithubReleases(json as GithubRelease[])
+      })
+      .catch(() => {
+        if (!cancelled) setGithubError(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const releases = data.releases as ReleaseItem[]
@@ -80,14 +100,7 @@ export function ReleasesPageClient({ data, currentVersion }: { data: ReleasesDat
   return (
     <PublicLayout>
       <div className="relative">
-        <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-          <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse -translate-x-1/2" />
-          <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse translate-x-1/2" style={{ animationDelay: "1s" }} />
-          <div
-            className="absolute top-1/2 left-1/2 w-[600px] h-[600px] bg-primary/3 rounded-full blur-3xl"
-            style={{ transform: `translate(-50%, -50%) scale(${1 + scrollY * 0.0002})` }}
-          />
-        </div>
+        <PublicBackground />
 
         <section className="relative border-b border-border/60 bg-gradient-to-b from-background via-muted/30 to-background">
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
@@ -248,6 +261,90 @@ export function ReleasesPageClient({ data, currentVersion }: { data: ReleasesDat
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        {/* GitHub Releases (live) */}
+        <section className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-4">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-accent/15 ring-1 ring-primary/20 text-primary">
+                <Github className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold tracking-tight leading-none">Live from GitHub</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Latest published releases, straight from the repository.</p>
+              </div>
+            </div>
+            <a
+              href="https://github.com/Shubhamnpk/mywallet/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-3.5 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur-xl transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              View all on GitHub
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          {githubError ? (
+            <p className="rounded-xl border border-dashed border-border/60 bg-card/40 p-6 text-center text-sm text-muted-foreground backdrop-blur-xl">
+              Could not load GitHub releases right now.{" "}
+              <a href="https://github.com/Shubhamnpk/mywallet/releases" target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">
+                View them on GitHub
+              </a>.
+            </p>
+          ) : githubReleases === null ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-36 animate-pulse rounded-xl border border-border/60 bg-card/40 backdrop-blur-xl" />
+              ))}
+            </div>
+          ) : githubReleases.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border/60 bg-card/40 p-6 text-center text-sm text-muted-foreground backdrop-blur-xl">
+              No GitHub releases published yet - the timeline above has the full changelog.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {githubReleases.map((release) => (
+                <a
+                  key={release.tag_name}
+                  href={release.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 p-4 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
+                >
+                  <div className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-primary/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="outline" className="gap-1 font-mono font-semibold border-primary/25 text-primary">
+                        <Tag className="h-3 w-3" />
+                        {release.tag_name}
+                      </Badge>
+                      {release.prerelease && (
+                        <Badge variant="outline" className="text-[10px] border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                          Pre
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm font-bold leading-snug tracking-tight group-hover:text-primary transition-colors">
+                      {release.name || release.tag_name}
+                    </h3>
+                    {release.published_at && (
+                      <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <CalendarDays className="h-3 w-3" />
+                        {new Date(release.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      </p>
+                    )}
+                    {release.body && (
+                      <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                        {release.body.replace(/#+\s/gm, "").replace(/[*_`>-]/g, "").trim()}
+                      </p>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16">

@@ -18,10 +18,10 @@ export async function POST(req: Request) {
       )
     }
 
-    const { MeroShareRestClient, clearCachedSession } = await import("../_lib/rest-api")
+    const { runWithSessionRecovery } = await import("../_lib/rest-api")
     const username = String(credentials.username || "").trim()
 
-    const runFlow = async (client: InstanceType<typeof MeroShareRestClient>) => {
+    return await runWithSessionRecovery(username, async (client) => {
       await client.ensureSession(credentials)
       const health = await client.getAccountHealth()
       const own = (health.own ?? {}) as Record<string, unknown>
@@ -52,25 +52,10 @@ export async function POST(req: Request) {
           crnNumber: String(bank.crnNumber ?? credentials?.crn ?? "").trim(),
         },
       })
-    }
-
-    let client = new MeroShareRestClient()
-    try {
-      return await runFlow(client)
-    } catch (error: any) {
-      const status = Number(error?.statusCode ?? 0)
-      const unauthorized = status === 401 || status === 403 || /unauthorized/i.test(String(error?.message ?? ""))
-      if (unauthorized && !/login failed/i.test(String(error?.message ?? ""))) {
-        clearCachedSession(username)
-        client = new MeroShareRestClient()
-        return await runFlow(client)
-      }
-      throw error
-    }
+    })
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error?.message || "Failed to fetch account health" },
-      { status: 500 },
-    )
+    const { describeMeroShareFailure } = await import("../_lib/rest-api")
+    const failure = describeMeroShareFailure(error, "Failed to fetch account health")
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status })
   }
 }

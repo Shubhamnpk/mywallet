@@ -40,6 +40,7 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { PublicLayout } from "@/components/public-pages/public-layout"
+import { PublicBackground } from "./public-background"
 
 type RoadmapStatus = "completed" | "in-progress" | "planned" | "exploring"
 type StatusFilter = RoadmapStatus | "all" | "open"
@@ -81,14 +82,14 @@ const statusMeta: Record<RoadmapStatus, { label: string; icon: typeof CheckCircl
   completed: {
     label: "Completed",
     icon: CheckCircle2,
-    className: "border-emerald-200 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    dot: "bg-emerald-500",
+    className: "border-success/25 bg-success/10 text-success",
+    dot: "bg-success",
   },
   "in-progress": {
     label: "In Progress",
     icon: Timer,
-    className: "border-blue-200 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    dot: "bg-blue-500",
+    className: "border-info/25 bg-info/10 text-info",
+    dot: "bg-info",
   },
   planned: {
     label: "Planned",
@@ -99,22 +100,23 @@ const statusMeta: Record<RoadmapStatus, { label: string; icon: typeof CheckCircl
   exploring: {
     label: "Exploring",
     icon: Compass,
-    className: "border-amber-200 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    dot: "bg-amber-500",
+    className: "border-warning/25 bg-warning/10 text-warning",
+    dot: "bg-warning",
   },
 }
 
 const priorityMeta: Record<RoadmapPriority, { label: string; className: string; weight: number }> = {
-  critical: { label: "Critical", className: "border-red-200 bg-red-500/10 text-red-700 dark:text-red-300", weight: 4 },
+  critical: { label: "Critical", className: "border-error/25 bg-error/10 text-error", weight: 4 },
   high: { label: "High", className: "border-orange-200 bg-orange-500/10 text-orange-700 dark:text-orange-300", weight: 3 },
   medium: { label: "Medium", className: "border-sky-200 bg-sky-500/10 text-sky-700 dark:text-sky-300", weight: 2 },
   low: { label: "Low", className: "border-slate-200 bg-slate-500/10 text-slate-700 dark:text-slate-300", weight: 1 },
 }
 
 const categoryClassByColor: Record<string, string> = {
-  emerald: "border-emerald-200 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  blue: "border-blue-200 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  amber: "border-amber-200 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  emerald: "border-success/25 bg-success/10 text-success",
+  blue: "border-info/25 bg-info/10 text-info",
+  amber: "border-warning/25 bg-warning/10 text-warning",
+  red: "border-error/25 bg-error/10 text-error",
   purple: "border-violet-200 bg-violet-500/10 text-violet-700 dark:text-violet-300",
   pink: "border-pink-200 bg-pink-500/10 text-pink-700 dark:text-pink-300",
   slate: "border-slate-200 bg-slate-500/10 text-slate-700 dark:text-slate-300",
@@ -155,14 +157,7 @@ export function RoadmapPageClient({ data }: { data: RoadmapData }) {
   const [priority, setPriority] = useState<RoadmapPriority | "all">("all")
   const [milestone, setMilestone] = useState("all")
   const [showFilters, setShowFilters] = useState(false)
-  const [scrollY, setScrollY] = useState(0)
   const mainRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const onScroll = () => setScrollY(window.scrollY)
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
 
   const categoryById = useMemo(() => new Map(data.categories.map((item) => [item.id, item])), [data.categories])
   const milestoneById = useMemo(() => new Map(data.milestones.map((item) => [item.id, item])), [data.milestones])
@@ -275,14 +270,7 @@ export function RoadmapPageClient({ data }: { data: RoadmapData }) {
   return (
     <PublicLayout>
       <div className="relative">
-        <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-          <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse -translate-x-1/2" />
-          <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse translate-x-1/2" style={{ animationDelay: "1s" }} />
-          <div
-            className="absolute top-1/2 left-1/2 w-[600px] h-[600px] bg-primary/3 rounded-full blur-3xl"
-            style={{ transform: `translate(-50%, -50%) scale(${1 + scrollY * 0.0002})` }}
-          />
-        </div>
+        <PublicBackground />
 
         <section className="relative border-b border-border/60 bg-gradient-to-b from-background via-muted/30 to-background">
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
@@ -858,7 +846,7 @@ function CurrentFeaturesSection({
               Everything already in MyWallet
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Finance basics, portfolio tools, crypto, security, sync, and productivity features — all live today.
+              Finance basics, portfolio tools, crypto, security, sync, and productivity features - all live today.
             </p>
           </div>
           <div className="rounded-xl border border-border/60 bg-background/80 backdrop-blur-sm px-5 py-4 text-right shadow-sm">

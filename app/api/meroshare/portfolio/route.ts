@@ -14,15 +14,17 @@ export async function POST(req: Request) {
     const provider = options?.browserProvider || credentials?.browserProvider || "rest"
 
     if (provider === "rest") {
-      const { MeroShareRestClient } = await import("../_lib/rest-api")
-      const client = new MeroShareRestClient()
-      await client.login({
-        dpId: credentials.dpId,
-        username: credentials.username,
-        password: credentials.password,
+      const { MeroShareRestClient, runWithSessionRecovery } = await import("../_lib/rest-api")
+      const username = String(credentials.username || "").trim()
+      const portfolio = await runWithSessionRecovery(username, async (client) => {
+        await client.ensureSession({
+          dpId: credentials.dpId,
+          username: credentials.username,
+          password: credentials.password,
+        })
+        return client.getPortfolio()
       })
-      const rows = await client.getPortfolio()
-      const portfolio = rows.map((row) => ({
+      const mapped = portfolio.map((row) => ({
         symbol: row.symbol,
         units: row.units,
         currentPrice: row.currentPrice,
@@ -31,14 +33,14 @@ export async function POST(req: Request) {
         buy_price: row.averageCost || 0,
         previousClose: row.previousClose ?? null,
       }))
-      const user_name = (await client.getOwnData())?.name || credentials.username
+      const user_name = await runWithSessionRecovery(username, (client) => client.getOwnData()).then((d) => d?.name).catch(() => null) || credentials.username
       return NextResponse.json({
         success: true,
-        portfolio,
-        message: portfolio.length ? `Fetched ${portfolio.length} holdings.` : "No holdings found.",
+        portfolio: mapped,
+        message: mapped.length ? `Fetched ${mapped.length} holdings.` : "No holdings found.",
         user_name,
-        total_positions: portfolio.length,
-        total_units: portfolio.reduce((sum, row) => sum + (row.units || 0), 0),
+        total_positions: mapped.length,
+        total_units: mapped.reduce((sum, row) => sum + (row.units || 0), 0),
       })
     }
 
@@ -79,6 +81,8 @@ export async function POST(req: Request) {
       if (browser) await browser.close()
     }
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error?.message || "Portfolio sync failed" }, { status: 500 })
+    const { describeMeroShareFailure } = await import("../_lib/rest-api")
+    const failure = describeMeroShareFailure(error, "Portfolio sync failed")
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status })
   }
 }

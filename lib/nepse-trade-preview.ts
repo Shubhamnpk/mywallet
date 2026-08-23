@@ -108,7 +108,7 @@ export const estimateSellLotsFees = (
             const price = sell.price
             const sellTime = new Date(sell.date).getTime()
 
-            // Fees are independent of cost basis — request the preview with cost basis 0 so tax is excluded.
+            // Fees are independent of cost basis - request the preview with cost basis 0 so tax is excluded.
             const preview = createNepseTradePreview(quantity, price, "sell", 0)
             const fees = preview.totalCharges
             const gross = preview.shareAmount
@@ -143,7 +143,7 @@ export const estimateSellLotsFees = (
                 if (lot.remaining <= 0) fifoIndex += 1
             }
 
-            // Shares with no recorded cost basis — assume full gain at the long-term rate in force on the sale date.
+            // Shares with no recorded cost basis - assume full gain at the long-term rate in force on the sale date.
             if (remaining > 0) {
                 const grossPart = remaining * price
                 const feePart = fees * (remaining / quantity)

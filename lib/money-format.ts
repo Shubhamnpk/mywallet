@@ -11,7 +11,7 @@ export function compactAmount(
   calendarSystem: CalendarSystem = "AD",
   decimals = 1,
 ): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return "रु —"
+  if (n === null || n === undefined || Number.isNaN(n)) return "रु -"
   const abs = Math.abs(n)
   const fmt = (value: number) => value.toFixed(decimals)
   if (calendarSystem === "BS") {
@@ -30,7 +30,7 @@ export function compactAmount(
 
 /** Always uses Nepali units (kharab / arab / cr / lakh), ignoring the AD/BS toggle. */
 export function compactNepaliAmount(n: number | null | undefined): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return "रु —"
+  if (n === null || n === undefined || Number.isNaN(n)) return "रु -"
   const abs = Math.abs(n)
   if (abs >= 1e11) return `रु ${(n / 1e11).toFixed(1)} kharab`
   if (abs >= 1e9) return `रु ${(n / 1e9).toFixed(1)} arab`
