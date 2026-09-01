@@ -36,7 +36,7 @@ import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Spinner } from "@/components/ui/spinner";
-import { compressImageToDataUrl } from '@/lib/image-utils';
+import { compressImageToDataUrl } from '@/lib/image-compression';
 
 interface OnboardingProps {
   onComplete: (userProfile: UserProfile) => void;

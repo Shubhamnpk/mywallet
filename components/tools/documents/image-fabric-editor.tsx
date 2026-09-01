@@ -230,7 +230,7 @@ export const ImageFabricEditor = forwardRef<FabricEditorHandle, { imageUrl: stri
       if (!canvas || !el || !container || textPrompt) return
 
       const target = canvas.findTarget(e.e)
-      if (target && target !== imgRef.current) return
+      if (target && (target as unknown) !== imgRef.current) return
 
       const pointer = canvas.getScenePoint(e.e)
       const cr = container.getBoundingClientRect()

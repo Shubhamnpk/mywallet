@@ -50,3 +50,8 @@ docs/browser-extension.md
 
 # local-only internal audit / sensitive docs — never push
 /.local/
+
+# benchmarks
+scripts/benchmark*.mjs
+docs/benchmark*.md
+docs/package_manager_benchmark.md

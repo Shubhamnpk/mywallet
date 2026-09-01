@@ -3,16 +3,41 @@ import { readFileSync } from "fs";
 import { globSync } from "fs";
 import { readdirSync, statSync } from "fs";
 import { join, extname } from "path";
+import { fileURLToPath } from "url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const failures = [];
 
-// 1. pnpm audit (high / critical)
+// Advisories fixed locally via pnpm patch but still reported because no patched
+// version exists on the registry. Remove an entry here if the override/patch
+// becomes unnecessary (i.e. a fixed upstream release is installed).
+// - GHSA-jmr9-qjv8-65gv: extract-zip symlink traversal; symlink targets are now
+//   validated in patches/extract-zip@2.0.1.patch.
+const PATCHED_GHSA_ALLOWLIST = new Set(["GHSA-jmr9-qjv8-65gv"]);
+
+// 1. pnpm audit (high / critical), minus advisories fixed via local patches
+let raw = "";
 try {
-  execSync("pnpm audit --audit-level=high", { stdio: "inherit", cwd: ROOT });
-  console.log("[PASS] pnpm audit");
+  raw = execSync("pnpm audit --json", { cwd: ROOT, encoding: "utf8" });
+} catch (err) {
+  // pnpm exits non-zero when vulnerabilities are found; stdout still has the report
+  raw = err.stdout ?? "";
+}
+try {
+  const advisories = Object.values(JSON.parse(raw).advisories ?? {});
+  const unpatched = advisories.filter(
+    (a) => ["high", "critical"].includes(a.severity) && !PATCHED_GHSA_ALLOWLIST.has(a.github_advisory_id)
+  );
+  if (unpatched.length) {
+    for (const a of unpatched) {
+      console.error(`[FAIL] ${a.github_advisory_id ?? a.id} ${a.module_name}: ${a.title}`);
+    }
+    failures.push(`pnpm audit found ${unpatched.length} unpatched high/critical vulnerabilities`);
+  } else {
+    console.log("[PASS] pnpm audit");
+  }
 } catch {
-  failures.push("pnpm audit found high/critical vulnerabilities");
+  failures.push("pnpm audit could not run");
 }
 
 // 2. Hardcoded secret detection (simple static scan)

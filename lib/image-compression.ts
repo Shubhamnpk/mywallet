@@ -67,7 +67,6 @@ export async function compressImage(
     let compressed = await imageCompression(file, options)
 
     if (compressed.size >= originalSize) {
-      // Never return something bigger than the input.
       compressed = file
     }
 
@@ -108,4 +107,88 @@ async function passthrough(file: File): Promise<CompressionResult> {
     originalType: file.type || "unknown",
     outputType: file.type || "unknown",
   }
+}
+
+// --- Lightweight canvas compression (avatars, small images) ---
+
+export type DataUrlCompressionOptions = {
+  maxSize?: number
+  maxBytes?: number
+  mimeType?: string
+  quality?: number
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error("Failed to load image"))
+    }
+    img.src = url
+  })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), mimeType, quality)
+  })
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error("Failed to read image data"))
+    reader.readAsDataURL(blob)
+  })
+}
+
+export async function compressImageToDataUrl(
+  file: File,
+  options: DataUrlCompressionOptions = {},
+): Promise<string> {
+  const {
+    maxSize = 256,
+    maxBytes = 200 * 1024,
+    mimeType = "image/jpeg",
+    quality = 0.8,
+  } = options
+
+  const img = await loadImageFromFile(file)
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+  const width = Math.max(1, Math.round(img.width * scale))
+  const height = Math.max(1, Math.round(img.height * scale))
+
+  const canvas = document.createElement("canvas")
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) {
+    throw new Error("Canvas not supported")
+  }
+  ctx.drawImage(img, 0, 0, width, height)
+
+  let currentQuality = quality
+  let blob = await canvasToBlob(canvas, mimeType, currentQuality)
+  if (!blob) {
+    throw new Error("Failed to compress image")
+  }
+
+  while (blob.size > maxBytes && currentQuality > 0.5) {
+    currentQuality = Math.max(0.5, currentQuality - 0.1)
+    blob = await canvasToBlob(canvas, mimeType, currentQuality)
+    if (!blob) break
+  }
+
+  if (!blob) {
+    throw new Error("Failed to compress image")
+  }
+
+  return await blobToDataUrl(blob)
 }

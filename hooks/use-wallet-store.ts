@@ -446,6 +446,21 @@ export function useWalletStore() {
         setUpcomingIPOs(processedIPOs)
       })
 
+    const archiveIposTask = fetch("/api/nepse/ipo-archive")
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return
+        const archiveItems: UpcomingIPO[] = data
+          .filter((ipo: any) => ipo && typeof ipo.company === "string")
+          .map(ipo => ({ ...ipo, status: "closed" as const }))
+        if (archiveItems.length === 0) return
+        setUpcomingIPOs(prev => {
+          const seen = new Set(prev.map(ipo => `${ipo.company}|${ipo.date_range}`))
+          const merged = [...prev, ...archiveItems.filter(item => !seen.has(`${item.company}|${item.date_range}`))]
+          return merged.length === prev.length ? prev : merged
+        })
+      })
+
     const topStocksTask = fetch("/api/nepse/top-stocks")
       .then(async (res) => {
         const data = await res.json()
@@ -578,6 +593,7 @@ export function useWalletStore() {
       sectorsTask,
       localNamesTask,
       upcomingIposTask,
+      archiveIposTask,
       topStocksTask,
       marketSummaryTask,
       marketSummaryHistoryTask,

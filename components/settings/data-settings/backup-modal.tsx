@@ -308,6 +308,24 @@ export function BackupModal({
       if (effectiveOptions.documentVault) {
         const { serializeDocumentVault } = await import("@/lib/document-storage")
         data.documentVault = await serializeDocumentVault()
+        const failedCount = data.documentVault.undecryptableDocIds?.length ?? 0
+        if (failedCount) {
+          toast({
+            title: `${failedCount} document(s) could not be decrypted`,
+            description: "Unlock the wallet with your PIN and create this backup again, or those documents will be empty when restored.",
+            variant: "destructive",
+          })
+        }
+      } else {
+        const { getDocumentCount } = await import("@/lib/document-storage")
+        const docCount = await getDocumentCount()
+        if (docCount > 0) {
+          toast({
+            title: "Documents not included in this backup",
+            description: `${docCount} document(s) exist in your vault but file contents are only backed up with "Document Vault" enabled.`,
+            variant: "destructive",
+          })
+        }
       }
 
       // Profile/settings include display + biometric security metadata.

@@ -29,9 +29,17 @@ import {
   Send,
   RefreshCw,
   BellRing,
+  FileSearch,
 } from "lucide-react"
 import { showAppNotification, REMINDER_CACHE_KEY } from "@/lib/notifications"
 import { useDeveloperMode } from "@/hooks/use-developer-mode"
+import { seedTestDocuments } from "@/lib/document-dev-tools"
+import {
+  clearVaultBlobs,
+  deleteAllDocuments,
+  getVaultDiagnostics,
+  type VaultDiagnostics,
+} from "@/lib/document-storage"
 
 export function DeveloperSettings() {
   const {
@@ -63,6 +71,11 @@ export function DeveloperSettings() {
     type: "success" | "error"
     message: string
   } | null>(null)
+
+  // Document Vault Lab state
+  const [vaultBusy, setVaultBusy] = useState(false)
+  const [diag, setDiag] = useState<VaultDiagnostics | null>(null)
+  const [wipeConfirm, setWipeConfirm] = useState(false)
 
   const clearResult = () => setSeedResult(null)
 
@@ -163,6 +176,144 @@ export function DeveloperSettings() {
               Reset Reminder Cooldowns
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileSearch className="h-5 w-5 text-emerald-500" />
+            Document Vault Lab
+          </CardTitle>
+          <CardDescription>
+            Seed encrypted test documents, audit vault integrity, and reproduce cross-device sync issues.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={vaultBusy}
+              onClick={async () => {
+                setVaultBusy(true)
+                try {
+                  const n = await seedTestDocuments()
+                  toast.success(`Seeded ${n} test documents`, { description: 'Look for the "Dev Test Person" in the Documents tool.' })
+                  setDiag(await getVaultDiagnostics())
+                } catch (err) {
+                  toast.error("Seed failed", { description: err instanceof Error ? err.message : "Unknown error" })
+                } finally {
+                  setVaultBusy(false)
+                }
+              }}
+            >
+              <FlaskConical className="h-3.5 w-3.5 mr-1.5" />
+              Seed Test Documents
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={vaultBusy}
+              onClick={async () => {
+                setVaultBusy(true)
+                try {
+                  setDiag(await getVaultDiagnostics())
+                } finally {
+                  setVaultBusy(false)
+                }
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Run Health Check
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={vaultBusy}
+              onClick={async () => {
+                if (!wipeConfirm) {
+                  setWipeConfirm(true)
+                  setTimeout(() => setWipeConfirm(false), 4000)
+                  return
+                }
+                setWipeConfirm(false)
+                setVaultBusy(true)
+                try {
+                  await clearVaultBlobs()
+                  toast.success("Files wiped, metadata kept", { description: "Open Documents: thumbnails/previews should now be gone — this is the cross-device bug state." })
+                  setDiag(await getVaultDiagnostics())
+                } finally {
+                  setVaultBusy(false)
+                }
+              }}
+            >
+              {wipeConfirm ? (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                  Confirm Wipe Files
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  Simulate Cross-Device (Wipe Files)
+                </>
+              )}
+            </Button>
+          </div>
+
+          {diag && (() => {
+            const foundBlobs = new Set(diag.foundBlobKeys)
+            const missing = diag.expectedBlobKeys.filter((k) => !foundBlobs.has(k))
+            const orphans = diag.foundBlobKeys.filter((k) => !diag.expectedBlobKeys.includes(k))
+            const problems = missing.length + orphans.length + diag.undecryptable.length
+            return (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-lg border p-2 text-center">
+                    <div className="text-xs text-muted-foreground">Documents</div>
+                    <div className="text-lg font-bold">{diag.documents}</div>
+                  </div>
+                  <div className="rounded-lg border p-2 text-center">
+                    <div className="text-xs text-muted-foreground">Persons</div>
+                    <div className="text-lg font-bold">{diag.persons}</div>
+                  </div>
+                  <div className="rounded-lg border p-2 text-center">
+                    <div className="text-xs text-muted-foreground">Files on disk</div>
+                    <div className={`text-lg font-bold ${missing.length ? "text-destructive" : ""}`}>
+                      {diag.foundBlobKeys.length}/{diag.expectedBlobKeys.length}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border p-2 text-center">
+                    <div className="text-xs text-muted-foreground">Thumbnails</div>
+                    <div className="text-lg font-bold">{diag.foundThumbKeys.length}</div>
+                  </div>
+                </div>
+                <ul className="text-xs space-y-1">
+                  {problems === 0 && (
+                    <li className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Vault healthy — all files present and decryptable.
+                    </li>
+                  )}
+                  {missing.length > 0 && (
+                    <li className="text-destructive flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>Missing files ({missing.length}): metadata exists but content is gone — the cross-device bug state. Keys: {missing.join(", ")}</span>
+                    </li>
+                  )}
+                  {diag.undecryptable.length > 0 && (
+                    <li className="text-destructive flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>Undecryptable with current key ({diag.undecryptable.length}): {diag.undecryptable.join(", ")}</span>
+                    </li>
+                  )}
+                  {orphans.length > 0 && (
+                    <li className="text-muted-foreground">Orphaned files (no manifest entry): {orphans.join(", ")}</li>
+                  )}
+                </ul>
+              </div>
+            )
+          })()}
         </CardContent>
       </Card>
 

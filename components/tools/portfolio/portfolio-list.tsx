@@ -4959,16 +4959,6 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                                 <span className="hidden sm:inline">View Details</span>
                                                 <span className="sm:hidden">Details</span>
                                             </Button>
-                                            {filteredIPOsCount > 5 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 rounded-lg text-primary text-[11px] font-black uppercase tracking-wider"
-                                                    onClick={() => setShowAllIPOs((prev) => !prev)}
-                                                >
-                                                    {showAllIPOs ? "Show Less" : "See All"}
-                                                </Button>
-                                            )}
                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-0">
@@ -5127,10 +5117,47 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
                                     </CardContent>
                                 </Card>
                             ) : (
-                                <Card className="border-dashed border-muted-foreground/20 bg-muted/5 flex items-center justify-center py-20">
-                                    <CardContent className="flex flex-col items-center gap-3 opacity-40 text-center">
-                                        <Activity className="w-10 h-10" />
-                                        <span className="text-xs font-black uppercase tracking-widest text-center">No active IPOs found</span>
+                                <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-transparent shadow-xl overflow-hidden backdrop-blur-sm text-left">
+                                    <CardHeader className="pb-2 flex flex-row items-center justify-between border-b border-primary/10">
+                                        <div>
+                                            <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest mb-1.5 px-2 border-muted/30 bg-muted/20 text-muted-foreground">
+                                                Quiet Day
+                                            </Badge>
+                                            <CardTitle className="text-lg font-black flex items-center gap-2"> IPOs &amp; Rights</CardTitle>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 rounded-lg text-[11px] font-black uppercase tracking-wider border-primary/20 bg-card/60 text-primary hover:bg-primary/10"
+                                            onClick={() => setIsIpoCenterOpen(true)}
+                                        >
+                                            <Rocket className="w-3.5 h-3.5 mr-1.5" />
+                                            <span className="hidden sm:inline">View IPO Center</span>
+                                            <span className="sm:hidden">IPO Center</span>
+                                        </Button>
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <div className="flex flex-col items-center gap-3 py-12 px-6 text-center">
+                                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                                                <Rocket className="w-5 h-5 text-primary opacity-60" />
+                                            </div>
+                                            <span className="text-sm font-bold text-foreground/80">
+                                                No IPO is available at the moment
+                                            </span>
+                                            <p className="max-w-xs text-xs text-muted-foreground leading-relaxed">
+                                                Nothing is open or opening right now. Open the IPO Center to browse recently closed issues,
+                                                check allotment results, and review your application history.
+                                            </p>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 rounded-lg text-[11px] font-black uppercase tracking-wider text-primary hover:bg-primary/10"
+                                                onClick={() => setIsIpoCenterOpen(true)}
+                                            >
+                                                Check past results
+                                                <ArrowUpRight className="ml-1 w-3.5 h-3.5" />
+                                              </Button>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             )}

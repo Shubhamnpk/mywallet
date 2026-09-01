@@ -152,16 +152,10 @@ function getTourSteps(isDesktop: boolean): TourStep[] {
 export function MyWalletPageClient() {
   const router = useRouter()
   const walletData = useWalletData()
-  const { userProfile, showOnboarding } = walletData
+  const { userProfile } = walletData
   const [mobileFullscreenTab, setMobileFullscreenTab] = useState<string | null>(null)
   const [showTour, setShowTour] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
-
-  useEffect(() => {
-    if (!userProfile && showOnboarding) {
-      router.replace("/")
-    }
-  }, [userProfile, showOnboarding, router])
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024)

@@ -89,7 +89,12 @@ export async function downloadDocument(doc: StoredDocument, pageIndices?: number
     const i = indices[k]
     const p = all[i]
     if (!p) continue
-    const blob = await getDocumentBlob(doc.id, p.id)
+    let blob: Blob | null = null
+    try {
+      blob = await getDocumentBlob(doc.id, p.id)
+    } catch {
+      continue
+    }
     if (!blob) continue
     const url = URL.createObjectURL(blob)
     setTimeout(() => {
@@ -244,8 +249,14 @@ async function readStore(storeName: string, key: string, mimeType: string): Prom
   try {
     plaintext = await SecureWallet.decryptData(encrypted, enc.key)
   } catch {
-    if (!enc.fallback) return null
-    plaintext = await SecureWallet.decryptData(encrypted, enc.fallback)
+    if (!enc.fallback) throw new Error("DOCUMENT_DECRYPT_FAILED")
+    try {
+      plaintext = await SecureWallet.decryptData(encrypted, enc.fallback)
+    } catch {
+      // Wrong key (e.g. blob was PIN-encrypted and session expired). Throwing lets the
+      // viewer offer PIN entry; callers that just want data catch and skip.
+      throw new Error("DOCUMENT_DECRYPT_FAILED")
+    }
   }
 
   const isThumb = storeName === THUMB_STORE
@@ -470,22 +481,31 @@ export async function addDocumentPage(
 }
 
 export async function deleteDocument(docId: string): Promise<void> {
+  await deleteDocuments([docId])
+}
+
+export async function deleteDocuments(docIds: string[]): Promise<void> {
+  if (!docIds.length) return
+  const idSet = new Set(docIds)
   const manifest = await getManifest()
-  const doc = manifest.find((d) => d.id === docId)
-  await saveManifest(manifest.filter((d) => d.id !== docId))
+  const removed = manifest.filter((d) => idSet.has(d.id))
+  if (!removed.length) return
+  await saveManifest(manifest.filter((d) => !idSet.has(d.id)))
   const db = await openDB()
   const tx = db.transaction([BLOB_STORE, THUMB_STORE], "readwrite")
-  if (doc?.pages?.length) {
-    for (const p of doc.pages) {
-      tx.objectStore(BLOB_STORE).delete(`${docId}::${p.id}`)
-      if (p.hasThumbnail) tx.objectStore(THUMB_STORE).delete(`${docId}::${p.id}`)
+  for (const doc of removed) {
+    if (doc.pages?.length) {
+      for (const p of doc.pages) {
+        tx.objectStore(BLOB_STORE).delete(`${doc.id}::${p.id}`)
+        if (p.hasThumbnail) tx.objectStore(THUMB_STORE).delete(`${doc.id}::${p.id}`)
+      }
+    } else {
+      tx.objectStore(BLOB_STORE).delete(doc.id)
+      if (doc.metadata?.hasThumbnail) tx.objectStore(THUMB_STORE).delete(doc.id)
     }
-  } else {
-    tx.objectStore(BLOB_STORE).delete(docId)
-    if (doc?.metadata?.hasThumbnail) tx.objectStore(THUMB_STORE).delete(docId)
   }
   await txDone(tx)
-  void recordDeletion("deleted_documents", [docId])
+  void recordDeletion("deleted_documents", removed.map((d) => d.id))
 }
 
 export async function searchDocuments(
@@ -596,7 +616,12 @@ export async function downloadAllDocumentsAsZip(): Promise<Blob> {
       ? doc.pages
       : [{ id: doc.id, label: "Document", mimeType: doc.mimeType, size: doc.size, hasThumbnail: false }]
     for (const p of all) {
-      const blob = await getDocumentBlob(doc.id, p.id)
+      let blob: Blob | null = null
+      try {
+        blob = await getDocumentBlob(doc.id, p.id)
+      } catch {
+        continue
+      }
       if (!blob) continue
       const ext = p.mimeType.includes("pdf") ? "pdf" : p.mimeType.includes("png") ? "png" : p.mimeType === "text/plain" ? "txt" : "jpg"
       const name = `${doc.name}${all.length > 1 ? ` - ${p.label}` : ""}.${ext}`
@@ -616,6 +641,10 @@ export interface SerializedDocumentVault {
   manifest: StoredDocument[]
   blobs: Record<string, string>
   thumbnails: Record<string, string>
+  /** Doc ids whose blobs could not be decrypted at export time (excluded from the backup). */
+  undecryptableDocIds?: string[]
+  /** Default key salt from the exporting device, so the importing device can derive the same key. */
+  defaultKeySalt?: string
 }
 
 async function decryptWithFallback(encrypted: string, enc: { key: CryptoKey; fallback?: CryptoKey }): Promise<string> {
@@ -632,6 +661,7 @@ export async function serializeDocumentVault(): Promise<SerializedDocumentVault>
   const manifest = await getManifest()
   const blobs: Record<string, string> = {}
   const thumbnails: Record<string, string> = {}
+  const undecryptableDocIds = new Set<string>()
 
   const enc = await getEncryptionKey()
   if (!enc) return { persons, manifest, blobs, thumbnails }
@@ -652,10 +682,12 @@ export async function serializeDocumentVault(): Promise<SerializedDocumentVault>
       })
       if (encrypted) {
         try {
-          const decrypted = await decryptWithFallback(encrypted, enc)
-          blobs[blobKey] = decrypted
+          blobs[blobKey] = await decryptWithFallback(encrypted, enc)
         } catch {
-          blobs[blobKey] = encrypted
+          // ponytail: skip undecryptable blobs instead of storing ciphertext (which a
+          // restore would double-encrypt into permanent garbage); caller warns the user.
+          // Upgrade path: prompt for PIN mid-export and retry with the derived master key.
+          undecryptableDocIds.add(doc.id)
         }
       }
 
@@ -668,45 +700,62 @@ export async function serializeDocumentVault(): Promise<SerializedDocumentVault>
         })
         if (encryptedThumb) {
           try {
-            const decryptedThumb = await decryptWithFallback(encryptedThumb, enc)
-            thumbnails[blobKey] = decryptedThumb
+            thumbnails[blobKey] = await decryptWithFallback(encryptedThumb, enc)
           } catch {
-            thumbnails[blobKey] = encryptedThumb
+            undecryptableDocIds.add(doc.id)
           }
         }
       }
     }
   }
 
-  return { persons, manifest, blobs, thumbnails }
+  return { persons, manifest, blobs, thumbnails, undecryptableDocIds: [...undecryptableDocIds], defaultKeySalt: localStorage.getItem("wallet_default_key_salt") ?? undefined }
 }
 
 export async function restoreDocumentVault(data: SerializedDocumentVault): Promise<void> {
   if (data.persons) await putStored(PERSONS_KEY, data.persons)
   if (data.manifest) await putStored(MANIFEST_KEY, data.manifest)
 
+  // Restore the default key salt so this device derives the same encryption key as the source device.
+  if (data.defaultKeySalt && !localStorage.getItem("wallet_default_key_salt")) {
+    localStorage.setItem("wallet_default_key_salt", data.defaultKeySalt)
+  }
+
   const enc = await getEncryptionKey()
   if (!enc) return
 
-  if (data.blobs) {
+  async function restoreStore(storeName: string, entries: Record<string, string>, encryptionKey: { key: CryptoKey; fallback?: CryptoKey }) {
     const db = await openDB()
-    const blobTx = db.transaction(BLOB_STORE, "readwrite")
-    for (const [key, plaintext] of Object.entries(data.blobs)) {
-      const encrypted = await SecureWallet.encryptData(plaintext, enc.key)
-      blobTx.objectStore(BLOB_STORE).put(encrypted, key)
+    const tx = db.transaction(storeName, "readwrite")
+    const store = tx.objectStore(storeName)
+    for (const [key, value] of Object.entries(entries)) {
+      // Try to decrypt — if it works, data is already encrypted (export fallback stored ciphertext as-is)
+      let alreadyEncrypted = false
+      try {
+        await SecureWallet.decryptData(value, encryptionKey.key)
+        alreadyEncrypted = true
+      } catch {
+        if (encryptionKey.fallback) {
+          try {
+            await SecureWallet.decryptData(value, encryptionKey.fallback)
+            alreadyEncrypted = true
+          } catch {
+            // Not encrypted — needs encryption
+          }
+        }
+      }
+      if (alreadyEncrypted) {
+        store.put(value, key)
+      } else {
+        const encrypted = await SecureWallet.encryptData(value, encryptionKey.key)
+        store.put(encrypted, key)
+      }
     }
-    await txDone(blobTx)
+    await txDone(tx)
   }
 
-  if (data.thumbnails) {
-    const db = await openDB()
-    const thumbTx = db.transaction(THUMB_STORE, "readwrite")
-    for (const [key, plaintext] of Object.entries(data.thumbnails)) {
-      const encrypted = await SecureWallet.encryptData(plaintext, enc.key)
-      thumbTx.objectStore(THUMB_STORE).put(encrypted, key)
-    }
-    await txDone(thumbTx)
-  }
+  if (data.blobs) await restoreStore(BLOB_STORE, data.blobs, enc)
+  if (data.thumbnails) await restoreStore(THUMB_STORE, data.thumbnails, enc)
 }
 
 export function filterTombstonedDocuments(
@@ -727,8 +776,7 @@ export function filterTombstonedPersons(
   return persons.filter((p) => !deleted.has(p.id))
 }
 
-export async function cleanupOrphanedBlobs(manifest: StoredDocument[]) {
-  const validKeys = new Set<string>()
+export async function cleanupOrphanedBlobs(manifest: StoredDocument[]) {  const validKeys = new Set<string>()
   for (const doc of manifest) {
     if (doc.pages?.length) {
       for (const p of doc.pages) {
@@ -758,5 +806,88 @@ export async function cleanupOrphanedBlobs(manifest: StoredDocument[]) {
   for (const key of allThumbs) {
     if (!validKeys.has(key)) thumbStore.delete(key)
   }
+  await txDone(tx)
+}
+
+// --- Dev tools: vault diagnostics & test helpers -----------------------------
+
+export interface VaultDiagnostics {
+  persons: number
+  documents: number
+  expectedBlobKeys: string[]
+  foundBlobKeys: string[]
+  expectedThumbKeys: string[]
+  foundThumbKeys: string[]
+  undecryptable: string[]
+}
+
+function idbGetAllKeys(db: IDBDatabase, storeName: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(storeName).objectStore(storeName).getAllKeys()
+    req.onsuccess = () => resolve(req.result as string[])
+    req.onerror = () => reject(req.error)
+  })
+}
+
+function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(storeName).objectStore(storeName).get(key)
+    req.onsuccess = () => resolve(req.result as string | undefined)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/** Compare manifest expectations against what is actually in IndexedDB + decryptable. */
+export async function getVaultDiagnostics(): Promise<VaultDiagnostics> {
+  const [persons, manifest] = await Promise.all([getPersons(), getManifest()])
+  const expectedBlobKeys: string[] = []
+  const expectedThumbKeys: string[] = []
+  for (const doc of manifest) {
+    if (doc.pages?.length) {
+      for (const p of doc.pages) {
+        expectedBlobKeys.push(`${doc.id}::${p.id}`)
+        if (p.hasThumbnail) expectedThumbKeys.push(`${doc.id}::${p.id}`)
+      }
+    } else {
+      expectedBlobKeys.push(doc.id)
+      if (doc.metadata?.hasThumbnail) expectedThumbKeys.push(doc.id)
+    }
+  }
+  const db = await openDB()
+  const [foundBlobKeys, foundThumbKeys] = await Promise.all([
+    idbGetAllKeys(db, BLOB_STORE),
+    idbGetAllKeys(db, THUMB_STORE),
+  ])
+  const undecryptable: string[] = []
+  const enc = await getEncryptionKey()
+  if (enc) {
+    for (const key of foundBlobKeys) {
+      const rec = await idbGet(db, BLOB_STORE, key)
+      if (rec === undefined) continue
+      try {
+        await decryptWithFallback(rec, enc)
+      } catch {
+        undecryptable.push(key)
+      }
+    }
+  }
+  return {
+    persons: persons.length,
+    documents: manifest.length,
+    expectedBlobKeys,
+    foundBlobKeys,
+    expectedThumbKeys,
+    foundThumbKeys,
+    undecryptable,
+  }
+}
+
+/** Delete only the IndexedDB file/thumbnail stores, keeping localStorage metadata.
+ *  Reproduces the cross-device symptom: metadata visible, content gone. */
+export async function clearVaultBlobs(): Promise<void> {
+  const db = await openDB()
+  const tx = db.transaction([BLOB_STORE, THUMB_STORE], "readwrite")
+  tx.objectStore(BLOB_STORE).clear()
+  tx.objectStore(THUMB_STORE).clear()
   await txDone(tx)
 }

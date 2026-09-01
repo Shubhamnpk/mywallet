@@ -23,7 +23,7 @@ import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 export function SettingsPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { userProfile, showOnboarding } = useWalletData()
+  const { userProfile } = useWalletData()
   const isMobile = useIsMobile()
   const { isDeveloperMode } = useDeveloperMode()
   const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "about", "developer"])
@@ -48,28 +48,21 @@ export function SettingsPageClient() {
     },
   };
 
-  // Redirect to home if no user profile or onboarding is needed
+  // Validate session on page load
   useEffect(() => {
-    if (!userProfile || showOnboarding) {
-      router.push('/dashboard')
-      return
-    }
-
-    // Validate session on page load
     if (!SessionManager.isSessionValid()) {
       const event = new CustomEvent('wallet-session-expired')
       window.dispatchEvent(event)
     }
-  }, [userProfile, showOnboarding])
+  }, [])
 
-  const showMobileSettings = Boolean(isMobile && userProfile && !showOnboarding)
+  const showMobileSettings = Boolean(isMobile && userProfile)
   const handleTabChange = (value: string) => {
     if (!validTabs.has(value)) return
     router.replace(`/settings?tab=${value}`)
   }
 
-  // Show loading while redirecting
-  if (!userProfile || showOnboarding) {
+  if (!userProfile) {
     return <FullPageSpinner />
   }
 

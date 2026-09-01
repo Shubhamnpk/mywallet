@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
+const NEPSE_API = process.env.NEPSE_API_URL || "https://nepse.bitnepal.net"
 const LTP_BASE_URL = "https://shubhamnpk.github.io/yonepse/data/ltp"
 const DEFAULT_MONTH_LIMIT = 24
 const MAX_MONTH_LIMIT = 120
@@ -38,6 +39,11 @@ type LtpPoint = {
   trades?: number
 }
 
+type NepseManGraphTick = {
+  contractRate: number | null
+  time: number
+}
+
 const normalizeSymbol = (value: string) => value.trim().toUpperCase()
 
 const asFiniteNumber = (value: unknown) => {
@@ -48,6 +54,41 @@ const asFiniteNumber = (value: unknown) => {
 const isDateKey = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
 
 const isMonthKey = (value: string) => /^\d{4}-\d{2}$/.test(value)
+
+const formatUnixToTime = (ts: number) => {
+  const d = new Date(ts * 1000)
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`
+}
+
+const formatUnixToDate = (ts: number) => {
+  const d = new Date(ts * 1000)
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`
+}
+
+async function fetchIntradayFromNepse(symbol: string): Promise<{ date: string; points: LtpPoint[] } | null> {
+  const response = await fetch(`${NEPSE_API}/api/v1/securities/${symbol}/graph`, {
+    next: { revalidate: 60 },
+    signal: AbortSignal.timeout(5000),
+  })
+
+  if (!response.ok) return null
+
+  const result = await response.json()
+  const ticks: NepseManGraphTick[] = result?.data
+  if (!Array.isArray(ticks) || ticks.length === 0) return null
+
+  const points: LtpPoint[] = ticks
+    .filter((t) => t.contractRate != null && t.contractRate > 0 && t.time)
+    .map((t) => ({
+      date: formatUnixToDate(t.time),
+      time: formatUnixToTime(t.time),
+      ltp: t.contractRate!,
+    }))
+
+  if (points.length === 0) return null
+
+  return { date: points[0].date, points }
+}
 
 async function fetchJson<T>(path: string, revalidate: number): Promise<T> {
   const response = await fetch(`${LTP_BASE_URL}${path}`, {
@@ -90,7 +131,6 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const symbol = normalizeSymbol(searchParams.get("symbol") || "")
   const interval = searchParams.get("interval") === "intraday" ? "intraday" : "daily"
-  const requestedDate = searchParams.get("date") || ""
   const requestedMonth = searchParams.get("month") || ""
   const requestedLimit = Number(searchParams.get("months") || DEFAULT_MONTH_LIMIT)
   const monthLimit = Math.min(
@@ -110,25 +150,49 @@ export async function GET(request: NextRequest) {
     const manifest = await fetchJson<LtpManifest>("/manifest.json", 300)
 
     if (interval === "intraday") {
-      const date = isDateKey(requestedDate)
-        ? requestedDate
-        : manifest.latestDate || manifest.availableDays?.at(-1)
+      const requestedDate = searchParams.get("date") || ""
+      const date = isDateKey(requestedDate) ? requestedDate : ""
 
-      if (!date) {
+      // Primary: nepse.bitnepal.net (live intraday ticks)
+      try {
+        const nepseData = await fetchIntradayFromNepse(symbol)
+        if (nepseData) {
+          const filtered = date
+            ? nepseData.points.filter((p) => p.date === date)
+            : nepseData.points
+
+          if (filtered.length > 0) {
+            return NextResponse.json({
+              symbol,
+              interval,
+              date: date || nepseData.date,
+              points: filtered,
+              manifest,
+            })
+          }
+        }
+      } catch {
+        // silent — fall through to yonepse
+      }
+
+      // Fallback: yonepse (static scraper)
+      const fallbackDate = date || manifest.latestDate || manifest.availableDays?.at(-1)
+
+      if (!fallbackDate) {
         return NextResponse.json({ symbol, interval, points: [], manifest })
       }
 
-      const dayPayload = await fetchJson<LtpDailyPayload>(`/daily/${date}.json`, 60)
+      const dayPayload = await fetchJson<LtpDailyPayload>(`/daily/${fallbackDate}.json`, 60)
       const rows = Array.isArray(dayPayload.series?.[symbol]) ? dayPayload.series[symbol] : []
       const points = expandRows(rows, dayPayload.times || [], "time").map((point) => ({
         ...point,
-        date,
+        date: fallbackDate,
       }))
 
       return NextResponse.json({
         symbol,
         interval,
-        date,
+        date: fallbackDate,
         points,
         updatedAt: dayPayload.updatedAt,
         manifest,

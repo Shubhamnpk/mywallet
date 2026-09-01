@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { OTPInput } from "input-otp"
 import { SessionManager } from "@/lib/session-manager"
+import { SecureKeyManager } from "@/lib/key-manager"
 import { useAuthentication } from "@/hooks/use-authentication"
 import { SecurePinManager } from "@/lib/secure-pin-manager"
 import {
@@ -500,7 +501,7 @@ function SessionPinScreen({ onUnlock, onError, onEmergencyPinUsed, onNewPinSetup
 
 export function SessionGuard({ children }: SessionGuardProps) {
   const pathname = usePathname()
-  const { hasPin, validatePin, validateEmergencyPin } = useAuthentication()
+  const { hasPin, isLoading, validatePin, validateEmergencyPin } = useAuthentication()
   const [sessionInvalidated, setSessionInvalidated] = useState(false)
   const [emergencyPinUsed, setEmergencyPinUsed] = useState(false)
   const [showNewPinSetup, setShowNewPinSetup] = useState(false)
@@ -522,7 +523,7 @@ export function SessionGuard({ children }: SessionGuardProps) {
 
     // Listen for window focus events to validate session
     const handleWindowFocus = () => {
-      if (hasPin && !SessionManager.isSessionValid()) {
+      if (!SessionManager.isSessionValid() || !SecureKeyManager.isKeyCacheValid()) {
         setSessionInvalidated(true)
       }
     }
@@ -534,11 +535,27 @@ export function SessionGuard({ children }: SessionGuardProps) {
       window.removeEventListener('wallet-session-expired', handleSessionExpiry)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [hasPin])
+  }, [])
+
+  // If session is valid but encryption key is gone (hard refresh), force re-auth
+  useEffect(() => {
+    if (hasPin && !isLoading && !sessionInvalidated && SessionManager.isSessionValid() && !SecureKeyManager.isKeyCacheValid()) {
+      setSessionInvalidated(true)
+    }
+  }, [hasPin, isLoading, sessionInvalidated])
 
   // Public pages shouldn't require wallet unlock because they don't need access to private wallet data.
   if (isPublicRoute) {
     return <>{children}</>
+  }
+
+  // Still determining auth state — block rendering so wallet store can't start loading
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+      </div>
+    )
   }
 
   // No PIN set — no lock screen needed
@@ -546,8 +563,8 @@ export function SessionGuard({ children }: SessionGuardProps) {
     return <>{children}</>
   }
 
-  // Valid session exists — let them through immediately (no flash)
-  if (!sessionInvalidated && SessionManager.isSessionValid()) {
+  // Valid session AND encryption key available — let them through
+  if (!sessionInvalidated && SessionManager.isSessionValid() && SecureKeyManager.isKeyCacheValid()) {
     return <>{children}</>
   }
 
