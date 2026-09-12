@@ -108,7 +108,7 @@ export function IPODetailModal({ ipo, open, onOpenChange }: IPODetailModalProps)
         const promise = applyMeroShareIPO(
             credentials,
             ipo?.company || "",
-            credentials.preferredKitta || 0,
+            credentials.preferredKitta || 10,
             source,
             { showBrowser: false }
         )

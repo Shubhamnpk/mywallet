@@ -1296,25 +1296,26 @@ export function PortfolioList({ deepLink, onDeepLinkHandled }: { deepLink?: Stoc
 
                     if (!queuedSymbols.has(tx.symbol)) {
                         queuedSymbols.add(tx.symbol)
+                        const prefillSymbol = !isSell && tx.price > 0
                         queue.push({
                             id: tx.symbol,
                             symbol: tx.symbol,
-                            defaultPrice: isIpo ? tx.price : 0,
+                            defaultPrice: prefillSymbol ? tx.price : 0,
                             type: isIpo ? "IPO" : isSell ? "Sell" : "Buy",
                         })
-                        initialPrices[tx.symbol] = isIpo && tx.price > 0 ? String(tx.price) : ""
+                        initialPrices[tx.symbol] = prefillSymbol ? String(tx.price) : ""
                     }
                     queue.push({
                         id: tx.rowKey,
                         symbol: tx.symbol,
-                        defaultPrice: isIpo ? tx.price : 0,
+                        defaultPrice: !isSell && tx.price > 0 ? tx.price : 0,
                         type: isIpo ? "IPO" : isSell ? "Sell" : "Buy",
                         priceOptional: !isIpo,
                         date: tx.date,
                         quantity: tx.quantity,
                         description: tx.description,
                     })
-                    initialTransactionPrices[tx.rowKey] = isIpo && tx.price > 0 ? String(tx.price) : ""
+                    initialTransactionPrices[tx.rowKey] = !isSell && tx.price > 0 ? String(tx.price) : ""
                 }
 
                 setPriceReviewQueue(queue)

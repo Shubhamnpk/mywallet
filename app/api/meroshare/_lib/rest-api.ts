@@ -90,6 +90,7 @@ interface BankContext {
   accountNumber: string
   customerId: number
   accountBranchId: number
+  accountTypeId: number | null
   applyBoid: string
   bankId: number
   crnNumber: string
@@ -574,11 +575,67 @@ export class MeroShareRestClient {
     return out
   }
 
-  /** Bank context (myDetail + bankRequest) - only needed for IPO applications, loaded lazily. */
+  /** Bank context - mirrors meroshare-next: bank list -> bank detail -> bankRequest. Falls back to myDetail flow. */
   private async ensureBankContext(): Promise<BankContext> {
     if (this.bankContext) return this.bankContext
 
     const ctx = await this.ensureAccountContext()
+
+    // Primary: proper CDSC bank flow (same as meroshare-next)
+    try {
+      const bankListResp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/bank/`)
+      const bankList = (await this.assertOk(bankListResp, "bank list")) as any[]
+      if (Array.isArray(bankList) && bankList.length > 0) {
+        let chosen: any = bankList[0]
+        let myDetailForCode: Record<string, unknown> | null = null
+        try {
+          const mdResp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShareView/myDetail/${ctx.demat}`)
+          myDetailForCode = (await this.assertOk(mdResp, "my bank detail")) as Record<string, unknown> | null
+          const code = String(myDetailForCode?.bankCode ?? "").trim()
+          if (code) {
+            const match = bankList.find((b: any) => String(b.code ?? b.bankCode ?? "") === code)
+            if (match) chosen = match
+          }
+        } catch {}
+        const bankId = Number(chosen.id ?? chosen.bankId ?? 0)
+        if (bankId) {
+          const detailResp = await this.request("GET", `${MEROSHARE_BASE}/api/meroShare/bank/${bankId}`)
+          const detailRaw = (await this.assertOk(detailResp, "bank detail")) as any
+          const detail = Array.isArray(detailRaw) ? detailRaw[0] : detailRaw
+          if (detail && typeof detail === "object") {
+            let bankCode = String(chosen.code ?? chosen.bankCode ?? myDetailForCode?.bankCode ?? "").trim()
+            let crnNumber = ""
+            let applyBoid = ctx.boid
+            if (bankCode) {
+              try {
+                const brResp = await this.request("GET", `${MEROSHARE_BASE}/api/bankRequest/${bankCode}`)
+                const br = (await this.assertOk(brResp, "bank request")) as Record<string, unknown> | null
+                if (br) {
+                  crnNumber = String(br.crnNumber ?? (br as any).crn ?? "")
+                  if (br.boid) applyBoid = String(br.boid)
+                }
+              } catch {}
+            }
+            const candidate: BankContext = {
+              bankCode,
+              accountNumber: String(detail.accountNumber ?? (detail as any).accountNo ?? myDetailForCode?.accountNumber ?? ""),
+              customerId: Number(detail.id ?? (detail as any).customerId ?? 0),
+              accountBranchId: Number((detail as any).accountBranchId ?? (detail as any).branchId ?? (detail as any).accountBranch?.id ?? 0),
+              accountTypeId: (detail as any).accountTypeId != null ? Number((detail as any).accountTypeId) : null,
+              applyBoid,
+              bankId,
+              crnNumber,
+            }
+            if (candidate.customerId && candidate.accountBranchId && candidate.bankId && candidate.accountNumber) {
+              this.bankContext = candidate
+              return this.bankContext
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // Fallback: legacy myDetail + bankRequest (kept for compatibility)
     const myDetail = (await this.assertOk(
       await this.request("GET", `${MEROSHARE_BASE}/api/meroShareView/myDetail/${ctx.demat}`),
       "my bank detail",
@@ -595,11 +652,13 @@ export class MeroShareRestClient {
     const nested = (key: string) =>
       (bankRequest?.[key] as Record<string, unknown> | undefined) ?? {}
 
+    const fallbackDetail = bankRequest as Record<string, unknown> | null
     this.bankContext = {
       bankCode,
       accountNumber: String(myDetail?.accountNumber ?? ""),
-      customerId: Number(bankRequest?.id ?? 0),
+      customerId: Number(fallbackDetail?.id ?? 0),
       accountBranchId: Number(nested("branch").id ?? 0),
+      accountTypeId: (nested("accountType") as any)?.id != null ? Number((nested("accountType") as any).id) : null,
       applyBoid: String(bankRequest?.boid ?? "") || ctx.boid,
       bankId: Number(nested("bank").id ?? 0),
       crnNumber: String(bankRequest?.crnNumber ?? ""),
@@ -822,28 +881,39 @@ export class MeroShareRestClient {
     opts: { companyShareId: number | string; number_of_shares: number },
   ): Promise<Record<string, unknown>> {
     const ctx = await this.ensureAccountContext()
-    const bank = await this.ensureBankContext().catch(() => null)
+    const bank = await this.ensureBankContext()
     const pin = credentials.pin
     if (!pin) {
       throw new MeroShareRestError("Transaction PIN is required to apply for an IPO.")
     }
-
-    // Mirrors the exact reference payload:
-    //   boid = bankRequest.boid (applyBoid), demat = ownDetail.demat,
-    //   accountBranchId = bankRequest.branch.id, customerId = bankRequest.id,
-    //   bankId = bankRequest.bank.id, accountNumber = myDetail.accountNumber.
-    return {
-      accountBranchId: bank?.accountBranchId || null,
-      accountNumber: bank?.accountNumber || null,
-      appliedKitta: String(opts.number_of_shares),
-      bankId: bank?.bankId || null,
-      boid: bank?.applyBoid || ctx.boid,
-      companyShareId: String(opts.companyShareId),
-      crnNumber: credentials.crn || bank?.crnNumber || null,
-      customerId: bank?.customerId || null,
-      demat: ctx.demat,
-      transactionPIN: pin,
+    // Validate bank context - mirrors meroshare-next which throws before CDSC call if any field missing
+    const missing: string[] = []
+    if (!bank.accountBranchId) missing.push("accountBranchId")
+    if (!bank.accountNumber) missing.push("accountNumber")
+    if (!bank.bankId) missing.push("bankId")
+    if (!bank.customerId) missing.push("customerId")
+    const crn = (credentials.crn || bank.crnNumber || "").trim()
+    if (!crn) missing.push("crnNumber")
+    if (missing.length) {
+      throw new MeroShareRestError(`Bank details incomplete for IPO apply (missing: ${missing.join(", ")}). Please re-sync bank in Settings -> MeroShare.`)
     }
+
+    // Exact payload shape as meroshare-next api.server.ts submitIpoApplication (numbers, not strings)
+    const payload: Record<string, unknown> = {
+      accountBranchId: Number(bank.accountBranchId),
+      accountNumber: String(bank.accountNumber),
+      appliedKitta: Number(opts.number_of_shares),
+      bankId: Number(bank.bankId),
+      boid: String(bank.applyBoid || ctx.boid),
+      companyShareId: Number(opts.companyShareId),
+      crnNumber: String(crn),
+      customerId: Number(bank.customerId),
+      demat: String(ctx.demat),
+      shareCriteriaId: null,
+      transactionPIN: String(pin),
+    }
+    if (bank.accountTypeId != null) payload.accountTypeId = Number(bank.accountTypeId)
+    return payload
   }
 
   /** List companies that have uploaded IPO results on the iporesult host. */
@@ -1124,5 +1194,50 @@ export class MeroShareRestClient {
     if (jaccard >= 0.5) return 0.5 + 0.4 * jaccard
     const lev = this.levenshteinSimilarity(needle, candidate)
     return lev >= 0.75 ? lev : 0
+  }
+
+  // ── WACC (myPurchase) — mirrors meroshare-next api.server.ts:328 ──
+
+  async getWaccScrips(): Promise<{ scrips: string[]; failed?: boolean }> {
+    let res: unknown = null
+    let postError: unknown = null
+    try {
+      const resp = await this.request("POST", `${MEROSHARE_BASE}/api/myPurchase/share/`, { isFilterByAllScript: false })
+      res = await this.assertOk(resp, "wacc scrips")
+    } catch (e) {
+      postError = e
+    }
+    if (res == null) {
+      try {
+        const resp = await this.request("GET", `${MEROSHARE_BASE}/api/myPurchase/share/`)
+        res = await this.assertOk(resp, "wacc scrips")
+      } catch (e) {
+        return { scrips: [], failed: true }
+      }
+    }
+    const rows = Array.isArray(res) ? res : (res as any)?.object ?? (res as any)?.scrips ?? []
+    const scrips = (Array.isArray(rows) ? rows : [])
+      .map((r: any) => (typeof r === "string" ? r : r?.scrip ?? ""))
+      .filter((s: string) => typeof s === "string" && s.trim())
+      .map((s: string) => s.trim().toUpperCase())
+    return { scrips }
+  }
+
+  async getWaccPending(scrip: string): Promise<Record<string, unknown>> {
+    const ctx = await this.ensureAccountContext()
+    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/myPurchase/search/wacc/`, { demat: ctx.demat, scrip: scrip.toUpperCase() })
+    return (await this.assertOk(resp, "wacc pending")) as Record<string, unknown>
+  }
+
+  async getWaccReport(): Promise<Record<string, unknown>> {
+    const ctx = await this.ensureAccountContext()
+    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/myPurchase/waccReport/`, { demat: ctx.demat })
+    return (await this.assertOk(resp, "wacc report")) as Record<string, unknown>
+  }
+
+  async submitWacc(rows: Record<string, unknown>[]): Promise<unknown> {
+    const payload = rows.map((r) => ({ ...r, isEdit: true }))
+    const resp = await this.request("POST", `${MEROSHARE_BASE}/api/myPurchase/upload/`, payload)
+    return this.assertOk(resp, "wacc submit")
   }
 }
