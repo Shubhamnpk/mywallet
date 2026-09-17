@@ -9,7 +9,6 @@ const MAX_MONTH_LIMIT = 120
 type LtpManifest = {
   latestDate?: string
   availableMonths?: string[]
-  availableDays?: string[]
   finalizedThrough?: string
   latestStatus?: string
 }
@@ -17,14 +16,6 @@ type LtpManifest = {
 type LtpMonthlyPayload = {
   month?: string
   dates?: string[]
-  columns?: string[]
-  series?: Record<string, unknown[]>
-  updatedAt?: string
-}
-
-type LtpDailyPayload = {
-  date?: string
-  times?: string[]
   columns?: string[]
   series?: Record<string, unknown[]>
   updatedAt?: string
@@ -175,28 +166,8 @@ export async function GET(request: NextRequest) {
         // silent — fall through to yonepse
       }
 
-      // Fallback: yonepse (static scraper)
-      const fallbackDate = date || manifest.latestDate || manifest.availableDays?.at(-1)
-
-      if (!fallbackDate) {
-        return NextResponse.json({ symbol, interval, points: [], manifest })
-      }
-
-      const dayPayload = await fetchJson<LtpDailyPayload>(`/daily/${fallbackDate}.json`, 60)
-      const rows = Array.isArray(dayPayload.series?.[symbol]) ? dayPayload.series[symbol] : []
-      const points = expandRows(rows, dayPayload.times || [], "time").map((point) => ({
-        ...point,
-        date: fallbackDate,
-      }))
-
-      return NextResponse.json({
-        symbol,
-        interval,
-        date: fallbackDate,
-        points,
-        updatedAt: dayPayload.updatedAt,
-        manifest,
-      })
+      // yonepse daily removed — no fallback for intraday, return primary-only result
+      return NextResponse.json({ symbol, interval, points: [], manifest })
     }
 
     const availableMonths = (manifest.availableMonths || []).filter(isMonthKey).sort()

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api-error"
 
-const NEPSEMAN_API = process.env.NEPSEMAN_API_URL || "https://nepse.bitnepal.net"
+const NEPSEMAN_API = process.env.NEPSE_API_URL || "https://nepse.bitnepal.net"
 const FALLBACK_URL = "https://shubhamnpk.github.io/yonepse/data/market/status.json"
 
 /**

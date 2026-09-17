@@ -8,7 +8,6 @@ const MAX_MONTH_LIMIT = 120
 type LtpManifest = {
   latestDate?: string
   availableMonths?: string[]
-  availableDays?: string[]
   finalizedThrough?: string
   latestStatus?: string
 }
