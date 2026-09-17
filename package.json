@@ -1,6 +1,6 @@
 {
   "name": "mywallet",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "private": true,
   "scripts": {
     "prebuild": "bun scripts/sync-manifest-version.mjs",

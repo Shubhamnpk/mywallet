@@ -46,50 +46,36 @@ function transformNepseManData(stocks: NepseManStock[]) {
 
 export async function GET() {
   let lastError = "Data sources returned empty or invalid data"
+  let primary: ReturnType<typeof transformNepseManData> = []
+  let fallback: unknown[] = []
 
-  // Primary: nepse.bitnepal.net (live data)
   try {
-    const response = await fetch(`${NEPSE_API}/api/v1/prices/today?persist=false`, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(5000),
-    })
+    const r = await fetch(`${NEPSE_API}/api/v1/prices/today?persist=false`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(5000) })
+    if (r.ok) {
+      const j = await r.json()
+      const stocks = j?.data ?? j
+      if (Array.isArray(stocks) && stocks.length > 0) primary = transformNepseManData(stocks)
+      else lastError = "nepse.bitnepal.net returned empty data"
+    } else lastError = `nepse.bitnepal.net returned ${r.status}`
+  } catch { lastError = "Connection timeout or network error on nepse.bitnepal.net" }
 
-    if (response.ok) {
-      const result = await response.json()
-      const stocks = result?.data ?? result
-      if (Array.isArray(stocks) && stocks.length > 0) {
-        return NextResponse.json(transformNepseManData(stocks))
-      }
-      lastError = "nepse.bitnepal.net returned empty data"
-    } else {
-      lastError = `nepse.bitnepal.net returned ${response.status}`
-    }
-  } catch {
-    lastError = "Connection timeout or network error on nepse.bitnepal.net"
-  }
-
-  // Fallback: yonepse (static scraper)
   try {
-    const response = await fetch(YONEPSE_FALLBACK, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(5000),
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      const prices = Array.isArray(data) ? data : (data.data || data.prices || [])
-
-      if (Array.isArray(prices) && prices.length > 0) {
-        return NextResponse.json(prices)
-      }
+    const r = await fetch(YONEPSE_FALLBACK, { next: { revalidate: 300 }, signal: AbortSignal.timeout(5000) })
+    if (r.ok) {
+      const d = await r.json()
+      const prices = Array.isArray(d) ? d : (d.data || d.prices || [])
+      if (Array.isArray(prices) && prices.length > 0) fallback = prices
     }
-  } catch {
-    // silent
-  }
+  } catch { /* silent */ }
 
-  return errorResponse({
-    status: 503,
-    code: "UPSTREAM_UNREACHABLE",
-    message: `Nepal Stock Exchange data is currently unreachable. ${lastError}`,
-  })
+  if (primary.length === 0 && fallback.length === 0) {
+    return errorResponse({ status: 503, code: "UPSTREAM_UNREACHABLE", message: `Nepal Stock Exchange data is currently unreachable. ${lastError}` })
+  }
+  if (primary.length === 0) return NextResponse.json(fallback)
+  if (fallback.length === 0) return NextResponse.json(primary)
+
+  // Merge: yonepse fills gaps (mutual funds not in upstream)
+  const seen = new Set(primary.map((p) => p.symbol))
+  const missing = (fallback as { symbol: string }[]).filter((f) => f.symbol && !seen.has(f.symbol))
+  return NextResponse.json([...primary, ...missing])
 }
