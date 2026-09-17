@@ -17,7 +17,7 @@ import { CURRENCIES, getCurrencySymbol, getCurrencyLabel } from "@/lib/currency"
 import { DeleteDataDialog } from "./delete-data-dialog"
 import { useAchievements } from "@/hooks/use-achievements"
 import { AchievementsProfile } from "@/components/tools/achievements/achievements-profile"
-import { compressImageToDataUrl } from "@/lib/image-utils"
+import { compressImageToDataUrl } from "@/lib/image-compression"
 import { getCalendarSystem } from "@/lib/app-calendar"
 import { deleteAllDocuments, downloadAllDocumentsAsZip, getDocumentCount } from "@/lib/document-storage"
 

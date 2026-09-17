@@ -36,7 +36,7 @@ import { SecurePinManager } from '@/lib/secure-pin-manager';
 import { SessionManager } from '@/lib/session-manager';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Spinner } from "@/components/ui/spinner";
-import { compressImageToDataUrl } from '@/lib/image-utils';
+import { compressImageToDataUrl } from '@/lib/image-compression';
 
 interface OnboardingProps {
   onComplete: (userProfile: UserProfile) => void;
@@ -405,7 +405,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 variant="ghost"
                 size="sm"
                 className="absolute left-2 top-2 text-muted-foreground hover:text-foreground z-10"
-                onClick={() => router.push('/welcome')}
+                onClick={() => router.push('/')}
                 disabled={isLoading}
               >
                 <ArrowLeft className="w-4 h-4 mr-1" />

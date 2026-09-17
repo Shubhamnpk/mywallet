@@ -1033,7 +1033,14 @@ export function DocumentViewer({ docId, onClose, persons, onDocumentUpdated }: {
           ) : (
             <div className="h-full flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
               <File className="h-10 w-10 text-muted-foreground/30" />
-              <p>Preview not available for this file type</p>
+              {pages.some((p) => p.mimeType.startsWith("image/") || p.mimeType === "application/pdf" || p.mimeType === "text/plain") && !blobUrl && !textContent ? (
+                <>
+                  <p>Content not found on this device</p>
+                  <p className="text-xs">Restore a backup that includes the Document Vault to view this file.</p>
+                </>
+              ) : (
+                <p>Preview not available for this file type</p>
+              )}
               <Button variant="outline" size="sm" className="h-8 text-xs mt-2" onClick={() => downloadDocument(doc)}>
                 <Download className="h-3 w-3 mr-1" />
                 Download to view

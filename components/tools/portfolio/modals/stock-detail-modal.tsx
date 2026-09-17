@@ -56,6 +56,7 @@ type StockNewsItem = (NepseDisclosure | NepseExchangeMessage) & {
 
 type LtpHistoryPoint = {
     date: string
+    time?: string
     ltp: number
     volume?: number
     turnover?: number
@@ -141,8 +142,8 @@ const getFiscalYearSortValue = (year: string) => {
     return match ? Number(match[1]) : 0
 }
 
-type PriceHistoryRange = "1M" | "6M" | "1Y" | "5Y" | "ALL"
-type PriceHistoryFrequency = "daily" | "weekly" | "monthly" | "yearly"
+type PriceHistoryRange = "1D" | "1M" | "6M" | "1Y" | "5Y" | "ALL"
+type PriceHistoryFrequency = "daily" | "weekly" | "monthly" | "yearly" | "1min" | "1hr" | "6hr"
 
 const PRICE_HISTORY_FREQUENCIES: Array<{ value: PriceHistoryFrequency; label: string }> = [
     { value: "daily", label: "1D" },
@@ -151,7 +152,14 @@ const PRICE_HISTORY_FREQUENCIES: Array<{ value: PriceHistoryFrequency; label: st
     { value: "yearly", label: "1Y" },
 ]
 
+const INTRADAY_FREQUENCIES: Array<{ value: PriceHistoryFrequency; label: string }> = [
+    { value: "1min", label: "1m" },
+    { value: "1hr", label: "1H" },
+    { value: "6hr", label: "6H" },
+]
+
 const PRICE_HISTORY_RANGES: Array<{ value: PriceHistoryRange; label: string; months: number; grouping: "daily" | "weekly" | "monthly" }> = [
+    { value: "1D", label: "1D", months: 0, grouping: "daily" },
     { value: "1M", label: "1M", months: 1, grouping: "daily" },
     { value: "6M", label: "6M", months: 6, grouping: "weekly" },
     { value: "1Y", label: "1Y", months: 12, grouping: "weekly" },
@@ -169,10 +177,11 @@ const getWeekKey = (date: Date) => {
 }
 
 const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: PriceHistoryFrequency) => {
-    if (grouping === "daily") return points
+    if (grouping === "daily" || grouping === "1min") return points
 
     const buckets = new Map<string, {
         date: string
+        time?: string
         ltpTotal: number
         volumeTotal: number
         turnoverTotal: number
@@ -184,11 +193,26 @@ const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: PriceHistory
     }>()
 
     points.forEach((point) => {
-        const parsed = new Date(`${point.date}T00:00:00Z`)
-        if (Number.isNaN(parsed.getTime())) return
-        const key = grouping === "yearly" ? point.date.slice(0, 4) : grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+        let key: string
+        let label: string
+        let timeLabel: string | undefined
+
+        if (grouping === "1hr" || grouping === "6hr") {
+            const hour = point.time ? parseInt(point.time.split(":")[0], 10) : 0
+            const bucketHour = grouping === "6hr" ? Math.floor(hour / 6) * 6 : hour
+            key = `${point.date}-${bucketHour.toString().padStart(2, "0")}`
+            label = point.date
+            timeLabel = `${bucketHour.toString().padStart(2, "0")}:00`
+        } else {
+            const parsed = new Date(`${point.date}T00:00:00Z`)
+            if (Number.isNaN(parsed.getTime())) return
+            key = grouping === "yearly" ? point.date.slice(0, 4) : grouping === "monthly" ? point.date.slice(0, 7) : getWeekKey(parsed)
+            label = point.date
+        }
+
         const existing = buckets.get(key) || {
-            date: point.date,
+            date: label,
+            time: timeLabel,
             ltpTotal: 0,
             volumeTotal: 0,
             turnoverTotal: 0,
@@ -199,7 +223,7 @@ const aggregatePriceHistory = (points: LtpHistoryPoint[], grouping: PriceHistory
             points: 0,
         }
 
-        existing.date = point.date
+        existing.date = label
         existing.ltpTotal += point.ltp
         existing.points += 1
         if (Number.isFinite(point.volume)) {
@@ -294,6 +318,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
     const [priceHistoryCache, setPriceHistoryCache] = useState<Partial<Record<PriceHistoryRange, LtpHistoryPoint[]>>>({})
     const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false)
     const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null)
+    const [intradayAvailable, setIntradayAvailable] = useState<boolean | null>(null)
     const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null)
     const [companyProfileLoadedSymbol, setCompanyProfileLoadedSymbol] = useState("")
     const [isCompanyProfileLoading, setIsCompanyProfileLoading] = useState(false)
@@ -357,6 +382,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
             setPriceHistoryRange("1M")
             setPriceHistoryCache({})
             setPriceHistoryError(null)
+            setIntradayAvailable(null)
             setShowCompanyDetails(false)
             setCompanyProfile(null)
             setCompanyProfileLoadedSymbol("")
@@ -378,6 +404,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         setPriceHistoryRange("1M")
         setPriceHistoryCache({})
         setPriceHistoryError(null)
+        setIntradayAvailable(null)
         setShowCompanyDetails(false)
         setCompanyProfile(null)
         setCompanyProfileLoadedSymbol("")
@@ -775,8 +802,38 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         setPriceHistoryError(null)
         try {
             const symbol = normalizeStockSymbol(item.symbol)
+
+            // First load: probe intraday to decide default range
+            if (intradayAvailable === null && range === "1M") {
+                try {
+                    const probe = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&interval=intraday`)
+                    const probeData = await probe.json()
+                    const probePoints = Array.isArray(probeData?.points) ? probeData.points : []
+                    const hasIntraday = probePoints.length > 0
+                    setIntradayAvailable(hasIntraday)
+
+                    if (hasIntraday) {
+                        // Cache intraday and switch to 1D
+                        setPriceHistoryCache((current) => ({
+                            ...current,
+                            "1D": probePoints as LtpHistoryPoint[],
+                        }))
+                        setPriceHistoryRange("1D")
+                        setPriceHistoryFrequency("1min")
+                        setPriceHistoryRaw(probePoints as LtpHistoryPoint[])
+                        setIsPriceHistoryLoading(false)
+                        return
+                    }
+                } catch {
+                    setIntradayAvailable(false)
+                }
+            }
+
             const rangeConfig = getPriceHistoryRangeConfig(range)
-            const response = await fetch(`/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=${rangeConfig.months}`)
+            const url = range === "1D"
+                ? `/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&interval=intraday`
+                : `/api/nepse/ltp/history?symbol=${encodeURIComponent(symbol)}&months=${rangeConfig.months}`
+            const response = await fetch(url)
             const data = await response.json()
             if (!response.ok) {
                 throw new Error(data?.error?.message || data?.message || "Failed to fetch price history")
@@ -792,7 +849,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
         } finally {
             setIsPriceHistoryLoading(false)
         }
-    }, [isCrypto, isPriceHistoryLoading, item, priceHistoryCache, priceHistoryRange])
+    }, [isCrypto, isPriceHistoryLoading, item, priceHistoryCache, priceHistoryRange, intradayAvailable])
 
     useEffect(() => {
         if (!open || activeTab !== "price" || isCrypto) return
@@ -2740,7 +2797,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {PRICE_HISTORY_FREQUENCIES.map((option) => (
+                                                            {(priceHistoryRange === "1D" ? INTRADAY_FREQUENCIES : PRICE_HISTORY_FREQUENCIES).map((option) => (
                                                                 <SelectItem key={option.value} value={option.value} className="text-[10px] font-black uppercase tracking-widest">
                                                                     {option.label}
                                                                 </SelectItem>
@@ -2748,7 +2805,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                         </SelectContent>
                                                     </Select>
                                                     <div className="flex rounded-lg border border-muted/40 bg-muted/10 p-1">
-                                                        {PRICE_HISTORY_RANGES.map((rangeOption) => (
+                                                        {PRICE_HISTORY_RANGES.filter((r) => r.value !== "1D" || intradayAvailable === true).map((rangeOption) => (
                                                             <Button
                                                                 key={rangeOption.value}
                                                                 type="button"
@@ -2757,6 +2814,7 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                 className="h-7 rounded-md px-2.5 text-[10px] font-black uppercase tracking-widest"
                                                                 onClick={() => {
                                                                     setPriceHistoryRange(rangeOption.value)
+                                                                    setPriceHistoryFrequency(rangeOption.value === "1D" ? "1min" : "daily")
                                                                     loadPriceHistory(rangeOption.value)
                                                                 }}
                                                                 disabled={isPriceHistoryLoading && priceHistoryRange === rangeOption.value}
@@ -2827,10 +2885,11 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                             <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                                                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                                                                 <XAxis
-                                                                    dataKey="date"
+                                                                    dataKey={priceHistoryRange === "1D" ? "time" : "date"}
                                                                     tick={{ fontSize: 10 }}
                                                                     minTickGap={24}
                                                                     tickFormatter={(value) => {
+                                                                        if (priceHistoryRange === "1D") return String(value)
                                                                         const parsed = new Date(`${value}T00:00:00Z`)
                                                                         return Number.isNaN(parsed.getTime())
                                                                             ? String(value)
@@ -2849,16 +2908,19 @@ export function StockDetailModal({ item: initialItem, open, onOpenChange, mode =
                                                                         return (
                                                                             <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-lg px-3 py-2">
                                                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
-                                                                                    {(() => {
-                                                                                        const parsed = new Date(`${label}T00:00:00Z`)
-                                                                                        return Number.isNaN(parsed.getTime())
-                                                                                            ? String(label)
-                                                                                            : priceHistoryFrequency === "yearly"
-                                                                                                ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
-                                                                                                : priceHistoryFrequency === "monthly"
-                                                                                                    ? formatAppDate(parsed, calendarSystem, { month: "long", year: "numeric", timeZone: "UTC" })
-                                                                                                    : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" })
-                                                                                    })()}
+                                                                                    {priceHistoryRange === "1D"
+                                                                                        ? String(label)
+                                                                                        : (() => {
+                                                                                            const parsed = new Date(`${label}T00:00:00Z`)
+                                                                                            return Number.isNaN(parsed.getTime())
+                                                                                                ? String(label)
+                                                                                                : priceHistoryFrequency === "yearly"
+                                                                                                    ? formatAppDate(parsed, calendarSystem, { year: "numeric", timeZone: "UTC" })
+                                                                                                    : priceHistoryFrequency === "monthly"
+                                                                                                        ? formatAppDate(parsed, calendarSystem, { month: "long", year: "numeric", timeZone: "UTC" })
+                                                                                                        : formatAppDate(parsed, calendarSystem, { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" })
+                                                                                        })()
+                                                                                    }
                                                                                 </p>
                                                                                 <p className="text-xs font-bold text-primary">
                                                                                     {priceHistoryFrequency === "daily" ? "LTP" : "Avg LTP"}: {currencySymbol} {formatValue(Number(payload[0]?.value || 0))}

@@ -74,7 +74,7 @@ const emptyAccountForm: MeroShareAccount = {
     password: "",
     crn: "",
     pin: "",
-    preferredKitta: 0,
+    preferredKitta: 10,
     portfolioId: "",
 }
 
@@ -649,7 +649,7 @@ export function MeroShareSettings() {
         const promise = applyMeroShareIPO(
             formData,
             ipoToTest,
-            getPrimaryAccount(accounts)?.preferredKitta || 0,
+            getPrimaryAccount(accounts)?.preferredKitta || 10,
             "settings-test",
             { showBrowser: false, browserProvider: formData.browserProvider as "api" | "rest" | "auto" | "browserless" | "local" }
         )

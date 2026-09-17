@@ -40,10 +40,6 @@ import {
   type CalendarSystem,
 } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
-import { useTransactions } from "@/contexts/transactions-context"
-import { useUser } from "@/contexts/user-context"
-import { useBudgets } from "@/contexts/budgets-context"
-import { useGoals } from "@/contexts/goals-context"
 import { useWalletData } from "@/contexts/wallet-data-context"
 import { AppDateInput } from "@/components/ui/app-date-input"
 import { SpendingTrendsAnalysis } from "./spending-trends-analysis"
@@ -167,11 +163,7 @@ function MetricCard({ icon, label, value, subtitle, accent }: MetricCardProps) {
 }
 
 export function InsightsPanel({ onNavigate }: InsightsPanelProps) {
-  const { transactions } = useTransactions()
-  const { userProfile } = useUser()
-  const { budgets, addBudget } = useBudgets()
-  const { goals, addGoal } = useGoals()
-  const { debtAccounts, balance } = useWalletData()
+  const { transactions, userProfile, budgets, addBudget, goals, addGoal, debtAccounts, balance } = useWalletData()
   const calendarSystem = useCalendarSystem()
 
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)

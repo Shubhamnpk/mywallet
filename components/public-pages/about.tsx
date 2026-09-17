@@ -428,7 +428,7 @@ export function AboutPageClient() {
                 Join thousands of users worldwide. No credit card needed ever.
               </p>
               <Link
-                href="/welcome?start=1"
+                href="/?start=1"
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-7 py-3.5 font-semibold text-primary-foreground text-base hover:bg-primary/90 transition-all duration-300 hover:scale-105 shadow-lg"
               >
                 Get Started Free

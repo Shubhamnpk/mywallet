@@ -46,6 +46,7 @@ export function ImportVerificationModal({
     onConfirm,
     stats
 }: ImportVerificationModalProps) {
+    const [expandedAuto, setExpandedAuto] = useState<Record<string, boolean>>({})
     const [showPrefilled, setShowPrefilled] = useState(false)
     const symbolItems = useMemo(
         () => importQueue.filter((item) => !item.id?.includes("__row_") && item.type !== "Merger"),
@@ -60,39 +61,41 @@ export function ImportVerificationModal({
             return groups
         }, {})
     }, [transactionItems])
-    // Transactions that need a price are prioritized; pre-filled ones (IPO face value) collapse.
-    const needsPriceItems = useMemo(() => symbolItems.filter((item) => item.type === "Buy" || item.type === "Sell"), [symbolItems])
-    const prefilledItems = useMemo(() => symbolItems.filter((item) => item.type !== "Buy" && item.type !== "Sell"), [symbolItems])
+    const needsPriceSymbols = useMemo(
+        () => symbolItems.filter((item) => {
+            const txs = transactionsBySymbol[item.symbol] || []
+            return txs.some((t) => t.type === "Buy" || t.type === "Sell")
+        }),
+        [symbolItems, transactionsBySymbol]
+    )
+    const autoOnlySymbols = useMemo(
+        () => symbolItems.filter((item) => {
+            const txs = transactionsBySymbol[item.symbol] || []
+            return txs.length > 0 && txs.every((t) => t.type !== "Buy" && t.type !== "Sell")
+        }),
+        [symbolItems, transactionsBySymbol]
+    )
+
     const renderTransactionRateRow = (item: (typeof transactionItems)[number]) => {
         const rowId = item.id || item.symbol
-
         return (
-            <div key={rowId} className="rounded-lg border bg-background/70 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+            <div key={rowId} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5">
+                <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider">
+                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-bold uppercase tracking-wider">
                             {item.type}
                         </Badge>
-                        {item.priceOptional && (
-                            <Badge variant="secondary" className="text-[10px]">Optional</Badge>
-                        )}
+                        <span className="text-xs font-medium">{item.date || "—"}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">{item.date || "Unknown date"}</span>
+                    <div className="text-[11px] text-muted-foreground">{item.quantity ?? "—"} units</div>
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
-                    {item.quantity ? `${item.quantity} units` : "Units unavailable"}
-                    {item.description ? ` - ${item.description}` : ""}
-                </p>
-                <div className="mt-2 flex items-center gap-3">
-                    <Label className="text-[11px] font-black text-muted-foreground uppercase w-24">This rate</Label>
-                    <Input
-                        type="number"
-                        value={importTransactionPrices[rowId] || ""}
-                        onChange={(e) => setImportTransactionPrices(prev => ({ ...prev, [rowId]: e.target.value }))}
-                        className="h-9 rounded-lg border-primary/10 bg-background font-mono font-bold focus:ring-primary/20"
-                        placeholder={`Use ${importPrices[item.symbol] || "symbol"} rate`}
-                    />
-                </div>
+                <Input
+                    type="number"
+                    value={importTransactionPrices[rowId] || ""}
+                    onChange={(e) => setImportTransactionPrices(prev => ({ ...prev, [rowId]: e.target.value }))}
+                    className="h-8 w-28 rounded-lg border-primary/10 bg-background font-mono text-sm font-bold focus:ring-primary/20"
+                    placeholder="Rate"
+                />
             </div>
         )
     }
@@ -100,62 +103,66 @@ export function ImportVerificationModal({
     const renderSymbolCard = (item: (typeof symbolItems)[number]) => {
         const symbolTransactions = transactionsBySymbol[item.symbol] || []
         const isIpo = item.type === "IPO"
+        const needsTx = symbolTransactions.filter((t) => t.type === "Buy" || t.type === "Sell")
+        const autoTx = symbolTransactions.filter((t) => t.type !== "Buy" && t.type !== "Sell")
+        const showAuto = expandedAuto[item.symbol] || false
         const customCount = symbolTransactions.filter((transaction) => {
             const rowId = transaction.id || transaction.symbol
             return Boolean(importTransactionPrices[rowId])
         }).length
 
         return (
-            <div key={item.symbol} className="flex flex-col gap-2 p-3 rounded-xl border bg-muted/20 hover:bg-muted/30 transition-colors">
-                <div className="flex items-center justify-between">
+            <div key={item.symbol} className="rounded-xl border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                        <span className="font-black text-sm">{item.symbol}</span>
-                        <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider h-5 flex items-center justify-center border-primary/20 text-primary">
+                        <span className="text-sm font-black">{item.symbol}</span>
+                        <Badge variant="outline" className="h-5 border-primary/20 px-2 text-[10px] font-bold uppercase tracking-wider text-primary">
                             {item.type}
                         </Badge>
-                        {symbolTransactions.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px]">
-                                {symbolTransactions.length} tx
-                            </Badge>
+                        {symbolTransactions.length > 1 && (
+                            <span className="text-xs text-muted-foreground">{symbolTransactions.length} tx</span>
                         )}
                     </div>
-                    {isIpo && (
-                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
-                            Auto-filled Face Value
-                        </span>
-                    )}
-                </div>
-                <div className="flex items-center gap-3">
-                    <Label className="text-[11px] font-black text-muted-foreground uppercase w-20">
-                        {isIpo ? "IPO Price" : item.type === "Sell" ? "Sell Price" : "Buy Price"}
-                    </Label>
-                    <Input
-                        type="number"
-                        value={importPrices[item.symbol] || ""}
-                        onChange={(e) => setImportPrices(prev => ({ ...prev, [item.symbol]: e.target.value }))}
-                        className="h-9 rounded-lg border-primary/10 bg-background font-mono font-bold focus:ring-primary/20"
-                        placeholder="Use for all transactions..."
-                    />
+                    {isIpo && <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Face value</span>}
                 </div>
 
-                {symbolTransactions.length > 0 && (
-                    <div className="rounded-lg border bg-background/60">
-                        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs font-black">Set each transaction separately</span>
-                                    {customCount > 0 && (
-                                        <Badge variant="secondary" className="text-[10px]">{customCount} custom</Badge>
-                                    )}
-                                </div>
-                                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                    Leave blank to use the price above.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="space-y-2 border-t px-3 py-3">
-                            {symbolTransactions.map(renderTransactionRateRow)}
-                        </div>
+                {needsTx.length === 1 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                        {needsTx[0].date || "—"} · {needsTx[0].quantity ?? "—"} units
+                    </div>
+                )}
+                {needsTx.length === 1 ? (
+                    <div className="mt-3 flex items-center gap-3">
+                        <Label className="w-20 shrink-0 text-[11px] font-bold uppercase text-muted-foreground">
+                            {isIpo ? "IPO Price" : item.type === "Sell" ? "Sell Price" : "Buy Price"}
+                        </Label>
+                        <Input
+                            type="number"
+                            value={importPrices[item.symbol] || ""}
+                            onChange={(e) => setImportPrices(prev => ({ ...prev, [item.symbol]: e.target.value }))}
+                            className="h-8 flex-1 rounded-lg border-primary/10 bg-background font-mono text-sm font-bold focus:ring-primary/20"
+                            placeholder="Rate"
+                        />
+                    </div>
+                ) : needsTx.length > 1 ? (
+                    <div className="mt-3 space-y-2">
+                        {needsTx.map(renderTransactionRateRow)}
+                    </div>
+                ) : null}
+                {needsTx.length === 1 && autoTx.length === 0 && null}
+                {autoTx.length > 0 && (
+                    <div className="mt-2 rounded-lg border bg-background/40">
+                        <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-3 py-2 text-left"
+                            onClick={() => setExpandedAuto((prev) => ({ ...prev, [item.symbol]: !prev[item.symbol] }))}
+                        >
+                            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                View {autoTx.length} auto-filled
+                            </span>
+                            {showAuto ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                        </button>
+                        {showAuto && <div className="space-y-2 border-t px-3 py-2.5">{autoTx.map(renderTransactionRateRow)}</div>}
                     </div>
                 )}
             </div>
@@ -164,58 +171,51 @@ export function ImportVerificationModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl rounded-2xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl">
+            <DialogContent className="max-w-xl rounded-2xl border-primary/20 bg-card/95 backdrop-blur-xl shadow-2xl">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl font-black flex items-center gap-2">
-                        <Info className="w-6 h-6 text-primary" />
+                    <DialogTitle className="flex items-center gap-2 text-xl font-black">
+                        <Info className="h-5 w-5 text-primary" />
                         Verify Cost Prices
                     </DialogTitle>
-                    <DialogDescription className="font-medium text-muted-foreground">
-                        Items needing a price are shown first. Price entry is optional - leave blank to import as-is.
+                    <DialogDescription className="text-sm text-muted-foreground">
+                        Prefilled where available. Leave blank to import as-is.
                     </DialogDescription>
                     {stats && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            <Badge variant="secondary" className="text-[10px] font-bold">Fetched {stats.fetchedCount}</Badge>
-                            <Badge variant="secondary" className="text-[10px] font-bold">Merged {stats.mergedCount}</Badge>
-                            <Badge variant="secondary" className="text-[10px] font-bold">Already exist {stats.existingCount}</Badge>
-                            <Badge variant={stats.needsPriceCount > 0 ? "default" : "secondary"} className="text-[10px] font-bold">
-                                Need price {stats.needsPriceCount}
-                            </Badge>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                            <Badge variant="secondary" className="text-[10px] font-bold">New {stats.needsPriceCount}</Badge>
+                            <Badge variant="outline" className="text-[10px]">Fetched {stats.fetchedCount}</Badge>
                         </div>
                     )}
                 </DialogHeader>
 
-                <ScrollArea className="max-h-[40vh] pr-4 mt-4" onKeyDown={(e) => e.key === "Enter" && onConfirm()}>
-                    <div className="space-y-4 py-2">
-                        {needsPriceItems.map(renderSymbolCard)}
-
-                        {prefilledItems.length > 0 && (
+                <ScrollArea className="max-h-[42vh] pr-3" onKeyDown={(e) => e.key === "Enter" && onConfirm()}>
+                    <div className="space-y-3 py-2">
+                        {needsPriceSymbols.map(renderSymbolCard)}
+                        {autoOnlySymbols.length > 0 && (
                             <div className="rounded-xl border bg-background/40">
                                 <button
                                     type="button"
-                                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                                    className="flex w-full items-center justify-between px-3 py-2.5 text-left"
                                     onClick={() => setShowPrefilled((prev) => !prev)}
                                 >
-                                    <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                        {prefilledItems.length} auto-filled item{prefilledItems.length === 1 ? "" : "s"} (pre-filled prices)
+                                    <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                        {autoOnlySymbols.length} auto-filled
                                     </span>
                                     {showPrefilled ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                                 </button>
                                 {showPrefilled && (
-                                    <div className="space-y-4 border-t px-3 py-3">
-                                        {prefilledItems.map(renderSymbolCard)}
-                                    </div>
+                                    <div className="space-y-3 border-t px-3 py-3">{autoOnlySymbols.map(renderSymbolCard)}</div>
                                 )}
                             </div>
                         )}
                     </div>
                 </ScrollArea>
 
-                <DialogFooter className="mt-6 gap-2">
+                <DialogFooter className="gap-2">
                     <Button variant="secondary" className="rounded-xl font-bold" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
-                    <Button className="rounded-xl font-black bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 px-8" onClick={onConfirm}>
+                    <Button className="rounded-xl bg-primary px-6 font-black shadow-lg shadow-primary/20 hover:bg-primary/90" onClick={onConfirm}>
                         Complete Import
                     </Button>
                 </DialogFooter>

@@ -11,7 +11,9 @@ export async function POST(req: Request) {
     if (!credentials?.dpId || !credentials?.username || !credentials?.password || !credentials?.crn || !credentials?.pin) {
       return NextResponse.json({ error: "Missing required credentials (dpId, username, password, crn, pin)" }, { status: 400 })
     }
-    if (!ipoDetails?.company_share_id || !ipoDetails?.units) {
+    const rawUnits = ipoDetails?.units
+    const unitsNum = Number(rawUnits)
+    if (ipoDetails?.company_share_id == null || String(ipoDetails.company_share_id).trim() === "" || rawUnits == null || String(rawUnits).trim() === "" || !Number.isFinite(unitsNum) || unitsNum <= 0) {
       return NextResponse.json({ error: "Missing IPO details (company_share_id, units)" }, { status: 400 })
     }
 
@@ -29,6 +31,32 @@ export async function POST(req: Request) {
           pin: credentials.pin,
         })
         const companyShareId = await client.resolveCompanyShareId(ipoDetails.company_share_id)
+
+        // Pre-check: if already in Application Report, don't hit CDSC apply (saves rate-limit + instant feedback)
+        try {
+          const reports = await client.getApplicationReports().catch(() => [] as any[])
+          const needle = String(ipoDetails.company_share_id).trim().toUpperCase()
+          const hit = (reports as Record<string, unknown>[]).find((r) => {
+            const id = Number((r as any).companyShareId ?? (r as any).shareId ?? 0)
+            if (id && id === companyShareId) return true
+            const scrip = String((r as any).scrip ?? "").trim().toUpperCase()
+            const name = String((r as any).companyName ?? (r as any).name ?? "").trim().toUpperCase()
+            return Boolean(scrip && scrip === needle) || Boolean(name && name === needle)
+          })
+          if (hit) {
+            const h: any = hit
+            const user_name = (await client.getOwnData().catch(() => null))?.name || credentials.username
+            return NextResponse.json({
+              success: true,
+              alreadyApplied: true,
+              application_id: h.applicantFormId ?? h.id ?? null,
+              message: `Already applied for ${h.scrip ?? h.companyName ?? ipoDetails.company_share_id} — no new application submitted. Check My Applications for status.`,
+              user_name,
+              details: h,
+            })
+          }
+        } catch {}
+
         let alreadyApplied = false
         let data: unknown
         try {
@@ -40,7 +68,7 @@ export async function POST(req: Request) {
               crn: credentials.crn,
               pin: credentials.pin,
             },
-            { companyShareId, number_of_shares: Number(ipoDetails.units) || 10 },
+            { companyShareId, number_of_shares: unitsNum || 10 },
           )
         } catch (error: any) {
           const message = String(error?.message || error || "")
@@ -54,10 +82,10 @@ export async function POST(req: Request) {
         const user_name = (await client.getOwnData())?.name || credentials.username
       return NextResponse.json({
         success: true,
-        application_id: (data as any)?.id ?? null,
+        application_id: (data as any)?.id ?? (data as any)?.applicantFormId ?? null,
         alreadyApplied,
         message: alreadyApplied
-          ? "Already applied earlier; no new application was submitted."
+          ? "Already applied earlier; no new application was submitted. Check My Applications for status."
           : ((data as any)?.message || "IPO application submitted successfully."),
         user_name,
         details: data,

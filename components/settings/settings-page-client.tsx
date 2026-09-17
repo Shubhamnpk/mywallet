@@ -23,7 +23,7 @@ import { FullPageSpinner } from "@/components/ui/full-page-spinner"
 export function SettingsPageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { userProfile, showOnboarding } = useWalletData()
+  const { userProfile } = useWalletData()
   const isMobile = useIsMobile()
   const { isDeveloperMode } = useDeveloperMode()
   const validTabs = new Set(["profile", "security", "notifications", "meroshare", "theme", "data", "about", "developer"])
@@ -48,28 +48,21 @@ export function SettingsPageClient() {
     },
   };
 
-  // Redirect to home if no user profile or onboarding is needed
+  // Validate session on page load
   useEffect(() => {
-    if (!userProfile || showOnboarding) {
-      router.push('/')
-      return
-    }
-
-    // Validate session on page load
     if (!SessionManager.isSessionValid()) {
       const event = new CustomEvent('wallet-session-expired')
       window.dispatchEvent(event)
     }
-  }, [userProfile, showOnboarding])
+  }, [])
 
-  const showMobileSettings = Boolean(isMobile && userProfile && !showOnboarding)
+  const showMobileSettings = Boolean(isMobile && userProfile)
   const handleTabChange = (value: string) => {
     if (!validTabs.has(value)) return
     router.replace(`/settings?tab=${value}`)
   }
 
-  // Show loading while redirecting
-  if (!userProfile || showOnboarding) {
+  if (!userProfile) {
     return <FullPageSpinner />
   }
 
@@ -77,14 +70,14 @@ export function SettingsPageClient() {
   if (showMobileSettings) {
     const mobileInitialView: SettingsView =
       tab && validTabs.has(tab) ? (tab as SettingsView) : "main"
-    return <MobileSettingsPage onClose={() => router.push('/')} initialView={mobileInitialView} />
+    return <MobileSettingsPage onClose={() => router.push('/dashboard')} initialView={mobileInitialView} />
   }
 
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-full">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>

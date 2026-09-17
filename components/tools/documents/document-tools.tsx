@@ -32,6 +32,17 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 import { cn } from "@/lib/utils"
 import {
@@ -45,6 +56,7 @@ import {
   getDocumentBlob,
   getDocumentThumbnail,
   deleteDocument,
+  deleteDocuments,
   searchDocuments,
   generateThumbnail,
   formatFileSize,
@@ -73,6 +85,8 @@ export function DocumentTools() {
   const [viewDocId, setViewDocId] = useState<string | null>(null)
   const [editingDoc, setEditingDoc] = useState<StoredDocument | null>(null)
   const [showEditDoc, setShowEditDoc] = useState(false)
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -105,6 +119,7 @@ export function DocumentTools() {
   }, [])
 
   useEffect(() => {
+    setSelectedDocIds([])
     reloadDocuments(currentPersonId)
   }, [currentPersonId, reloadDocuments])
 
@@ -175,9 +190,39 @@ export function DocumentTools() {
     await deleteDocument(docId)
     const docs = await getDocuments(currentPersonId ?? undefined)
     setDocuments(docs)
+    setSelectedDocIds((prev) => prev.filter((id) => id !== docId))
     if (viewDocId === docId) setViewDocId(null)
     toast("Document deleted")
   }, [currentPersonId, viewDocId])
+
+  const toggleDocSelection = useCallback((id: string) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
+  }, [])
+
+  const handleSelectAllDocs = useCallback(
+    (checked: boolean, visibleIds: string[]) => {
+      setSelectedDocIds(checked ? visibleIds : [])
+    },
+    [],
+  )
+
+  const confirmDeleteSelectedDocs = useCallback(async () => {
+    const ids = [...selectedDocIds]
+    if (!ids.length) return
+    setShowBulkConfirm(false)
+    try {
+      await deleteDocuments(ids)
+      const docs = await getDocuments(currentPersonId ?? undefined)
+      setDocuments(docs)
+      setSelectedDocIds([])
+      if (viewDocId && ids.includes(viewDocId)) setViewDocId(null)
+      toast(`${ids.length} document${ids.length !== 1 ? "s" : ""} deleted`)
+    } catch {
+      toast.error("Failed to delete selected documents")
+    }
+  }, [selectedDocIds, currentPersonId, viewDocId])
 
   return (
     <>
@@ -270,6 +315,10 @@ export function DocumentTools() {
                 onDownloadDoc={downloadDocument}
                 onDownloadPageDoc={(doc, i) => downloadDocument(doc, [i])}
                 onPersonClick={(id) => setCurrentPersonId(id)}
+                selectedDocIds={selectedDocIds}
+                onToggleSelect={toggleDocSelection}
+                onSelectAll={(checked) => handleSelectAllDocs(checked, filteredDocs.map((d) => d.id))}
+                onBulkDelete={() => setShowBulkConfirm(true)}
               />
           </CardContent>
         </>
@@ -304,6 +353,30 @@ export function DocumentTools() {
         onOpenChange={setShowEditDoc}
         onSaved={handleDocUpdated}
       />
+
+      <AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedDocIds.length} document{selectedDocIds.length !== 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the selected documents and their encrypted files. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                void confirmDeleteSelectedDocs()
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
@@ -415,6 +488,10 @@ function DocumentDashboard({
   onDownloadDoc,
   onDownloadPageDoc,
   onPersonClick,
+  selectedDocIds,
+  onToggleSelect,
+  onSelectAll,
+  onBulkDelete,
 }: {
   person?: Person
   persons: Person[]
@@ -428,7 +505,14 @@ function DocumentDashboard({
   onDownloadDoc: (doc: StoredDocument) => Promise<void>
   onDownloadPageDoc: (doc: StoredDocument, index: number) => void
   onPersonClick?: (id: string) => void
+  selectedDocIds?: string[]
+  onToggleSelect?: (id: string) => void
+  onSelectAll?: (checked: boolean) => void
+  onBulkDelete?: () => void
 }) {
+  const selectedCount = selectedDocIds?.length ?? 0
+  const selectionActive = selectedCount > 0
+
   return (
     <div className="p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -455,13 +539,32 @@ function DocumentDashboard({
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
+          {documents.length > 0 && onSelectAll && (
+            <Checkbox
+              checked={selectionActive && selectedCount === documents.length}
+              onCheckedChange={(checked) => onSelectAll(!!checked)}
+              aria-label="Select all documents"
+              className="mr-0.5"
+            />
+          )}
           <span className="text-xs font-bold text-muted-foreground">{documents.length} document{documents.length !== 1 ? "s" : ""}</span>
           {documents.length > 0 && (
             <span className="text-[10px] text-muted-foreground/60">
               · {formatFileSize(documents.reduce((s, d) => s + d.size, 0))} total
             </span>
           )}
+          {selectionActive && (
+            <Badge variant="secondary" className="text-[10px] px-1.5">
+              {selectedCount} selected
+            </Badge>
+          )}
         </div>
+        {selectionActive && onBulkDelete && (
+          <Button variant="destructive" size="sm" className="h-7 px-2 text-[10px] font-black uppercase tracking-wider" onClick={onBulkDelete}>
+            <Trash2 className="h-3 w-3 mr-1" />
+            Delete ({selectedCount})
+          </Button>
+        )}
       </div>
 
       {documents.length === 0 ? (
@@ -494,11 +597,17 @@ function DocumentDashboard({
               doc={doc}
               person={persons.find((p) => p.id === doc.personId)}
               onPersonClick={onPersonClick}
-              onClick={() => onViewDoc(doc.id)}
+              onClick={() => {
+                if (selectionActive && onToggleSelect) onToggleSelect(doc.id)
+                else onViewDoc(doc.id)
+              }}
               onDelete={(e) => onDeleteDoc(doc.id, e)}
               onEdit={() => onEditDoc(doc)}
               onDownload={() => onDownloadDoc(doc)}
               onDownloadPage={(i) => onDownloadPageDoc(doc, i)}
+              selected={selectionActive && selectedDocIds!.includes(doc.id)}
+              selectionActive={selectionActive}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </div>
@@ -507,7 +616,7 @@ function DocumentDashboard({
   )
 }
 
-function DocumentCard({ doc, person, onPersonClick, onClick, onDelete, onEdit, onDownload, onDownloadPage }: {
+function DocumentCard({ doc, person, onPersonClick, onClick, onDelete, onEdit, onDownload, onDownloadPage, selected, selectionActive, onToggleSelect }: {
   doc: StoredDocument
   person?: Person
   onPersonClick?: (id: string) => void
@@ -516,6 +625,9 @@ function DocumentCard({ doc, person, onPersonClick, onClick, onDelete, onEdit, o
   onEdit: () => void
   onDownload: () => void
   onDownloadPage: (index: number) => void
+  selected?: boolean
+  selectionActive?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [backUrl, setBackUrl] = useState<string | null>(null)
@@ -564,8 +676,27 @@ function DocumentCard({ doc, person, onPersonClick, onClick, onDelete, onEdit, o
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick() } }}
       onMouseEnter={() => hasBack && setFlipped(true)}
       onMouseLeave={() => setFlipped(false)}
-      className="group relative flex flex-col rounded-xl border border-border/30 bg-muted/5 hover:bg-muted/15 hover:border-primary/30 transition-all text-left overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      className={cn(
+        "group relative flex flex-col rounded-xl border border-border/30 bg-muted/5 hover:bg-muted/15 hover:border-primary/30 transition-all text-left overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        selected && "border-primary bg-primary/5 hover:bg-primary/10",
+      )}
     >
+      {onToggleSelect && (
+        <div
+          className={cn(
+            "absolute top-1.5 left-1.5 z-10 transition-opacity",
+            selectionActive || selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          )}
+        >
+          <Checkbox
+            checked={!!selected}
+            onCheckedChange={() => onToggleSelect(doc.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${doc.name}`}
+            className="bg-background/80 backdrop-blur-sm"
+          />
+        </div>
+      )}
       <div className="absolute top-1.5 right-1.5 z-10">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

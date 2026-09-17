@@ -446,6 +446,21 @@ export function useWalletStore() {
         setUpcomingIPOs(processedIPOs)
       })
 
+    const archiveIposTask = fetch("/api/nepse/ipo-archive")
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return
+        const archiveItems: UpcomingIPO[] = data
+          .filter((ipo: any) => ipo && typeof ipo.company === "string")
+          .map(ipo => ({ ...ipo, status: "closed" as const }))
+        if (archiveItems.length === 0) return
+        setUpcomingIPOs(prev => {
+          const seen = new Set(prev.map(ipo => `${ipo.company}|${ipo.date_range}`))
+          const merged = [...prev, ...archiveItems.filter(item => !seen.has(`${item.company}|${item.date_range}`))]
+          return merged.length === prev.length ? prev : merged
+        })
+      })
+
     const topStocksTask = fetch("/api/nepse/top-stocks")
       .then(async (res) => {
         const data = await res.json()
@@ -578,6 +593,7 @@ export function useWalletStore() {
       sectorsTask,
       localNamesTask,
       upcomingIposTask,
+      archiveIposTask,
       topStocksTask,
       marketSummaryTask,
       marketSummaryHistoryTask,
@@ -4655,6 +4671,73 @@ export function useWalletStore() {
     // Preview mode: if any new buy/sell/IPO transaction exists, defer the import so the user can
     // verify cost prices first (IPO rows are pre-filled with face value, buys/sells are blank).
     const preview = prepareMeroShareImport(rows, portId)
+    // Auto-prefill WACC rate for new buys where CDSC has a pending rate (date-matched) or calculated WACC. Saves user from manual entry; used for CGT basis (all-in cost).
+    try {
+      const needPrefill = preview.newTransactions.filter((t) => t.price === 0 && t.type === "buy")
+      if (needPrefill.length) {
+        const scrips = [...new Set(needPrefill.map((t) => t.symbol))]
+        const rateBySymbolDate = new Map<string, number>()
+        const rateBySymbol = new Map<string, number>()
+        await Promise.all(
+          scrips.map(async (scrip) => {
+            try {
+              const resp = await fetch("/api/meroshare/wacc/pending", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ credentials, scrip }),
+              })
+              const j = await resp.json().catch(() => null)
+              const data = (j as any)?.data as Record<string, unknown> | null
+              const waccRows = ((data as any)?.waccUpdateResponse ?? []) as any[]
+              waccRows.forEach((r: any) => {
+                const d = canonicalizeMeroShareDate(String(r.postDate ?? r.transactionDate ?? ""))
+                const rate = Number(r.rate ?? r.purchasePrice ?? r.userPrice ?? 0)
+                if (d && Number.isFinite(rate) && rate > 0) rateBySymbolDate.set(`${scrip}__${d}`, rate)
+                else if (Number.isFinite(rate) && rate > 0) rateBySymbol.set(scrip, rate)
+              })
+              // summary (already calculated) fallback
+              const summaryRows = ((data as any)?.waccSummaryResponse ?? []) as any[]
+              summaryRows.forEach((r: any) => {
+                const rate = Number(r.rate ?? r.purchasePrice ?? r.userPrice ?? r.averageBuyRate ?? 0)
+                if (Number.isFinite(rate) && rate > 0) rateBySymbol.set(scrip, rate)
+              })
+              if (!resp.ok) console.warn(`[wacc-prefill] pending ${scrip} failed`, j)
+              else if (waccRows.length === 0) console.warn(`[wacc-prefill] pending ${scrip} empty (no waccUpdateResponse)`, data)
+            } catch (e) {
+              console.warn(`[wacc-prefill] pending ${scrip} error`, e)
+            }
+          }),
+        )
+        // fallback: global waccReport for already-calculated scrips (e.g. NIFRA)
+        const stillNeed = preview.newTransactions.some((t) => t.price === 0)
+        if (stillNeed) {
+          try {
+            const resp = await fetch("/api/meroshare/wacc/report", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ credentials }),
+            })
+            const j = await resp.json().catch(() => null)
+            const report = (j as any)?.data as Record<string, unknown> | null
+            const rows = ((report as any)?.waccReportResponse ?? []) as any[]
+            rows.forEach((r: any) => {
+              const s = String(r.scrip ?? "").trim().toUpperCase()
+              const rate = Number(r.averageBuyRate ?? r.rate ?? 0)
+              if (s && Number.isFinite(rate) && rate > 0) rateBySymbol.set(s, rate)
+            })
+          } catch {}
+        }
+        preview.newTransactions.forEach((t) => {
+          if (t.price === 0) {
+            const key = `${t.symbol}__${canonicalizeMeroShareDate(t.date)}`
+            let rate = rateBySymbolDate.get(key)
+            if (!rate) rate = rateBySymbol.get(t.symbol)
+            if (rate) t.price = rate
+            if (!rate) console.warn(`[wacc-prefill] no rate for ${t.symbol} ${t.date} (need ${key})`)
+          }
+        })
+      }
+    } catch {}
     const stats = toMeroShareStats(preview.fetchedTransactions, preview.mergedFetchedLength, preview.newTransactions)
     const requiresReview = preview.newTransactions.some((transaction) =>
       transaction.type === "buy" || transaction.type === "ipo" || transaction.type === "sell"

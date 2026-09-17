@@ -33,9 +33,7 @@ import type { Budget, Transaction } from "@/types/wallet"
 import { formatCurrency } from "@/lib/utils"
 import { getCurrencySymbol } from "@/lib/currency"
 import { getTimeEquivalentBreakdown, isTimeWalletEnabled } from "@/lib/wallet-utils"
-import { useBudgets } from "@/contexts/budgets-context"
-import { useUser } from "@/contexts/user-context"
-import { useTransactions } from "@/contexts/transactions-context"
+import { useWalletData } from "@/contexts/wallet-data-context"
 import { formatAppDate, getCalendarMonthRange } from "@/lib/app-calendar"
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -44,9 +42,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function BudgetsList() {
-  const { budgets, addBudget, updateBudget, deleteBudget } = useBudgets()
-  const { userProfile } = useUser()
-  const { transactions } = useTransactions()
+  const { budgets, addBudget, updateBudget, deleteBudget, userProfile, transactions } = useWalletData()
   const calendarSystem = useCalendarSystem()
   if (!userProfile) return null
   const [dialogOpen, setDialogOpen] = useState(false)
