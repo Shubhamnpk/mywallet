@@ -21,38 +21,32 @@ type ProposedDividendRecord = {
 }
 
 export async function GET() {
-  const APIS = [
-    "https://shubhamnpk.github.io/yonepse/data/proposed_dividend/history_all_years.json",
-  ]
+  // yonepse moved: data/proposed_dividend/history_all_years.json -> data/dividend/history.json (columnar)
+  const NEW_URL = "https://shubhamnpk.github.io/yonepse/data/dividend/history.json"
+  const OLD_URL = "https://shubhamnpk.github.io/yonepse/data/proposed_dividend/history_all_years.json"
 
-  let lastError = "Data source returned empty or invalid data"
-
-  for (const url of APIS) {
+  for (const url of [NEW_URL, OLD_URL]) {
     try {
-      const response = await fetch(url, {
-        next: { revalidate: 60 * 60 * 6 },
-        signal: AbortSignal.timeout(10000),
-      })
-
-      if (!response.ok) {
-        lastError = `Source ${url} returned ${response.status}`
+      const r = await fetch(url, { next: { revalidate: 60 * 60 * 6 }, signal: AbortSignal.timeout(10000) })
+      if (!r.ok) continue
+      const j = await r.json()
+      // new columnar format
+      if (j && Array.isArray(j.records) && Array.isArray(j.symbols)) {
+        const { symbols, records } = j as { symbols: string[]; records: unknown[][] }
+        const mapped: ProposedDividendRecord[] = records
+          .map((rec, i) => {
+            if (!Array.isArray(rec)) return null
+            const sym = symbols[Number(rec[0])]
+            if (!sym) return null
+            return { id: i, symbol: sym, bonus_share: rec[1] as string, cash_dividend: rec[2] as string, total_dividend: rec[3] as string, announcement_date: rec[4] as string, bookclose_date: rec[5] as string, fiscal_year: rec[6] as string }
+          })
+          .filter(Boolean) as ProposedDividendRecord[]
+        if (mapped.length > 0) return NextResponse.json(mapped)
         continue
       }
-
-      const data: unknown = await response.json()
-      if (Array.isArray(data) && data.length > 0) {
-        return NextResponse.json(data as ProposedDividendRecord[])
-      }
-
-      lastError = `Source ${url} returned empty data`
-    } catch {
-      lastError = `Connection timeout or network error on ${url}`
-    }
+      if (Array.isArray(j) && j.length > 0) return NextResponse.json(j as ProposedDividendRecord[])
+    } catch { /* try next */ }
   }
 
-  return errorResponse({
-    status: 503,
-    code: "UPSTREAM_UNREACHABLE",
-    message: `Proposed dividend history is currently unreachable. ${lastError}`,
-  })
+  return errorResponse({ status: 503, code: "UPSTREAM_UNREACHABLE", message: "Proposed dividend history is currently unreachable." })
 }
