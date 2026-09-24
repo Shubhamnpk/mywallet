@@ -28,6 +28,7 @@ import { formatAppDateTime } from "@/lib/app-calendar"
 import { normalizeSipPlans } from "@/lib/sip"
 import { normalizeStockSymbol } from "@/lib/stock-symbol"
 import { dispatchStockDeepLink } from "@/lib/stock-deep-link"
+import { formatElapsed, getClockSession, type ClockSession } from "@/lib/shift-tracker-storage"
 
 const HEADER_NOTIFICATIONS_READ_KEY = "wallet_header_notifications_read_v1"
 const HEADER_NOTIFICATIONS_DISMISSED_KEY = "wallet_header_notifications_dismissed_v1"
@@ -118,6 +119,26 @@ export function DashboardHeader() {
   const [history, setHistory] = useState<NotificationHistoryItem[]>(() =>
     typeof window !== "undefined" ? readNotificationHistory() : [],
   )
+  // Live shift-clock status (plain localStorage, survives wallet lock).
+  const [headerClock, setHeaderClock] = useState<{ session: ClockSession; now: number } | null>(null)
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const s = getClockSession()
+        setHeaderClock(s ? { session: s, now: Date.now() } : null)
+      } catch {
+        setHeaderClock(null)
+      }
+    }
+    sync()
+    const t = setInterval(sync, 1000)
+    window.addEventListener("storage", sync)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
 
   const reloadBills = () => {
     void (async () => {
@@ -502,6 +523,23 @@ export function DashboardHeader() {
         </div>
 
         <div className="flex items-center gap-2">
+          {headerClock && (
+            <button
+              type="button"
+              onClick={() => navigateToTab("shift-tracker")}
+              title="Clock running. Open Shift tracker."
+              aria-label={`Clock running for ${formatElapsed(headerClock.now - headerClock.session.startAt)}. Open Shift tracker.`}
+              className="flex h-9 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+              <span className="text-xs font-semibold tabular-nums">
+                {formatElapsed(headerClock.now - headerClock.session.startAt)}
+              </span>
+            </button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

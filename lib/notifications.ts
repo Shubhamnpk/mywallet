@@ -24,6 +24,9 @@ export type AppNotificationInput = {
   url?: string
 }
 
+/** Tag used for the ongoing shift-clock status notification (same tag = updates replace it). */
+export const CLOCK_NOTIFICATION_TAG = "mywallet-clock"
+
 export const isBrowserNotificationSupported = () =>
   typeof window !== "undefined" && "Notification" in window
 
@@ -98,5 +101,19 @@ export const showAppNotification = async ({
     return true
   } catch {
     return false
+  }
+}
+
+/** Dismiss previously shown notifications with the given tag (e.g. the running clock on clock-out). */
+export const closeAppNotificationsByTag = async (tag: string): Promise<void> => {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      for (const registration of registrations) {
+        const listed = await registration.getNotifications({ tag })
+        listed.forEach((n) => n.close())
+      }
+    }
+  } catch {
   }
 }

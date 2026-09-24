@@ -7,6 +7,78 @@ export const STORAGE_RATE = "mywallet_wt_rate_v1";
 export const STORAGE_TIME_FMT = "mywallet_wt_timefmt_v1";
 export const STORAGE_PAY_TO_WALLET = "mywallet_wt_paywallet_v1";
 export const STORAGE_META = "mywallet_wt_meta_v1";
+export const STORAGE_CLOCK_IN = "mywallet_wt_clockin_v1";
+
+export interface ClockSession {
+  startAt: number;
+  note?: string;
+  institution?: string;
+}
+
+/** Read the active clock-in session, if any. */
+export function getClockSession(): ClockSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_CLOCK_IN);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as ClockSession;
+    if (!s || typeof s.startAt !== "number" || s.startAt <= 0) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+export function setClockSession(s: ClockSession): boolean {
+  try {
+    localStorage.setItem(STORAGE_CLOCK_IN, JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearClockSession(): void {
+  try {
+    localStorage.removeItem(STORAGE_CLOCK_IN);
+  } catch {
+    /* ignore */
+  }
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Convert a clock session + clock-out time into a Shift draft (prefill for the log dialog). */
+export function clockSessionToDraft(
+  session: ClockSession,
+  endAt: number = Date.now(),
+): Shift {
+  const start = new Date(session.startAt);
+  const end = new Date(endAt);
+  const toHM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const toDate = (d: Date) =>
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const hours = Math.max(0, (endAt - session.startAt) / 3600000);
+  return {
+    id: endAt,
+    date: toDate(start),
+    start: toHM(start),
+    end: toHM(end),
+    note: session.note?.trim() ?? "",
+    hours: Math.round(hours * 100) / 100,
+    ...(session.institution?.trim()
+      ? { institution: session.institution.trim() }
+      : {}),
+  };
+}
+
+/** Format ms elapsed as H:MM:SS (native timer style). */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}:${pad2(m)}:${pad2(sec)}`;
+}
 
 export interface ShiftTrackerMeta {
   rate: string

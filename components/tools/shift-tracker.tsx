@@ -17,6 +17,10 @@ import {
   Search,
   ArrowUpDown,
   Calendar as CalendarIcon,
+  Play,
+  Square,
+  Timer,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +36,16 @@ import {
   type ShiftTrackerMeta,
   SHIFT_STORAGE_UPDATED_EVENT,
   type Shift,
+  type ClockSession,
   todayStr,
   getShiftsFromStorage,
   saveShiftsToStorage,
   generateTextReport,
+  getClockSession,
+  setClockSession,
+  clearClockSession,
+  clockSessionToDraft,
+  formatElapsed,
 } from "@/lib/shift-tracker-storage";
 import {
   Dialog,
@@ -63,6 +73,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+import {
+  CLOCK_NOTIFICATION_TAG,
+  closeAppNotificationsByTag,
+  isBrowserNotificationSupported,
+  requestBrowserNotificationPermission,
+  showAppNotification,
+} from "@/lib/notifications";
 import type { DateRange } from "react-day-picker";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCalendarSystem } from "@/hooks/use-calendar-system"
@@ -202,6 +220,11 @@ export function ShiftTracker() {
 
   const [logOpen, setLogOpen] = useState(false);
   const [editShift, setEditShift] = useState<Shift | undefined>(undefined);
+  const [clockDraft, setClockDraft] = useState<Shift | undefined>(undefined);
+  const [clockIn, setClockIn] = useState<ClockSession | null>(null);
+  const [clockNote, setClockNote] = useState("");
+  const [clockInstitution, setClockInstitution] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailShiftId, setDetailShiftId] = useState<number | null>(null);
   const [actionShiftId, setActionShiftId] = useState<number | null>(null);
@@ -310,6 +333,12 @@ export function ShiftTracker() {
         if (tf === "12h" || tf === "24h") setTimeFormat(tf);
         if (pw !== null) setPayToWallet(pw === "true");
       }
+      const existing = getClockSession();
+      if (existing) {
+        setClockIn(existing);
+        if (existing.note) setClockNote(existing.note);
+        if (existing.institution) setClockInstitution(existing.institution);
+      }
     } catch {
       /* ignore */
     }
@@ -354,6 +383,152 @@ export function ShiftTracker() {
     window.addEventListener(SHIFT_STORAGE_UPDATED_EVENT, onExternal);
     return () =>
       window.removeEventListener(SHIFT_STORAGE_UPDATED_EVENT, onExternal);
+  }, []);
+
+  // Live ticker while clocked in (1s, native timer feel)
+  useEffect(() => {
+    if (!clockIn) return;
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [clockIn]);
+
+  const clockElapsedMs = clockIn ? Math.max(0, nowMs - clockIn.startAt) : 0;
+
+  const showClockNotification = useCallback(
+    (elapsedMs: number) => {
+      if (userProfile?.notificationSettings?.browserNotifications === false) return;
+      if (!isBrowserNotificationSupported() || Notification.permission !== "granted") return;
+      const earned = (elapsedMs / 3600000) * getRate();
+      void showAppNotification({
+        title: "Clock running",
+        body: `${formatElapsed(elapsedMs)} elapsed. About ${formatMoney(earned, currencySymbol)} earned so far.`,
+        tag: CLOCK_NOTIFICATION_TAG,
+        url: "/dashboard?tab=shift-tracker",
+      });
+    },
+    [userProfile?.notificationSettings?.browserNotifications, getRate, currencySymbol],
+  );
+
+  // Refresh the ongoing device notification every minute (same tag = replaced, never stacked).
+  // Background tabs throttle timers to ~1/min, which matches this cadence.
+  useEffect(() => {
+    if (!clockIn) return;
+    const t = setInterval(() => {
+      try {
+        const s = getClockSession();
+        if (!s) return;
+        showClockNotification(Date.now() - s.startAt);
+      } catch {
+        /* ignore */
+      }
+    }, 60000);
+    return () => clearInterval(t);
+  }, [clockIn, showClockNotification]);
+
+  // Tab title shows live elapsed while clocked in; restored on clock-out.
+  useEffect(() => {
+    if (!clockIn) return;
+    const prev = document.title;
+    document.title = `${formatElapsed(clockElapsedMs)} Clock running`;
+    return () => {
+      document.title = prev;
+    };
+  }, [clockIn, clockElapsedMs]);
+
+  // App icon badge while clocked in (installed PWA / supported browsers).
+  useEffect(() => {
+    if (!clockIn) return;
+    try {
+      const nav = navigator as Navigator & {
+        setAppBadge?: () => Promise<void>;
+        clearAppBadge?: () => Promise<void>;
+      };
+      void nav.setAppBadge?.();
+      return () => {
+        try {
+          void nav.clearAppBadge?.();
+        } catch {
+          /* ignore */
+        }
+      };
+    } catch {
+      /* ignore */
+    }
+    return undefined;
+  }, [clockIn]);
+
+  // Persist note/institution edits live so a lock, sleep, or crash
+  // never loses them before clock-out. Elapsed time itself is derived
+  // from startAt on every render, so it needs no ticking storage.
+  const clockStartAt = clockIn?.startAt ?? null;
+  useEffect(() => {
+    if (clockStartAt == null) return;
+    setClockSession({
+      startAt: clockStartAt,
+      ...(clockNote.trim() ? { note: clockNote.trim() } : {}),
+      ...(clockInstitution.trim() ? { institution: clockInstitution.trim() } : {}),
+    });
+  }, [clockStartAt, clockNote, clockInstitution]);
+
+  const handleClockIn = useCallback(() => {
+    const session: ClockSession = {
+      startAt: Date.now(),
+      ...(clockNote.trim() ? { note: clockNote.trim() } : {}),
+      ...(clockInstitution.trim() ? { institution: clockInstitution.trim() } : {}),
+    };
+    if (!setClockSession(session)) {
+      toast.error("Could not start clock. Storage unavailable.");
+      return;
+    }
+    setClockIn(session);
+    setNowMs(session.startAt);
+    toast.success("Clocked in. Timer running");
+    // Ongoing device notification (permission is requestable here - direct tap).
+    if (
+      userProfile?.notificationSettings?.browserNotifications !== false &&
+      isBrowserNotificationSupported()
+    ) {
+      void (async () => {
+        try {
+          if (Notification.permission === "default") {
+            await requestBrowserNotificationPermission();
+          }
+          showClockNotification(0);
+        } catch {
+          /* ignore */
+        }
+      })();
+    }
+  }, [clockNote, clockInstitution, userProfile?.notificationSettings?.browserNotifications, showClockNotification]);
+
+  const handleClockOut = useCallback(() => {
+    if (!clockIn) return;
+    const endAt = Date.now();
+    // Refresh note/institution from inputs (user may have typed after clock-in)
+    const session: ClockSession = {
+      ...clockIn,
+      ...(clockNote.trim() ? { note: clockNote.trim() } : {}),
+      ...(clockInstitution.trim() ? { institution: clockInstitution.trim() } : {}),
+    };
+    const draft = clockSessionToDraft(session, endAt);
+    if (draft.hours <= 0) {
+      toast.error("Clock-out is the same minute as clock-in. Wait a moment and retry.");
+      return;
+    }
+    clearClockSession();
+    setClockIn(null);
+    void closeAppNotificationsByTag(CLOCK_NOTIFICATION_TAG);
+    setClockDraft(draft);
+    setEditShift(undefined);
+    setLogOpen(true);
+  }, [clockIn, clockNote, clockInstitution]);
+
+  const handleDiscardClock = useCallback(() => {
+    if (!confirm("Discard the running clock? This won't save a shift.")) return;
+    clearClockSession();
+    setClockIn(null);
+    void closeAppNotificationsByTag(CLOCK_NOTIFICATION_TAG);
+    toast.message("Clock discarded");
   }, []);
 
   const formatTimeValue = useCallback(
@@ -860,6 +1035,103 @@ export function ShiftTracker() {
         </div>
       </div>
 
+      {/* Clock in / out - live session, clock-out prefills the shift form */}
+      <Card className="gap-3 overflow-hidden py-0 shadow-sm">
+        <CardContent className="px-4 py-4 sm:px-6">
+          {!clockIn ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Timer className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-tight">Clock in</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Tap once when work starts. Clock out prefills your shift.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleClockIn}
+                  className="h-11 shrink-0 gap-2 rounded-xl bg-emerald-600 px-5 font-medium text-white shadow-sm hover:bg-emerald-700"
+                >
+                  <Play className="h-4 w-4 fill-current" />
+                  Clock in
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Input
+                  placeholder="Note (optional), e.g. Opening shift"
+                  value={clockNote}
+                  onChange={(e) => setClockNote(e.target.value)}
+                  className="h-10 rounded-xl border-muted/60 text-sm"
+                  aria-label="Clock-in note"
+                />
+                <SearchableCombobox
+                  value={clockInstitution}
+                  onChange={setClockInstitution}
+                  options={uniqueInstitutions}
+                  placeholder="Institution (optional)"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Timer className="h-5 w-5" />
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full border-2 border-background bg-emerald-500" />
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-2xl font-semibold tabular-nums leading-none tracking-tight">
+                    {formatElapsed(clockElapsedMs)}
+                  </p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    Since{" "}
+                    {new Date(clockIn.startAt).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                    {" · ~"}
+                    {formatMoney(
+                      (clockElapsedMs / 3600000) * getRate(),
+                      currencySymbol,
+                    )}{" "}
+                    earned
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 rounded-full text-muted-foreground"
+                  onClick={handleDiscardClock}
+                  aria-label="Discard clock"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleClockOut}
+                  className="h-11 shrink-0 gap-2 rounded-xl bg-rose-600 px-5 font-medium text-white shadow-sm hover:bg-rose-700"
+                >
+                  <Square className="h-4 w-4 fill-current" />
+                  Clock out
+                </Button>
+              </div>
+              {(clockNote || clockInstitution) && (
+                <p className="truncate text-xs text-muted-foreground">
+                  {[clockInstitution, clockNote].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="gap-3 py-3 shadow-sm sm:gap-4 sm:py-5">
         <CardHeader className="px-3 pb-0 sm:px-6">
           <div className="flex items-center justify-between gap-3">
@@ -1310,9 +1582,11 @@ export function ShiftTracker() {
         onOpenChange={(open) => {
           setLogOpen(open);
           if (!open) setEditShift(undefined);
+          // Keep clockDraft on cancel so the timed shift isn't lost;
+          // next "Add shift" reopens prefilled.
         }}
         defaultRateInput={rateInput}
-        initialShift={editShift}
+        initialShift={editShift ?? clockDraft}
         institutions={uniqueInstitutions}
         onSave={(shift) => {
           if (editShift) {
@@ -1325,9 +1599,17 @@ export function ShiftTracker() {
             toast.success("Shift updated");
             return true;
           } else {
-            // Add new shift
+            // Add new shift (manual or clocked)
+            const wasClocked = !!clockDraft;
             setShifts((prev) => [shift, ...prev]);
-            toast.success("Shift saved");
+            setClockDraft(undefined);
+            setClockNote("");
+            // Keep institution for next time, clear note already done
+            toast.success(
+              wasClocked
+                ? `Clocked ${shift.hours.toFixed(2)}h, shift saved`
+                : "Shift saved",
+            );
             return true;
           }
         }}
